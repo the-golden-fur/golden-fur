@@ -42,6 +42,12 @@ export interface DaycareChargeBreakdown {
   succeeding_hours: number;
   succeeding_hour_fee: number;
   hourly_charge: number;
+  /** Hours past the booking's own scheduled end, after the grace period -
+   * 0 for an on-time pickup or a walk-in with no booked end time. Billed at
+   * overdue_hour_fee instead of the normal hourly rate. */
+  overdue_hours: number;
+  overdue_hour_fee: number;
+  overdue_charge: number;
   /** Closing times the pet was still there for - 0 for a same-day pickup. */
   nights: number;
   /** The branch's Hotel nightly rate each night is billed at; null when

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import {
   WEEKDAYS,
@@ -25,6 +25,7 @@ interface BranchFormState {
   is_vet_branch: boolean;
   timezone: string;
   operating_hours: OperatingHours;
+  grooming_hours: OperatingHours;
 }
 
 const EMPTY_FORM: BranchFormState = {
@@ -34,6 +35,7 @@ const EMPTY_FORM: BranchFormState = {
   is_vet_branch: false,
   timezone: 'Asia/Manila',
   operating_hours: {},
+  grooming_hours: {},
 };
 
 function formStateFromBranch(branch: Branch): BranchFormState {
@@ -44,8 +46,58 @@ function formStateFromBranch(branch: Branch): BranchFormState {
     is_vet_branch: branch.is_vet_branch,
     timezone: branch.timezone,
     operating_hours: branch.operating_hours,
+    grooming_hours: branch.grooming_hours ?? {},
   };
 }
+
+/** JSON with object keys sorted, so two values compare equal whatever order
+ * their keys are in - the saved branch's hours come back from Postgres jsonb
+ * in a different key order than the form builds them. */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested && typeof nested === 'object' && !Array.isArray(nested)
+      ? Object.fromEntries(
+          Object.entries(nested).sort(([a], [b]) => a.localeCompare(b))
+        )
+      : nested
+  );
+}
+
+/** The first day whose Grooming time is not a valid range inside that day's
+ * operating hours, as a message for the form - null when every day is fine. */
+function findGroomingHoursError(form: BranchFormState): string | null {
+  for (const day of WEEKDAYS) {
+    const grooming = form.grooming_hours[day];
+    const operating = form.operating_hours[day];
+    if (!grooming || !operating) continue;
+
+    if (grooming.open >= grooming.close) {
+      return `${WEEKDAY_LABELS[day]}: the grooming end time must be after its start time.`;
+    }
+
+    if (grooming.open < operating.open || grooming.close > operating.close) {
+      return `${WEEKDAY_LABELS[day]}: grooming hours must be within that day's operating hours.`;
+    }
+  }
+
+  return null;
+}
+
+/** The "All days" row at the top of the hours table - one set of times the
+ * Superadmin can copy onto every weekday at once instead of editing each
+ * day's row. Form-only; never sent to the server. */
+interface AllDaysState {
+  open: string;
+  close: string;
+  /** null = don't limit Grooming on any day. */
+  grooming: { open: string; close: string } | null;
+}
+
+const DEFAULT_ALL_DAYS: AllDaysState = {
+  open: '09:00',
+  close: '18:00',
+  grooming: null,
+};
 
 export interface BranchDetailsPayload {
   name: string;
@@ -54,6 +106,7 @@ export interface BranchDetailsPayload {
   is_vet_branch: boolean;
   timezone: string;
   operating_hours: OperatingHours;
+  grooming_hours: OperatingHours;
 }
 
 interface BranchDetailsFormProps {
@@ -64,6 +117,9 @@ interface BranchDetailsFormProps {
    * success - the caller decides what success looks like (close a modal,
    * show a banner, ...). */
   onSubmit: (payload: BranchDetailsPayload) => Promise<string | null>;
+  /** Told whenever the form starts or stops differing from the branch as
+   * last saved - lets the surrounding modal ask before discarding edits. */
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 /**
@@ -71,27 +127,121 @@ interface BranchDetailsFormProps {
  * vet flag, weekly hours) - shared by "Add branch" and the combined
  * "Configure branch" page, which used to be two separate menu items (Edit
  * details / Configure policies).
+ *
+ * Each open day can also limit Grooming to part of the day ("Limit grooming
+ * hours") - Grooming time slots are then only offered inside that time when
+ * booking. Left unticked, Grooming follows the day's full operating hours.
+ *
+ * The "All days" row copies one set of hours (and, optionally, Grooming
+ * hours) onto every weekday in one click; individual days can still be
+ * adjusted or closed afterwards.
  */
 export function BranchDetailsForm({
   branch,
   submitLabel,
   onSubmit,
+  onDirtyChange,
 }: BranchDetailsFormProps) {
   const [form, setForm] = useState<BranchFormState>(
     branch ? formStateFromBranch(branch) : EMPTY_FORM
   );
+  // Compared against the branch prop itself (not a snapshot taken on mount),
+  // so a successful save - which hands back the updated branch - makes the
+  // form clean again.
+  const isDirty =
+    stableStringify(form) !==
+    stableStringify(branch ? formStateFromBranch(branch) : EMPTY_FORM);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [allDays, setAllDays] = useState<AllDaysState>(DEFAULT_ALL_DAYS);
+
+  // The hours as they were just before the last "Apply to all days", so
+  // that one click can be undone. Only the first of several applies in a row
+  // is kept - Undo always goes back to the hours from before any of them.
+  const [hoursBeforeApply, setHoursBeforeApply] = useState<Pick<
+    BranchFormState,
+    'operating_hours' | 'grooming_hours'
+  > | null>(null);
+
+  function undoApplyAllDays() {
+    if (!hoursBeforeApply) return;
+
+    setForm((prev) => ({ ...prev, ...hoursBeforeApply }));
+    setHoursBeforeApply(null);
+  }
+
+  function applyAllDays() {
+    setHoursBeforeApply(
+      (saved) =>
+        saved ?? {
+          operating_hours: form.operating_hours,
+          grooming_hours: form.grooming_hours,
+        }
+    );
+    setForm((prev) => ({
+      ...prev,
+      operating_hours: Object.fromEntries(
+        WEEKDAYS.map((day) => [
+          day,
+          { open: allDays.open, close: allDays.close },
+        ])
+      ),
+      grooming_hours: allDays.grooming
+        ? Object.fromEntries(
+            WEEKDAYS.map((day) => [day, { ...allDays.grooming! }])
+          )
+        : {},
+    }));
+  }
 
   function setDayClosed(day: Weekday, closed: boolean) {
     setForm((prev) => {
       const next = { ...prev.operating_hours };
+      const nextGrooming = { ...prev.grooming_hours };
       if (closed) {
         delete next[day];
+        // Grooming can't be offered on a day the branch is closed.
+        delete nextGrooming[day];
       } else {
         next[day] = { open: '09:00', close: '18:00' };
       }
-      return { ...prev, operating_hours: next };
+      return { ...prev, operating_hours: next, grooming_hours: nextGrooming };
+    });
+  }
+
+  function setGroomingLimited(day: Weekday, limited: boolean) {
+    setForm((prev) => {
+      const next = { ...prev.grooming_hours };
+      const operating = prev.operating_hours[day];
+      if (limited && operating) {
+        next[day] = { ...operating };
+      } else {
+        delete next[day];
+      }
+      return { ...prev, grooming_hours: next };
+    });
+  }
+
+  function setGroomingTime(
+    day: Weekday,
+    field: 'open' | 'close',
+    value: string
+  ) {
+    setForm((prev) => {
+      const existing = prev.grooming_hours[day];
+      if (!existing) return prev;
+
+      return {
+        ...prev,
+        grooming_hours: {
+          ...prev.grooming_hours,
+          [day]: { ...existing, [field]: value },
+        },
+      };
     });
   }
 
@@ -119,6 +269,13 @@ export function BranchDetailsForm({
       return;
     }
 
+    const groomingHoursError = findGroomingHoursError(form);
+
+    if (groomingHoursError) {
+      setFormError(groomingHoursError);
+      return;
+    }
+
     setFormError(null);
     setIsSubmitting(true);
 
@@ -131,6 +288,7 @@ export function BranchDetailsForm({
       is_vet_branch: form.is_vet_branch,
       timezone: form.timezone.trim(),
       operating_hours: form.operating_hours,
+      grooming_hours: form.grooming_hours,
     });
 
     setIsSubmitting(false);
@@ -214,38 +372,181 @@ export function BranchDetailsForm({
         <h3 className={styles.sectionTitle} id="operating-hours-heading">
           Operating hours
         </h3>
+        <p className={styles.sectionHint}>
+          Grooming can be booked during a day&apos;s full operating hours unless
+          you limit it to a shorter time below.
+        </p>
         <div className={styles.hoursTable}>
+          <div
+            className={styles.allDaysBlock}
+            role="group"
+            aria-label="Set hours for all days"
+          >
+            <div className={styles.hoursRow}>
+              <span className={styles.dayLabel}>All days</span>
+              <TimeInput
+                value={allDays.open}
+                onChange={(value) =>
+                  setAllDays((prev) => ({ ...prev, open: value }))
+                }
+                aria-label="All days opening time"
+              />
+              <span className={styles.hoursSeparator}>to</span>
+              <TimeInput
+                value={allDays.close}
+                onChange={(value) =>
+                  setAllDays((prev) => ({ ...prev, close: value }))
+                }
+                aria-label="All days closing time"
+              />
+            </div>
+            <div className={styles.groomingRow}>
+              <label className={styles.closedField}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(allDays.grooming)}
+                  onChange={(event) =>
+                    setAllDays((prev) => ({
+                      ...prev,
+                      grooming: event.target.checked
+                        ? { open: prev.open, close: prev.close }
+                        : null,
+                    }))
+                  }
+                  aria-label="Limit grooming hours on all days"
+                />
+                <span>Limit grooming hours</span>
+              </label>
+              {allDays.grooming ? (
+                <>
+                  <TimeInput
+                    value={allDays.grooming.open}
+                    onChange={(value) =>
+                      setAllDays((prev) =>
+                        prev.grooming
+                          ? {
+                              ...prev,
+                              grooming: { ...prev.grooming, open: value },
+                            }
+                          : prev
+                      )
+                    }
+                    aria-label="All days grooming start time"
+                  />
+                  <span className={styles.hoursSeparator}>to</span>
+                  <TimeInput
+                    value={allDays.grooming.close}
+                    onChange={(value) =>
+                      setAllDays((prev) =>
+                        prev.grooming
+                          ? {
+                              ...prev,
+                              grooming: { ...prev.grooming, close: value },
+                            }
+                          : prev
+                      )
+                    }
+                    aria-label="All days grooming end time"
+                  />
+                </>
+              ) : null}
+            </div>
+            <div className={styles.groomingRow}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={applyAllDays}
+              >
+                Apply to all days
+              </button>
+              {hoursBeforeApply ? (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={undoApplyAllDays}
+                >
+                  Undo
+                </button>
+              ) : null}
+              <span className={styles.hoursSeparator} role="status">
+                {hoursBeforeApply
+                  ? 'Applied to every day. Undo restores the previous hours.'
+                  : 'Replaces every day below, including closed days.'}
+              </span>
+            </div>
+          </div>
           {WEEKDAYS.map((day) => {
             const entry = form.operating_hours[day];
             const isClosed = !entry;
+            const grooming = form.grooming_hours[day];
 
             return (
-              <div className={styles.hoursRow} key={day}>
-                <span className={styles.dayLabel}>{WEEKDAY_LABELS[day]}</span>
-                <label className={styles.closedField}>
-                  <input
-                    type="checkbox"
-                    checked={isClosed}
-                    onChange={(event) =>
-                      setDayClosed(day, event.target.checked)
-                    }
-                  />
-                  <span>Closed</span>
-                </label>
+              <div className={styles.dayBlock} key={day}>
+                <div className={styles.hoursRow}>
+                  <span className={styles.dayLabel}>{WEEKDAY_LABELS[day]}</span>
+                  <label className={styles.closedField}>
+                    <input
+                      type="checkbox"
+                      checked={isClosed}
+                      onChange={(event) =>
+                        setDayClosed(day, event.target.checked)
+                      }
+                    />
+                    <span>Closed</span>
+                  </label>
+                  {!isClosed ? (
+                    <>
+                      <TimeInput
+                        value={entry.open}
+                        onChange={(value) => setDayTime(day, 'open', value)}
+                        aria-label={`${WEEKDAY_LABELS[day]} opening time`}
+                      />
+                      <span className={styles.hoursSeparator}>to</span>
+                      <TimeInput
+                        value={entry.close}
+                        onChange={(value) => setDayTime(day, 'close', value)}
+                        aria-label={`${WEEKDAY_LABELS[day]} closing time`}
+                      />
+                    </>
+                  ) : null}
+                </div>
                 {!isClosed ? (
-                  <>
-                    <TimeInput
-                      value={entry.open}
-                      onChange={(value) => setDayTime(day, 'open', value)}
-                      aria-label={`${WEEKDAY_LABELS[day]} opening time`}
-                    />
-                    <span className={styles.hoursSeparator}>to</span>
-                    <TimeInput
-                      value={entry.close}
-                      onChange={(value) => setDayTime(day, 'close', value)}
-                      aria-label={`${WEEKDAY_LABELS[day]} closing time`}
-                    />
-                  </>
+                  <div className={styles.groomingRow}>
+                    <label className={styles.closedField}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(grooming)}
+                        onChange={(event) =>
+                          setGroomingLimited(day, event.target.checked)
+                        }
+                        aria-label={`Limit grooming hours on ${WEEKDAY_LABELS[day]}`}
+                      />
+                      <span>Limit grooming hours</span>
+                    </label>
+                    {grooming ? (
+                      <>
+                        <TimeInput
+                          value={grooming.open}
+                          onChange={(value) =>
+                            setGroomingTime(day, 'open', value)
+                          }
+                          aria-label={`${WEEKDAY_LABELS[day]} grooming start time`}
+                          min={entry.open}
+                          max={entry.close}
+                        />
+                        <span className={styles.hoursSeparator}>to</span>
+                        <TimeInput
+                          value={grooming.close}
+                          onChange={(value) =>
+                            setGroomingTime(day, 'close', value)
+                          }
+                          aria-label={`${WEEKDAY_LABELS[day]} grooming end time`}
+                          min={entry.open}
+                          max={entry.close}
+                        />
+                      </>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             );

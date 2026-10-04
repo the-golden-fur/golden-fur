@@ -20,6 +20,7 @@ import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
+import { assertWithinGroomingHours } from './availability.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -62,6 +63,14 @@ vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
 // pre-existing booking-creation tests don't need to account for its extra
 // Supabase lookups (customer_profiles/branches/staff_profiles/notifications)
 // in their sequential mock queues below.
+// Per-branch Grooming hours: assertWithinGroomingHours is covered by its own
+// unit tests (availability.service.spec.ts) - mocked here so these tests
+// don't need to queue its extra branches lookup in their sequential
+// Supabase mock results.
+vi.mock('./availability.service.ts', () => ({
+  assertWithinGroomingHours: vi.fn(),
+}));
+
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
   sendStaffAssignedNotification: vi.fn().mockResolvedValue(undefined),
@@ -886,6 +895,37 @@ describe('booking.service (#51)', () => {
   // policy entirely and starts already 'In Progress' - see the top-of-file
   // dev note on createBooking and BookingSource in booking.types.ts.
   describe('walk-in booking flow (custom change)', () => {
+    it('per-branch Grooming hours: a Grooming booking outside the configured time is rejected, Walk-ins included', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      const rejection = new Error('Grooming is only available ...');
+      (rejection as Error & { statusCode?: number }).statusCode = 422;
+      vi.mocked(assertWithinGroomingHours).mockRejectedValueOnce(rejection);
+      queueFromResults({ data: PET, error: null });
+
+      await expect(
+        createBooking({
+          requesterId: 'recept-1',
+          input: {
+            ...BASE_INPUT,
+            customer_id: CUSTOMER_ID,
+            booking_source: 'Walk-in',
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 422 });
+
+      expect(assertWithinGroomingHours).toHaveBeenCalledWith(
+        'branch-1',
+        BASE_INPUT.scheduled_start,
+        BASE_INPUT.scheduled_end
+      );
+      expect(
+        recordedWrites.some(
+          (write) => write.table === 'bookings' && write.method === 'insert'
+        )
+      ).toBe(false);
+    });
+
     it('a staff-created Walk-in booking skips resolveDownpaymentPolicy entirely and starts In Progress', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);

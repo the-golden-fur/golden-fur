@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -48,6 +54,7 @@ function buildBranch(overrides: Partial<Branch> = {}): Branch {
     contact_number: '0917-000-0000',
     is_vet_branch: true,
     operating_hours: { monday: { open: '08:00', close: '18:00' } },
+    grooming_hours: {},
     timezone: 'Asia/Manila',
     is_active: true,
     archived_at: null,
@@ -176,6 +183,7 @@ describe('BranchesPage', () => {
         is_vet_branch: false,
         timezone: 'Asia/Manila',
         operating_hours: {},
+        grooming_hours: {},
       })
     );
     expect(await screen.findByText('Southwoods')).toBeInTheDocument();
@@ -327,6 +335,260 @@ describe('BranchesPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('limiting grooming hours on a day saves that day in grooming_hours', async () => {
+    vi.mocked(branchesApi.updateBranch).mockResolvedValue({
+      data: buildBranch({
+        grooming_hours: { monday: { open: '10:00', close: '15:00' } },
+      }),
+      error: null,
+    });
+    const { user, dialog } = await openConfigure();
+
+    // Only open days offer it - Monday is the only open day here.
+    expect(
+      within(dialog).queryByRole('checkbox', {
+        name: 'Limit grooming hours on Tuesday',
+      })
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole('checkbox', {
+        name: 'Limit grooming hours on Monday',
+      })
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText('Monday grooming start time'),
+      {
+        target: { value: '10:00' },
+      }
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText('Monday grooming end time'),
+      {
+        target: { value: '15:00' },
+      }
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save details' })
+    );
+
+    await waitFor(() =>
+      expect(branchesApi.updateBranch).toHaveBeenCalledWith(
+        'branch-makati',
+        'token',
+        expect.objectContaining({
+          operating_hours: { monday: { open: '08:00', close: '18:00' } },
+          grooming_hours: { monday: { open: '10:00', close: '15:00' } },
+        })
+      )
+    );
+  });
+
+  it('refuses a grooming end time that is not after its start, without calling the API', async () => {
+    const { user, dialog } = await openConfigure();
+
+    await user.click(
+      within(dialog).getByRole('checkbox', {
+        name: 'Limit grooming hours on Monday',
+      })
+    );
+    // Both inside Monday's 08:00-18:00, so the browser's own min/max check
+    // on the time inputs lets the form submit - the range itself is wrong.
+    fireEvent.change(
+      within(dialog).getByLabelText('Monday grooming start time'),
+      { target: { value: '15:00' } }
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText('Monday grooming end time'),
+      {
+        target: { value: '10:00' },
+      }
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save details' })
+    );
+
+    expect(
+      await within(dialog).findByText(
+        'Monday: the grooming end time must be after its start time.'
+      )
+    ).toBeInTheDocument();
+    expect(branchesApi.updateBranch).not.toHaveBeenCalled();
+  });
+
+  it('"Apply to all days" copies one set of hours and grooming hours onto every day', async () => {
+    vi.mocked(branchesApi.updateBranch).mockResolvedValue({
+      data: buildBranch(),
+      error: null,
+    });
+    const { user, dialog } = await openConfigure();
+
+    fireEvent.change(within(dialog).getByLabelText('All days opening time'), {
+      target: { value: '08:00' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('All days closing time'), {
+      target: { value: '17:00' },
+    });
+    await user.click(
+      within(dialog).getByRole('checkbox', {
+        name: 'Limit grooming hours on all days',
+      })
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText('All days grooming start time'),
+      { target: { value: '10:00' } }
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText('All days grooming end time'),
+      { target: { value: '15:00' } }
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Apply to all days' })
+    );
+
+    // Every day's own row now shows the copied times, closed days included.
+    expect(within(dialog).getByLabelText('Sunday opening time')).toHaveValue(
+      '08:00'
+    );
+    expect(
+      within(dialog).getByLabelText('Sunday grooming end time')
+    ).toHaveValue('15:00');
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save details' })
+    );
+
+    const days = [
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+      'sunday',
+    ];
+
+    await waitFor(() =>
+      expect(branchesApi.updateBranch).toHaveBeenCalledWith(
+        'branch-makati',
+        'token',
+        expect.objectContaining({
+          operating_hours: Object.fromEntries(
+            days.map((day) => [day, { open: '08:00', close: '17:00' }])
+          ),
+          grooming_hours: Object.fromEntries(
+            days.map((day) => [day, { open: '10:00', close: '15:00' }])
+          ),
+        })
+      )
+    );
+  });
+
+  it('"Apply to all days" without a grooming limit clears every day\'s grooming hours', async () => {
+    vi.mocked(branchesApi.listBranchesFull).mockResolvedValue({
+      data: [
+        buildBranch({
+          grooming_hours: { monday: { open: '10:00', close: '15:00' } },
+        }),
+      ],
+      error: null,
+    });
+    const { user, dialog } = await openConfigure();
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Apply to all days' })
+    );
+
+    expect(
+      within(dialog).queryByLabelText('Monday grooming start time')
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Monday opening time')).toHaveValue(
+      '09:00'
+    );
+  });
+
+  it('Undo appears after "Apply to all days" and restores the previous hours', async () => {
+    vi.mocked(branchesApi.listBranchesFull).mockResolvedValue({
+      data: [
+        buildBranch({
+          grooming_hours: { monday: { open: '10:00', close: '15:00' } },
+        }),
+      ],
+      error: null,
+    });
+    const { user, dialog } = await openConfigure();
+
+    expect(
+      within(dialog).queryByRole('button', { name: 'Undo' })
+    ).not.toBeInTheDocument();
+
+    // Applying twice must still undo back to the original hours.
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Apply to all days' })
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Apply to all days' })
+    );
+    expect(within(dialog).getByLabelText('Monday opening time')).toHaveValue(
+      '09:00'
+    );
+    expect(
+      within(dialog).getByLabelText('Sunday opening time')
+    ).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Undo' }));
+
+    expect(within(dialog).getByLabelText('Monday opening time')).toHaveValue(
+      '08:00'
+    );
+    expect(
+      within(dialog).getByLabelText('Monday grooming start time')
+    ).toHaveValue('10:00');
+    // Sunday was closed before the apply, and is closed again.
+    expect(
+      within(dialog).queryByLabelText('Sunday opening time')
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: 'Undo' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('marking a day Closed clears its grooming hours', async () => {
+    vi.mocked(branchesApi.listBranchesFull).mockResolvedValue({
+      data: [
+        buildBranch({
+          grooming_hours: { monday: { open: '10:00', close: '15:00' } },
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(branchesApi.updateBranch).mockResolvedValue({
+      data: buildBranch({ operating_hours: {} }),
+      error: null,
+    });
+    const { user, dialog } = await openConfigure();
+
+    expect(
+      within(dialog).getByLabelText('Monday grooming start time')
+    ).toHaveValue('10:00');
+
+    // Monday's own "Closed" tick box is the second checkbox row-wise; pick
+    // it through its row to stay independent of the other days.
+    const mondayRow = within(dialog).getByText('Monday').closest('div');
+    await user.click(within(mondayRow as HTMLElement).getByLabelText('Closed'));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save details' })
+    );
+
+    await waitFor(() =>
+      expect(branchesApi.updateBranch).toHaveBeenCalledWith(
+        'branch-makati',
+        'token',
+        expect.objectContaining({ operating_hours: {}, grooming_hours: {} })
+      )
+    );
+  });
+
   it('shows the server error inside the Configure modal when saving the details fails', async () => {
     vi.mocked(branchesApi.updateBranch).mockResolvedValue({
       data: null,
@@ -345,6 +607,78 @@ describe('BranchesPage', () => {
     const { user } = await openConfigure();
 
     await user.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('asks before discarding unsaved branch details, and keeps the edits on "Keep editing"', async () => {
+    const { user, dialog } = await openConfigure();
+
+    await user.type(within(dialog).getByLabelText('Address'), ' Unit 2');
+    await user.click(dialog.parentElement as HTMLElement);
+
+    const confirm = await screen.findByRole('dialog', {
+      name: 'Discard unsaved changes?',
+    });
+    await user.click(
+      within(confirm).getByRole('button', { name: 'Keep editing' })
+    );
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole('dialog', { name: 'Configure Makati' })
+      ).getByLabelText('Address')
+    ).toHaveValue('123 Ayala Ave Unit 2');
+  });
+
+  it('"Discard changes" closes the Configure modal, from the Close button too', async () => {
+    const { user, dialog } = await openConfigure();
+
+    await user.type(within(dialog).getByLabelText('Address'), ' Unit 2');
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+
+    const confirm = await screen.findByRole('dialog', {
+      name: 'Discard unsaved changes?',
+    });
+    await user.click(
+      within(confirm).getByRole('button', { name: 'Discard changes' })
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(branchesApi.updateBranch).not.toHaveBeenCalled();
+  });
+
+  it('does not ask again once the details were saved', async () => {
+    vi.mocked(branchesApi.updateBranch).mockResolvedValue({
+      data: buildBranch({ address: '456 Makati Ave' }),
+      error: null,
+    });
+    const { user, dialog } = await openConfigure();
+
+    const address = within(dialog).getByLabelText('Address');
+    await user.clear(address);
+    await user.type(address, '456 Makati Ave');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save details' })
+    );
+    await within(dialog).findByText('Branch details saved.');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('closes the Configure modal when clicking outside it, but not when clicking inside', async () => {
+    const { user, dialog } = await openConfigure();
+
+    await user.click(within(dialog).getByLabelText('Address'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // The backdrop is the dialog's own wrapper.
+    await user.click(dialog.parentElement as HTMLElement);
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

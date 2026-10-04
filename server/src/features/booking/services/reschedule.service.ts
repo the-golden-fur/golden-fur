@@ -8,6 +8,7 @@ import {
 import type { RescheduleBookingInput } from '../modules/validators/booking.validator.ts';
 import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
 import { checkCapacity } from './capacity.service.ts';
+import { assertWithinGroomingHours } from './availability.service.ts';
 import {
   assertMeetsNoticeLeadTime,
   listAvailableStaff,
@@ -156,6 +157,16 @@ export async function rescheduleBooking({
   // CURRENT appointment the customer is making the change. Reuses the policy
   // evaluateNoticePeriod already resolved - no extra query.
   assertMeetsNoticeLeadTime(notice.policy, input.scheduled_start, 'Reschedule');
+
+  // Per-branch Grooming hours: the NEW slot must sit inside the target
+  // branch's Grooming time too, mirroring createBooking.
+  if (booking.service_category === 'Grooming') {
+    await assertWithinGroomingHours(
+      targetBranchId,
+      input.scheduled_start,
+      input.scheduled_end
+    );
+  }
 
   if (notice.enforced && !notice.met) {
     if (notice.policy.notice_enforcement_mode === 'Strict') {

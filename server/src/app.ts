@@ -8,6 +8,7 @@ import { startPromoExpiryScheduler } from './features/maintenance/jobs/promoExpi
 import { startAppointmentReminderScheduler } from './features/notifications/services/appointmentReminder.job.ts';
 import { startCareLogDailyReportScheduler } from './features/notifications/services/careLogDailyReport.job.ts';
 import { startCustomerAutoDeleteScheduler } from './features/customers/jobs/customerAutoDelete.job.ts';
+import { startDaycareOverdueScheduler } from './features/daycare/jobs/daycareOverdue.job.ts';
 
 const app = express();
 
@@ -55,6 +56,10 @@ if (process.env.NODE_ENV !== 'test') {
   // deletes (or anonymizes, if the customer has history) an account left
   // deactivated past the admin-configured threshold.
   startCustomerAutoDeleteScheduler();
+
+  // Daycare overdue checkout fee - 5-min poll that tells an owner once when
+  // their booked Daycare pet is still checked in past its booked end time.
+  startDaycareOverdueScheduler();
 }
 
 export default app;

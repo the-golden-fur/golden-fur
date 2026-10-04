@@ -67,6 +67,7 @@ import {
   verifyCagePreference,
 } from './cagePicker.service.ts';
 import { daycareHourlyCharge } from '../../daycare/modules/daycareCharge.util.ts';
+import { assertWithinGroomingHours } from './availability.service.ts';
 
 const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
 
@@ -1031,6 +1032,16 @@ export async function createBooking({
   // policy on the Online path; Walk-ins keep the default of 1 (see
   // confirmCapacityAfterInsert's own note on why that's fine).
   let staffConcurrency = 1;
+
+  // Per-branch Grooming hours: applies to every booking source, Walk-ins
+  // included - Grooming simply isn't offered outside the configured time.
+  if (input.service_category === 'Grooming') {
+    await assertWithinGroomingHours(
+      input.branch_id,
+      input.scheduled_start,
+      input.scheduled_end
+    );
+  }
 
   if (bookingSource === 'Online') {
     // A slot that has already started is never a valid Online booking. The

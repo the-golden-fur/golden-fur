@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rescheduleBooking } from './reschedule.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../shared/auth/api/supabaseAuth.api.ts';
+import { assertWithinGroomingHours } from './availability.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -15,6 +16,14 @@ vi.mock('../../../shared/auth/api/supabaseAuth.api.ts', () => ({
 // (bookingNotifications.service.spec.ts) - mocked wholesale here so these
 // pre-existing reschedule tests don't need to account for its extra
 // Supabase lookup in their sequential mock queues below.
+// Per-branch Grooming hours: assertWithinGroomingHours is covered by its own
+// unit tests (availability.service.spec.ts) - mocked here so these tests
+// don't need to queue its extra branches lookup in their sequential
+// Supabase mock results.
+vi.mock('./availability.service.ts', () => ({
+  assertWithinGroomingHours: vi.fn(),
+}));
+
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingRescheduledNotification: vi.fn().mockResolvedValue(undefined),
 }));
@@ -285,6 +294,45 @@ describe('reschedule.service (#54)', () => {
         input: { ...NEW_WINDOW, branch_id: 'branch-south' },
       })
     ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it('per-branch Grooming hours: a Grooming booking cannot be rescheduled to a time outside the configured Grooming time', async () => {
+    const rejection = new Error('Grooming is only available ...');
+    (rejection as Error & { statusCode?: number }).statusCode = 422;
+    vi.mocked(assertWithinGroomingHours).mockRejectedValueOnce(rejection);
+    queueFromResults(
+      {
+        data: { ...DAYCARE_BOOKING, service_category: 'Grooming' },
+        error: null,
+      },
+      { data: [policyRow()], error: null }
+    );
+
+    await expect(
+      rescheduleBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: NEW_WINDOW,
+      })
+    ).rejects.toMatchObject({ statusCode: 422 });
+
+    expect(assertWithinGroomingHours).toHaveBeenCalledWith(
+      DAYCARE_BOOKING.branch_id,
+      NEW_WINDOW.scheduled_start,
+      NEW_WINDOW.scheduled_end
+    );
+  });
+
+  it('does not apply the Grooming-hours check to another category', async () => {
+    queueFromResults({ data: DAYCARE_BOOKING, error: null });
+
+    await rescheduleBooking({
+      requesterId: 'someone-else',
+      bookingId: 'booking-1',
+      input: NEW_WINDOW,
+    }).catch(() => undefined);
+
+    expect(assertWithinGroomingHours).not.toHaveBeenCalled();
   });
 
   it('Grooming: a specific staff preference is re-verified via the RPC (excluding the booking itself)', async () => {

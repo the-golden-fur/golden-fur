@@ -96,6 +96,12 @@ export interface CageOccupant {
   /** The booking's own scheduled end (Hotel nights / Daycare hours as
    * booked); null when there is no booking behind the stay. */
   expected_checkout_at: string | null;
+  /** The flat fee a Daycare pet is charged for each hour past
+   * expected_checkout_at, and how late it may be before that starts - see
+   * daycareCharge.util.ts. Both null for Hotel, which has no hourly overdue
+   * fee. */
+  overdue_fee_per_hour: number | null;
+  overdue_grace_minutes: number | null;
 }
 
 export interface Cage {

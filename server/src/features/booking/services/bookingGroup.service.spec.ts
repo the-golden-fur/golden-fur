@@ -6,6 +6,7 @@ import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
+import { assertWithinGroomingHours } from './availability.service.ts';
 import {
   sendBookingConfirmedNotification,
   sendCombinedBookingGroupConfirmedEmail,
@@ -50,6 +51,14 @@ vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
 // isConfirmedAtCreation), so both notification modules are mocked wholesale
 // to keep the sequential Supabase mock queue below to just the calls this
 // spec actually cares about.
+// Per-branch Grooming hours: assertWithinGroomingHours is covered by its own
+// unit tests (availability.service.spec.ts) - mocked here so these tests
+// don't need to queue its extra branches lookup in their sequential
+// Supabase mock results.
+vi.mock('./availability.service.ts', () => ({
+  assertWithinGroomingHours: vi.fn(),
+}));
+
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
   sendCombinedBookingGroupConfirmedEmail: vi.fn().mockResolvedValue(undefined),
@@ -424,6 +433,47 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       total_price: 350,
       assigned_staff_id: 'groomer-1',
     });
+  });
+
+  it('per-branch Grooming hours: a Grooming sub-booking outside the configured time rejects the whole group before anything is inserted', async () => {
+    vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+    const rejection = new Error('Grooming is only available ...');
+    (rejection as Error & { statusCode?: number }).statusCode = 422;
+    vi.mocked(assertWithinGroomingHours).mockRejectedValueOnce(rejection);
+
+    queueFromResults(
+      { data: [DEFAULT_POLICY], error: null }, // resolveEffectivePolicy
+      { data: PET, error: null } // sub1 pet ownership
+    );
+
+    await expect(
+      createBookingGroup({
+        requesterId: CUSTOMER_ID,
+        input: {
+          branch_id: 'branch-1',
+          bookings: [
+            {
+              pet_id: PET.id,
+              service_category: 'Grooming',
+              items: [{ service_id: 'service-groom' }],
+              scheduled_start: isoAt(0),
+              scheduled_end: isoAt(hours(1)),
+            },
+          ],
+        } as never,
+      })
+    ).rejects.toMatchObject({ statusCode: 422 });
+
+    expect(assertWithinGroomingHours).toHaveBeenCalledWith(
+      'branch-1',
+      isoAt(0),
+      isoAt(hours(1))
+    );
+    expect(
+      recordedWrites.some(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      )
+    ).toBe(false);
   });
 
   it('(b) the in-request capacity guard rejects two sub-bookings competing for the same staff + overlapping window', async () => {

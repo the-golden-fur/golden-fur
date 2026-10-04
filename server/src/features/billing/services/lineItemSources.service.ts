@@ -1,6 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { ServiceCategory } from '../../booking/booking.types.ts';
 import type { DraftLineItem } from '../billing.types.ts';
+import { DAYCARE_OVERDUE_FEE_PER_HOUR } from '../../daycare/modules/daycareCharge.util.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -376,7 +377,7 @@ async function getDaycareLineItems(
 ): Promise<DraftLineItem[]> {
   const { data: session, error } = await supabase
     .from('stays')
-    .select('computed_charge')
+    .select('computed_charge, extension_fee')
     .eq('booking_id', booking.id)
     .eq('stay_type', 'Daycare')
     .maybeSingle();
@@ -386,17 +387,39 @@ async function getDaycareLineItems(
     throwWithStatus(409, 'This daycare session has not been checked out yet');
   }
 
-  return [
+  // computed_charge already includes the overdue checkout fee
+  // (daycareBilling.service.ts stores that part again in extension_fee), so
+  // it is split back out here into its own line - SUM(line_total) is still
+  // computed_charge.
+  const overdueFee =
+    session.extension_fee === null ? 0 : Number(session.extension_fee);
+  const sessionCharge = Number(session.computed_charge) - overdueFee;
+
+  const lines: DraftLineItem[] = [
     {
       line_item_type: 'service',
       reference_id: null,
       description: 'Daycare session',
       quantity: 1,
-      unit_price: Number(session.computed_charge),
-      line_total: Number(session.computed_charge),
+      unit_price: sessionCharge,
+      line_total: sessionCharge,
     },
-    ...downpaymentNettingLines(booking),
   ];
+
+  if (overdueFee > 0) {
+    const overdueHours = overdueFee / DAYCARE_OVERDUE_FEE_PER_HOUR;
+
+    lines.push({
+      line_item_type: 'service',
+      reference_id: null,
+      description: `Overdue checkout fee (${overdueHours} hour${overdueHours === 1 ? '' : 's'} x ₱${DAYCARE_OVERDUE_FEE_PER_HOUR})`,
+      quantity: overdueHours,
+      unit_price: DAYCARE_OVERDUE_FEE_PER_HOUR,
+      line_total: overdueFee,
+    });
+  }
+
+  return [...lines, ...downpaymentNettingLines(booking)];
 }
 
 async function getVeterinaryLineItems(

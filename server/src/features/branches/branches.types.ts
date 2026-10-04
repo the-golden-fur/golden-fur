@@ -35,6 +35,11 @@ export interface Branch {
   contact_number: string | null;
   is_vet_branch: boolean;
   operating_hours: OperatingHours;
+  /** Custom change (per-branch Grooming hours, migration 20261004243): the
+   * times Grooming is bookable each weekday, same shape as operating_hours.
+   * A day absent from this map means Grooming follows that day's full
+   * operating hours. */
+  grooming_hours: OperatingHours;
   timezone: string;
   is_active: boolean;
   archived_at: string | null;

@@ -59,6 +59,7 @@ const EVENT_TYPES_BY_ROLE: Record<
       type: 'booking_slot_conflict',
       label: 'Booking slot became unavailable',
     },
+    { type: 'daycare_overdue', label: 'Pet past daycare checkout time' },
   ],
 };
 

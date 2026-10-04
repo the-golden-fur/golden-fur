@@ -266,6 +266,7 @@ export async function availabilityController(
       resolveOperatingWindow({
         branchId: parsed.data.branch_id,
         date: parsed.data.date,
+        serviceCategory: parsed.data.service_category,
       }),
       intent === 'reschedule'
         ? resolveNoticeLeadDays(parsed.data.branch_id)
