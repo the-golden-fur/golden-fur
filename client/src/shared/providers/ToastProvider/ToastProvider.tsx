@@ -14,10 +14,13 @@ interface ToastProviderProps {
   children: ReactNode;
 }
 
-/** App-wide toast stack (bottom-right), mounted once in App.tsx. The first
- * genuine toast primitive in this app - everything else uses an inline
- * role="alert" banner under the triggering control instead; this exists
- * specifically for the MFA setup flow's "show a toast on success/fail". */
+/** App-wide toast stack (bottom-right), mounted once in App.tsx. Originally
+ * built for the MFA setup flow's "show a toast on success/fail" - most
+ * other transient messaging in this app still uses an inline role="alert"
+ * banner under the triggering control instead, reserving a toast for
+ * something that should re-notify the viewer each time it recurs (e.g.
+ * CageAssignmentStatus re-firing on every date/slot change) rather than
+ * sitting as a permanent part of the page. */
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
