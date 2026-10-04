@@ -37,6 +37,7 @@ import {
   verifyCagePreference,
 } from './cagePicker.service.ts';
 import { markCouponsRedeemed } from '../../rewards/services/customerCoupons.service.ts';
+import { assertWithinGroomingHours } from './availability.service.ts';
 import {
   getBookingById,
   isPetAssessed,
@@ -700,6 +701,16 @@ async function resolveSubBooking({
 
   if (bookingSource === 'Walk-in' && !staffRole) {
     throwWithStatus(403, 'Only staff may create a walk-in booking');
+  }
+
+  // Per-branch Grooming hours: applies to every booking source, Walk-ins
+  // included - mirrors createBooking.
+  if (subInput.service_category === 'Grooming') {
+    await assertWithinGroomingHours(
+      branchId,
+      subInput.scheduled_start,
+      subInput.scheduled_end
+    );
   }
 
   if (bookingSource === 'Online') {

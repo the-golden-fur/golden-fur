@@ -52,13 +52,71 @@
   gap: var(--space-1);
 }
 
+.sectionHint {
+  margin: 0 0 var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+/* One weekday: its opening hours, then (when open) its grooming hours. */
+.dayBlock {
+  display: grid;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-1) 0;
+}
+
+/* The "All days" bulk row - set apart from the per-day rows it fills in. */
+.allDaysBlock {
+  display: grid;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.secondaryButton {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-2);
+}
+
+.secondaryButton:hover {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.secondaryButton:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
 .hoursRow {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
-  padding: var(--space-1) 0;
+}
+
+/* Indented to line up under the times, past the day label. */
+.groomingRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding-left: calc(6rem + var(--space-1));
+}
+
+@media (max-width: 480px) {
+  .groomingRow {
+    padding-left: 0;
+  }
 }
 
 .dayLabel {
