@@ -62,6 +62,7 @@ import {
   branchNameOf,
   buildBookingFilterFields,
   buildBookingGroupByAxes,
+  DEFAULT_BOOKING_SORT_KEY,
   deriveBookingSortKey,
   matchesBookingQuery,
   petNameOf,
@@ -233,10 +234,12 @@ export function CustomerBookingsPage() {
     const filtered = applyBookingFilters(searched, filterTiles, lookups);
     const sortKey = deriveBookingSortKey(sortTile);
 
-    // No sort tile means "keep the order the server returned" rather than
-    // silently imposing a default sort.
-    if (!sortKey) return filtered;
-    return [...filtered].sort(BOOKING_COMPARATORS[sortKey]);
+    // No sort tile means newest-booked first (every view, board columns
+    // included), so a booking the customer just made is visible straight
+    // away; a sort tile of their own overrides it.
+    return [...filtered].sort(
+      BOOKING_COMPARATORS[sortKey ?? DEFAULT_BOOKING_SORT_KEY]
+    );
   }, [bookings, search, filterTiles, sortTile, lookups]);
 
   const activeGroupAxis =

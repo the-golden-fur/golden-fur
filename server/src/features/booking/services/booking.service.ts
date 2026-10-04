@@ -67,7 +67,10 @@ import {
   verifyCagePreference,
 } from './cagePicker.service.ts';
 import { daycareHourlyCharge } from '../../daycare/modules/daycareCharge.util.ts';
-import { assertWithinGroomingHours } from './availability.service.ts';
+import {
+  assertDaycareStartsBeforeCutoff,
+  assertWithinGroomingHours,
+} from './availability.service.ts';
 
 const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
 
@@ -1040,6 +1043,15 @@ export async function createBooking({
       input.branch_id,
       input.scheduled_start,
       input.scheduled_end
+    );
+  }
+
+  // Daycare check-in cutoff: a session starting at or after it could never
+  // be checked in, whoever books it.
+  if (input.service_category === 'Daycare') {
+    await assertDaycareStartsBeforeCutoff(
+      input.branch_id,
+      input.scheduled_start
     );
   }
 

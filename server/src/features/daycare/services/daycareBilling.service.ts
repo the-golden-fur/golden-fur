@@ -12,6 +12,7 @@ import {
 } from '../modules/daycareCharge.util.ts';
 import { assertChecklistComplete } from '../../hotel/services/careLogCompletion.service.ts';
 import { recordActivity } from '../../hotel/services/activityLog.service.ts';
+import { postDaycareOverdueCharge } from './daycareOverdueCharge.service.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -336,6 +337,31 @@ export async function checkOutDaycareSession({
     } catch (syncError) {
       if ((syncError as { statusCode?: number }).statusCode !== 409) {
         throw syncError;
+      }
+    }
+
+    // The booking's charges were created at booking time from the hours
+    // booked, so nothing else would ever put the overdue fee on the cashier's
+    // Transactions list - post it there now. By this point the checkout
+    // itself is already saved, so a failure here is reported as exactly
+    // that rather than as a failed checkout.
+    if (breakdown.overdue_charge > 0) {
+      try {
+        await postDaycareOverdueCharge({
+          bookingId: session.booking_id,
+          overdueHours: breakdown.overdue_hours,
+          overdueFee: breakdown.overdue_charge,
+          requesterId,
+        });
+      } catch (chargeError) {
+        console.error(
+          `checkOutDaycareSession: failed to post the overdue fee for booking ${session.booking_id}:`,
+          chargeError
+        );
+        throwWithStatus(
+          500,
+          `The pet was checked out, but the ₱${breakdown.overdue_charge} overdue checkout fee could not be added to the bill - please add it at the cashier manually`
+        );
       }
     }
   }

@@ -8,7 +8,10 @@ import {
 import type { RescheduleBookingInput } from '../modules/validators/booking.validator.ts';
 import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
 import { checkCapacity } from './capacity.service.ts';
-import { assertWithinGroomingHours } from './availability.service.ts';
+import {
+  assertDaycareStartsBeforeCutoff,
+  assertWithinGroomingHours,
+} from './availability.service.ts';
 import {
   assertMeetsNoticeLeadTime,
   listAvailableStaff,
@@ -165,6 +168,14 @@ export async function rescheduleBooking({
       targetBranchId,
       input.scheduled_start,
       input.scheduled_end
+    );
+  }
+
+  // Daycare check-in cutoff: the NEW start must be checkable-in too.
+  if (booking.service_category === 'Daycare') {
+    await assertDaycareStartsBeforeCutoff(
+      targetBranchId,
+      input.scheduled_start
     );
   }
 

@@ -14,6 +14,10 @@ import {
   resolveEffectivePolicy,
   resolveServiceTypeStaffConfig,
 } from './staffPicker.service.ts';
+import {
+  formatDaycareCutoff,
+  resolveDaycareCutoffTime,
+} from '../../daycare/modules/daycareCutoff.util.ts';
 
 /** Which notice-period floor getDaySlots applies: a new booking uses
  * booking_notice_period_days (default 0); a reschedule keeps the stricter
@@ -77,6 +81,10 @@ interface BranchRow {
    * Grooming follows that day's full operating hours. */
   grooming_hours?: WeeklyHours | null;
   timezone: string;
+  /** Only selected where the Daycare check-in cutoff matters - see
+   * resolveDaycareCutoffInstant. */
+  name?: string;
+  daycare_checkin_cutoff?: string | null;
 }
 
 /**
@@ -236,6 +244,63 @@ export async function resolveOperatingWindow({
   );
 }
 
+/**
+ * The instant, on `date`, after which the branch no longer checks pets in to
+ * Daycare (daycareCheckIn.service.ts's own cutoff) - a Daycare session has to
+ * START before it, or it could be booked but never checked in. Null when the
+ * branch row carries no cutoff.
+ */
+function resolveDaycareCutoffInstant(
+  branch: BranchRow,
+  date: string
+): Date | null {
+  if (!branch.daycare_checkin_cutoff) return null;
+
+  const cutoffTime = resolveDaycareCutoffTime({
+    name: branch.name ?? '',
+    daycare_checkin_cutoff: branch.daycare_checkin_cutoff,
+  });
+
+  return zonedTimeToUtc(date, cutoffTime.slice(0, 5), branch.timezone);
+}
+
+/**
+ * Throws a 422 when a Daycare booking would start at or after the branch's
+ * Daycare check-in cutoff. The hard gate behind getDaySlots' own filter that
+ * a direct API call (or a typed-in time) still has to clear.
+ */
+export async function assertDaycareStartsBeforeCutoff(
+  branchId: string,
+  scheduledStart: string
+): Promise<void> {
+  const { data: branch, error } = await supabase
+    .from('branches')
+    .select('name, timezone, daycare_checkin_cutoff')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!branch) return;
+
+  const branchRow = branch as BranchRow;
+  const date = new Intl.DateTimeFormat('en-CA', {
+    timeZone: branchRow.timezone,
+  }).format(new Date(scheduledStart));
+  const cutoff = resolveDaycareCutoffInstant(branchRow, date);
+
+  if (cutoff && new Date(scheduledStart).getTime() >= cutoff.getTime()) {
+    const cutoffTime = resolveDaycareCutoffTime({
+      name: branchRow.name ?? '',
+      daycare_checkin_cutoff: branchRow.daycare_checkin_cutoff!,
+    });
+
+    throwWithStatus(
+      422,
+      `Daycare check-in closes at ${formatDaycareCutoff(cutoffTime)} at this branch - please choose an earlier start time`
+    );
+  }
+}
+
 /** "HH:MM" (24h) as a 12-hour clock label, e.g. "15:00" -> "3:00 PM". */
 function formatClockTime(time: string): string {
   const [hour, minute] = time.split(':').map(Number);
@@ -319,7 +384,9 @@ export async function getDaySlots({
 
   const { data: branch, error: branchError } = await supabase
     .from('branches')
-    .select('operating_hours, grooming_hours, timezone')
+    .select(
+      'name, operating_hours, grooming_hours, daycare_checkin_cutoff, timezone'
+    )
     .eq('id', branchId)
     .maybeSingle();
 
@@ -451,12 +518,25 @@ export async function getDaySlots({
   // a future day's slots by the current time-of-day, e.g. picking tomorrow at
   // 1 PM only offered 2 PM onward.) The day-level minimum-notice floor is
   // already fully enforced above, so nothing here needs the lead-time term.
-  const futureCandidates =
+  const notPastCandidates =
     date === todayInBranchTz
       ? lunchCandidates.filter(
           (candidate) => candidate.start.getTime() > Date.now()
         )
       : lunchCandidates;
+
+  // Daycare stops checking pets in at the branch's cutoff (4 PM by default),
+  // so a session that starts at or after it could be booked but never
+  // checked in - don't offer it.
+  const daycareCutoff =
+    serviceCategory === 'Daycare'
+      ? resolveDaycareCutoffInstant(branchRow, date)
+      : null;
+  const futureCandidates = daycareCutoff
+    ? notPastCandidates.filter(
+        (candidate) => candidate.start.getTime() < daycareCutoff.getTime()
+      )
+    : notPastCandidates;
 
   const { eligible_staff_roles: roles } =
     await resolveServiceTypeStaffConfig(serviceCategory);

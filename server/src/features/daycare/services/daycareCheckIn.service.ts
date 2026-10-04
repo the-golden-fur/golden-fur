@@ -13,11 +13,10 @@ import {
 } from '../../hotel/services/careInstructions.service.ts';
 import { releaseCage } from '../../hotel/services/cageAssignment.service.ts';
 import { recordActivity } from '../../hotel/services/activityLog.service.ts';
-
-/** Fixed per Modules-Features - not read from branches.daycare_checkin_cutoff
- * even though the column exists on every branch (#62 migration note); only
- * Southwoods' cutoff is ever actually configurable. */
-const MAKATI_DAYCARE_CUTOFF = '16:00:00';
+import {
+  formatDaycareCutoff,
+  resolveDaycareCutoffTime,
+} from '../modules/daycareCutoff.util.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -85,13 +84,6 @@ export function resolveCutoffInstant(
   const offsetMs = getTimezoneOffsetMs(timezone, now);
 
   return new Date(naiveLocalMs - offsetMs);
-}
-
-function formatCutoffForMessage(cutoffTime: string): string {
-  const [hour, minute] = cutoffTime.split(':').map(Number);
-  const period = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
-  return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
 /**
@@ -213,16 +205,13 @@ export async function checkInDaycareSession({
   if (!branch) throwWithStatus(404, 'Branch not found');
 
   const now = new Date();
-  const cutoffTime =
-    branch.name === 'Makati'
-      ? MAKATI_DAYCARE_CUTOFF
-      : branch.daycare_checkin_cutoff;
+  const cutoffTime = resolveDaycareCutoffTime(branch);
   const cutoffInstant = resolveCutoffInstant(branch.timezone, cutoffTime, now);
 
   if (now > cutoffInstant) {
     throwWithStatus(
       400,
-      `Check-in unavailable after ${formatCutoffForMessage(cutoffTime)}`
+      `Check-in unavailable after ${formatDaycareCutoff(cutoffTime)}`
     );
   }
 

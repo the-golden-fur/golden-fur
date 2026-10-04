@@ -240,8 +240,14 @@ export const BOOKING_COMPARATORS: Record<
   'status-desc': directed(BY_STATUS, 'desc'),
 };
 
-/** Null when no sort tile is set - the page then keeps the order the server
- * returned bookings in rather than silently imposing a default sort. */
+/** The order every view uses until the customer picks a sort of their own:
+ * most recently booked first, so a booking they just made is at the top
+ * instead of buried under older ones (the server returns bookings by
+ * appointment date, oldest first). */
+export const DEFAULT_BOOKING_SORT_KEY: BookingSortKey = 'created-desc';
+
+/** Null when no sort tile is set - the page then falls back to
+ * DEFAULT_BOOKING_SORT_KEY. */
 export function deriveBookingSortKey(
   sortTile: SortTile | null
 ): BookingSortKey | null {

@@ -6,6 +6,7 @@ import {
 } from './daycareBilling.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
+import { postDaycareOverdueCharge } from './daycareOverdueCharge.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -13,6 +14,13 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
 
 vi.mock('../../booking/services/booking.service.ts', () => ({
   completeBooking: vi.fn(),
+}));
+
+// Posting the overdue fee onto the booking's transactions is covered by its
+// own unit tests (daycareOverdueCharge.service.spec.ts) - mocked here so
+// these checkout tests don't need to queue its Supabase writes.
+vi.mock('./daycareOverdueCharge.service.ts', () => ({
+  postDaycareOverdueCharge: vi.fn().mockResolvedValue({ id: 'txn-overdue' }),
 }));
 
 // Custom change (activity logbook): recordActivity is covered by its own
@@ -560,6 +568,98 @@ describe('daycareBilling.service (#65)', () => {
         extension_fee: 100,
       });
       expect(result.charge_breakdown.overdue_hours).toBe(2);
+      // ...and posted onto the booking's transactions, so the cashier sees
+      // and can collect it.
+      expect(postDaycareOverdueCharge).toHaveBeenCalledWith({
+        bookingId: 'booking-1',
+        overdueHours: 2,
+        overdueFee: 100,
+        requesterId: undefined,
+      });
+
+      vi.useRealTimers();
+    });
+
+    it('says so plainly when the pet was checked out but the overdue fee could not be added to the bill', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-07-19T11:30:00.000Z'));
+      vi.mocked(postDaycareOverdueCharge).mockRejectedValueOnce(
+        new Error('boom')
+      );
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+
+      queueFromResults(
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            branch_id: 'branch-1',
+            status: 'Active',
+            check_in_at: '2026-07-19T08:00:00.000Z',
+          },
+          error: null,
+        },
+        noOutstandingTasksResult(),
+        { data: { scheduled_end: '2026-07-19T10:00:00.000Z' }, error: null },
+        BRANCH_NO_HOURS,
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            status: 'Completed',
+          },
+          error: null,
+        }
+      );
+
+      await expect(
+        checkOutDaycareSession({ sessionId: 'session-1' })
+      ).rejects.toMatchObject({
+        statusCode: 500,
+        message: expect.stringContaining('₱100 overdue checkout fee'),
+      });
+      // The checkout itself was saved before the charge was attempted.
+      expect(
+        recordedWrites.find((write) => write.method === 'update')?.payload
+      ).toMatchObject({ status: 'Completed' });
+
+      consoleError.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('posts no overdue charge for a booked session picked up on time', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-07-19T09:30:00.000Z'));
+
+      queueFromResults(
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            branch_id: 'branch-1',
+            status: 'Active',
+            check_in_at: '2026-07-19T08:00:00.000Z',
+          },
+          error: null,
+        },
+        noOutstandingTasksResult(),
+        { data: { scheduled_end: '2026-07-19T10:00:00.000Z' }, error: null },
+        BRANCH_NO_HOURS,
+        {
+          data: {
+            id: 'session-1',
+            booking_id: 'booking-1',
+            status: 'Completed',
+          },
+          error: null,
+        }
+      );
+
+      await checkOutDaycareSession({ sessionId: 'session-1' });
+
+      expect(postDaycareOverdueCharge).not.toHaveBeenCalled();
 
       vi.useRealTimers();
     });

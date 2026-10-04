@@ -57,6 +57,7 @@ vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
 // Supabase mock results.
 vi.mock('./availability.service.ts', () => ({
   assertWithinGroomingHours: vi.fn(),
+  assertDaycareStartsBeforeCutoff: vi.fn(),
 }));
 
 vi.mock('./bookingNotifications.service.ts', () => ({
