@@ -1,3 +1,5 @@
+import catMascotGif from '../../../assets/catmascot.gif';
+import catPetGif from '../../../assets/catmascot_pet.gif';
 import doggyGif from '../../../assets/doggy.gif';
 import dogPetGif from '../../../assets/dogpet.gif';
 import petHandGif from '../../../assets/pethand.gif';
@@ -11,10 +13,15 @@ import petHandGif from '../../../assets/pethand.gif';
 export interface MascotDefinition {
   /** Stable key for this mascot. */
   id: string;
+  /** Shown under the mascot in the "Choose your pet" popup. */
+  name: string;
   /** Alt text for the mascot image. */
   alt: string;
   /** The GIF shown at rest. */
   idleGif: string;
+  /** Size of this mascot's image relative to the standard size - e.g. 1.1
+   * for artwork that is drawn a little small in its frame. Leave out for 1. */
+  imageScale?: number;
   /** Emoji shown in the gold circle if the image fails to load. */
   fallbackEmoji: string;
   pet: {
@@ -38,6 +45,7 @@ export interface MascotDefinition {
 
 export const DOGGY: MascotDefinition = {
   id: 'doggy',
+  name: 'Doggy',
   alt: 'Dog mascot',
   idleGif: doggyGif,
   fallbackEmoji: '🐶',
@@ -52,10 +60,53 @@ export const DOGGY: MascotDefinition = {
   },
 };
 
+export const KITTY: MascotDefinition = {
+  id: 'kitty',
+  name: 'Kitty',
+  alt: 'Cat mascot',
+  idleGif: catMascotGif,
+  // The cat is drawn slightly smaller in its frame than the dog.
+  imageScale: 1.1,
+  fallbackEmoji: '🐱',
+  pet: {
+    // The same petting hand as the dog - it is a person's hand, not the
+    // dog's own artwork.
+    handImage: petHandGif,
+    handGifDurationMs: 400,
+    gif: catPetGif,
+    // catmascot_pet.gif is 52 frames at 100ms each.
+    gifDurationMs: 5200,
+    sound: 'Meow!',
+  },
+};
+
 /**
+ * Every mascot the visitor can choose from the "Change pet" popup, in the
+ * order they are listed there. The first one is the default.
+ *
  * TO ADD A MASCOT: put its files in client/src/assets, import them above,
- * and add another definition like DOGGY with its own idle GIF, petting GIF,
- * duration and sound (e.g. 'Meow!'). Then point CURRENT_MASCOT at it, or
- * add whatever picks between mascots here.
+ * write another definition like DOGGY with its own idle GIF, petting GIF,
+ * hand, durations and sound (e.g. 'Meow!'), and add it to this list.
  */
-export const CURRENT_MASCOT: MascotDefinition = DOGGY;
+export const MASCOTS: MascotDefinition[] = [DOGGY, KITTY];
+
+const STORAGE_KEY = 'golden-fur.mascot';
+
+/** The mascot the visitor last chose on this device - the default one when
+ * nothing is saved, the saved one no longer exists, or storage is blocked. */
+export function readSavedMascot(): MascotDefinition {
+  try {
+    const savedId = window.localStorage.getItem(STORAGE_KEY);
+    return MASCOTS.find((mascot) => mascot.id === savedId) ?? MASCOTS[0];
+  } catch {
+    return MASCOTS[0];
+  }
+}
+
+export function saveMascot(mascotId: string): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, mascotId);
+  } catch {
+    // Not remembered, but the choice still applies for this page view.
+  }
+}
