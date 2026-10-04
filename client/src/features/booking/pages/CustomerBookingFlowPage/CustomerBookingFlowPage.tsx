@@ -3257,6 +3257,7 @@ export function CustomerBookingFlowPage() {
                 branchId={selectedBranchId}
                 petId={selectedPet.id}
                 petName={selectedPet.name}
+                scheduledStart={selectedSlot?.start ?? null}
               />
             ) : null}
 
