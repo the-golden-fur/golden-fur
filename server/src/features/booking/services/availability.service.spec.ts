@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
   getDaySlots,
   resolveOperatingWindow,
@@ -580,6 +581,133 @@ describe('availability.service (#56/#60 supporting infra)', () => {
       await expect(
         resolveOperatingWindow({ branchId: 'missing', date: '2026-08-03' })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe('Daycare check-in cutoff', () => {
+    // Monday 2026-08-03, open 08:00-18:00, Daycare check-in closes 16:00.
+    // Asia/Manila is UTC+8, so 16:00 local = 08:00 UTC.
+    const branchWithCutoff = (name: string, cutoff: string) => ({
+      data: {
+        name,
+        timezone: 'Asia/Manila',
+        operating_hours: { monday: { open: '08:00', close: '18:00' } },
+        daycare_checkin_cutoff: cutoff,
+      },
+      error: null,
+    });
+
+    const NO_STAFF_ROLES = {
+      data: { staff_picker_enabled: false, eligible_staff_roles: [] },
+      error: null,
+    };
+
+    function pinBeforeOpening() {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-02T20:00:00.000Z')); // 04:00 Monday
+    }
+
+    it('does not offer Daycare slots that start at or after the cutoff', async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        branchWithCutoff('Southwoods', '16:00:00'),
+        POLICY_ROW_LUNCH_DISABLED,
+        NO_STAFF_ROLES
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Daycare',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      // 08:00 through 15:00 - the 16:00 and 17:00 starts are gone.
+      expect(slots).toHaveLength(8);
+      expect(slots.at(-1)?.start).toBe('2026-08-03T07:00:00.000Z'); // 15:00
+    });
+
+    it("follows the branch's own configured cutoff", async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        branchWithCutoff('Southwoods', '17:00:00'),
+        POLICY_ROW_LUNCH_DISABLED,
+        NO_STAFF_ROLES
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Daycare',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots).toHaveLength(9);
+    });
+
+    it('keeps Makati at its fixed 4 PM cutoff whatever the column says, same as check-in', async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        branchWithCutoff('Makati', '17:30:00'),
+        POLICY_ROW_LUNCH_DISABLED,
+        NO_STAFF_ROLES
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Daycare',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots).toHaveLength(8);
+    });
+
+    it('does not apply the Daycare cutoff to another category', async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        branchWithCutoff('Southwoods', '16:00:00'),
+        POLICY_ROW_LUNCH_DISABLED,
+        NO_STAFF_ROLES
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Hotel',
+        date: '2026-08-03',
+        slotDurationMinutes: 1440,
+        petWeightClass: 'S',
+      });
+
+      // Hourly arrival candidates across the whole 08:00-18:00 day.
+      expect(slots).toHaveLength(10);
+    });
+
+    describe('assertDaycareStartsBeforeCutoff', () => {
+      it('allows a start before the cutoff', async () => {
+        queueFromResults(branchWithCutoff('Southwoods', '16:00:00'));
+
+        await expect(
+          assertDaycareStartsBeforeCutoff(
+            'branch-1',
+            '2026-08-03T07:00:00.000Z' // 15:00
+          )
+        ).resolves.toBeUndefined();
+      });
+
+      it('rejects a start at or after the cutoff, naming the time', async () => {
+        queueFromResults(branchWithCutoff('Southwoods', '16:00:00'));
+
+        await expect(
+          assertDaycareStartsBeforeCutoff(
+            'branch-1',
+            '2026-08-03T08:00:00.000Z' // 16:00
+          )
+        ).rejects.toMatchObject({
+          statusCode: 422,
+          message: expect.stringContaining('4:00 PM'),
+        });
+      });
     });
   });
 

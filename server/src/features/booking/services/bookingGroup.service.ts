@@ -37,7 +37,10 @@ import {
   verifyCagePreference,
 } from './cagePicker.service.ts';
 import { markCouponsRedeemed } from '../../rewards/services/customerCoupons.service.ts';
-import { assertWithinGroomingHours } from './availability.service.ts';
+import {
+  assertDaycareStartsBeforeCutoff,
+  assertWithinGroomingHours,
+} from './availability.service.ts';
 import {
   getBookingById,
   isPetAssessed,
@@ -711,6 +714,11 @@ async function resolveSubBooking({
       subInput.scheduled_start,
       subInput.scheduled_end
     );
+  }
+
+  // Daycare check-in cutoff - mirrors createBooking.
+  if (subInput.service_category === 'Daycare') {
+    await assertDaycareStartsBeforeCutoff(branchId, subInput.scheduled_start);
   }
 
   if (bookingSource === 'Online') {
