@@ -143,6 +143,46 @@ describe('CustomerBookingsPage', () => {
     );
   }
 
+  it('lists the most recently booked booking first by default, whatever order the server returned', async () => {
+    // Server order is by appointment date, oldest first - the booking made
+    // last (Daycare) has the latest created_at and must come out on top.
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [
+        buildBooking({
+          id: 'booking-old',
+          service_category: 'Grooming',
+          scheduled_start: '2026-08-01T02:00:00.000Z',
+          created_at: '2026-07-01T00:00:00.000Z',
+        }),
+        buildBooking({
+          id: 'booking-new',
+          service_category: 'Daycare',
+          scheduled_start: '2026-09-01T02:00:00.000Z',
+          created_at: '2026-07-20T00:00:00.000Z',
+        }),
+        buildBooking({
+          id: 'booking-mid',
+          service_category: 'Hotel',
+          scheduled_start: '2026-10-01T02:00:00.000Z',
+          created_at: '2026-07-10T00:00:00.000Z',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    const menus = await screen.findAllByRole('button', {
+      name: /^Actions for /,
+    });
+
+    expect(menus.map((menu) => menu.getAttribute('aria-label'))).toEqual([
+      'Actions for Daycare - Pet',
+      'Actions for Hotel - Pet',
+      'Actions for Grooming - Pet',
+    ]);
+  });
+
   it("AC-1: shows only the caller's bookings with a status badge", async () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
       data: [buildBooking({ status: 'Pending' })],
