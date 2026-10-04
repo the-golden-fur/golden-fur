@@ -9,7 +9,6 @@ import {
   Percent,
   Scale,
   ScrollText,
-  ShoppingBag,
   type LucideIcon,
 } from 'lucide-react';
 import { AdminServicesAndPackagesPage } from '../../features/maintenance/pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
@@ -18,7 +17,6 @@ import { WeightClassConfigurationPage } from '../../features/maintenance/pages/W
 import { AdminPromosAndRewardsPage } from '../../features/maintenance/pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
 import { AdminPetsPage } from '../../features/maintenance/pages/AdminPetsPage/AdminPetsPage';
 import { BranchesPage } from '../../features/maintenance/pages/BranchesPage/BranchesPage';
-import { ProductCatalogPage } from '../../features/catalog/pages/ProductCatalogPage/ProductCatalogPage';
 import { AdminDiscountManagementPage } from '../../features/discounts/pages/AdminDiscountManagementPage/AdminDiscountManagementPage';
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
@@ -93,14 +91,6 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     to: '/staff/admin/maintenance/pets',
     icon: PawPrint,
     Component: AdminPetsPage,
-  },
-  {
-    title: 'Product Catalog',
-    description:
-      "Manage hotel-suppliable food/medication and other sellable products, by category - also where a cashier's Miscellaneous Sales item picker draws from.",
-    to: '/staff/admin/product-catalog',
-    icon: ShoppingBag,
-    Component: ProductCatalogPage,
   },
   {
     title: 'Discounts',
