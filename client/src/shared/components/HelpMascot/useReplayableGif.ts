@@ -33,6 +33,9 @@ export function useReplayableGif(
   const [isPlaying, setIsPlaying] = useState(false);
   const dataRef = useRef<Blob | null>(null);
   const isLoadingRef = useRef(false);
+  // Which GIF `dataRef` was downloaded for - when the caller switches to a
+  // different GIF (another mascot), the old data must not be replayed.
+  const dataUrlRef = useRef<string | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -45,6 +48,12 @@ export function useReplayableGif(
   );
 
   function preload() {
+    if (dataUrlRef.current !== gifUrl) {
+      dataUrlRef.current = gifUrl;
+      dataRef.current = null;
+      isLoadingRef.current = false;
+    }
+
     if (!gifUrl || dataRef.current || isLoadingRef.current) return;
 
     isLoadingRef.current = true;
@@ -53,11 +62,12 @@ export function useReplayableGif(
         response.ok ? response.blob() : Promise.reject(new Error('failed'))
       )
       .then((data) => {
-        dataRef.current = data;
+        // Ignore a download that finished after the GIF was switched.
+        if (dataUrlRef.current === gifUrl) dataRef.current = data;
       })
       .catch(() => {
         // Not fatal: play() falls back to the GIF's plain address.
-        isLoadingRef.current = false;
+        if (dataUrlRef.current === gifUrl) isLoadingRef.current = false;
       });
   }
 

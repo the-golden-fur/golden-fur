@@ -300,7 +300,7 @@
 /* =========================================================
    HIDE / SHOW - the visitor can put the mascot away
    EDIT GUIDE:
-   - "Hide me" is the last bubble of the hover menu: `.link:nth-child(4)`
+   - "Hide me" is the last bubble of the hover menu: `.link:nth-child(5)`
    - Paw button shown while hidden: `.showButton` size/colors
    ========================================================= */
 .showButton {
@@ -377,20 +377,23 @@
     opacity 180ms ease;
 }
 
-/* Radial positions around the mascot circle - four bubbles down its left
-   side: FAQs, the two page links, then "Hide me". The top one stays below
-   the tip bubble and the bottom one clear of the screen edge. */
+/* Radial positions around the mascot circle - five bubbles down its left
+   side: FAQs, the two page links, "Change pet", then "Hide me". The top one
+   stays below the tip bubble and the bottom one clear of the screen edge. */
 .link:nth-child(1) {
-  transform: translate(-50%, -50%) translate(-118px, -78px);
+  transform: translate(-50%, -50%) translate(-116px, -80px);
 }
 .link:nth-child(2) {
-  transform: translate(-50%, -50%) translate(-142px, -34px);
+  transform: translate(-50%, -50%) translate(-140px, -46px);
 }
 .link:nth-child(3) {
-  transform: translate(-50%, -50%) translate(-146px, 10px);
+  transform: translate(-50%, -50%) translate(-148px, -12px);
 }
 .link:nth-child(4) {
-  transform: translate(-50%, -50%) translate(-124px, 54px);
+  transform: translate(-50%, -50%) translate(-140px, 22px);
+}
+.link:nth-child(5) {
+  transform: translate(-50%, -50%) translate(-122px, 56px);
 }
 
 .mascot:hover .link,
@@ -461,19 +464,23 @@
   }
 
   .link:nth-child(1) {
-    transform: translate(-50%, -50%) translate(-90px, -60px);
+    transform: translate(-50%, -50%) translate(-86px, -66px);
   }
 
   .link:nth-child(2) {
-    transform: translate(-50%, -50%) translate(-108px, -26px);
+    transform: translate(-50%, -50%) translate(-104px, -39px);
   }
 
   .link:nth-child(3) {
-    transform: translate(-50%, -50%) translate(-110px, 8px);
+    transform: translate(-50%, -50%) translate(-110px, -12px);
   }
 
   .link:nth-child(4) {
-    transform: translate(-50%, -50%) translate(-98px, 42px);
+    transform: translate(-50%, -50%) translate(-106px, 15px);
+  }
+
+  .link:nth-child(5) {
+    transform: translate(-50%, -50%) translate(-94px, 42px);
   }
 
   .link {
@@ -511,6 +518,86 @@
   color: var(--color-text-primary);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+}
+
+/* =========================================================
+   PET PICKER - small popup in the middle of the screen, opened from the
+   hover menu's "Change pet" bubble. Shares the FAQ modal's backdrop, header
+   and close button.
+   EDIT GUIDE:
+   - Popup width: `.petPicker` width
+   - Thumbnail size: `.petOptionImage` width/height
+   ========================================================= */
+.petPicker {
+  width: min(100%, 20rem);
+  max-height: min(70vh, 26rem);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.petList {
+  list-style: none;
+  margin: 0;
+  padding: 14px 18px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px;
+}
+
+.petOption {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 10px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 10px 8px;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.petOption:hover,
+.petOption:focus-visible {
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+}
+
+.petOption:focus-visible {
+  box-shadow: 0 0 0 2px rgba(201, 151, 26, 0.38);
+}
+
+/* The pet currently shown. */
+.petOption[aria-pressed='true'] {
+  border-color: var(--color-accent-gold-primary);
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-primary);
+}
+
+.petOptionImage {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.petPickerNote {
+  margin: 0;
+  padding: 0 18px 16px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
 }
 
 .faqHeader {

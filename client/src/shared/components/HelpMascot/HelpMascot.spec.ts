@@ -5,21 +5,49 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HelpMascot } from './HelpMascot';
 import styles from './HelpMascot.module.css';
 
-vi.mock('./mascots', () => ({
-  CURRENT_MASCOT: {
-    id: 'doggy',
-    alt: 'Dog mascot',
-    idleGif: '/test/idle.gif',
-    fallbackEmoji: '🐶',
-    pet: {
-      handImage: '/test/pet-hand.gif',
-      handGifDurationMs: 300,
-      gif: '/test/petting.gif',
-      gifDurationMs: 1000,
-      sound: 'Woof!',
+vi.mock('./mascots', () => {
+  const MASCOTS = [
+    {
+      id: 'doggy',
+      name: 'Doggy',
+      alt: 'Dog mascot',
+      idleGif: '/test/idle.gif',
+      fallbackEmoji: '🐶',
+      pet: {
+        handImage: '/test/pet-hand.gif',
+        handGifDurationMs: 300,
+        gif: '/test/petting.gif',
+        gifDurationMs: 1000,
+        sound: 'Woof!',
+      },
     },
-  },
-}));
+    {
+      id: 'kitty',
+      name: 'Kitty',
+      alt: 'Cat mascot',
+      idleGif: '/test/cat-idle.gif',
+      fallbackEmoji: '🐱',
+      pet: {
+        handImage: null,
+        handGifDurationMs: null,
+        gif: '/test/cat-petting.gif',
+        gifDurationMs: 500,
+        sound: 'Meow!',
+      },
+    },
+  ];
+
+  return {
+    MASCOTS,
+    readSavedMascot: () =>
+      MASCOTS.find(
+        (mascot) =>
+          mascot.id === window.localStorage.getItem('golden-fur.mascot')
+      ) ?? MASCOTS[0],
+    saveMascot: (mascotId: string) =>
+      window.localStorage.setItem('golden-fur.mascot', mascotId),
+  };
+});
 
 function renderMascot() {
   return render(
@@ -80,6 +108,7 @@ describe('HelpMascot - hide / show', () => {
       'FAQs',
       'Create an account',
       'Create a ticket',
+      'Change pet',
       'Hide me',
     ]);
   });
@@ -139,6 +168,102 @@ describe('HelpMascot - hide / show', () => {
     expect(mascotButton()).toBeInTheDocument();
     expect(window.localStorage.getItem('golden-fur.mascotHidden')).toBe(
       'false'
+    );
+  });
+});
+
+describe('HelpMascot - change pet', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  function openPetPicker() {
+    fireEvent.click(screen.getByRole('button', { name: 'Change pet' }));
+    return screen.getByRole('dialog', { name: 'Choose your pet' });
+  }
+
+  function choose(petName: string) {
+    const picker = openPetPicker();
+    const option = Array.from(picker.querySelectorAll('button')).find(
+      (button) => button.textContent === petName
+    );
+    fireEvent.click(option as HTMLButtonElement);
+  }
+
+  it('"Change pet" opens a popup listing every pet, with the current one marked', () => {
+    renderMascot();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    const picker = openPetPicker();
+    const options = Array.from(
+      picker.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')
+    );
+
+    expect(options.map((option) => option.textContent)).toEqual([
+      'Doggy',
+      'Kitty',
+    ]);
+    expect(options[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(options[1]).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('choosing a pet switches the mascot and closes the popup', () => {
+    renderMascot();
+    expect(mascotImage()).toHaveAttribute('src', '/test/idle.gif');
+
+    choose('Kitty');
+
+    expect(screen.getByAltText('Cat mascot')).toHaveAttribute(
+      'src',
+      '/test/cat-idle.gif'
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    choose('Doggy');
+    expect(mascotImage()).toHaveAttribute('src', '/test/idle.gif');
+  });
+
+  it('closes without changing anything on the close button, Escape, or a click outside', () => {
+    renderMascot();
+
+    openPetPicker();
+    fireEvent.click(screen.getByRole('button', { name: 'Close pet picker' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    openPetPicker();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    const picker = openPetPicker();
+    fireEvent.click(picker.parentElement as HTMLElement);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    expect(mascotImage()).toHaveAttribute('src', '/test/idle.gif');
+    expect(window.localStorage.getItem('golden-fur.mascot')).toBeNull();
+  });
+
+  it('remembers the chosen pet on this device', () => {
+    const first = renderMascot();
+    choose('Kitty');
+    expect(window.localStorage.getItem('golden-fur.mascot')).toBe('kitty');
+    first.unmount();
+
+    renderMascot();
+    expect(screen.getByAltText('Cat mascot')).toBeInTheDocument();
+  });
+
+  it("uses the new pet's own sound and petting GIF, not the previous pet's", () => {
+    const { container } = renderMascot();
+
+    choose('Kitty');
+    fireEvent.click(mascotButton());
+
+    expect(container.querySelector(`.${styles.woof}`)).toHaveTextContent(
+      'Meow!'
+    );
+    expect(screen.getByAltText('Cat mascot')).toHaveAttribute(
+      'src',
+      '/test/cat-petting.gif'
     );
   });
 });

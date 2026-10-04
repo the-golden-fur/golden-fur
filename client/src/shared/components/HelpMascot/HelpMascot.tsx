@@ -8,7 +8,12 @@ import {
 import { PawPrint } from 'lucide-react';
 import { Link } from 'react-router';
 import styles from './HelpMascot.module.css';
-import { CURRENT_MASCOT } from './mascots';
+import {
+  MASCOTS,
+  readSavedMascot,
+  saveMascot,
+  type MascotDefinition,
+} from './mascots';
 import { useGifStillFrame, useReplayableGif } from './useReplayableGif';
 
 /** One sound bubble ("Woof!") popped out by a press - where it starts (on the gold
@@ -71,10 +76,10 @@ export type HelpMascotLink =
   | { label: string; onClick: () => void };
 
 interface HelpMascotProps {
-  /** The two middle radial menu items - FAQs is always first (built in,
-   * opens the FAQ modal instead of navigating) and "Hide me" always last
-   * (built in, puts the mascot away). Radial positions are hardcoded in CSS
-   * for exactly four items. */
+  /** The two page-link radial menu items - FAQs is always first (built in,
+   * opens the FAQ modal instead of navigating), then these two, then the
+   * built-in "Change pet" and "Hide me". Radial positions are hardcoded in
+   * CSS for exactly five items. */
   links: [HelpMascotLink, HelpMascotLink];
 }
 
@@ -132,6 +137,10 @@ const FAQ_ITEMS = [
  * rests on its first frame in between), and every press pops a sound bubble
  * ("Woof!") out to the left of the gold circle.
  *
+ * "Change pet" (hover menu) opens a small popup in the middle of the screen
+ * listing every mascot in mascots.ts; the one picked is remembered on that
+ * device.
+ *
  * The visitor can hide the mascot ("Hide me", the last bubble of the hover
  * menu). Hidden
  * means gone: no circle, no tips, no hover links, no hand - only a small paw
@@ -143,7 +152,15 @@ const FAQ_ITEMS = [
  * petting GIF, hand and sound instead of inheriting the dog's.
  */
 export function HelpMascot({ links }: HelpMascotProps) {
-  const mascot = CURRENT_MASCOT;
+  const [mascot, setMascot] = useState(readSavedMascot);
+  const [isPetPickerOpen, setIsPetPickerOpen] = useState(false);
+
+  function choosePet(next: MascotDefinition) {
+    setMascot(next);
+    saveMascot(next.id);
+    setWoofs([]);
+    setIsPetPickerOpen(false);
+  }
   const bubbleRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const handRef = useRef<HTMLSpanElement>(null);
@@ -209,18 +226,20 @@ export function HelpMascot({ links }: HelpMascotProps) {
     setIsHandVisible(true);
   }
 
+  // Escape closes whichever popup (FAQs or the pet picker) is open.
   useEffect(() => {
-    if (!isFaqOpen) return;
+    if (!isFaqOpen && !isPetPickerOpen) return;
 
     function handleKeydown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setIsFaqOpen(false);
+        setIsPetPickerOpen(false);
       }
     }
 
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
-  }, [isFaqOpen]);
+  }, [isFaqOpen, isPetPickerOpen]);
 
   useEffect(() => {
     const bubble = bubbleRef.current;
@@ -310,6 +329,11 @@ export function HelpMascot({ links }: HelpMascotProps) {
           className={styles.image}
           src={petGif.src ?? mascot.idleGif}
           alt={mascot.alt}
+          // Grows from the bottom centre (the image's transform-origin), so
+          // a bigger mascot still stands on the same spot in the circle.
+          style={
+            mascot.imageScale ? { scale: String(mascot.imageScale) } : undefined
+          }
           loading="eager"
           decoding="async"
           onLoad={() =>
@@ -403,6 +427,14 @@ export function HelpMascot({ links }: HelpMascotProps) {
         <button
           type="button"
           className={styles.link}
+          onClick={() => setIsPetPickerOpen(true)}
+        >
+          Change pet
+        </button>
+
+        <button
+          type="button"
+          className={styles.link}
           onClick={() => setMascotHidden(true)}
         >
           Hide me
@@ -446,6 +478,61 @@ export function HelpMascot({ links }: HelpMascotProps) {
                 </details>
               ))}
             </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isPetPickerOpen ? (
+        <div
+          className={styles.faqBackdrop}
+          role="presentation"
+          onClick={() => setIsPetPickerOpen(false)}
+        >
+          <section
+            className={styles.petPicker}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="help-mascot-pet-picker-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.faqHeader}>
+              <h2 id="help-mascot-pet-picker-title" className={styles.faqTitle}>
+                Choose your pet
+              </h2>
+              <button
+                type="button"
+                className={styles.faqCloseButton}
+                aria-label="Close pet picker"
+                onClick={() => setIsPetPickerOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <ul className={styles.petList}>
+              {MASCOTS.map((option) => (
+                <li key={option.id}>
+                  <button
+                    type="button"
+                    className={styles.petOption}
+                    aria-pressed={option.id === mascot.id}
+                    onClick={() => choosePet(option)}
+                  >
+                    <img
+                      className={styles.petOptionImage}
+                      src={option.idleGif}
+                      alt=""
+                      loading="lazy"
+                    />
+                    <span>{option.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {MASCOTS.length < 2 ? (
+              <p className={styles.petPickerNote}>More pets are on the way!</p>
+            ) : null}
           </section>
         </div>
       ) : null}
