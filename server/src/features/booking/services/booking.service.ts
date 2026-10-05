@@ -33,6 +33,7 @@ import {
   BOOKING_MARK_PAID_ROLES,
   DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
   OVERRIDABLE_BOOKING_STATUSES,
+  PAY_AT_CHECKOUT_CATEGORIES,
   sanitizeHotelPreferencesForStaffRole,
   type Booking,
   type BookingGroup,
@@ -947,6 +948,24 @@ export async function createBooking({
     throwWithStatus(403, 'Only staff may create a walk-in booking');
   }
 
+  // Pay at checkout (20261005244): nothing is charged up front - the bill is
+  // posted at checkout from the time the pet actually stayed. Walk-in only
+  // (so staff-only, per the check above) and only for the two categories
+  // billed by time stayed. Rejected outright rather than silently downgraded
+  // to 'full', so staff never believe a booking is unbilled when it isn't.
+  const payAtCheckout = input.payment_scheme === 'pay_at_checkout';
+
+  if (
+    payAtCheckout &&
+    (bookingSource !== 'Walk-in' ||
+      !PAY_AT_CHECKOUT_CATEGORIES.includes(input.service_category))
+  ) {
+    throwWithStatus(
+      422,
+      'Pay at checkout is only available for a walk-in Hotel or Daycare booking'
+    );
+  }
+
   const { data: pet, error: petError } = await supabase
     .from('pets')
     .select('id, customer_id, pet_type, weight_class, coat_type')
@@ -1098,6 +1117,16 @@ export async function createBooking({
     staffConcurrency = policy.max_concurrent_bookings_per_staff;
   }
 
+  // The one policy field a Walk-in reads: whether this branch offers pay at
+  // checkout at all (Superadmin > Config > Branches > Configure).
+  if (payAtCheckout) {
+    const policy = await resolveEffectivePolicy(input.branch_id);
+
+    if (!policy.pay_at_checkout_enabled) {
+      throwWithStatus(422, 'Pay at checkout is switched off for this branch');
+    }
+  }
+
   const status: Booking['status'] =
     bookingSource === 'Walk-in' ? 'In Progress' : 'Pending';
 
@@ -1119,16 +1148,19 @@ export async function createBooking({
   // cashier could never resolve. The professional fee determined during the
   // consultation is still billed separately at checkout, same as before;
   // this only concerns the booking-time charge.
-  const paymentScheme: PaymentScheme =
-    downpaymentRequired && input.payment_scheme === 'downpayment'
+  const paymentScheme: PaymentScheme = payAtCheckout
+    ? 'pay_at_checkout'
+    : downpaymentRequired && input.payment_scheme === 'downpayment'
       ? 'downpayment'
       : 'full';
 
   // A fully-discounted / fully-promo'd booking owes nothing - there is no
   // charge to create and no payment to collect, so it's born Fully Paid
   // (otherwise it would sit Pending forever: startBooking and
-  // add_booking_payment both refuse a zero-owed booking).
-  const nothingOwed = netTotal <= 0;
+  // add_booking_payment both refuse a zero-owed booking). Never true for a
+  // pay-at-checkout booking: its total is only an estimate until checkout,
+  // which decides for itself whether anything is owed.
+  const nothingOwed = !payAtCheckout && netTotal <= 0;
 
   // Whether this booking reserves its capacity/staff-time slot. A
   // down-payment-required Online booking holds no slot until a payment lands
@@ -1226,6 +1258,7 @@ export async function createBooking({
       downpayment_amount: downpaymentAmount,
       downpayment_required: downpaymentRequired,
       downpayment_due_at: downpaymentDueAt,
+      pay_at_checkout: payAtCheckout,
       payment_status: nothingOwed ? 'Fully Paid' : 'Pending',
       ...(nothingOwed ? { paid_at: new Date().toISOString() } : {}),
       payment_method: null,
@@ -1362,8 +1395,9 @@ export async function createBooking({
 
   // Emit the initial charge transaction(s) (best-effort - a failure here must
   // not undo the booking; the cashier can add the charge manually). A
-  // fully-discounted booking (nothingOwed) owes nothing.
-  if (!nothingOwed && netTotal > 0) {
+  // fully-discounted booking (nothingOwed) owes nothing, and a
+  // pay-at-checkout booking is billed at checkout instead.
+  if (paymentScheme !== 'pay_at_checkout' && !nothingOwed && netTotal > 0) {
     try {
       const { error: chargeRpcError } = await supabase.rpc(
         'create_initial_booking_charge',

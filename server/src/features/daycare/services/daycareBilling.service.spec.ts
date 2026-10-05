@@ -7,6 +7,8 @@ import {
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
 import { postDaycareOverdueCharge } from './daycareOverdueCharge.service.ts';
+import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
+import { resolveEffectivePolicy } from '../../booking/services/staffPicker.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -21,6 +23,19 @@ vi.mock('../../booking/services/booking.service.ts', () => ({
 // these checkout tests don't need to queue its Supabase writes.
 vi.mock('./daycareOverdueCharge.service.ts', () => ({
   postDaycareOverdueCharge: vi.fn().mockResolvedValue({ id: 'txn-overdue' }),
+}));
+
+// Pay at checkout: posting the bill is covered by its own unit tests
+// (payAtCheckoutCharge.service.spec.ts), and the grace period is just one
+// policy field - both mocked so these tests queue no extra Supabase reads.
+vi.mock('../../billing/services/payAtCheckoutCharge.service.ts', () => ({
+  postPayAtCheckoutCharge: vi.fn().mockResolvedValue({ id: 'txn-bill' }),
+}));
+
+vi.mock('../../booking/services/staffPicker.service.ts', () => ({
+  resolveEffectivePolicy: vi
+    .fn()
+    .mockResolvedValue({ pay_at_checkout_grace_minutes: 10 }),
 }));
 
 // Custom change (activity logbook): recordActivity is covered by its own
@@ -385,6 +400,38 @@ describe('daycareBilling.service (#65)', () => {
       });
     });
 
+    it('pay at checkout: a grace period past the hour is not billed as another hour', async () => {
+      const start = new Date('2026-07-19T08:00:00Z');
+
+      queueFromResults(BRANCH_NO_HOURS);
+      expect(
+        await computeDaycareChargeBreakdown(
+          start,
+          minutesLater(start, 128),
+          'branch-1',
+          100,
+          50,
+          undefined,
+          null,
+          10
+        )
+      ).toMatchObject({ succeeding_hours: 1, hourly_charge: 150, total: 150 });
+
+      queueFromResults(BRANCH_NO_HOURS);
+      expect(
+        await computeDaycareChargeBreakdown(
+          start,
+          minutesLater(start, 131),
+          'branch-1',
+          100,
+          50,
+          undefined,
+          null,
+          10
+        )
+      ).toMatchObject({ succeeding_hours: 2, hourly_charge: 200, total: 200 });
+    });
+
     it('a same-day pickup never looks up the Hotel rate', async () => {
       const start = new Date('2026-07-19T08:00:00Z');
       queueFromResults(BRANCH_NO_HOURS);
@@ -627,6 +674,130 @@ describe('daycareBilling.service (#65)', () => {
 
       consoleError.mockRestore();
       vi.useRealTimers();
+    });
+
+    // Pay at checkout (custom change): a Walk-in booking created with no
+    // upfront charge is billed here for the time actually stayed.
+    describe('pay at checkout', () => {
+      function queuePayAtCheckout() {
+        queueFromResults(
+          {
+            data: {
+              id: 'session-1',
+              booking_id: 'booking-1',
+              branch_id: 'branch-1',
+              status: 'Active',
+              check_in_at: '2026-07-19T08:00:00.000Z',
+            },
+            error: null,
+          },
+          noOutstandingTasksResult(),
+          // Booked (as an estimate) until 10:00.
+          {
+            data: {
+              scheduled_end: '2026-07-19T10:00:00.000Z',
+              pay_at_checkout: true,
+            },
+            error: null,
+          },
+          BRANCH_NO_HOURS,
+          {
+            data: {
+              id: 'session-1',
+              booking_id: 'booking-1',
+              status: 'Completed',
+            },
+            error: null,
+          },
+          { data: null, error: null }, // cages update
+          {
+            data: [
+              { id: 'item-1', service_id: null, price_at_booking: 150 },
+              { id: 'item-2', service_id: 'addon', price_at_booking: 80 },
+            ],
+            error: null,
+          }, // booking_items
+          { data: null, error: null } // booking_items update
+        );
+      }
+
+      it('bills the hours since check-in at the normal rate, with no overdue fee, and sends the bill to the cashier', async () => {
+        vi.useFakeTimers();
+        // Checked in 08:00, picked up 11:08 - within the 10-minute grace
+        // period, so 3 billable hours, not 4.
+        vi.setSystemTime(new Date('2026-07-19T11:08:00.000Z'));
+        queuePayAtCheckout();
+
+        const result = await checkOutDaycareSession({
+          sessionId: 'session-1',
+          requesterId: 'staff-1',
+        });
+
+        const stayUpdate = recordedWrites.find(
+          (write) => write.table === 'stays' && write.method === 'update'
+        );
+        expect(stayUpdate?.payload).toMatchObject({
+          computed_charge: 200,
+          extension_fee: null,
+        });
+        expect(result.charge_breakdown).toMatchObject({
+          succeeding_hours: 2,
+          overdue_hours: 0,
+          total: 200,
+        });
+
+        const itemUpdate = recordedWrites.find(
+          (write) =>
+            write.table === 'booking_items' && write.method === 'update'
+        );
+        expect(itemUpdate?.payload).toEqual({ price_at_booking: 200 });
+
+        // The Daycare time (200) plus the booking's other item (80).
+        expect(postPayAtCheckoutCharge).toHaveBeenCalledWith({
+          bookingId: 'booking-1',
+          actualTotal: 280,
+          lineItem: {
+            description: 'Daycare (3 hours)',
+            quantity: 1,
+            unitPrice: 280,
+          },
+          requesterId: 'staff-1',
+        });
+        expect(postDaycareOverdueCharge).not.toHaveBeenCalled();
+        expect(resolveEffectivePolicy).toHaveBeenCalledWith('branch-1');
+
+        vi.useRealTimers();
+      });
+
+      it('bills the next hour once the grace period has passed', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-19T11:11:00.000Z'));
+        queuePayAtCheckout();
+
+        const result = await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        expect(result.charge_breakdown).toMatchObject({
+          succeeding_hours: 3,
+          total: 250,
+        });
+
+        vi.useRealTimers();
+      });
+
+      it('says so plainly when the pet was checked out but the bill could not be sent to the cashier', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-19T11:08:00.000Z'));
+        vi.mocked(postPayAtCheckoutCharge).mockRejectedValueOnce(
+          new Error('boom')
+        );
+        queuePayAtCheckout();
+
+        await expect(
+          checkOutDaycareSession({ sessionId: 'session-1' })
+        ).rejects.toMatchObject({ statusCode: 500 });
+
+        vi.useRealTimers();
+      });
     });
 
     it('posts no overdue charge for a booked session picked up on time', async () => {

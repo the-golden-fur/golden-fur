@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkOutHotelStay, extensionDays } from './checkout.service.ts';
+import {
+  checkOutHotelStay,
+  extensionDays,
+  stayNights,
+} from './checkout.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -15,6 +20,13 @@ vi.mock('./activityLog.service.ts', () => ({
   recordBulkActivity: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Covered by its own spec - here only the bill it is asked to post matters.
+vi.mock('../../billing/services/payAtCheckoutCharge.service.ts', () => ({
+  postPayAtCheckoutCharge: vi.fn(),
+}));
+
+const itemUpdates: unknown[] = [];
+
 interface QueryResult {
   data: unknown;
   error: unknown;
@@ -23,12 +35,17 @@ interface QueryResult {
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
 
-  vi.mocked(supabase.from).mockImplementation((() => {
+  vi.mocked(supabase.from).mockImplementation(((table: string) => {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
     for (const method of ['select', 'eq', 'update', 'is', 'in']) {
-      builder[method] = vi.fn(() => builder);
+      builder[method] = vi.fn((...args: unknown[]) => {
+        if (table === 'booking_items' && method === 'update') {
+          itemUpdates.push(args[0]);
+        }
+        return builder;
+      });
     }
 
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
@@ -88,6 +105,168 @@ describe('checkout.service (#78)', () => {
       expect(
         extensionDays('2026-08-05', new Date('2026-08-07T23:00:00Z'))
       ).toBe(2);
+    });
+  });
+
+  describe('stayNights', () => {
+    it('counts Manila calendar days from check-in to checkout', () => {
+      expect(
+        stayNights(
+          new Date('2026-08-03T02:00:00Z'),
+          new Date('2026-08-06T01:00:00Z')
+        )
+      ).toBe(3);
+    });
+
+    it('is never less than one night', () => {
+      expect(
+        stayNights(
+          new Date('2026-08-03T02:00:00Z'),
+          new Date('2026-08-03T09:00:00Z')
+        )
+      ).toBe(1);
+    });
+
+    it('uses the Manila day, not the UTC one', () => {
+      // 7 AM Monday to 9 AM Tuesday in Manila is one night, although the
+      // check-in instant is still Sunday in UTC.
+      expect(
+        stayNights(
+          new Date('2026-08-02T23:00:00Z'),
+          new Date('2026-08-04T01:00:00Z')
+        )
+      ).toBe(1);
+    });
+  });
+
+  // Pay at checkout (custom change): a Walk-in booking created with no
+  // upfront charge is billed here for the nights actually stayed.
+  describe('checkOutHotelStay - pay at checkout', () => {
+    const PAY_AT_CHECKOUT_STAY = {
+      ...ACTIVE_STAY,
+      downpayment_amount: 0,
+      check_in_at: '2026-08-03T02:00:00Z',
+      // Booked as an estimated 2 nights at 800 a night.
+      bookings: {
+        total_price: 1600,
+        status: 'In Progress',
+        pay_at_checkout: true,
+        scheduled_start: '2026-08-03T02:00:00Z',
+        scheduled_end: '2026-08-05T02:00:00Z',
+      },
+    };
+
+    const ITEMS = [
+      {
+        id: 'item-1',
+        price_at_booking: 1600,
+        duration_minutes_at_booking: 1440,
+      },
+    ];
+
+    function queuePayAtCheckout() {
+      queueFromResults(
+        { data: PAY_AT_CHECKOUT_STAY, error: null },
+        noOutstandingTasksResult(),
+        ...completeBookingQueue(),
+        { data: { ...PAY_AT_CHECKOUT_STAY, extension_fee: null }, error: null },
+        { data: {}, error: null }, // cages update
+        { data: ITEMS, error: null }, // booking_items
+        { data: null, error: null } // booking_items update
+      );
+    }
+
+    beforeEach(() => {
+      itemUpdates.length = 0;
+      vi.mocked(postPayAtCheckoutCharge).mockResolvedValue({
+        id: 'txn-1',
+        total_amount: 2400,
+      } as never);
+    });
+
+    it('bills the nights actually stayed, with no extension fee, when the pet stays longer than estimated', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-06T01:00:00Z')); // 3 nights
+
+      queuePayAtCheckout();
+
+      const result = await checkOutHotelStay({
+        stayId: 'stay-1',
+        branchId: 'branch-1',
+        requesterId: 'staff-1',
+      });
+
+      expect(postPayAtCheckoutCharge).toHaveBeenCalledWith({
+        bookingId: 'booking-1',
+        actualTotal: 2400,
+        lineItem: {
+          description: 'Hotel stay (3 nights)',
+          quantity: 3,
+          unitPrice: 800,
+        },
+        requesterId: 'staff-1',
+      });
+      expect(itemUpdates).toEqual([{ price_at_booking: 2400 }]);
+      expect(result.extensionFee).toBeNull();
+      expect(result.remainingBalance).toBe(2400);
+      expect(result.payAtCheckout).toEqual({ nights: 3 });
+    });
+
+    it('bills fewer nights when the pet leaves earlier than estimated', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-04T01:00:00Z')); // 1 night
+      vi.mocked(postPayAtCheckoutCharge).mockResolvedValue({
+        id: 'txn-1',
+        total_amount: 800,
+      } as never);
+
+      queuePayAtCheckout();
+
+      const result = await checkOutHotelStay({
+        stayId: 'stay-1',
+        branchId: 'branch-1',
+      });
+
+      expect(postPayAtCheckoutCharge).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actualTotal: 800,
+          lineItem: {
+            description: 'Hotel stay (1 night)',
+            quantity: 1,
+            unitPrice: 800,
+          },
+        })
+      );
+      expect(result.remainingBalance).toBe(800);
+    });
+
+    it('keeps the checkout and reports the problem when the bill cannot be posted', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-06T01:00:00Z'));
+      vi.mocked(postPayAtCheckoutCharge).mockRejectedValue(new Error('boom'));
+
+      queuePayAtCheckout();
+
+      await expect(
+        checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' })
+      ).rejects.toMatchObject({ statusCode: 500 });
+    });
+
+    it('an ordinary booking is never billed here', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-05T09:00:00Z'));
+
+      queueFromResults(
+        { data: ACTIVE_STAY, error: null },
+        noOutstandingTasksResult(),
+        ...completeBookingQueue(),
+        { data: { ...ACTIVE_STAY, extension_fee: null }, error: null },
+        { data: {}, error: null }
+      );
+
+      await checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' });
+
+      expect(postPayAtCheckoutCharge).not.toHaveBeenCalled();
     });
   });
 

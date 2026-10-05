@@ -4,6 +4,11 @@
  * further hour, a partial hour counting as a whole one (1h10m = 2 billable
  * hours).
  *
+ * `graceMinutes` (pay at checkout only - policy_configurations
+ * .pay_at_checkout_grace_minutes) is how far past a full hour a stay may run
+ * before that next hour is billed: with 10, 2h08m is 2 billable hours and
+ * 2h11m is 3. Every other caller leaves it at 0.
+ *
  * Shared by the two places that price a Daycare stay - the booking itself
  * (booking.service.ts, from the hours that were booked) and checkout
  * (daycareBilling.service.ts, from the time the pet actually stayed) - so
@@ -14,10 +19,13 @@
 export function daycareHourlyCharge(
   elapsedMinutes: number,
   firstHourFee: number,
-  succeedingHourFee: number
+  succeedingHourFee: number,
+  graceMinutes: number = 0
 ): { succeedingHours: number; charge: number } {
-  const succeedingHours =
-    elapsedMinutes <= 60 ? 0 : Math.ceil((elapsedMinutes - 60) / 60);
+  const succeedingHours = Math.max(
+    0,
+    Math.ceil((elapsedMinutes - 60 - graceMinutes) / 60)
+  );
 
   return {
     succeedingHours,

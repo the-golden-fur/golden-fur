@@ -591,6 +591,9 @@ export interface DownpaymentStatus {
   downpayment_enabled: boolean;
   downpayment_type: DownpaymentType | null;
   downpayment_amount: number | null;
+  /** Pay at checkout rides along on this same response (one policy fetch
+   * for the Review step) - see paymentChoice.ts. Absent reads as off. */
+  pay_at_checkout_enabled?: boolean;
 }
 
 /** Per-transaction downpayment config for a branch - see

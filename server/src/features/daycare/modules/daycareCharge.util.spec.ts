@@ -32,6 +32,26 @@ describe('daycareHourlyCharge', () => {
   it("uses the service's own fees", () => {
     expect(daycareHourlyCharge(180, 200, 75).charge).toBe(350);
   });
+
+  it('does not bill another hour within the grace period past the hour', () => {
+    expect(daycareHourlyCharge(70, 100, 50, 10).charge).toBe(100);
+    expect(daycareHourlyCharge(71, 100, 50, 10).charge).toBe(150);
+    expect(daycareHourlyCharge(128, 100, 50, 10)).toEqual({
+      succeedingHours: 1,
+      charge: 150,
+    });
+    expect(daycareHourlyCharge(131, 100, 50, 10)).toEqual({
+      succeedingHours: 2,
+      charge: 200,
+    });
+  });
+
+  it('never bills fewer than zero succeeding hours with a grace period', () => {
+    expect(daycareHourlyCharge(30, 100, 50, 10)).toEqual({
+      succeedingHours: 0,
+      charge: 100,
+    });
+  });
 });
 
 describe('daycareOverdueCharge', () => {

@@ -71,6 +71,10 @@ import {
   type StaffPreferenceInput,
 } from '../../booking.types';
 import { friendlyBookingError } from '../../bookingErrors';
+import {
+  isPayAtCheckoutAvailable,
+  resolvePaymentChoice,
+} from '../../paymentChoice';
 import { listStaff } from '../../../staff/api/staff.api';
 import { listMyPatients } from '../../../veterinary/api/veterinary.api';
 import { listDiscounts } from '../../../discounts/api/discounts.api';
@@ -1977,7 +1981,22 @@ export function CustomerBookingFlowPage() {
   // recorded later at the counter) or the full amount. No payment method is
   // chosen here any more - that happens per transaction on the Transactions
   // page.
-  const showPaymentChoice = downpaymentRequired;
+  //
+  // Pay at checkout: a third scheme, offered only to staff for a checkout
+  // made up entirely of walk-in Hotel/Daycare bookings (see paymentChoice.ts
+  // - a walk-in never has a down payment, so there it sits beside "Full
+  // payment" alone).
+  const payAtCheckoutAvailable = isPayAtCheckoutAvailable({
+    isStaff: isReceptionistMode,
+    enabled: downpaymentStatus?.pay_at_checkout_enabled ?? false,
+    bookings: bookingsList,
+  });
+  const showPaymentChoice = downpaymentRequired || payAtCheckoutAvailable;
+  const effectivePaymentChoice = resolvePaymentChoice(paymentChoice, {
+    downpaymentRequired,
+    payAtCheckoutAvailable,
+  });
+  const payingAtCheckout = effectivePaymentChoice === 'pay_at_checkout';
 
   // ---- Steps ----
 
@@ -2778,7 +2797,9 @@ export function CustomerBookingFlowPage() {
         ...(isReceptionistMode && walkInCustomer
           ? { customer_id: walkInCustomer.id }
           : {}),
-        ...(showPaymentChoice ? { payment_scheme: paymentChoice } : {}),
+        ...(showPaymentChoice
+          ? { payment_scheme: effectivePaymentChoice }
+          : {}),
         ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
         // Multiselect (session 86): the server re-validates and re-caps
         // every id authoritatively (resolveDiscountAndPromos) - these
@@ -2870,21 +2891,25 @@ export function CustomerBookingFlowPage() {
             })}
             .{' '}
             {!isGroup
-              ? requiresPayment
-                ? booking.payment_status === 'Fully Paid'
-                  ? 'Your payment has been received.'
-                  : 'Payment is due at the counter.'
-                : "You're all set!"
+              ? booking.pay_at_checkout
+                ? 'Nothing is charged yet - the bill goes to the cashier at checkout.'
+                : requiresPayment
+                  ? booking.payment_status === 'Fully Paid'
+                    ? 'Your payment has been received.'
+                    : 'Payment is due at the counter.'
+                  : "You're all set!"
               : null}
           </p>
         ))}
         {isGroup ? (
           <p className={styles.copy}>
-            {requiresPayment
-              ? confirmedBookingGroup.payment_status === 'Fully Paid'
-                ? 'Your payment for these bookings has been received.'
-                : 'Payment for these bookings is due at the counter.'
-              : "You're all set!"}
+            {confirmedBookingGroup.pay_at_checkout
+              ? 'Nothing is charged yet - each bill goes to the cashier at checkout.'
+              : requiresPayment
+                ? confirmedBookingGroup.payment_status === 'Fully Paid'
+                  ? 'Your payment for these bookings has been received.'
+                  : 'Payment for these bookings is due at the counter.'
+                : "You're all set!"}
           </p>
         ) : null}
         {/* Down-payment slot gate: an unpaid down-payment booking/group
@@ -4376,7 +4401,7 @@ export function CustomerBookingFlowPage() {
                 <span>PHP {estimatedTotal.toFixed(2)}</span>
               </div>
               {showPaymentChoice &&
-              paymentChoice === 'downpayment' &&
+              effectivePaymentChoice === 'downpayment' &&
               downpaymentAmount !== null ? (
                 <>
                   <div className={styles.downpaymentDueNow}>
@@ -4398,7 +4423,14 @@ export function CustomerBookingFlowPage() {
               ) : null}
             </section>
 
-            {requiresPayment ? (
+            {payingAtCheckout ? (
+              <p className={styles.copy}>
+                Nothing is charged now. The total above is only an estimate from
+                the expected checkout - billing starts when the pet is checked
+                in, and the bill for the actual stay goes to the cashier at
+                checkout.
+              </p>
+            ) : requiresPayment ? (
               <p className={styles.copy}>
                 No payment is collected in this step - you are only choosing the
                 payment scheme. The charge(s) are settled afterwards (at the
@@ -4413,30 +4445,43 @@ export function CustomerBookingFlowPage() {
             {showPaymentChoice ? (
               <fieldset className={styles.field}>
                 <legend className={styles.fieldLabel}>Payment scheme</legend>
+                {downpaymentRequired ? (
+                  <label className={styles.radioOption}>
+                    <input
+                      type="radio"
+                      name="paymentChoice"
+                      checked={effectivePaymentChoice === 'downpayment'}
+                      onChange={() => setPaymentChoice('downpayment')}
+                    />
+                    Downpayment - PHP {(downpaymentAmount ?? 0).toFixed(2)} now,
+                    PHP{' '}
+                    {Math.max(
+                      0,
+                      estimatedTotal - (downpaymentAmount ?? 0)
+                    ).toFixed(2)}{' '}
+                    remaining balance
+                  </label>
+                ) : null}
                 <label className={styles.radioOption}>
                   <input
                     type="radio"
                     name="paymentChoice"
-                    checked={paymentChoice === 'downpayment'}
-                    onChange={() => setPaymentChoice('downpayment')}
-                  />
-                  Downpayment - PHP {(downpaymentAmount ?? 0).toFixed(2)} now,
-                  PHP{' '}
-                  {Math.max(
-                    0,
-                    estimatedTotal - (downpaymentAmount ?? 0)
-                  ).toFixed(2)}{' '}
-                  remaining balance
-                </label>
-                <label className={styles.radioOption}>
-                  <input
-                    type="radio"
-                    name="paymentChoice"
-                    checked={paymentChoice === 'full'}
+                    checked={effectivePaymentChoice === 'full'}
                     onChange={() => setPaymentChoice('full')}
                   />
                   Full payment - PHP {estimatedTotal.toFixed(2)}
                 </label>
+                {payAtCheckoutAvailable ? (
+                  <label className={styles.radioOption}>
+                    <input
+                      type="radio"
+                      name="paymentChoice"
+                      checked={payingAtCheckout}
+                      onChange={() => setPaymentChoice('pay_at_checkout')}
+                    />
+                    Pay at checkout - nothing now, billed for the actual stay
+                  </label>
+                ) : null}
               </fieldset>
             ) : null}
 

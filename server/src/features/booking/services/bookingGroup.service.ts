@@ -9,7 +9,10 @@ import {
   createNotification,
   notifyStaffRoleAtBranch,
 } from '../../notifications/services/notification.service.ts';
-import { sanitizeHotelPreferencesForStaffRole } from '../booking.types.ts';
+import {
+  PAY_AT_CHECKOUT_CATEGORIES,
+  sanitizeHotelPreferencesForStaffRole,
+} from '../booking.types.ts';
 import type {
   Booking,
   BookingGroup,
@@ -215,6 +218,34 @@ export async function createBookingGroup({
     ? await resolveEffectivePolicy(input.branch_id)
     : null;
 
+  // Pay at checkout (20261005244) - same rule as createBooking, applied to
+  // the whole checkout since it shares one payment decision: every
+  // sub-booking must be a Walk-in Hotel/Daycare booking, and the branch must
+  // offer it. Its own policy read rather than `policy` above, which stays
+  // null for an all-Walk-in group so step 5 never applies a down payment.
+  const payAtCheckout = input.payment_scheme === 'pay_at_checkout';
+
+  if (payAtCheckout) {
+    const everySubBookingQualifies = input.bookings.every(
+      (sub) =>
+        sub.booking_source === 'Walk-in' &&
+        PAY_AT_CHECKOUT_CATEGORIES.includes(sub.service_category)
+    );
+
+    if (!staffRole || !everySubBookingQualifies) {
+      throwWithStatus(
+        422,
+        'Pay at checkout is only available when every booking is a walk-in Hotel or Daycare booking'
+      );
+    }
+
+    const payAtCheckoutPolicy = await resolveEffectivePolicy(input.branch_id);
+
+    if (!payAtCheckoutPolicy.pay_at_checkout_enabled) {
+      throwWithStatus(422, 'Pay at checkout is switched off for this branch');
+    }
+  }
+
   const resolvedSubBookings: ResolvedSubBooking[] = [];
   const claimedStaffWindows = new Map<
     string,
@@ -319,7 +350,9 @@ export async function createBookingGroup({
   // removal) - it used to be exempt, which left an online vet booking with
   // a downpayment due date and no transaction ever created to pay it
   // against.
-  const nothingOwed = combinedNetTotal <= 0;
+  // Never true for a pay-at-checkout group: its totals are only estimates
+  // until each member's checkout posts the real bill.
+  const nothingOwed = !payAtCheckout && combinedNetTotal <= 0;
 
   const holdsSlot = !downpaymentRequired;
   const downpaymentDueAt = holdsSlot
@@ -328,8 +361,9 @@ export async function createBookingGroup({
         Date.now() + downpaymentHoldHours * 60 * 60 * 1000
       ).toISOString();
 
-  const paymentScheme: PaymentScheme =
-    downpaymentRequired && input.payment_scheme === 'downpayment'
+  const paymentScheme: PaymentScheme = payAtCheckout
+    ? 'pay_at_checkout'
+    : downpaymentRequired && input.payment_scheme === 'downpayment'
       ? 'downpayment'
       : 'full';
 
@@ -354,6 +388,7 @@ export async function createBookingGroup({
       downpayment_amount: downpaymentAmount,
       downpayment_required: downpaymentRequired,
       downpayment_due_at: downpaymentDueAt,
+      pay_at_checkout: payAtCheckout,
       payment_status: groupPaymentStatus,
       ...(nothingOwed ? { paid_at: nowIso } : {}),
     })
@@ -436,6 +471,7 @@ export async function createBookingGroup({
         downpayment_amount: null,
         downpayment_required: false,
         downpayment_due_at: null,
+        pay_at_checkout: payAtCheckout,
         payment_status: groupPaymentStatus,
         ...(nothingOwed ? { paid_at: nowIso } : {}),
         payment_method: null,
@@ -557,8 +593,13 @@ export async function createBookingGroup({
   }
 
   // Step 12: ONE initial charge for the whole group (best-effort - a
-  // failure here must not undo the group).
-  if (!nothingOwed && combinedNetTotal > 0) {
+  // failure here must not undo the group). A pay-at-checkout group has
+  // none - each member is billed at its own checkout.
+  if (
+    paymentScheme !== 'pay_at_checkout' &&
+    !nothingOwed &&
+    combinedNetTotal > 0
+  ) {
     try {
       const { error: chargeRpcError } = await supabase.rpc(
         'create_initial_booking_group_charge',

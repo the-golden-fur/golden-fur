@@ -62,6 +62,8 @@ interface FormState {
   downpayment_type: DownpaymentType;
   downpayment_amount: number;
   downpayment_hold_hours: number;
+  pay_at_checkout_enabled: boolean;
+  pay_at_checkout_grace_minutes: number;
   max_concurrent_bookings_per_staff: number;
   booking_group_email_mode: 'combined' | 'per_booking';
   care_log_task_email_enabled: boolean;
@@ -94,6 +96,8 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     downpayment_type: policy.downpayment_type ?? 'Flat',
     downpayment_amount: policy.downpayment_amount ?? 0,
     downpayment_hold_hours: policy.downpayment_hold_hours,
+    pay_at_checkout_enabled: policy.pay_at_checkout_enabled,
+    pay_at_checkout_grace_minutes: policy.pay_at_checkout_grace_minutes,
     max_concurrent_bookings_per_staff: policy.max_concurrent_bookings_per_staff,
     booking_group_email_mode: policy.booking_group_email_mode,
     care_log_task_email_enabled: policy.care_log_task_email_enabled,
@@ -125,6 +129,8 @@ const DOCUMENTED_DEFAULTS: FormState = {
   downpayment_type: 'Flat',
   downpayment_amount: 0,
   downpayment_hold_hours: 24,
+  pay_at_checkout_enabled: true,
+  pay_at_checkout_grace_minutes: 10,
   max_concurrent_bookings_per_staff: 1,
   booking_group_email_mode: 'combined',
   care_log_task_email_enabled: false,
@@ -291,6 +297,17 @@ export function PolicyConfigurationPage({
       throw new Error(message);
     }
 
+    if (
+      !Number.isInteger(form.pay_at_checkout_grace_minutes) ||
+      form.pay_at_checkout_grace_minutes < 0 ||
+      form.pay_at_checkout_grace_minutes > 59
+    ) {
+      const message =
+        'The pay-at-checkout grace period must be a whole number of minutes from 0 to 59.';
+      setFormError(message);
+      throw new Error(message);
+    }
+
     setIsSubmitting(true);
     setFormError(null);
     setMessage(null);
@@ -325,6 +342,8 @@ export function PolicyConfigurationPage({
         ? form.downpayment_amount
         : null,
       downpayment_hold_hours: form.downpayment_hold_hours,
+      pay_at_checkout_enabled: form.pay_at_checkout_enabled,
+      pay_at_checkout_grace_minutes: form.pay_at_checkout_grace_minutes,
       max_concurrent_bookings_per_staff: form.max_concurrent_bookings_per_staff,
       booking_group_email_mode: form.booking_group_email_mode,
       care_log_task_email_enabled: form.care_log_task_email_enabled,
@@ -797,6 +816,56 @@ export function PolicyConfigurationPage({
           <p className={styles.copy}>
             If no payment is made within this many hours, the booking is
             automatically cancelled.
+          </p>
+        </section>
+
+        <section aria-labelledby="pay-at-checkout-heading">
+          <h2 className={styles.sectionTitle} id="pay-at-checkout-heading">
+            Pay at checkout
+          </h2>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.pay_at_checkout_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  pay_at_checkout_enabled: event.target.checked,
+                }))
+              }
+            />
+            <span>Allow pay at checkout for walk-in Hotel and Daycare</span>
+          </label>
+          <p className={styles.copy}>
+            Staff can book a walk-in without charging anything up front. Billing
+            starts when the pet is checked in, and the bill for the actual stay
+            goes to the cashier at checkout. The cage is reserved with no
+            payment.
+          </p>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Grace period (minutes)</span>
+            <input
+              className={styles.input}
+              type="number"
+              min={0}
+              max={59}
+              step={1}
+              value={form.pay_at_checkout_grace_minutes}
+              disabled={!form.pay_at_checkout_enabled}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  pay_at_checkout_grace_minutes: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <p className={styles.copy}>
+            Daycare is billed by the hour. A stay that runs up to this many
+            minutes past a full hour is not charged for another hour. Set 0 to
+            charge every started hour. It does not extend closing time.
           </p>
         </section>
 
