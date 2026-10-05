@@ -117,12 +117,21 @@ export async function getCurrentPrescriptionForPet(
   return { data: result.data?.prescription ?? null, error: result.error };
 }
 
+/** `?branch_id=` for the two cage reads below. Only a Superadmin's choice
+ * is honoured server-side (another branch's id, or 'all' for every branch);
+ * omitted, the server uses the viewer's own branch. */
+function cageBranchQuery(branch?: string): string {
+  return branch ? `?branch_id=${encodeURIComponent(branch)}` : '';
+}
+
 export async function getCageGrid(
-  accessToken: string
+  accessToken: string,
+  branch?: string
 ): Promise<HotelApiResult<Record<CageSize, Cage[]>>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/cages`, {
-    headers: authHeaders(accessToken),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cages${cageBranchQuery(branch)}`,
+    { headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };
@@ -135,11 +144,13 @@ export async function getCageGrid(
 /** Who is in each occupied cage at the viewer's branch, with the expected
  * checkout time - same branch scoping as getCageGrid above. */
 export async function getCageOccupants(
-  accessToken: string
+  accessToken: string,
+  branch?: string
 ): Promise<HotelApiResult<CageOccupant[]>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/cages/occupants`, {
-    headers: authHeaders(accessToken),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cages/occupants${cageBranchQuery(branch)}`,
+    { headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

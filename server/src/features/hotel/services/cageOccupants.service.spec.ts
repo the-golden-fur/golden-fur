@@ -46,7 +46,12 @@ describe('cageOccupants.service', () => {
         },
       ]),
       bookings: ok([
-        { id: 'booking-1', scheduled_end: '2026-08-04T02:00:00.000Z' },
+        {
+          id: 'booking-1',
+          scheduled_end: '2026-08-04T02:00:00.000Z',
+          payment_status: 'Fully Paid',
+          pay_at_checkout: false,
+        },
       ]),
       pets: ok([{ id: 'pet-1', name: 'Mochi', customer_id: 'cust-1' }]),
       customer_profiles: ok([{ id: 'cust-1', full_name: 'Jamie Cruz' }]),
@@ -64,8 +69,86 @@ describe('cageOccupants.service', () => {
         expected_checkout_at: '2026-08-04T02:00:00.000Z',
         overdue_fee_per_hour: null,
         overdue_grace_minutes: null,
+        payment: 'paid',
       },
     ]);
+  });
+
+  describe('payment', () => {
+    async function paymentFor(
+      booking: { payment_status: string; pay_at_checkout: boolean } | null,
+      stayType: 'Hotel' | 'Daycare' = 'Hotel'
+    ) {
+      tableResults({
+        stays: ok([
+          {
+            id: 'stay-1',
+            cage_id: 'cage-1',
+            stay_type: stayType,
+            booking_id: booking ? 'booking-1' : null,
+            pet_id: 'pet-1',
+            check_in_at: '2026-08-01T02:00:00.000Z',
+          },
+        ]),
+        bookings: ok(
+          booking
+            ? [
+                {
+                  id: 'booking-1',
+                  scheduled_end: '2026-08-04T02:00:00.000Z',
+                  ...booking,
+                },
+              ]
+            : []
+        ),
+        pets: ok([{ id: 'pet-1', name: 'Mochi' }]),
+      });
+
+      const [occupant] = await listCageOccupants('branch-1');
+      return occupant;
+    }
+
+    it('is "pay_at_checkout" for a booking billed at checkout, whatever its payment status', async () => {
+      expect(
+        (await paymentFor({ payment_status: 'Pending', pay_at_checkout: true }))
+          .payment
+      ).toBe('pay_at_checkout');
+    });
+
+    it('follows the payment status of an ordinary booking', async () => {
+      expect(
+        (
+          await paymentFor({
+            payment_status: 'Partially Paid',
+            pay_at_checkout: false,
+          })
+        ).payment
+      ).toBe('partially_paid');
+      expect(
+        (
+          await paymentFor({
+            payment_status: 'Pending',
+            pay_at_checkout: false,
+          })
+        ).payment
+      ).toBe('unpaid');
+    });
+
+    it('is null when there is no booking behind the stay', async () => {
+      expect((await paymentFor(null, 'Daycare')).payment).toBeNull();
+    });
+
+    it('a pay-at-checkout Daycare pet runs up no overdue fee - its end time is only an estimate', async () => {
+      expect(
+        await paymentFor(
+          { payment_status: 'Pending', pay_at_checkout: true },
+          'Daycare'
+        )
+      ).toMatchObject({
+        overdue_fee_per_hour: null,
+        overdue_grace_minutes: null,
+      });
+    });
   });
 
   it('lists a checked-in Daycare pet against the hours it was booked for', async () => {
@@ -120,6 +203,26 @@ describe('cageOccupants.service', () => {
     });
     // No booking to look up.
     expect(supabase.from).not.toHaveBeenCalledWith('bookings');
+  });
+
+  it('reads every branch when given no branch (Superadmin, all branches)', async () => {
+    const eqCalls: unknown[][] = [];
+    vi.mocked(supabase.from).mockImplementation((() => {
+      const builder: Record<string, unknown> = {};
+      builder.select = vi.fn(() => builder);
+      builder.in = vi.fn(() => builder);
+      builder.eq = vi.fn((...args: unknown[]) => {
+        eqCalls.push(args);
+        return builder;
+      });
+      builder.then = (resolve: (_result: QueryResult) => void) =>
+        resolve({ data: [], error: null });
+      return builder;
+    }) as never);
+
+    await listCageOccupants(null);
+
+    expect(eqCalls).toEqual([['status', 'Active']]);
   });
 
   it('returns an empty list, with no further lookups, when nobody is checked in', async () => {

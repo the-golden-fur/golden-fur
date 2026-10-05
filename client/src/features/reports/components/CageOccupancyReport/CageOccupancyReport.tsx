@@ -18,11 +18,19 @@ import type {
   CageSize,
   CageStatus,
 } from '../../../hotel/hotel.types';
+import { CAGE_OCCUPANT_PAYMENT_LABEL } from '../../../hotel/hotel.types';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { getCageOccupancyReport } from '../../api/reports.api';
 import type { CageOccupancyRow } from '../../reports.types';
 import { CheckoutCountdown } from './CheckoutCountdown';
+import {
+  buildCageComparators,
+  CAGE_SIZE_ORDER,
+  CAGE_SORT_OPTIONS,
+  groupCagesBySize,
+  type CageSortKey,
+} from './cageSort';
 import styles from './CageOccupancyReport.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
@@ -36,7 +44,7 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Receptionist',
 ]);
 
-const SIZE_ORDER: CageOccupancyRow['size'][] = ['S', 'M', 'L', 'XL'];
+const SIZE_ORDER = CAGE_SIZE_ORDER;
 
 const SIZE_LABEL: Record<CageOccupancyRow['size'], string> = {
   S: 'Small',
@@ -69,14 +77,6 @@ function formatExpectedCheckout(iso: string): string {
   });
 }
 
-type CageSortKey = 'label' | 'status' | 'size';
-
-const CAGE_SORT_OPTIONS: Array<{ value: CageSortKey; label: string }> = [
-  { value: 'label', label: 'Sort: Label (A-Z)' },
-  { value: 'status', label: 'Sort: Status' },
-  { value: 'size', label: 'Sort: Size' },
-];
-
 /**
  * Issue #105: real-time cage occupancy view, grouped by size category and
  * reusing the existing --color-cage-status-* token set (Sprint 4 Epic A,
@@ -87,16 +87,22 @@ const CAGE_SORT_OPTIONS: Array<{ value: CageSortKey; label: string }> = [
  * the at-a-glance count view; a searchable/sortable/filterable list of
  * individual cages (reusing GET /hotel/cages, already open to every role
  * that can reach this page - see CageStatusGrid's own use of it) sits below
- * it for actually finding a specific cage. That individual list is always
- * scoped to the viewer's own branch (GET /hotel/cages has no branch
- * override) - Superadmin's branch selector above only affects the summary;
- * checking a specific cage in a different branch is still Hotel Queue's or
- * Admin > Cages' job, same as before this change.
+ * it for actually finding a specific cage. That individual list follows
+ * the same branch as the summary: the viewer's own branch, or - for a
+ * Superadmin, who isn't tied to one - whatever the branch selector says,
+ * "All branches" included (each card then names its branch). Viewing only:
+ * checking a pet out stays with staff of the branch it is at, so the popup
+ * offers no "Check out" for a cage at another branch.
  *
  * Checkout countdown: an Occupied cage's card also shows who is in it and a
  * live countdown to the expected checkout - the booking's own scheduled end,
  * i.e. the Hotel nights / Daycare hours entered when booking (GET
  * /hotel/cages/occupants).
+ *
+ * Sorting and layout: besides label/status/size the list sorts by the pet
+ * in the cage (checkout due, checked in, pet name, payment - cageSort.ts).
+ * It is laid out as one column per cage size (groupCagesBySize), with the
+ * chosen sort applied inside each column.
  *
  * Cage details popup: every cage card is a button that opens a popup with
  * the cage's own details (status, size, pet types) and, for an occupied
@@ -210,7 +216,11 @@ export function CageOccupancyReport() {
 
     let isMounted = true;
 
-    void getCageGrid(accessToken).then((result) => {
+    // Only a Superadmin chooses a branch ('all' = every branch); everyone
+    // else leaves it to the server, which uses their own.
+    const cageBranch = isSuperadmin ? selectedBranchId || 'all' : undefined;
+
+    void getCageGrid(accessToken, cageBranch).then((result) => {
       if (!isMounted) return;
 
       setIsCagesLoading(false);
@@ -224,7 +234,7 @@ export function CageOccupancyReport() {
       setCages(SIZE_ORDER.flatMap((size) => result.data![size]));
     });
 
-    void getCageOccupants(accessToken).then((result) => {
+    void getCageOccupants(accessToken, cageBranch).then((result) => {
       if (!isMounted || !result.data) return;
 
       setOccupantByCageId(
@@ -235,7 +245,13 @@ export function CageOccupancyReport() {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, isAllowedViewer, refreshKey]);
+  }, [
+    accessToken,
+    isAllowedViewer,
+    isSuperadmin,
+    selectedBranchId,
+    refreshKey,
+  ]);
 
   /** Checks the pet out through its own service's check-out (Daycare
    * session / Hotel stay) - the server releases the cage back to Available
@@ -283,6 +299,11 @@ export function CageOccupancyReport() {
     setRefreshKey((key) => key + 1);
   }
 
+  const cageComparators = useMemo(
+    () => buildCageComparators(occupantByCageId),
+    [occupantByCageId]
+  );
+
   const preFilteredCages = useMemo(
     () =>
       cages.filter(
@@ -303,11 +324,7 @@ export function CageOccupancyReport() {
     items: preFilteredCages,
     matchesQuery: (cage, query) =>
       cage.cage_label.toLowerCase().includes(query),
-    comparators: {
-      label: (a, b) => a.cage_label.localeCompare(b.cage_label),
-      status: (a, b) => a.status.localeCompare(b.status),
-      size: (a, b) => SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size),
-    },
+    comparators: cageComparators,
     initialSortKey: 'label',
   });
 
@@ -326,6 +343,73 @@ export function CageOccupancyReport() {
     detailsCage?.status === 'Occupied'
       ? (occupantByCageId.get(detailsCage.id) ?? null)
       : null;
+
+  // With a size filter on, only that size's column is worth showing.
+  const sizeColumns = groupCagesBySize(filteredCages).filter(
+    (column) => sizeFilter === 'All' || column.size === sizeFilter
+  );
+
+  const branchNameById = new Map(
+    branches.map((branch) => [branch.id, branch.name])
+  );
+  // Cages from several branches are in view at once - say which is which.
+  const showCageBranch = isSuperadmin && selectedBranchId === '';
+  // Checking a pet out is its own branch's job (the server refuses it from
+  // any other), so the popup only offers it for the viewer's own branch.
+  const canCheckOutDetailsCage =
+    detailsCage !== null && detailsCage.branch_id === viewerBranchId;
+
+  function renderCageCard(cage: Cage) {
+    // Only an Occupied cage has someone in it - a stale occupant entry for a
+    // cage that has since been freed is ignored.
+    const occupant =
+      cage.status === 'Occupied' ? occupantByCageId.get(cage.id) : undefined;
+
+    return (
+      <button
+        key={cage.id}
+        type="button"
+        className={styles.cageCard}
+        aria-label={`${cage.cage_label} - ${cage.status}. View details`}
+        onClick={() => setDetailsCageId(cage.id)}
+      >
+        <span className={styles.cageLabel}>{cage.cage_label}</span>
+        {showCageBranch ? (
+          <span className={styles.cageSize}>
+            {branchNameById.get(cage.branch_id) ?? 'Unknown branch'}
+          </span>
+        ) : null}
+        <span className={styles.cageSize}>{SIZE_LABEL[cage.size]}</span>
+        <span className={`${styles.badge} ${STATUS_TOKEN[cage.status]}`}>
+          {cage.status}
+        </span>
+        {occupant ? (
+          <span className={styles.occupant}>
+            <span className={styles.occupantName}>
+              {occupant.pet_name ?? 'Unknown pet'}
+            </span>
+            <span className={styles.cageSize}>{occupant.service}</span>
+            {occupant.payment ? (
+              <span className={styles.cageSize}>
+                {CAGE_OCCUPANT_PAYMENT_LABEL[occupant.payment]}
+              </span>
+            ) : null}
+            {occupant.expected_checkout_at ? (
+              <CheckoutCountdown
+                expectedCheckoutAt={occupant.expected_checkout_at}
+                overdueFeePerHour={occupant.overdue_fee_per_hour}
+                overdueGraceMinutes={occupant.overdue_grace_minutes}
+              />
+            ) : (
+              <span className={styles.cageSize}>
+                No expected checkout (walk-in)
+              </span>
+            )}
+          </span>
+        ) : null}
+      </button>
+    );
+  }
 
   const bySize = SIZE_ORDER.map((size) => ({
     size,
@@ -454,57 +538,26 @@ export function CageOccupancyReport() {
           {filteredCages.length === 0 ? (
             <p className={styles.copy}>No cages match these filters.</p>
           ) : (
-            <div className={styles.cageList}>
-              {filteredCages.map((cage) => {
-                // Only an Occupied cage has someone in it - a stale
-                // occupant entry for a cage that has since been freed is
-                // ignored.
-                const occupant =
-                  cage.status === 'Occupied'
-                    ? occupantByCageId.get(cage.id)
-                    : undefined;
-
-                return (
-                  <button
-                    key={cage.id}
-                    type="button"
-                    className={styles.cageCard}
-                    aria-label={`${cage.cage_label} - ${cage.status}. View details`}
-                    onClick={() => setDetailsCageId(cage.id)}
-                  >
-                    <span className={styles.cageLabel}>{cage.cage_label}</span>
-                    <span className={styles.cageSize}>
-                      {SIZE_LABEL[cage.size]}
+            <div className={styles.sizeColumns}>
+              {sizeColumns.map((column) => (
+                <section
+                  key={column.size}
+                  className={styles.sizeColumn}
+                  aria-label={`${SIZE_LABEL[column.size]} cages (${column.cages.length})`}
+                >
+                  <h3 className={styles.sizeColumnHeading}>
+                    {SIZE_LABEL[column.size]}
+                    <span className={styles.sizeColumnCount}>
+                      {column.cages.length}
                     </span>
-                    <span
-                      className={`${styles.badge} ${STATUS_TOKEN[cage.status]}`}
-                    >
-                      {cage.status}
-                    </span>
-                    {occupant ? (
-                      <span className={styles.occupant}>
-                        <span className={styles.occupantName}>
-                          {occupant.pet_name ?? 'Unknown pet'}
-                        </span>
-                        <span className={styles.cageSize}>
-                          {occupant.service}
-                        </span>
-                        {occupant.expected_checkout_at ? (
-                          <CheckoutCountdown
-                            expectedCheckoutAt={occupant.expected_checkout_at}
-                            overdueFeePerHour={occupant.overdue_fee_per_hour}
-                            overdueGraceMinutes={occupant.overdue_grace_minutes}
-                          />
-                        ) : (
-                          <span className={styles.cageSize}>
-                            No expected checkout (walk-in)
-                          </span>
-                        )}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+                  </h3>
+                  {column.cages.length === 0 ? (
+                    <p className={styles.copy}>No cages</p>
+                  ) : (
+                    column.cages.map(renderCageCard)
+                  )}
+                </section>
+              ))}
             </div>
           )}
         </>
@@ -553,6 +606,14 @@ export function CageOccupancyReport() {
                     <dt>Service</dt>
                     <dd>{detailsOccupant.service}</dd>
                   </div>
+                  {detailsOccupant.payment ? (
+                    <div className={styles.detailsRow}>
+                      <dt>Payment</dt>
+                      <dd>
+                        {CAGE_OCCUPANT_PAYMENT_LABEL[detailsOccupant.payment]}
+                      </dd>
+                    </div>
+                  ) : null}
                   <div className={styles.detailsRow}>
                     <dt>Checked in</dt>
                     <dd>
@@ -585,23 +646,34 @@ export function CageOccupancyReport() {
                   </p>
                 ) : null}
 
+                {canCheckOutDetailsCage ? null : (
+                  <p className={styles.copy}>
+                    This pet is checked out by{' '}
+                    {branchNameById.get(detailsCage.branch_id) ??
+                      'its own branch'}{' '}
+                    staff.
+                  </p>
+                )}
+
                 <div className={styles.detailsActions}>
-                  <button
-                    type="button"
-                    className={styles.checkoutButton}
-                    onClick={() => {
-                      setCheckoutError(null);
-                      setCheckoutMessage(null);
-                      setCheckoutTarget({
-                        cage: detailsCage,
-                        occupant: detailsOccupant,
-                      });
-                      // One dialog at a time - the confirm step takes over.
-                      setDetailsCageId(null);
-                    }}
-                  >
-                    Check out
-                  </button>
+                  {canCheckOutDetailsCage ? (
+                    <button
+                      type="button"
+                      className={styles.checkoutButton}
+                      onClick={() => {
+                        setCheckoutError(null);
+                        setCheckoutMessage(null);
+                        setCheckoutTarget({
+                          cage: detailsCage,
+                          occupant: detailsOccupant,
+                        });
+                        // One dialog at a time - the confirm step takes over.
+                        setDetailsCageId(null);
+                      }}
+                    >
+                      Check out
+                    </button>
+                  ) : null}
                   {detailsOccupant.booking_id ? (
                     <Link
                       className={styles.detailsLink}

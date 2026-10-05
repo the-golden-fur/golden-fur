@@ -254,38 +254,77 @@ export async function activityLogController(
   }
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Which branch's cages a read covers. Everyone is kept to their own branch,
+ * except a Superadmin - who isn't tied to one - and may ask for another
+ * branch (`?branch_id=<id>`) or all of them (`?branch_id=all`, resolved to
+ * null). With no query a Superadmin gets their own branch too, so every
+ * existing caller is unchanged. Read-only: check-in/check-out stay
+ * branch-bound.
+ */
+function resolveCageReadBranch(
+  req: AuthenticatedRequest
+): { branchId: string | null } | { error: string } {
+  const ownBranchId = req.user!.branch_id!;
+  const requested = req.query?.branch_id;
+
+  if (req.user?.role !== 'Superadmin' || typeof requested !== 'string') {
+    return { branchId: ownBranchId };
+  }
+
+  if (requested === 'all') return { branchId: null };
+
+  if (!UUID_PATTERN.test(requested)) {
+    return { error: 'branch_id must be a branch id or "all"' };
+  }
+
+  return { branchId: requested };
+}
+
 export async function cageGridController(
   req: AuthenticatedRequest,
   res: Response
 ) {
-  const branchId = req.user?.branch_id;
-
-  if (!branchId) {
+  if (!req.user?.branch_id) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const scope = resolveCageReadBranch(req);
+
+  if ('error' in scope) {
+    return res.status(400).json({ error: scope.error });
+  }
+
   try {
-    const grid = await getCageGrid(branchId);
+    const grid = await getCageGrid(scope.branchId);
     return res.status(200).json({ grid });
   } catch (error) {
     return sendServiceError(res, error);
   }
 }
 
-/** Who is in each occupied cage at the requester's branch, with the
- * expected checkout time - for the Cage Occupancy page's countdown. */
+/** Who is in each occupied cage at the requester's branch (or, for a
+ * Superadmin, the branch(es) asked for - see resolveCageReadBranch), with
+ * the expected checkout time - for the Cage Occupancy page's countdown. */
 export async function cageOccupantsController(
   req: AuthenticatedRequest,
   res: Response
 ) {
-  const branchId = req.user?.branch_id;
-
-  if (!branchId) {
+  if (!req.user?.branch_id) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const scope = resolveCageReadBranch(req);
+
+  if ('error' in scope) {
+    return res.status(400).json({ error: scope.error });
+  }
+
   try {
-    const occupants = await listCageOccupants(branchId);
+    const occupants = await listCageOccupants(scope.branchId);
     return res.status(200).json({ occupants });
   } catch (error) {
     return sendServiceError(res, error);

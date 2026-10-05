@@ -28,14 +28,20 @@ const CAGE_SELECT_WITH_PET_TYPES = '*, cage_pet_types(pet_type)';
  * UI (#79) - one query, grouped client-side/here rather than four separate
  * round trips. */
 export async function getCageGrid(
-  branchId: string
+  // null = every branch (a Superadmin's "All branches" view - see
+  // resolveCageReadBranch in hotel.controller.ts, the only caller that ever
+  // passes it).
+  branchId: string | null
 ): Promise<Record<CageSize, Cage[]>> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('cages')
     .select(CAGE_SELECT_WITH_PET_TYPES)
-    .eq('branch_id', branchId)
     .is('archived_at', null)
     .order('cage_label', { ascending: true });
+
+  if (branchId) query = query.eq('branch_id', branchId);
+
+  const { data, error } = await query;
 
   if (error) throwWithStatus(400, error.message);
 

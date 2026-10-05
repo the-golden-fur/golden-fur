@@ -71,6 +71,34 @@ describe('cageStatus.service (#78)', () => {
       expect(grid.L).toHaveLength(0);
       expect(grid.XL).toHaveLength(0);
     });
+
+    it('reads every branch when given no branch (Superadmin, all branches)', async () => {
+      const eq = vi.fn();
+      vi.mocked(supabase.from).mockImplementation((() => {
+        const builder: Record<string, unknown> = {};
+        builder.select = vi.fn(() => builder);
+        builder.is = vi.fn(() => builder);
+        builder.order = vi.fn(() => builder);
+        builder.eq = vi.fn((...args: unknown[]) => {
+          eq(...args);
+          return builder;
+        });
+        builder.then = (resolve: (_result: QueryResult) => void) =>
+          resolve({
+            data: [
+              { id: 'c1', size: 'S', branch_id: 'branch-1' },
+              { id: 'c2', size: 'S', branch_id: 'branch-2' },
+            ],
+            error: null,
+          });
+        return builder;
+      }) as never);
+
+      const grid = await getCageGrid(null);
+
+      expect(eq).not.toHaveBeenCalled();
+      expect(grid.S.map((cage) => cage.id)).toEqual(['c1', 'c2']);
+    });
   });
 
   describe('getAvailableCageCountsBySize', () => {
