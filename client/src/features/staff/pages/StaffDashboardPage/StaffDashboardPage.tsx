@@ -182,6 +182,7 @@ export function StaffDashboardPage() {
               branches={branches}
               timeFilter="today"
               accessToken={accessToken}
+              filterable
             />
           </div>
 
