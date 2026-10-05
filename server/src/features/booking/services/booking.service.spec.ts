@@ -533,6 +533,19 @@ describe('booking.service (#51)', () => {
       expect(await priceFor('2026-08-03T05:00:00.000Z')).toBe(100);
     });
 
+    it("prices Hotel at the booking branch's own nightly price when it has one", async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(HOTEL_SERVICE as object),
+        service_branch_availability: [
+          { branch_id: 'branch-makati', price_override: 500 },
+          { branch_id: 'branch-other', price_override: null },
+        ],
+      } as never);
+
+      // Two nights at this branch's 500, not the 800 base price.
+      expect(await priceFor('2026-08-05T01:00:00.000Z', 'Hotel')).toBe(1000);
+    });
+
     it('leaves Hotel on its per-night price', async () => {
       vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
 

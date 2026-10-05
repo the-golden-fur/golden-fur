@@ -19,6 +19,7 @@ import messagingRoutes from '../features/messaging/messaging.routes.ts';
 import reportsRoutes from '../features/reports/reports.routes.ts';
 import publicRoutes from '../features/public/public.routes.ts';
 import recordsArchiveRoutes from '../features/recordsArchive/recordsArchive.routes.ts';
+import faqRoutes from '../features/faq/faq.routes.ts';
 
 const router = Router();
 
@@ -42,5 +43,6 @@ router.use(messagingRoutes);
 router.use(reportsRoutes);
 router.use(publicRoutes);
 router.use(recordsArchiveRoutes);
+router.use(faqRoutes);
 
 export default router;

@@ -9,6 +9,7 @@ import {
   listServices,
   restoreService,
   setServiceBranchAvailability,
+  setServiceBranchPrice,
   updateService,
 } from './services/services.service.ts';
 import { uploadServiceImage } from './services/maintenanceImageUpload.service.ts';
@@ -71,6 +72,7 @@ import {
 } from './services/serviceTypes.service.ts';
 import {
   branchAvailabilityValidator,
+  branchPriceValidator,
   createBreedValidator,
   createPackageValidator,
   createPromoValidator,
@@ -310,6 +312,39 @@ export async function setServiceBranchAvailabilityController(
       isAvailable: parsed.data.is_available,
       requesterRole,
       requesterBranchId,
+    });
+
+    return res.status(200).json({ availability });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** A branch's own price for a service - Superadmin-only (route + service). */
+export async function setServiceBranchPriceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+
+  if (!req.user?.sub || !requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = branchPriceValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const availability = await setServiceBranchPrice({
+      serviceId: paramId(req, 'id'),
+      branchId: parsed.data.branch_id,
+      priceOverride: parsed.data.price_override,
+      requesterRole,
     });
 
     return res.status(200).json({ availability });

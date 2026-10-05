@@ -3,6 +3,7 @@ import { listPackages } from '../../maintenance/services/packages.service.ts';
 import { listPromos } from '../../maintenance/services/promos.service.ts';
 import { listPromoCapConfigurations } from '../../maintenance/services/promoCap.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
+import { servicePriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
 import type {
   Package,
   Promo,
@@ -73,5 +74,20 @@ export async function getBookingCatalog({
       cap_value: 20,
     };
 
-  return { services, packages, promos, fixedPrice, promoCap };
+  // A branch may charge its own price for a service (see
+  // servicePriceAtBranch) - the booking flow only ever looks at one branch,
+  // so it is handed that branch's price as base_price and needs no notion of
+  // overrides itself. createBooking resolves the same figure server-side.
+  const branchPricedServices = services.map((service) => ({
+    ...service,
+    base_price: servicePriceAtBranch(service, branchId),
+  }));
+
+  return {
+    services: branchPricedServices,
+    packages,
+    promos,
+    fixedPrice,
+    promoCap,
+  };
 }

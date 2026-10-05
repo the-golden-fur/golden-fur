@@ -34,6 +34,7 @@ import { DangerTab } from './tabs/DangerTab';
 import {
   BRANCHES_TILE,
   CONFIG_TILES,
+  FAQS_TILE,
   HIDDEN_CONFIG_TILES,
   WEIGHT_CLASSES_TILE,
 } from './configTiles.config';
@@ -301,7 +302,7 @@ export function SettingsPage({ role }: SettingsPageProps) {
   const configTiles = useMemo(
     () =>
       isSuperadmin
-        ? [...CONFIG_TILES, WEIGHT_CLASSES_TILE, BRANCHES_TILE]
+        ? [...CONFIG_TILES, WEIGHT_CLASSES_TILE, BRANCHES_TILE, FAQS_TILE]
         : CONFIG_TILES,
     [isSuperadmin]
   );

@@ -215,6 +215,28 @@ describe('daycareBilling.service (#65)', () => {
         });
       });
 
+      it("uses the branch's own Hotel price when it has one", async () => {
+        queueFromResults(branchWithHours, {
+          data: [
+            {
+              base_price: 850,
+              service_branch_availability: [
+                { branch_id: 'branch-1', price_override: 500 },
+              ],
+            },
+          ],
+          error: null,
+        });
+
+        expect(
+          await computeDaycareChargeBreakdown(start, end, 'branch-1')
+        ).toMatchObject({
+          nights: 2,
+          nightly_rate: 500,
+          overnight_charge: 1000,
+        });
+      });
+
       it('charges one night for a pet picked up the next morning', async () => {
         queueFromResults(branchWithHours, hotelServices(850));
 

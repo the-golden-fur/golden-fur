@@ -15,6 +15,7 @@ import { recordActivity } from '../../hotel/services/activityLog.service.ts';
 import { postDaycareOverdueCharge } from './daycareOverdueCharge.service.ts';
 import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
 import { resolveEffectivePolicy } from '../../booking/services/staffPicker.service.ts';
+import { servicePriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -50,7 +51,7 @@ async function resolveHotelNightlyRate(
   const { data, error } = await supabase
     .from('services')
     .select(
-      'base_price, service_branch_availability!inner(branch_id, is_available)'
+      'base_price, service_branch_availability!inner(branch_id, is_available, price_override)'
     )
     .eq('category', 'Hotel')
     .eq('is_active', true)
@@ -60,9 +61,11 @@ async function resolveHotelNightlyRate(
 
   if (error) throwWithStatus(400, error.message);
 
-  const prices = ((data ?? []) as Array<{ base_price: number }>).map((row) =>
-    Number(row.base_price)
-  );
+  // The inner join above is already narrowed to this branch's own row, so
+  // servicePriceAtBranch picks up the branch's own Hotel price if it has one.
+  const prices = (
+    (data ?? []) as Array<Parameters<typeof servicePriceAtBranch>[0]>
+  ).map((row) => servicePriceAtBranch(row, branchId));
 
   return prices.length > 0 ? Math.min(...prices) : fallback;
 }

@@ -4,6 +4,7 @@ import {
   Calculator,
   DoorOpen,
   Gift,
+  MessageCircleQuestion,
   Package,
   PawPrint,
   Percent,
@@ -20,6 +21,7 @@ import { BranchesPage } from '../../features/maintenance/pages/BranchesPage/Bran
 import { AdminDiscountManagementPage } from '../../features/discounts/pages/AdminDiscountManagementPage/AdminDiscountManagementPage';
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
+import { FaqConfigurationPage } from '../../features/faq/pages/FaqConfigurationPage/FaqConfigurationPage';
 
 export interface ConfigTileConfig {
   title: string;
@@ -125,6 +127,22 @@ export const WEIGHT_CLASSES_TILE: ConfigTileConfig = {
   to: '/staff/admin/maintenance/weight-classes',
   icon: Scale,
   Component: WeightClassConfigurationPage,
+};
+
+/**
+ * Superadmin-only, appended conditionally to `CONFIG_TILES` (see
+ * SettingsPage.tsx), same shape as WEIGHT_CLASSES_TILE above: the help
+ * mascot's FAQs are one list shown to every visitor at every branch, so a
+ * branch-scoped Admin has no access. FaqConfigurationPage enforces this too
+ * (ALLOWED_VIEWER_ROLES), as do the server's /maintenance/faqs routes.
+ */
+export const FAQS_TILE: ConfigTileConfig = {
+  title: 'Mascot FAQs',
+  description:
+    'Set the questions and answers behind the help mascot’s FAQs button.',
+  to: '/staff/admin/maintenance/faqs',
+  icon: MessageCircleQuestion,
+  Component: FaqConfigurationPage,
 };
 
 /**

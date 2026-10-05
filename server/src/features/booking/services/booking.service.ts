@@ -7,6 +7,7 @@ import {
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
+import { servicePriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
@@ -283,8 +284,15 @@ async function resolveBookingItem(
     return {
       service_id: service.id,
       package_id: null,
+      // The booking branch may charge its own price for this service
+      // (servicePriceAtBranch) - it stands in for base_price, so a pet-type
+      // fixed price and the Grooming matrix still take precedence as before.
       price_at_booking: round2(
-        resolveServicePrice(service, pet, serviceFixedPrice) * quantity
+        resolveServicePrice(
+          { ...service, base_price: servicePriceAtBranch(service, branchId) },
+          pet,
+          serviceFixedPrice
+        ) * quantity
       ),
       duration_minutes_at_booking: durationMinutes,
     };

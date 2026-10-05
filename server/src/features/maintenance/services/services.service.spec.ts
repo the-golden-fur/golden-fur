@@ -7,6 +7,7 @@ import {
   listServices,
   restoreService,
   setServiceBranchAvailability,
+  setServiceBranchPrice,
   updateService,
 } from './services.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -50,7 +51,10 @@ function queueFromResults(...results: QueryResult[]) {
       recordedWrites.push({ table, method: 'update', payload });
       return builder;
     });
-    builder.upsert = vi.fn(() => builder);
+    builder.upsert = vi.fn((payload?: unknown) => {
+      recordedWrites.push({ table, method: 'upsert', payload });
+      return builder;
+    });
     builder.delete = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.single = vi.fn(() => Promise.resolve(result));
@@ -301,6 +305,129 @@ describe('services.service', () => {
       await expect(getServiceById('missing')).rejects.toMatchObject({
         statusCode: 404,
       });
+    });
+  });
+
+  describe('setServiceBranchPrice', () => {
+    it("sets one branch's own price without touching its availability", async () => {
+      queueFromResults(
+        { data: { id: 'service-1', archived_at: null }, error: null },
+        {
+          data: {
+            service_id: 'service-1',
+            branch_id: 'branch-south',
+            is_available: true,
+            price_override: 500,
+          },
+          error: null,
+        }
+      );
+
+      const result = await setServiceBranchPrice({
+        serviceId: 'service-1',
+        branchId: 'branch-south',
+        priceOverride: 500,
+        requesterRole: 'Superadmin',
+      });
+
+      expect(result.price_override).toBe(500);
+      const writes = recordedWrites.filter(
+        (write) => write.table === 'service_branch_availability'
+      );
+      // Only the price is written - never is_available.
+      expect(writes).toEqual([
+        {
+          table: 'service_branch_availability',
+          method: 'update',
+          payload: { price_override: 500 },
+        },
+      ]);
+    });
+
+    it('a branch with no availability row yet gets one that stays unavailable', async () => {
+      queueFromResults(
+        { data: { id: 'service-1', archived_at: null }, error: null },
+        { data: null, error: null }, // update matched no row
+        {
+          data: {
+            service_id: 'service-1',
+            branch_id: 'branch-south',
+            is_available: false,
+            price_override: 500,
+          },
+          error: null,
+        }
+      );
+
+      const result = await setServiceBranchPrice({
+        serviceId: 'service-1',
+        branchId: 'branch-south',
+        priceOverride: 500,
+        requesterRole: 'Superadmin',
+      });
+
+      expect(result.is_available).toBe(false);
+      const insert = recordedWrites.find(
+        (write) =>
+          write.table === 'service_branch_availability' &&
+          write.method === 'insert'
+      );
+      // Setting a price must never switch a service on at a branch.
+      expect(insert?.payload).toEqual({
+        service_id: 'service-1',
+        branch_id: 'branch-south',
+        is_available: false,
+        price_override: 500,
+      });
+    });
+
+    it('clears the branch price with null, back to the base price', async () => {
+      queueFromResults(
+        { data: { id: 'service-1', archived_at: null }, error: null },
+        {
+          data: {
+            service_id: 'service-1',
+            branch_id: 'branch-south',
+            is_available: true,
+            price_override: null,
+          },
+          error: null,
+        }
+      );
+
+      const result = await setServiceBranchPrice({
+        serviceId: 'service-1',
+        branchId: 'branch-south',
+        priceOverride: null,
+        requesterRole: 'Superadmin',
+      });
+
+      expect(result.price_override).toBeNull();
+    });
+
+    it('is Superadmin-only', async () => {
+      await expect(
+        setServiceBranchPrice({
+          serviceId: 'service-1',
+          branchId: 'branch-south',
+          priceOverride: 500,
+          requesterRole: 'Admin',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+
+    it('404s for a service that does not exist', async () => {
+      queueFromResults({ data: null, error: null });
+
+      await expect(
+        setServiceBranchPrice({
+          serviceId: 'missing',
+          branchId: 'branch-south',
+          priceOverride: 500,
+          requesterRole: 'Superadmin',
+        })
+      ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 

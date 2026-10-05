@@ -54,6 +54,7 @@ import {
   setPackageBranchAvailabilityController,
   setPromoBranchAvailabilityController,
   setServiceBranchAvailabilityController,
+  setServiceBranchPriceController,
   setServiceTypeBranchAvailabilityController,
   updateBreedController,
   updatePackageController,
@@ -155,6 +156,13 @@ router.patch(
   '/maintenance/services/:id/branch-availability',
   adminWriteWithBranch,
   setServiceBranchAvailabilityController
+);
+// A branch's own price for a service - a cross-branch pricing decision, so
+// Superadmin-only (unlike the availability toggle above).
+router.patch(
+  '/maintenance/services/:id/branch-price',
+  superadminWrite,
+  setServiceBranchPriceController
 );
 
 // Packages (#41)

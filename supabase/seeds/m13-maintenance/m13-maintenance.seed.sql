@@ -38,8 +38,20 @@
 -- 1. service_branch_availability
 -- ============================================================
 
-insert into public.service_branch_availability (service_id, branch_id, is_available)
-select s.id, b.id, true
+-- The Hotel service's Southwoods row is created with its own PHP 500 price
+-- (per-branch service price, migration 20261006245 - whose own UPDATE finds
+-- no rows yet on a fresh database). "do nothing" on conflict, so a price a
+-- Superadmin later changes or clears is never overwritten.
+insert into public.service_branch_availability
+  (service_id, branch_id, is_available, price_override)
+select
+  s.id,
+  b.id,
+  true,
+  case
+    when s.id = 'a1300000-0000-4000-a000-000000000024' and b.name = 'Southwoods'
+      then 500.00
+  end
 from public.services as s
 cross join public.branches as b
 where s.id::text like 'a1300000-%'

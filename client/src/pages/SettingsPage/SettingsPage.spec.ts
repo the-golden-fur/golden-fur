@@ -101,6 +101,13 @@ vi.mock('./configTiles.config', () => ({
     icon: Wrench,
     Component: () => createElement('p', null, 'Embedded Weight Classes Page'),
   },
+  FAQS_TILE: {
+    title: 'Mascot FAQs',
+    description: 'Mascot FAQ config.',
+    to: '/staff/admin/maintenance/faqs',
+    icon: Wrench,
+    Component: () => createElement('p', null, 'Embedded Mascot FAQs Page'),
+  },
   HIDDEN_CONFIG_TILES: [],
 }));
 

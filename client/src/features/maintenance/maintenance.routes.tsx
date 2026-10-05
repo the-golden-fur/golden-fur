@@ -7,6 +7,7 @@ import { WeightClassConfigurationPage } from './pages/WeightClassConfigurationPa
 import { AdminPromosAndRewardsPage } from './pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
 import { AdminPetsPage } from './pages/AdminPetsPage/AdminPetsPage';
 import { BranchesPage } from './pages/BranchesPage/BranchesPage';
+import { FaqConfigurationPage } from '../faq/pages/FaqConfigurationPage/FaqConfigurationPage';
 
 /**
  * Admin maintenance panel routes (#45-#47). StaffAuthGuard handles
@@ -28,6 +29,12 @@ export const maintenanceRoutes = (
       <Route
         path="/staff/admin/maintenance/weight-classes"
         element={<WeightClassConfigurationPage />}
+      />
+      {/* Mascot FAQs lives in its own feature folder (features/faq) but is
+          reached like every other Superadmin Config page. */}
+      <Route
+        path="/staff/admin/maintenance/faqs"
+        element={<FaqConfigurationPage />}
       />
       <Route
         path="/staff/admin/maintenance/promos-and-rewards"
