@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -204,6 +204,11 @@ describe('TotpChallengeForm', () => {
     renderForm();
 
     await screen.findByLabelText('Digit 1 of 6');
+    // The checkbox is shown until getMfaStatus resolves (isMandatoryRole
+    // starts false), so wait for that response to be applied before asserting.
+    await act(async () => {
+      await vi.mocked(mfaApi.getMfaStatus).mock.results[0]?.value;
+    });
     expect(
       screen.queryByLabelText(/remember this device for 30 days/i)
     ).not.toBeInTheDocument();
