@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { PawPrint } from 'lucide-react';
 import { Link } from 'react-router';
+import { fetchPublicFaqs } from '../../../features/faq/api/faq.api';
 import styles from './HelpMascot.module.css';
 import {
   MASCOTS,
@@ -92,7 +93,21 @@ const MASCOT_TIPS = [
   'Need help? Tap the chat bubble for FAQs and support.',
 ];
 
-const FAQ_ITEMS = [
+interface MascotFaq {
+  /** Absent on the built-in fallback FAQs. */
+  id?: string;
+  question: string;
+  answer: string;
+}
+
+/**
+ * The built-in FAQs. What the popup actually shows is set by a Superadmin
+ * (Settings > Config > Mascot FAQs, read from GET /public/faqs each time the
+ * popup opens); these are the fallback whenever that list can't be used -
+ * still loading, the request failed, or no FAQs are set - so the popup is
+ * never empty. They match the rows migration 20261006246 starts with.
+ */
+const DEFAULT_FAQ_ITEMS: MascotFaq[] = [
   {
     question: 'How do I book a service?',
     answer:
@@ -165,6 +180,28 @@ export function HelpMascot({ links }: HelpMascotProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const handRef = useRef<HTMLSpanElement>(null);
   const [isFaqOpen, setIsFaqOpen] = useState(false);
+  const [faqItems, setFaqItems] = useState<MascotFaq[]>(DEFAULT_FAQ_ITEMS);
+
+  // Loaded when the popup opens rather than with every page: the mascot is
+  // on nearly every page and most visits never open it. Asking again on each
+  // open means a Superadmin's change shows without a reload.
+  useEffect(() => {
+    if (!isFaqOpen) return;
+
+    let isMounted = true;
+
+    void fetchPublicFaqs().then((result) => {
+      if (!isMounted) return;
+
+      setFaqItems(
+        result.data && result.data.length > 0 ? result.data : DEFAULT_FAQ_ITEMS
+      );
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isFaqOpen]);
   const [isHandVisible, setIsHandVisible] = useState(false);
   const [isHidden, setIsHidden] = useState(readMascotHidden);
 
@@ -469,8 +506,11 @@ export function HelpMascot({ links }: HelpMascotProps) {
             </div>
 
             <div className={styles.faqList}>
-              {FAQ_ITEMS.map((item) => (
-                <details key={item.question} className={styles.faqItem}>
+              {faqItems.map((item) => (
+                <details
+                  key={item.id ?? item.question}
+                  className={styles.faqItem}
+                >
                   <summary className={styles.faqQuestion}>
                     {item.question}
                   </summary>

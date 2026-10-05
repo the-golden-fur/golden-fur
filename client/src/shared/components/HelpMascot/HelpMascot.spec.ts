@@ -2,8 +2,13 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchPublicFaqs } from '../../../features/faq/api/faq.api';
 import { HelpMascot } from './HelpMascot';
 import styles from './HelpMascot.module.css';
+
+vi.mock('../../../features/faq/api/faq.api', () => ({
+  fetchPublicFaqs: vi.fn(),
+}));
 
 vi.mock('./mascots', () => {
   const MASCOTS = [
@@ -514,5 +519,111 @@ describe('HelpMascot - petting', () => {
     fireEvent.click(mascotButton());
 
     expect(mascotImage()).toHaveAttribute('src', 'blob:pet-2');
+  });
+});
+
+// Custom change (configurable mascot FAQs): the popup shows what a
+// Superadmin set in Settings > Config > Mascot FAQs, falling back to the
+// built-in questions whenever that list can't be used.
+describe('HelpMascot - FAQs', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.mocked(fetchPublicFaqs).mockReset();
+  });
+
+  /** Opens the popup and lets the FAQ request settle. */
+  async function openFaqs() {
+    fireEvent.click(screen.getByRole('button', { name: 'FAQs' }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  it('shows the configured questions and answers, in the order given', async () => {
+    vi.mocked(fetchPublicFaqs).mockResolvedValue({
+      data: [
+        { id: 'faq-2', question: 'Do you offer pick-up?', answer: 'Not yet.' },
+        { id: 'faq-1', question: 'Are you open Sundays?', answer: 'Yes.' },
+      ],
+      error: null,
+    });
+
+    renderMascot();
+    await openFaqs();
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Frequently asked questions',
+    });
+    const questions = Array.from(dialog.querySelectorAll('summary')).map(
+      (summary) => summary.textContent
+    );
+
+    expect(questions).toEqual([
+      'Do you offer pick-up?',
+      'Are you open Sundays?',
+    ]);
+    expect(screen.getByText('Not yet.')).toBeInTheDocument();
+    // The built-in questions are replaced, not added to.
+    expect(screen.queryByText('How do I book a service?')).toBeNull();
+  });
+
+  it('asks for the list each time the popup is opened, so a change shows without a reload', async () => {
+    vi.mocked(fetchPublicFaqs).mockResolvedValue({
+      data: [{ id: 'faq-1', question: 'Old question?', answer: 'Old.' }],
+      error: null,
+    });
+
+    renderMascot();
+    await openFaqs();
+    expect(screen.getByText('Old question?')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close FAQs' }));
+    vi.mocked(fetchPublicFaqs).mockResolvedValue({
+      data: [{ id: 'faq-1', question: 'New question?', answer: 'New.' }],
+      error: null,
+    });
+    await openFaqs();
+
+    expect(fetchPublicFaqs).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('New question?')).toBeInTheDocument();
+    expect(screen.queryByText('Old question?')).toBeNull();
+  });
+
+  it('does not ask for the list until the popup is opened', () => {
+    renderMascot();
+
+    expect(fetchPublicFaqs).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the built-in questions when the list cannot be loaded', async () => {
+    vi.mocked(fetchPublicFaqs).mockResolvedValue({
+      data: null,
+      error: 'Something went wrong.',
+    });
+
+    renderMascot();
+    await openFaqs();
+
+    expect(screen.getByText('How do I book a service?')).toBeInTheDocument();
+    expect(screen.getByText('Still need help?')).toBeInTheDocument();
+  });
+
+  it('falls back to the built-in questions when no FAQs are set', async () => {
+    vi.mocked(fetchPublicFaqs).mockResolvedValue({ data: [], error: null });
+
+    renderMascot();
+    await openFaqs();
+
+    expect(screen.getByText('How do I book a service?')).toBeInTheDocument();
+  });
+
+  it('shows the built-in questions straight away, before the list arrives', () => {
+    vi.mocked(fetchPublicFaqs).mockReturnValue(new Promise(() => {}));
+
+    renderMascot();
+    fireEvent.click(screen.getByRole('button', { name: 'FAQs' }));
+
+    expect(screen.getByText('How do I book a service?')).toBeInTheDocument();
   });
 });
