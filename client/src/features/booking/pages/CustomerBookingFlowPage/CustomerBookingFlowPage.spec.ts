@@ -2340,12 +2340,207 @@ describe('CustomerBookingFlowPage', () => {
       );
     });
 
+    // Pay at checkout (custom change): offered to staff for a walk-in
+    // Hotel/Daycare booking when the branch allows it.
+    describe('pay at checkout', () => {
+      const DAYCARE_SERVICE = {
+        id: 'service-daycare-1',
+        category: 'Daycare' as const,
+        name: 'Daycare (per hour)',
+        base_price: 100,
+        duration_minutes: 60,
+        is_active: true,
+        requires_assessed_pet: true,
+        created_by: null,
+        updated_by: null,
+        created_at: '',
+        updated_at: '',
+        first_hour_fee: 100,
+        succeeding_hour_fee: 50,
+        daycare_overnight_fee: 850,
+      };
+
+      /** Walks a receptionist-mode render through to the Review step with
+       * one Daycare booking of the given type. */
+      async function goToDaycareReview(
+        user: ReturnType<typeof userEvent.setup>,
+        bookingType: 'Walk-in' | 'Online Booking'
+      ) {
+        vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+          data: {
+            services: [GROOMING_SERVICE, DAYCARE_SERVICE],
+            packages: [],
+            promos: [],
+          },
+          error: null,
+        });
+
+        renderStaffPage();
+
+        await waitFor(() =>
+          expect(screen.getByText('Makati')).toBeInTheDocument()
+        );
+        await user.click(screen.getByText('Makati'));
+        await user.click(screen.getByText('Next'));
+
+        await waitFor(() =>
+          expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+        );
+        await user.click(screen.getByText('Jamie Cruz'));
+        await user.click(screen.getByText('Next'));
+
+        await waitFor(() =>
+          expect(screen.getByText('Max')).toBeInTheDocument()
+        );
+        await user.click(screen.getByText('Max'));
+        await user.click(screen.getByText('Next'));
+
+        await waitFor(() =>
+          expect(screen.getByText('Daycare')).toBeInTheDocument()
+        );
+        await user.click(screen.getByText('Daycare'));
+        await user.click(screen.getByText('Next'));
+
+        await waitFor(() =>
+          expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
+        );
+        await user.click(screen.getByText('Daycare (per hour)'));
+        await user.click(screen.getByText('Next'));
+
+        await waitFor(() =>
+          expect(screen.getByText('Online Booking')).toBeInTheDocument()
+        );
+        await user.click(screen.getByText(bookingType));
+        await user.click(screen.getByText('Next'));
+
+        await waitFor(() =>
+          expect(screen.getByText('Select slot')).toBeInTheDocument()
+        );
+        await user.click(screen.getByText('Select slot'));
+        await screen.findByTestId('cage-picker-list');
+        await user.click(screen.getByText('Next'));
+
+        // Care Instructions (optional) -> Your bookings -> Promos -> Review.
+        await waitFor(() =>
+          expect(
+            screen.getByRole('button', { name: 'Add feeding time' })
+          ).toBeInTheDocument()
+        );
+        await user.click(screen.getByText('Next'));
+
+        await waitFor(() =>
+          expect(screen.getByText('Add another booking')).toBeInTheDocument()
+        );
+        await user.click(screen.getByText('Next'));
+
+        await waitFor(() =>
+          expect(
+            screen.getByText(/Select any promos or coupons/)
+          ).toBeInTheDocument()
+        );
+        await user.click(screen.getByText('Next'));
+
+        await waitFor(() =>
+          expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+        );
+      }
+
+      it('a walk-in Daycare booking can be created to pay at checkout', async () => {
+        vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+          data: {
+            downpayment_enabled: true,
+            downpayment_type: 'Flat',
+            downpayment_amount: 100,
+            pay_at_checkout_enabled: true,
+          },
+          error: null,
+        });
+        vi.mocked(bookingApi.createBooking).mockResolvedValue({
+          data: {
+            id: 'booking-1',
+            status: 'In Progress',
+            scheduled_start: '2026-08-03T01:00:00.000Z',
+          } as never,
+          error: null,
+        });
+
+        const user = userEvent.setup();
+        await goToDaycareReview(user, 'Walk-in');
+
+        // A walk-in never has a down payment - the choice is between paying
+        // in full now and paying at checkout.
+        expect(screen.getByText('Payment scheme')).toBeInTheDocument();
+        expect(screen.queryByLabelText(/^Downpayment/)).not.toBeInTheDocument();
+        expect(screen.getByLabelText(/^Full payment/)).toBeChecked();
+
+        await user.click(screen.getByLabelText(/^Pay at checkout/));
+        expect(
+          screen.getByText(/billing starts when the pet is checked\s+in/)
+        ).toBeInTheDocument();
+
+        await user.click(screen.getByText('Confirm booking'));
+
+        await waitFor(() =>
+          expect(bookingApi.createBooking).toHaveBeenCalledWith(
+            'token',
+            expect.objectContaining({
+              booking_source: 'Walk-in',
+              payment_scheme: 'pay_at_checkout',
+            })
+          )
+        );
+      });
+
+      it('is not offered when the branch has it switched off', async () => {
+        vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+          data: {
+            downpayment_enabled: false,
+            downpayment_type: null,
+            downpayment_amount: null,
+            pay_at_checkout_enabled: false,
+          },
+          error: null,
+        });
+
+        const user = userEvent.setup();
+        await goToDaycareReview(user, 'Walk-in');
+
+        expect(screen.queryByText('Payment scheme')).not.toBeInTheDocument();
+        expect(
+          screen.queryByLabelText(/^Pay at checkout/)
+        ).not.toBeInTheDocument();
+      });
+
+      it('is not offered for an Online Daycare booking', async () => {
+        vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+          data: {
+            downpayment_enabled: true,
+            downpayment_type: 'Flat',
+            downpayment_amount: 100,
+            pay_at_checkout_enabled: true,
+          },
+          error: null,
+        });
+
+        const user = userEvent.setup();
+        await goToDaycareReview(user, 'Online Booking');
+
+        expect(screen.getByLabelText(/^Downpayment/)).toBeInTheDocument();
+        expect(
+          screen.queryByLabelText(/^Pay at checkout/)
+        ).not.toBeInTheDocument();
+      });
+    });
+
     it('selecting Walk-in locks the date/time picker (staff picker stays interactive), hides the downpayment breakdown, and sends booking_source "Walk-in"', async () => {
       vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
         data: {
           downpayment_enabled: true,
           downpayment_type: 'Flat',
           downpayment_amount: 100,
+          // Pay at checkout is on for the branch, but it is only ever
+          // offered for Hotel/Daycare - never this Grooming walk-in.
+          pay_at_checkout_enabled: true,
         },
         error: null,
       });

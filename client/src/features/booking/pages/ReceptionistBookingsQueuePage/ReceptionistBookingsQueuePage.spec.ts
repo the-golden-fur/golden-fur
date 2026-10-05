@@ -839,18 +839,19 @@ describe('ReceptionistBookingsQueuePage', () => {
       expect(screen.getAllByRole('listitem')).toHaveLength(2)
     );
 
+    // Latest service on top by default.
     let rows = screen.getAllByRole('listitem');
-    expect(rows[0].textContent).toContain('Early Bird');
-    expect(rows[1].textContent).toContain('Late Riser');
+    expect(rows[0].textContent).toContain('Late Riser');
+    expect(rows[1].textContent).toContain('Early Bird');
 
     await userEvent.selectOptions(
-      screen.getByDisplayValue('Sort: Scheduled time (soonest)'),
-      'latest'
+      screen.getByDisplayValue('Sort: Scheduled time (latest)'),
+      'soonest'
     );
 
     rows = screen.getAllByRole('listitem');
-    expect(rows[0].textContent).toContain('Late Riser');
-    expect(rows[1].textContent).toContain('Early Bird');
+    expect(rows[0].textContent).toContain('Early Bird');
+    expect(rows[1].textContent).toContain('Late Riser');
   });
 
   it('AC-4: "New booking" navigates to the flow shell in receptionist mode', async () => {

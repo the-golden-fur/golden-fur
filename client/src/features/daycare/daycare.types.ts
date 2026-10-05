@@ -40,6 +40,9 @@ export interface DaycareChargeBreakdown {
 
 export type DaycareCheckoutResult = DaycareSession & {
   charge_breakdown?: DaycareChargeBreakdown;
+  /** Pay at checkout: true when this checkout sent the whole charge to the
+   * cashier's Transactions list (the booking had no upfront charge). */
+  billed_at_checkout?: boolean;
 };
 
 export type CheckInPayload = (

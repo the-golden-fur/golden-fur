@@ -208,6 +208,25 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('sorts by the latest scheduled time by default', async () => {
+    stubPetAndOwner();
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Groomer'),
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking()],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Buddy');
+    expect(
+      screen.getByDisplayValue('Sort: Scheduled time (latest)')
+    ).toBeInTheDocument();
+  });
+
   it('clicking a Pending row navigates to its check-in finalize page', async () => {
     stubPetAndOwner();
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({

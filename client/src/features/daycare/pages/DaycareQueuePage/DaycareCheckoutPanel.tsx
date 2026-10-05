@@ -68,7 +68,9 @@ export function DaycareCheckoutPanel({
     return (
       <>
         <p className={styles.successBanner} role="status">
-          Session checked out.
+          {checkedOut.billed_at_checkout
+            ? 'Session checked out. The bill has been sent to the cashier.'
+            : 'Session checked out.'}
         </p>
         <dl className={styles.breakdown}>
           {breakdown ? (

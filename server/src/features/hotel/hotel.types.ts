@@ -102,7 +102,17 @@ export interface CageOccupant {
    * fee. */
   overdue_fee_per_hour: number | null;
   overdue_grace_minutes: number | null;
+  /** How the stay is being paid for: 'pay_at_checkout' for a booking billed
+   * at checkout (bookings.pay_at_checkout), otherwise the booking's own
+   * payment_status. Null when there is no booking behind the stay. */
+  payment: CageOccupantPayment | null;
 }
+
+export type CageOccupantPayment =
+  | 'pay_at_checkout'
+  | 'paid'
+  | 'partially_paid'
+  | 'unpaid';
 
 export interface Cage {
   id: string;
@@ -269,4 +279,7 @@ export interface CheckoutResult {
   downpaymentAmount: number;
   extensionFee: number | null;
   remainingBalance: number;
+  /** Set only for a pay-at-checkout booking: the nights it was billed for.
+   * remainingBalance is then the bill just sent to the cashier. */
+  payAtCheckout?: { nights: number };
 }

@@ -449,6 +449,43 @@ describe('updatePolicyValidator', () => {
     ).toBe(false);
   });
 
+  it('accepts the pay-at-checkout toggle and a 0-59 minute grace period', () => {
+    expect(
+      updatePolicyValidator.safeParse({ pay_at_checkout_enabled: false })
+        .success
+    ).toBe(true);
+    expect(
+      updatePolicyValidator.safeParse({ pay_at_checkout_grace_minutes: 0 })
+        .success
+    ).toBe(true);
+    expect(
+      updatePolicyValidator.safeParse({ pay_at_checkout_grace_minutes: 59 })
+        .success
+    ).toBe(true);
+    expect(
+      updatePolicyValidator.safeParse({ pay_at_checkout_grace_minutes: 60 })
+        .success
+    ).toBe(false);
+    expect(
+      updatePolicyValidator.safeParse({ pay_at_checkout_grace_minutes: 2.5 })
+        .success
+    ).toBe(false);
+  });
+
+  it("accepts the 'pay_at_checkout' payment scheme on a booking", () => {
+    expect(
+      createBookingValidator.safeParse({
+        pet_id: '11111111-1111-4111-8111-111111111111',
+        branch_id: '22222222-2222-4222-8222-222222222222',
+        service_category: 'Hotel',
+        items: [{ service_id: '33333333-3333-4333-8333-333333333333' }],
+        scheduled_start: '2026-10-06T02:00:00.000Z',
+        scheduled_end: '2026-10-08T02:00:00.000Z',
+        payment_scheme: 'pay_at_checkout',
+      }).success
+    ).toBe(true);
+  });
+
   it('accepts enabling a per-transaction downpayment (Flat)', () => {
     expect(
       updatePolicyValidator.safeParse({

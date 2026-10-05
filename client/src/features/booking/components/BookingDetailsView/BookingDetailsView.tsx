@@ -77,6 +77,11 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
   const [activeNightDate, setActiveNightDate] = useState<string | null>(null);
 
   const isHotel = booking.service_category === 'Hotel';
+  // Pay at checkout: until the pet is checked out there is no bill yet, and
+  // the total is only the estimate the booking was created with.
+  const awaitingCheckoutBill =
+    booking.pay_at_checkout === true &&
+    (booking.status === 'Pending' || booking.status === 'In Progress');
   const isGrouped = data.group !== null;
   const hotelNightDates = isHotel
     ? getHotelNightDates(
@@ -219,6 +224,13 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
           <p className={styles.copy}>
             Part of a bundled booking — the discount, promo, total and payments
             below are shared across every booking in the group.
+          </p>
+        ) : null}
+        {awaitingCheckoutBill ? (
+          <p className={styles.copy}>
+            Pays at checkout — nothing has been charged yet. The amounts below
+            are an estimate; the bill for the actual stay goes to the cashier
+            when the pet is checked out.
           </p>
         ) : null}
         <dl className={styles.detailGrid}>

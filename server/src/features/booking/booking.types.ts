@@ -179,9 +179,23 @@ export const BOOKING_SOURCES: readonly BookingSource[] = ['Online', 'Walk-in'];
 /** The payment scheme a booking is created under. 'downpayment' (only when the
  * branch down-payment policy is on) charges just the down payment up front and
  * creates a separate 'balance' transaction for the rest; 'full' charges the
- * whole net total as one transaction. */
-export const PAYMENT_SCHEMES = ['downpayment', 'full'] as const;
+ * whole net total as one transaction. 'pay_at_checkout' (a Walk-in Hotel/
+ * Daycare booking, when the branch allows it) charges nothing up front: the
+ * bill is posted at checkout from the time the pet actually stayed - see
+ * payAtCheckoutCharge.service.ts. */
+export const PAYMENT_SCHEMES = [
+  'downpayment',
+  'full',
+  'pay_at_checkout',
+] as const;
 export type PaymentScheme = (typeof PAYMENT_SCHEMES)[number];
+
+/** The only categories billed by time stayed, so the only ones a booking
+ * can be created 'pay_at_checkout' for. */
+export const PAY_AT_CHECKOUT_CATEGORIES: readonly ServiceCategory[] = [
+  'Hotel',
+  'Daycare',
+];
 
 export const PAYMENT_STATUSES: readonly PaymentStatus[] = [
   'Pending',
@@ -372,6 +386,10 @@ export interface Booking {
    * Snapshotted from the effective policy's downpayment_hold_hours at
    * creation; enforced by applyDownpaymentExpiry (lazy, read-time). */
   downpayment_due_at: string | null;
+  /** Pay at checkout (20261005244): a Walk-in Hotel/Daycare booking created
+   * with no upfront charge. total_price is only an estimate until checkout
+   * posts the real bill (payAtCheckoutCharge.service.ts). */
+  pay_at_checkout: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only) rather than
@@ -449,6 +467,9 @@ export interface BookingGroup {
   downpayment_amount: number | null;
   downpayment_required: boolean;
   downpayment_due_at: string | null;
+  /** Pay at checkout (20261005244): every member is billed at its own
+   * checkout - no shared upfront charge. Mirrored onto each member row. */
+  pay_at_checkout: boolean;
   payment_status: PaymentStatus;
   paid_at: string | null;
   created_at: string;
@@ -528,6 +549,12 @@ export interface PolicyConfiguration {
    * unpaid down-payment-required Online booking auto-cancels. NOT NULL,
    * default 24. Snapshotted onto bookings.downpayment_due_at at creation. */
   downpayment_hold_hours: number;
+  /** Pay at checkout (20261005244): whether a Walk-in Hotel/Daycare booking
+   * at this branch may be created with no upfront charge. Default true. */
+  pay_at_checkout_enabled: boolean;
+  /** Minutes past a full hour a pay-at-checkout Daycare stay may run before
+   * that next hour is billed (daycareHourlyCharge). 0-59, default 10. */
+  pay_at_checkout_grace_minutes: number;
   /** How many overlapping Grooming/Veterinary bookings one staff member may be
    * assigned at once (20260908178). 1 = one pet at a time (default). Read by
    * the get_staff_availability RPC (Check 2) and confirmCapacityAfterInsert;
@@ -589,6 +616,8 @@ export type EffectivePolicy = Pick<
   | 'downpayment_type'
   | 'downpayment_amount'
   | 'downpayment_hold_hours'
+  | 'pay_at_checkout_enabled'
+  | 'pay_at_checkout_grace_minutes'
   | 'max_concurrent_bookings_per_staff'
   | 'booking_group_email_mode'
   | 'care_log_task_email_enabled'

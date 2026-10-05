@@ -94,6 +94,34 @@ describe('HotelStayPicker', () => {
     expect(screen.getByText(/Ana Cruz/)).toBeInTheDocument();
   });
 
+  it('lists the most recently checked-in stay on top by default', async () => {
+    setupMocks([
+      stay({
+        id: 'stay-old',
+        cage_label: 'Makati-S-01',
+        check_in_at: '2026-07-27T01:00:00.000Z',
+      }),
+      stay({
+        id: 'stay-new',
+        cage_label: 'Makati-S-02',
+        check_in_at: '2026-07-28T05:00:00.000Z',
+      }),
+    ]);
+
+    renderPicker({ accessToken: 'token', onSelect: vi.fn() });
+
+    await screen.findByText('Makati-S-02');
+    expect(
+      screen.getByDisplayValue('Sort: Checked in (latest)')
+    ).toBeInTheDocument();
+
+    const rows = screen
+      .getAllByRole('listitem')
+      .map((row) => row.textContent ?? '');
+    expect(rows[0]).toContain('Makati-S-02');
+    expect(rows[1]).toContain('Makati-S-01');
+  });
+
   it('defaults to requesting In Progress stays across all dates', async () => {
     setupMocks([stay()]);
 

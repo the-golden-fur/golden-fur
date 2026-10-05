@@ -27,12 +27,15 @@ import type { HotelStayWithCage } from '../../hotel.types';
 import styles from './HotelStayPicker.module.css';
 
 type SortKey =
+  | 'checkin-latest'
   | 'checkout-soonest'
   | 'checkin-soonest'
   | 'pet-name'
   | 'owner-name';
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
+  // Default: the latest service on top.
+  { value: 'checkin-latest', label: 'Sort: Checked in (latest)' },
   { value: 'checkout-soonest', label: 'Sort: Checkout due (soonest)' },
   { value: 'checkin-soonest', label: 'Sort: Checked in (earliest)' },
   { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
@@ -213,10 +216,13 @@ export function HotelStayPicker({
       'checkin-soonest': (a, b) =>
         new Date(a.stay.check_in_at ?? 0).getTime() -
         new Date(b.stay.check_in_at ?? 0).getTime(),
+      'checkin-latest': (a, b) =>
+        new Date(b.stay.check_in_at ?? 0).getTime() -
+        new Date(a.stay.check_in_at ?? 0).getTime(),
       'pet-name': (a, b) => a.petName.localeCompare(b.petName),
       'owner-name': (a, b) => a.ownerName.localeCompare(b.ownerName),
     },
-    initialSortKey: 'checkout-soonest',
+    initialSortKey: 'checkin-latest',
   });
 
   function buildStayActionItems(item: EnrichedStay): MoreOptionsMenuItem[] {
@@ -255,13 +261,13 @@ export function HotelStayPicker({
         onClear: () => setSearch(''),
       });
     }
-    if (sortKey !== 'checkout-soonest') {
+    if (sortKey !== 'checkin-latest') {
       chips.push({
         id: 'sort',
         label:
           SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
           sortKey,
-        onClear: () => setSortKey('checkout-soonest'),
+        onClear: () => setSortKey('checkin-latest'),
       });
     }
 

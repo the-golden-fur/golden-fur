@@ -1,5 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { CageOccupant } from '../hotel.types.ts';
+import type { CageOccupant, CageOccupantPayment } from '../hotel.types.ts';
 import {
   DAYCARE_OVERDUE_FEE_PER_HOUR,
   DAYCARE_OVERDUE_GRACE_MINUTES,
@@ -9,6 +9,20 @@ function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
   throw error;
+}
+
+interface OccupantBookingRow {
+  id: string;
+  scheduled_end: string;
+  payment_status: 'Pending' | 'Partially Paid' | 'Fully Paid';
+  pay_at_checkout: boolean;
+}
+
+function occupantPayment(booking: OccupantBookingRow): CageOccupantPayment {
+  if (booking.pay_at_checkout) return 'pay_at_checkout';
+  if (booking.payment_status === 'Fully Paid') return 'paid';
+  if (booking.payment_status === 'Partially Paid') return 'partially_paid';
+  return 'unpaid';
 }
 
 interface ActiveStayRow {
@@ -30,15 +44,23 @@ interface ActiveStayRow {
  * entered when booking: Hotel's check-in + number of nights, Daycare's
  * start + number of hours. A walk-in Daycare session with no booking behind
  * it has no agreed pickup time, so it's null there.
+ *
+ * payment says how the stay is being paid for (see CageOccupant). A
+ * pay-at-checkout booking's end time is only an estimate, so it carries no
+ * overdue fee either - checkout bills the time actually stayed instead.
  */
 export async function listCageOccupants(
-  branchId: string
+  // null = every branch (a Superadmin's "All branches" view).
+  branchId: string | null
 ): Promise<CageOccupant[]> {
-  const { data: stayRows, error: staysError } = await supabase
+  let staysQuery = supabase
     .from('stays')
     .select('id, cage_id, stay_type, booking_id, pet_id, check_in_at')
-    .eq('branch_id', branchId)
     .eq('status', 'Active');
+
+  if (branchId) staysQuery = staysQuery.eq('branch_id', branchId);
+
+  const { data: stayRows, error: staysError } = await staysQuery;
 
   if (staysError) throwWithStatus(400, staysError.message);
 
@@ -48,21 +70,18 @@ export async function listCageOccupants(
   const bookingIds = stays
     .map((stay) => stay.booking_id)
     .filter((id): id is string => id !== null);
-  const scheduledEndByBookingId = new Map<string, string>();
+  const bookingById = new Map<string, OccupantBookingRow>();
 
   if (bookingIds.length > 0) {
     const { data: bookingRows, error: bookingsError } = await supabase
       .from('bookings')
-      .select('id, scheduled_end')
+      .select('id, scheduled_end, payment_status, pay_at_checkout')
       .in('id', bookingIds);
 
     if (bookingsError) throwWithStatus(400, bookingsError.message);
 
-    for (const row of (bookingRows ?? []) as Array<{
-      id: string;
-      scheduled_end: string;
-    }>) {
-      scheduledEndByBookingId.set(row.id, row.scheduled_end);
+    for (const row of (bookingRows ?? []) as OccupantBookingRow[]) {
+      bookingById.set(row.id, row);
     }
   }
 
@@ -107,6 +126,12 @@ export async function listCageOccupants(
 
   return stays.map((stay) => {
     const pet = petById.get(stay.pet_id);
+    const booking = stay.booking_id
+      ? (bookingById.get(stay.booking_id) ?? null)
+      : null;
+    const payment = booking ? occupantPayment(booking) : null;
+    const chargesOverdueFee =
+      stay.stay_type === 'Daycare' && payment !== 'pay_at_checkout';
 
     return {
       stay_id: stay.id,
@@ -118,13 +143,14 @@ export async function listCageOccupants(
       service: stay.stay_type,
       booking_id: stay.booking_id,
       since: stay.check_in_at,
-      expected_checkout_at: stay.booking_id
-        ? (scheduledEndByBookingId.get(stay.booking_id) ?? null)
+      expected_checkout_at: booking?.scheduled_end ?? null,
+      overdue_fee_per_hour: chargesOverdueFee
+        ? DAYCARE_OVERDUE_FEE_PER_HOUR
         : null,
-      overdue_fee_per_hour:
-        stay.stay_type === 'Daycare' ? DAYCARE_OVERDUE_FEE_PER_HOUR : null,
-      overdue_grace_minutes:
-        stay.stay_type === 'Daycare' ? DAYCARE_OVERDUE_GRACE_MINUTES : null,
+      overdue_grace_minutes: chargesOverdueFee
+        ? DAYCARE_OVERDUE_GRACE_MINUTES
+        : null,
+      payment,
     };
   });
 }

@@ -42,6 +42,9 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   downpayment_type: 'Percentage',
   downpayment_amount: 50,
   downpayment_hold_hours: 24,
+  // Mirrors the column defaults (20261005244).
+  pay_at_checkout_enabled: true,
+  pay_at_checkout_grace_minutes: 10,
   // Mirrors the column default (20260908178): one staff member, one pet at a
   // time. Only used if the seeded default row is deleted out-of-band.
   max_concurrent_bookings_per_staff: 1,
@@ -158,6 +161,9 @@ export interface DownpaymentPolicy {
   /** Down-payment slot gate: hours from creation before an unpaid
    * down-payment-required Online booking auto-cancels (20260829146). */
   downpayment_hold_hours: EffectivePolicy['downpayment_hold_hours'];
+  /** Pay at checkout (20261005244) - rides along on this same response so
+   * the booking flow needs no second policy fetch. */
+  pay_at_checkout_enabled: EffectivePolicy['pay_at_checkout_enabled'];
 }
 
 /**
@@ -176,6 +182,7 @@ export async function resolveDownpaymentPolicy(
     downpayment_type: policy.downpayment_type,
     downpayment_amount: policy.downpayment_amount,
     downpayment_hold_hours: policy.downpayment_hold_hours,
+    pay_at_checkout_enabled: policy.pay_at_checkout_enabled,
   };
 }
 
@@ -577,6 +584,8 @@ export async function updatePolicyConfiguration({
     downpayment_type: resolved.downpayment_type,
     downpayment_amount: resolved.downpayment_amount,
     downpayment_hold_hours: resolved.downpayment_hold_hours,
+    pay_at_checkout_enabled: resolved.pay_at_checkout_enabled,
+    pay_at_checkout_grace_minutes: resolved.pay_at_checkout_grace_minutes,
     max_concurrent_bookings_per_staff:
       resolved.max_concurrent_bookings_per_staff,
     booking_group_email_mode: resolved.booking_group_email_mode,

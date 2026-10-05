@@ -220,7 +220,26 @@ export interface CageOccupant {
    * null for Hotel, which has no hourly overdue fee. */
   overdue_fee_per_hour: number | null;
   overdue_grace_minutes: number | null;
+  /** How the stay is being paid for: 'pay_at_checkout' for a booking billed
+   * at checkout, otherwise the booking's own payment status. Null (or absent)
+   * when there is no booking behind the stay. */
+  payment?: CageOccupantPayment | null;
 }
+
+export type CageOccupantPayment =
+  | 'pay_at_checkout'
+  | 'paid'
+  | 'partially_paid'
+  | 'unpaid';
+
+/** What a cage card says about how its occupant's stay is being paid for. */
+export const CAGE_OCCUPANT_PAYMENT_LABEL: Record<CageOccupantPayment, string> =
+  {
+    pay_at_checkout: 'Pay at checkout',
+    paid: 'Paid',
+    partially_paid: 'Partially paid',
+    unpaid: 'Unpaid',
+  };
 
 export interface CageSuggestion {
   suggestedSize: CageSize;
@@ -238,6 +257,9 @@ export interface CheckoutResult {
   downpaymentAmount: number;
   extensionFee: number | null;
   remainingBalance: number;
+  /** Set only for a pay-at-checkout booking: the nights it was billed for.
+   * remainingBalance is then the bill just sent to the cashier. */
+  payAtCheckout?: { nights: number };
 }
 
 export interface HotelStayWithCage extends HotelStay {

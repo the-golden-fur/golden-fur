@@ -177,6 +177,35 @@ describe('CageOccupancyReport', () => {
       ).toBeInTheDocument();
     });
 
+    it('says on the card whether the stay is paid or pays at checkout', async () => {
+      const inTwoHours = new Date(
+        Date.now() + 2 * 60 * 60 * 1000 + 30_000
+      ).toISOString();
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: [{ ...occupant(inTwoHours), payment: 'pay_at_checkout' }],
+        error: null,
+      });
+
+      renderPage();
+
+      expect(await screen.findByText('Mochi')).toBeInTheDocument();
+      expect(screen.getByText('Pay at checkout')).toBeInTheDocument();
+    });
+
+    it('shows Paid for a fully paid stay', async () => {
+      const inTwoHours = new Date(
+        Date.now() + 2 * 60 * 60 * 1000 + 30_000
+      ).toISOString();
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: [{ ...occupant(inTwoHours), payment: 'paid' }],
+        error: null,
+      });
+
+      renderPage();
+
+      expect(await screen.findByText('Paid')).toBeInTheDocument();
+    });
+
     it('flags a pet that is past its expected checkout as overdue', async () => {
       const fortyMinutesAgo = new Date(
         Date.now() - 40 * 60 * 1000 - 5_000
@@ -435,6 +464,145 @@ describe('CageOccupancyReport', () => {
     });
   });
 
+  // Bug fix: a Superadmin's Branch selector used to change only the summary
+  // counts - the cage list below always showed their own branch.
+  describe('Superadmin sees cages on every branch', () => {
+    const TWO_BRANCH_GRID = {
+      S: [
+        buildCage({ id: 'cage-1', cage_label: 'S-01' }),
+        buildCage({
+          id: 'cage-9',
+          cage_label: 'SW-S-01',
+          branch_id: 'branch-southwoods',
+          status: 'Occupied',
+        }),
+      ],
+      M: [],
+      L: [],
+      XL: [],
+    };
+
+    beforeEach(() => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Superadmin')],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
+        data: [
+          { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
+          {
+            id: 'branch-southwoods',
+            name: 'Southwoods',
+            is_vet_branch: false,
+          },
+        ],
+        error: null,
+      });
+      vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+        data: TWO_BRANCH_GRID,
+        error: null,
+      });
+    });
+
+    it("loads the cages and occupants of all branches by default, and names each cage's branch", async () => {
+      renderPage();
+
+      const otherBranchCage = await screen.findByRole('button', {
+        name: /^SW-S-01 - Occupied/,
+      });
+
+      expect(hotelApi.getCageGrid).toHaveBeenLastCalledWith('token', 'all');
+      expect(hotelApi.getCageOccupants).toHaveBeenLastCalledWith(
+        'token',
+        'all'
+      );
+      expect(
+        within(otherBranchCage).getByText('Southwoods')
+      ).toBeInTheDocument();
+      expect(
+        within(
+          screen.getByRole('button', { name: /^S-01 - Available/ })
+        ).getByText('Makati')
+      ).toBeInTheDocument();
+    });
+
+    it('loads only the chosen branch when one is picked', async () => {
+      renderPage();
+      await screen.findByText('S-01');
+
+      await userEvent.selectOptions(
+        screen.getByLabelText('Branch'),
+        'branch-southwoods'
+      );
+
+      await waitFor(() =>
+        expect(hotelApi.getCageGrid).toHaveBeenLastCalledWith(
+          'token',
+          'branch-southwoods'
+        )
+      );
+      expect(hotelApi.getCageOccupants).toHaveBeenLastCalledWith(
+        'token',
+        'branch-southwoods'
+      );
+    });
+
+    it("offers no Check out for a pet at another branch - that stays with the branch's own staff", async () => {
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: [
+          {
+            stay_id: 'stay-9',
+            cage_id: 'cage-9',
+            pet_name: 'Mochi',
+            owner_name: 'Jamie Cruz',
+            service: 'Hotel',
+            booking_id: 'booking-9',
+            since: '2026-08-01T02:00:00.000Z',
+            expected_checkout_at: null,
+            overdue_fee_per_hour: null,
+            overdue_grace_minutes: null,
+            payment: 'paid',
+          },
+        ],
+        error: null,
+      });
+
+      renderPage();
+      await userEvent.click(
+        await screen.findByRole('button', { name: /^SW-S-01 - Occupied/ })
+      );
+
+      const dialog = await screen.findByRole('dialog', {
+        name: 'Cage SW-S-01',
+      });
+      expect(within(dialog).getByText('Mochi')).toBeInTheDocument();
+      expect(
+        within(dialog).queryByRole('button', { name: 'Check out' })
+      ).not.toBeInTheDocument();
+      expect(
+        within(dialog).getByText(/checked out by Southwoods staff/)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('a Receptionist only ever loads their own branch', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('S-01');
+
+    expect(hotelApi.getCageGrid).toHaveBeenLastCalledWith('token', undefined);
+    expect(hotelApi.getCageOccupants).toHaveBeenLastCalledWith(
+      'token',
+      undefined
+    );
+    // No branch name on a card when there is only one branch in view.
+    expect(screen.queryByText('Makati')).not.toBeInTheDocument();
+  });
+
   it('redirects a viewer with no access at all to Settings', async () => {
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Groomer')],
@@ -534,8 +702,124 @@ describe('CageOccupancyReport', () => {
     const labels = screen
       .getAllByText(/^(S-01|S-02|M-01)$/)
       .map((el) => el.textContent);
-    // Available (S-01, M-01) sorts before Occupied (S-02) alphabetically.
+    // Available (S-01) sorts before Occupied (S-02) alphabetically. M-01 is
+    // in its own size column, so it isn't ordered against the Small cages.
     expect(labels.indexOf('S-02')).toBeGreaterThan(labels.indexOf('S-01'));
-    expect(labels.indexOf('S-02')).toBeGreaterThan(labels.indexOf('M-01'));
+  });
+
+  it('sorts by checkout due, putting the occupied cage above the empty ones', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Receptionist')],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+      data: [
+        {
+          stay_id: 'stay-1',
+          cage_id: 'cage-2',
+          pet_name: 'Mochi',
+          owner_name: 'Jamie Cruz',
+          service: 'Hotel',
+          booking_id: 'booking-1',
+          since: '2026-08-01T02:00:00.000Z',
+          expected_checkout_at: new Date(
+            Date.now() + 2 * 60 * 60 * 1000
+          ).toISOString(),
+          overdue_fee_per_hour: null,
+          overdue_grace_minutes: null,
+          payment: 'paid',
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+    await screen.findByText('Mochi');
+
+    await userEvent.selectOptions(
+      screen.getByDisplayValue('Sort: Label (A-Z)'),
+      'checkout-soonest'
+    );
+
+    const labels = screen
+      .getAllByText(/^(S-01|S-02|M-01)$/)
+      .map((el) => el.textContent);
+    expect(labels[0]).toBe('S-02');
+  });
+
+  describe('columns by size layout', () => {
+    beforeEach(() => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+    });
+
+    it('lays the cages out with one column per size', async () => {
+      renderPage();
+      await screen.findByText('S-01');
+
+      // Columns by size is the only layout - there is no layout switch.
+      expect(screen.queryByLabelText('Layout')).not.toBeInTheDocument();
+
+      const small = screen.getByRole('region', { name: /^Small cages/ });
+      expect(within(small).getByText('S-01')).toBeInTheDocument();
+      expect(within(small).getByText('S-02')).toBeInTheDocument();
+      expect(within(small).queryByText('M-01')).not.toBeInTheDocument();
+
+      const medium = screen.getByRole('region', { name: /^Medium cages/ });
+      expect(within(medium).getByText('M-01')).toBeInTheDocument();
+
+      // A size with no cages keeps its column and says so.
+      const large = screen.getByRole('region', { name: /^Large cages/ });
+      expect(within(large).getByText('No cages')).toBeInTheDocument();
+      expect(
+        screen.getByRole('region', { name: /^Extra Large cages/ })
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the chosen sort inside each column', async () => {
+      renderPage();
+      await screen.findByText('S-01');
+
+      await userEvent.selectOptions(
+        screen.getByDisplayValue('Sort: Label (A-Z)'),
+        'status'
+      );
+
+      const small = screen.getByRole('region', { name: /^Small cages/ });
+      const labels = within(small)
+        .getAllByText(/^S-0\d$/)
+        .map((el) => el.textContent);
+      // Available (S-01) before Occupied (S-02).
+      expect(labels).toEqual(['S-01', 'S-02']);
+    });
+
+    it('shows only the chosen size column when filtering by size', async () => {
+      renderPage();
+      await screen.findByText('S-01');
+
+      await userEvent.selectOptions(screen.getByLabelText('Size'), 'M');
+
+      expect(
+        screen.getByRole('region', { name: /^Medium cages/ })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('region', { name: /^Small cages/ })
+      ).not.toBeInTheDocument();
+    });
+
+    it('a cage in a column still opens its details', async () => {
+      renderPage();
+      await screen.findByText('S-01');
+
+      await userEvent.click(
+        screen.getByRole('button', { name: /^M-01 - Available/ })
+      );
+
+      expect(
+        await screen.findByRole('dialog', { name: 'Cage M-01' })
+      ).toBeInTheDocument();
+    });
   });
 });

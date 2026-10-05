@@ -103,8 +103,9 @@ function confirmationToStatusParam(
 type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: 'soonest', label: 'Sort: Scheduled time (soonest)' },
+  // Default: the latest service on top.
   { value: 'latest', label: 'Sort: Scheduled time (latest)' },
+  { value: 'soonest', label: 'Sort: Scheduled time (soonest)' },
   { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
   { value: 'owner-name', label: 'Sort: Owner name (A-Z)' },
 ];
@@ -561,7 +562,7 @@ export function ReceptionistBookingsQueuePage() {
           owners[b.customer_id]?.full_name ?? ''
         ),
     },
-    initialSortKey: 'soonest',
+    initialSortKey: 'latest',
   });
 
   const filterChips = useMemo(() => {
@@ -609,13 +610,13 @@ export function ReceptionistBookingsQueuePage() {
         onClear: () => setSearch(''),
       });
     }
-    if (sortKey !== 'soonest') {
+    if (sortKey !== 'latest') {
       chips.push({
         id: 'sort',
         label:
           SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
           sortKey,
-        onClear: () => setSortKey('soonest'),
+        onClear: () => setSortKey('latest'),
       });
     }
 
