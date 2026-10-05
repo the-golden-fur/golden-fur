@@ -155,6 +155,30 @@ describe('HotelBookingPicker', () => {
     expect(screen.getByText('Hotel Stay - Small Cage')).toBeInTheDocument();
   });
 
+  it('lists the latest booking on top by default', async () => {
+    setupMocks([
+      booking({ id: 'booking-early' }),
+      booking({
+        id: 'booking-late',
+        scheduled_start: '2026-07-29T01:00:00.000Z',
+        scheduled_end: '2026-07-30T01:00:00.000Z',
+      }),
+    ]);
+
+    renderPicker();
+
+    await screen.findAllByText('Mochi');
+    expect(
+      screen.getByDisplayValue('Sort: Check-in date (latest)')
+    ).toBeInTheDocument();
+
+    const starts = screen
+      .getAllByRole('listitem')
+      .map((row) => row.textContent ?? '');
+    expect(starts[0]).toContain('Jul 29');
+    expect(starts[1]).toContain('Jul 27');
+  });
+
   it('clicking the Check in button calls onCheckIn with that booking', async () => {
     setupMocks([booking()]);
 
