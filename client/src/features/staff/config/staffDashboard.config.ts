@@ -103,17 +103,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: 'Management',
         tiles: [
           {
-            title: 'Days Off',
-            description: 'Request a day off, or take the rest of today off.',
-            to: '/staff/days-off',
-          },
-          {
-            title: 'My Schedule',
-            description:
-              'See the rest days and approved leave plotted for you this month.',
-            to: '/staff/my-schedule',
-          },
-          {
             title: 'Staff Management',
             description: 'Create, promote, and manage staff accounts.',
             to: '/staff/admin/staff',
@@ -304,17 +293,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       {
         label: null,
         tiles: [
-          {
-            title: 'Days Off',
-            description: 'Request a day off, or take the rest of today off.',
-            to: '/staff/days-off',
-          },
-          {
-            title: 'My Schedule',
-            description:
-              'See the rest days and approved leave plotted for you this month.',
-            to: '/staff/my-schedule',
-          },
           {
             title: 'Customer Management',
             description: 'Look up customers, pets, and walk-in records.',

@@ -245,9 +245,6 @@ export function StaffDashboardPage() {
             />
 
             <div className={styles.splitGrid}>
-              <div className={styles.splitWide}>
-                <MyScheduleWidget staffId={user.id} accessToken={accessToken} />
-              </div>
               <DashboardTile
                 title="Customer Management"
                 description="Look up customers, pets, and walk-in records."

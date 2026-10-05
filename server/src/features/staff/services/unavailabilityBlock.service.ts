@@ -1,5 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import { UNAVAILABILITY_MANAGER_ROLES } from '../staff.types.ts';
+import {
+  SELF_SERVICE_DAYS_OFF_BLOCKED_ROLES,
+  UNAVAILABILITY_MANAGER_ROLES,
+} from '../staff.types.ts';
 import type {
   BranchScheduleEntry,
   PendingUnavailabilityBlock,
@@ -655,6 +658,15 @@ export async function createUnavailabilityBlock({
   now = new Date(),
 }: CreateUnavailabilityBlockParams): Promise<UnavailabilityBlock> {
   assertCanActOnTarget(requesterId, requesterRole, targetStaffId);
+  if (
+    requesterId === targetStaffId &&
+    SELF_SERVICE_DAYS_OFF_BLOCKED_ROLES.includes(requesterRole)
+  ) {
+    throwWithStatus(
+      403,
+      "Supervisors, admins, and superadmins can't request or cancel their own days off"
+    );
+  }
 
   // Rest days are fixed and decided by a Supervisor/Admin/Superadmin -
   // never self-service, unlike every other leave_type.
@@ -804,6 +816,15 @@ export async function cancelUnavailabilityBlock({
   blockId,
 }: CancelUnavailabilityBlockParams): Promise<void> {
   assertCanActOnTarget(requesterId, requesterRole, targetStaffId);
+  if (
+    requesterId === targetStaffId &&
+    SELF_SERVICE_DAYS_OFF_BLOCKED_ROLES.includes(requesterRole)
+  ) {
+    throwWithStatus(
+      403,
+      "Supervisors, admins, and superadmins can't request or cancel their own days off"
+    );
+  }
 
   const { data: existing, error: lookupError } = await supabase
     .from('staff_unavailability_blocks')
