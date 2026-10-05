@@ -303,7 +303,7 @@ describe('StaffDashboardPage', () => {
       })
     ).not.toBeInTheDocument();
   });
-  it('shows Cage Occupancy, My Schedule, Customer Management, and Branch Reports for a Supervisor viewer', async () => {
+  it('shows Cage Occupancy, Customer Management, and Branch Reports - but not My Schedule - for a Supervisor viewer', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildProfile({ role: 'Supervisor', display_name: 'Sue Pervisor' }),
       error: null,
@@ -323,11 +323,8 @@ describe('StaffDashboardPage', () => {
       await screen.findByRole('heading', { name: 'Cage Occupancy' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'My Schedule' })
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole('link', { name: 'View schedule' })
-    ).toHaveAttribute('href', '/staff/my-schedule');
+      screen.queryByRole('heading', { name: 'My Schedule' })
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: /customer management/i })
     ).toHaveAttribute('href', '/staff/admin/customers');

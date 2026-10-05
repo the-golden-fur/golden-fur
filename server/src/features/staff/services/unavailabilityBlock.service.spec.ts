@@ -303,6 +303,25 @@ describe('unavailabilityBlock.service', () => {
       expect(result.staff_id).toBe('staff-2');
     });
 
+    it.each(['Supervisor', 'Admin', 'Superadmin'])(
+      'rejects a %s requesting their own day off with 403 before touching supabase',
+      async (role) => {
+        await expect(
+          createUnavailabilityBlock({
+            requesterId: 'staff-1',
+            requesterRole: role,
+            targetStaffId: 'staff-1',
+            isFullDay: true,
+            date: '2026-07-20',
+            leaveType: 'Vacation',
+            now: new Date('2026-07-01T00:00:00.000Z'),
+          })
+        ).rejects.toMatchObject({ statusCode: 403 });
+
+        expect(supabase.from).not.toHaveBeenCalled();
+      }
+    );
+
     it('Rest Day: rejects a self-service request with 403 before touching supabase', async () => {
       await expect(
         createUnavailabilityBlock({

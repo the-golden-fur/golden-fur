@@ -49,6 +49,17 @@ export const STAFF_BOOKING_RESTRICTED_FIELD_ROLES: readonly string[] = [
   'Groomer',
 ];
 
+/**
+ * Roles that may not request or cancel their own days off through
+ * Days Off / My Schedule. They still manage other staff's days off on
+ * behalf - this only blocks self-targeted writes.
+ */
+export const SELF_SERVICE_DAYS_OFF_BLOCKED_ROLES: readonly string[] = [
+  'Supervisor',
+  'Admin',
+  'Superadmin',
+];
+
 export type CommunicationChannel = 'Call' | 'Text' | 'Viber' | 'Messenger';
 
 export interface StaffProfile {
