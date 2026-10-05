@@ -28,6 +28,7 @@ vi.mock('../../api/maintenance.api', () => ({
   updateService: vi.fn(),
   archiveService: vi.fn(),
   setServiceBranchAvailability: vi.fn(),
+  setServiceBranchPrice: vi.fn(),
   getPricingConfiguration: vi.fn(),
 }));
 
@@ -725,5 +726,196 @@ describe('AdminServicesPage', () => {
     await user.click(within(popover).getByRole('option', { name: 'Inactive' }));
 
     expect(screen.getByText('Old Service')).toBeInTheDocument();
+  });
+
+  // Custom change (per-branch service price): a Superadmin can give a branch
+  // its own price for a service, e.g. Hotel at PHP 500 a night in Southwoods.
+  describe('branch prices', () => {
+    const HOTEL = buildService({
+      id: 'service-hotel',
+      category: 'Hotel',
+      name: 'Overnight Stay',
+      base_price: 850,
+      duration_minutes: 1440,
+      service_pricing_tiers: [],
+      service_branch_availability: [
+        {
+          service_id: 'service-hotel',
+          branch_id: 'branch-makati',
+          is_available: true,
+          price_override: null,
+        },
+        {
+          service_id: 'service-hotel',
+          branch_id: 'branch-southwoods',
+          is_available: true,
+          price_override: null,
+        },
+      ],
+    });
+
+    function hotelWithSouthwoodsPrice(price: number | null): Service {
+      return {
+        ...HOTEL,
+        service_branch_availability: [
+          HOTEL.service_branch_availability![0],
+          { ...HOTEL.service_branch_availability![1], price_override: price },
+        ],
+      };
+    }
+
+    async function openConfigure(user: ReturnType<typeof userEvent.setup>) {
+      const row = (await screen.findByText('Overnight Stay')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Overnight Stay' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+      return screen.getByRole('dialog', { name: 'Edit service' });
+    }
+
+    beforeEach(() => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Superadmin')],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+        data: [HOTEL],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updateService).mockResolvedValue({
+        data: HOTEL,
+        error: null,
+      });
+      vi.mocked(maintenanceApi.setServiceBranchPrice).mockImplementation(
+        (_serviceId, _token, payload) =>
+          Promise.resolve({
+            data: {
+              service_id: 'service-hotel',
+              branch_id: payload.branch_id,
+              is_available: true,
+              price_override: payload.price_override,
+            },
+            error: null,
+          })
+      );
+    });
+
+    it('lets a Superadmin give one branch its own price, leaving the others on the base price', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      const makatiPrice = within(dialog).getByLabelText('Makati price (PHP)');
+      const southwoodsPrice = within(dialog).getByLabelText(
+        'Southwoods price (PHP)'
+      );
+      expect(makatiPrice).toHaveValue(null);
+      expect(southwoodsPrice).toHaveValue(null);
+
+      await user.type(southwoodsPrice, '500');
+      await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.setServiceBranchPrice).toHaveBeenCalledWith(
+          'service-hotel',
+          'token',
+          { branch_id: 'branch-southwoods', price_override: 500 }
+        )
+      );
+      expect(maintenanceApi.setServiceBranchPrice).toHaveBeenCalledTimes(1);
+
+      // ...and the list then shows it beside the base price.
+      const row = (await screen.findByText('Overnight Stay')).closest(
+        'tr'
+      ) as HTMLElement;
+      expect(
+        await within(row).findByText('Southwoods: PHP 500.00')
+      ).toBeInTheDocument();
+    });
+
+    it('shows an existing branch price and clears it when the box is emptied', async () => {
+      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+        data: [hotelWithSouthwoodsPrice(500)],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updateService).mockResolvedValue({
+        data: hotelWithSouthwoodsPrice(500),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      const southwoodsPrice = within(dialog).getByLabelText(
+        'Southwoods price (PHP)'
+      );
+      expect(southwoodsPrice).toHaveValue(500);
+
+      await user.clear(southwoodsPrice);
+      await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.setServiceBranchPrice).toHaveBeenCalledWith(
+          'service-hotel',
+          'token',
+          { branch_id: 'branch-southwoods', price_override: null }
+        )
+      );
+    });
+
+    it('saves nothing extra when no branch price was changed', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.updateService).toHaveBeenCalled()
+      );
+      expect(maintenanceApi.setServiceBranchPrice).not.toHaveBeenCalled();
+    });
+
+    it('does not offer branch prices to an Admin', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Admin')],
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      expect(
+        within(dialog).queryByLabelText('Southwoods price (PHP)')
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not offer branch prices for Daycare, which is billed by the hour', async () => {
+      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+        data: [
+          {
+            ...HOTEL,
+            category: 'Daycare',
+            first_hour_fee: 100,
+            succeeding_hour_fee: 50,
+            daycare_overnight_fee: null,
+          },
+        ],
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      expect(
+        within(dialog).queryByLabelText('Southwoods price (PHP)')
+      ).not.toBeInTheDocument();
+    });
   });
 });

@@ -10,6 +10,7 @@ import {
   listBranches,
   listServices,
   setServiceBranchAvailability,
+  setServiceBranchPrice,
   updateService,
 } from '../../api/maintenance.api';
 import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
@@ -95,6 +96,10 @@ interface ServiceFormState {
   succeedingHourFee: string;
   daycareOvernightFee: string;
   branchIds: string[];
+  /** Superadmin-only: a branch's own price for this service, keyed by
+   * branch id, as typed. '' (or no entry) = the branch charges the base
+   * price. */
+  branchPrices: Record<string, string>;
   icon: string | null;
   imageUrl: string | null;
 }
@@ -113,6 +118,7 @@ const EMPTY_FORM: ServiceFormState = {
   succeedingHourFee: '',
   daycareOvernightFee: '',
   branchIds: [],
+  branchPrices: {},
   icon: null,
   imageUrl: null,
 };
@@ -143,6 +149,11 @@ function formStateFromService(service: Service): ServiceFormState {
         ? ''
         : String(service.daycare_overnight_fee),
     branchIds: availableBranchIds(service),
+    branchPrices: Object.fromEntries(
+      (service.service_branch_availability ?? [])
+        .filter((row) => row.price_override != null)
+        .map((row) => [row.branch_id, String(row.price_override)])
+    ),
     icon: service.icon,
     imageUrl: service.image_url,
   };
@@ -212,6 +223,9 @@ export function AdminServicesPage() {
   // An Admin is scoped to their own branch's availability; Superadmin can
   // touch any branch.
   const lockedBranchId = viewerRole === 'Admin' ? viewerBranchId : null;
+  // A branch's own price is a cross-branch pricing decision - Superadmin
+  // only, here and on the server.
+  const canSetBranchPrices = viewerRole === 'Superadmin';
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -415,6 +429,66 @@ export function AdminServicesPage() {
     return { ...service, service_branch_availability: updatedRows };
   }
 
+  /**
+   * Applies the form's per-branch prices to a just-created/-updated service,
+   * the same way applyBranchSelection applies availability: only branches
+   * whose price actually changed are sent. An emptied box clears the
+   * branch's own price (null), putting it back on the base price.
+   */
+  async function applyBranchPrices(
+    service: Service,
+    branchPrices: Record<string, string>
+  ): Promise<Service> {
+    if (!accessToken || !canSetBranchPrices) {
+      return service;
+    }
+
+    const rows = service.service_branch_availability ?? [];
+    const changes = branches
+      .map((branch) => {
+        const typed = (branchPrices[branch.id] ?? '').trim();
+        const next = typed === '' ? null : Number(typed);
+        const current =
+          rows.find((row) => row.branch_id === branch.id)?.price_override ??
+          null;
+
+        return { branch, next, changed: next !== current };
+      })
+      .filter((entry) => entry.changed);
+
+    if (changes.length === 0) {
+      return service;
+    }
+
+    const results = await Promise.all(
+      changes.map(({ branch, next }) =>
+        setServiceBranchPrice(service.id, accessToken, {
+          branch_id: branch.id,
+          price_override: next,
+        })
+      )
+    );
+
+    const updatedRows = [...rows];
+
+    changes.forEach(({ branch }, index) => {
+      const data = results[index]?.data;
+      if (!data) return;
+
+      const rowIndex = updatedRows.findIndex(
+        (row) => row.branch_id === branch.id
+      );
+
+      if (rowIndex >= 0) {
+        updatedRows[rowIndex] = data;
+      } else {
+        updatedRows.push(data);
+      }
+    });
+
+    return { ...service, service_branch_availability: updatedRows };
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -438,6 +512,15 @@ export function AdminServicesPage() {
       (form.basePrice === '' || basePrice < 0)
     ) {
       setFormError('A non-negative base price is required.');
+      return;
+    }
+
+    if (
+      Object.values(form.branchPrices).some(
+        (typed) => typed.trim() !== '' && !(Number(typed) >= 0)
+      )
+    ) {
+      setFormError('A branch price cannot be negative.');
       return;
     }
 
@@ -514,9 +597,9 @@ export function AdminServicesPage() {
         return;
       }
 
-      const finalService = await applyBranchSelection(
-        result.data,
-        form.branchIds
+      const finalService = await applyBranchPrices(
+        await applyBranchSelection(result.data, form.branchIds),
+        form.branchPrices
       );
 
       setIsSubmitting(false);
@@ -551,9 +634,9 @@ export function AdminServicesPage() {
       return;
     }
 
-    const finalService = await applyBranchSelection(
-      result.data,
-      form.branchIds
+    const finalService = await applyBranchPrices(
+      await applyBranchSelection(result.data, form.branchIds),
+      form.branchPrices
     );
 
     setIsSubmitting(false);
@@ -561,6 +644,20 @@ export function AdminServicesPage() {
     setMessage('Service updated.');
     closeForm();
   };
+
+  /** The branches charging their own price for a service, shown under its
+   * base price - e.g. "Southwoods: PHP 500.00". Nothing when there are none. */
+  function renderBranchPrices(service: Service) {
+    return (service.service_branch_availability ?? [])
+      .filter((row) => row.price_override != null)
+      .map((row) => (
+        <span key={row.branch_id} className={styles.branchPrice}>
+          {branches.find((branch) => branch.id === row.branch_id)?.name ??
+            'Branch'}
+          : PHP {Number(row.price_override).toFixed(2)}
+        </span>
+      ));
+  }
 
   function renderServiceBadges(service: Service) {
     return (
@@ -641,6 +738,7 @@ export function AdminServicesPage() {
         service.category !== 'Daycare' ? (
           <span className={styles.servicePrice}>
             PHP {service.base_price.toFixed(2)}
+            {renderBranchPrices(service)}
           </span>
         ) : null,
     },
@@ -674,6 +772,7 @@ export function AdminServicesPage() {
           {service.category !== 'Daycare' ? (
             <span className={styles.servicePrice}>
               PHP {service.base_price.toFixed(2)}
+              {renderBranchPrices(service)}
             </span>
           ) : null}
           {renderServiceBadges(service)}
@@ -853,6 +952,43 @@ export function AdminServicesPage() {
                     required
                   />
                 </label>
+              ) : null}
+
+              {canSetBranchPrices && form.category !== 'Daycare' ? (
+                <fieldset className={styles.branchPrices}>
+                  <legend className={styles.fieldLabel}>Branch prices</legend>
+                  <p className={styles.fieldHint}>
+                    Leave a branch blank to charge the base price there.
+                    {form.usePricingMatrix
+                      ? ' A branch price replaces the base price only - it does not change the size and coat matrix.'
+                      : ''}
+                  </p>
+                  {branches.map((branch) => (
+                    <label key={branch.id} className={styles.field}>
+                      <span className={styles.fieldLabel}>
+                        {branch.name} price (PHP)
+                      </span>
+                      <input
+                        className={styles.input}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        placeholder="Same as base price"
+                        value={form.branchPrices[branch.id] ?? ''}
+                        onChange={(event) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            branchPrices: {
+                              ...prev.branchPrices,
+                              [branch.id]: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                </fieldset>
               ) : null}
 
               <label className={styles.field}>

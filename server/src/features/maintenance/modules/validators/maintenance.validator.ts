@@ -353,6 +353,15 @@ export const branchAvailabilityValidator = z
   })
   .strict();
 
+/** A branch's own price for a service (20261006245). null clears it, back
+ * to the service's base_price. */
+export const branchPriceValidator = z
+  .object({
+    branch_id: z.uuid(),
+    price_override: z.number().min(0).max(99999999.99).nullable(),
+  })
+  .strict();
+
 /**
  * Packages bundle "two or more services" per the #41 user story, hence
  * min(2). Custom change: packages are no longer scoped to exactly one branch

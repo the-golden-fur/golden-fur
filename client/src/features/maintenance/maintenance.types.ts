@@ -142,6 +142,9 @@ export interface ServiceBranchAvailability {
   service_id: string;
   branch_id: string;
   is_available: boolean;
+  /** This branch's own price for the service, replacing base_price there.
+   * null (or absent) = the branch charges base_price. Superadmin-set. */
+  price_override?: number | null;
 }
 
 export interface Service {
@@ -356,6 +359,12 @@ export interface UpdateServicePayload {
 export interface BranchAvailabilityPayload {
   branch_id: string;
   is_available: boolean;
+}
+
+/** null clears the branch's own price, back to the service's base price. */
+export interface BranchPricePayload {
+  branch_id: string;
+  price_override: number | null;
 }
 
 /** Epic B (#83): bundled_price is derived, not accepted as input. Custom

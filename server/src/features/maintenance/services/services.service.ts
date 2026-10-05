@@ -331,6 +331,77 @@ export async function setServiceBranchAvailability({
   return data as ServiceBranchAvailability;
 }
 
+interface SetBranchPriceParams {
+  serviceId: string;
+  branchId: string;
+  /** null clears the branch's own price, back to the service's base_price. */
+  priceOverride: number | null;
+  requesterRole: string;
+}
+
+/**
+ * Sets (or clears) one branch's own price for a service - see
+ * servicePriceAtBranch. Superadmin-only, re-checked here on top of the
+ * route's requireRole: a price is a cross-branch business decision, unlike
+ * the availability toggle above, which an Admin may flip for their own
+ * branch. Only the price is written, so the branch's availability is left
+ * exactly as it was - and a branch with no availability row yet gets one
+ * that stays unavailable, so setting a price can never switch a service on.
+ */
+export async function setServiceBranchPrice({
+  serviceId,
+  branchId,
+  priceOverride,
+  requesterRole,
+}: SetBranchPriceParams): Promise<ServiceBranchAvailability> {
+  if (requesterRole !== 'Superadmin') {
+    throwWithStatus(403, "Only a Superadmin can set a branch's own price");
+  }
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('services')
+    .select('id, archived_at')
+    .eq('id', serviceId)
+    .maybeSingle();
+
+  if (lookupError) throwWithStatus(400, lookupError.message);
+  if (!existing) throwWithStatus(404, 'Service not found');
+  if (existing.archived_at) {
+    throwWithStatus(409, 'This service is archived - restore it first');
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from('service_branch_availability')
+    .update({ price_override: priceOverride })
+    .eq('service_id', serviceId)
+    .eq('branch_id', branchId)
+    .select('*')
+    .maybeSingle();
+
+  if (updateError) throwWithStatus(400, updateError.message);
+  if (updated) return updated as ServiceBranchAvailability;
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('service_branch_availability')
+    .insert({
+      service_id: serviceId,
+      branch_id: branchId,
+      is_available: false,
+      price_override: priceOverride,
+    })
+    .select('*')
+    .maybeSingle();
+
+  if (insertError || !inserted) {
+    throwWithStatus(
+      400,
+      insertError?.message ?? 'Failed to update the branch price'
+    );
+  }
+
+  return inserted as ServiceBranchAvailability;
+}
+
 async function loadServiceForArchiveAction(
   serviceId: string
 ): Promise<{ id: string; archived_at: string | null }> {

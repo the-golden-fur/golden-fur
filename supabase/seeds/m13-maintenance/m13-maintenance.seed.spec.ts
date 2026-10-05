@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   seedGoldenPackage,
   seedPromos,
+  HOTEL_SERVICE_ID,
   seedServiceBranchAvailability,
   PROMO_SEEDS,
 } from './m13-maintenance.seed.ts';
@@ -29,7 +30,10 @@ function createMockSupabase() {
       { id: 'branch-makati', name: 'Makati' },
       { id: 'branch-southwoods', name: 'Southwoods' },
     ],
-    availability: new Map<string, { is_available: boolean }>(),
+    availability: new Map<
+      string,
+      { is_available: boolean; price_override?: number | null }
+    >(),
     packages: new Map<string, { id: string; name: string; icon?: string }>(),
     packageBranchAvailability: new Map<string, Set<string>>(),
     packageServices: new Map<string, Set<string>>(),
@@ -79,9 +83,11 @@ function createMockSupabase() {
             service_id: string;
             branch_id: string;
             is_available: boolean;
+            price_override?: number | null;
           }) => {
             state.availability.set(`${row.service_id}:${row.branch_id}`, {
               is_available: row.is_available,
+              price_override: row.price_override ?? null,
             });
             return Promise.resolve({ error: null });
           },
@@ -257,6 +263,47 @@ describe('m13-maintenance seed', () => {
       expect(supabase.state.availability.size).toBe(
         GOLDEN_PACKAGE_SERVICE_IDS.length * supabase.state.branches.length
       );
+    });
+
+    // Per-branch service price (migration 20261006245): on a fresh database
+    // the migration's own UPDATE finds no availability rows yet, so the seed
+    // is what gives Southwoods its PHP 500 Hotel price.
+    describe('Southwoods Hotel price', () => {
+      beforeEach(() => {
+        supabase.state.services.push({ id: HOTEL_SERVICE_ID });
+      });
+
+      it('creates the Hotel row at Southwoods with its own price, and no other row with one', async () => {
+        await seedServiceBranchAvailability(supabase as never);
+
+        expect(
+          supabase.state.availability.get(
+            `${HOTEL_SERVICE_ID}:branch-southwoods`
+          )
+        ).toEqual({ is_available: true, price_override: 500 });
+
+        const others = [...supabase.state.availability.entries()].filter(
+          ([key]) => key !== `${HOTEL_SERVICE_ID}:branch-southwoods`
+        );
+        for (const [, row] of others) {
+          expect(row.price_override).toBeNull();
+        }
+      });
+
+      it('never overwrites a row that already exists, so a price a Superadmin changed or cleared stays', async () => {
+        supabase.state.availability.set(
+          `${HOTEL_SERVICE_ID}:branch-southwoods`,
+          { is_available: true, price_override: null }
+        );
+
+        await seedServiceBranchAvailability(supabase as never);
+
+        expect(
+          supabase.state.availability.get(
+            `${HOTEL_SERVICE_ID}:branch-southwoods`
+          )
+        ).toEqual({ is_available: true, price_override: null });
+      });
     });
   });
 

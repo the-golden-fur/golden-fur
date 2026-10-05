@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../../../shared/auth/api/auth.api';
 import type {
   BranchAvailabilityPayload,
+  BranchPricePayload,
   BranchSummary,
   Breed,
   CreateBreedPayload,
@@ -250,6 +251,32 @@ export async function setServiceBranchAvailability(
 ): Promise<MaintenanceApiResult<ServiceBranchAvailability>> {
   const response = await fetch(
     `${API_BASE_URL}/maintenance/services/${serviceId}/branch-availability`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ availability: ServiceBranchAvailability }>(
+    response
+  );
+  return { data: result.data?.availability ?? null, error: result.error };
+}
+
+/** Sets (or, with null, clears) one branch's own price for a service.
+ * Superadmin-only server-side. */
+export async function setServiceBranchPrice(
+  serviceId: string,
+  accessToken: string,
+  payload: BranchPricePayload
+): Promise<MaintenanceApiResult<ServiceBranchAvailability>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/services/${serviceId}/branch-price`,
     {
       method: 'PATCH',
       headers: jsonHeaders(accessToken),

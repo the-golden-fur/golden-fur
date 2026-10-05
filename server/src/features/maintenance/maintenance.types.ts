@@ -115,6 +115,9 @@ export interface ServiceBranchAvailability {
   service_id: string;
   branch_id: string;
   is_available: boolean;
+  /** This branch's own price for the service (20261006245), replacing
+   * base_price there - see servicePriceAtBranch. NULL = use base_price. */
+  price_override: number | null;
 }
 
 export interface Service {
