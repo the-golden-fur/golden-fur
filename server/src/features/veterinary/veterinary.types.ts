@@ -104,6 +104,9 @@ export interface Consultation {
   booking_id: string;
   pet_id: string;
   veterinarian_id: string;
+  /** The vet who took this consultation (20261006248) - null until one
+   * does. Once set, only that vet may edit or complete it. */
+  accepted_by: string | null;
   temperature: number | null;
   weight: number | null;
   heart_rate: number | null;

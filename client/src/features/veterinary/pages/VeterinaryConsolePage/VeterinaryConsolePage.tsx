@@ -134,6 +134,10 @@ export function VeterinaryConsolePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingStartId, setPendingStartId] = useState<string | null>(null);
+  // Bumped to re-fetch the queue right away (instead of waiting for the
+  // next interval) after a Start/Complete is refused - most often because
+  // another vet took the consultation since this list loaded.
+  const [queueRefreshKey, setQueueRefreshKey] = useState(0);
   // The In Progress consultation awaiting the row-level "Complete" confirm -
   // a quick finish that only needs the professional fee (the one field the
   // server requires to complete). Prescriptions/results/vaccination still
@@ -274,7 +278,7 @@ export function VeterinaryConsolePage() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [roleStatus, accessToken, dateRange.from, dateRange.to]);
+  }, [roleStatus, accessToken, dateRange.from, dateRange.to, queueRefreshKey]);
 
   const rows = useMemo(() => {
     return consultations.map((consultation) => {
@@ -364,6 +368,15 @@ export function VeterinaryConsolePage() {
   // gets a 403, so those controls must be disabled here too.
   const canWrite = staffRole === 'Veterinarian';
 
+  /** A consultation belongs to the vet who took it (accepted_by) - once
+   * someone else has, this vet can still read it but not act on it. Mirrors
+   * consultation.service.ts's claimConsultation on the server. */
+  function isHandledByAnotherVet(consultation: Consultation): boolean {
+    return (
+      consultation.accepted_by !== null && consultation.accepted_by !== user?.id
+    );
+  }
+
   async function handleStart(consultationId: string) {
     if (!accessToken) return;
 
@@ -378,6 +391,7 @@ export function VeterinaryConsolePage() {
 
     if (result.error || !result.data) {
       setSaveError(result.error ?? 'Could not start this consultation.');
+      setQueueRefreshKey((key) => key + 1);
       return;
     }
 
@@ -425,6 +439,7 @@ export function VeterinaryConsolePage() {
 
     if (result.error || !result.data) {
       setSaveError(result.error ?? 'Could not complete this consultation.');
+      setQueueRefreshKey((key) => key + 1);
       return false;
     }
 
@@ -460,6 +475,17 @@ export function VeterinaryConsolePage() {
     if (!canWrite) return null;
 
     const rowBookingStatus = row.consultation.booking?.status;
+
+    if (
+      isHandledByAnotherVet(row.consultation) &&
+      (rowBookingStatus === 'Pending' || rowBookingStatus === 'In Progress')
+    ) {
+      return (
+        <span className={styles.rowMeta}>
+          Being handled by another veterinarian
+        </span>
+      );
+    }
 
     if (rowBookingStatus === 'Pending') {
       return (
@@ -790,7 +816,7 @@ export function VeterinaryConsolePage() {
             petName={openRow.petName}
             ownerName={openRow.ownerName}
             accessToken={accessToken}
-            canWrite={canWrite}
+            canWrite={canWrite && !isHandledByAnotherVet(openRow.consultation)}
             isSaving={isSaving}
             saveError={saveError}
             onStart={() => setPendingStartId(openRow.consultation.id)}

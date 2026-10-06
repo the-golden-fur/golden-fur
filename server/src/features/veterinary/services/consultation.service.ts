@@ -126,7 +126,8 @@ interface ListConsultationQueueParams {
  * codebase; see grooming.service.ts's own dev note on why). Any
  * Veterinarian may see and open any row - no per-vet scoping, matching the
  * explicit "no per-pet assigned-vet restriction" carve-out - so unlike
- * listGroomingQueue, this never filters by requester. Also returns the
+ * listGroomingQueue, this never filters by requester. (Writing is a
+ * different matter - see updateConsultation.) Also returns the
  * day's Completed visits (read-only, see LIST_BOOKING_STATUSES) so the
  * console isn't limited to only-actionable rows.
  */
@@ -329,10 +330,71 @@ interface UpdateConsultationParams {
   input: UpdateConsultationInput;
 }
 
+const HANDLED_BY_ANOTHER_VET =
+  'This consultation is being handled by another veterinarian';
+
 /**
- * Issue #66: any Veterinarian may update any consultation (route + here both
- * gate on role only, no ownership check - matching the explicit
- * "no per-pet assigned-vet restriction" carve-out). On status -> Completed:
+ * Whoever takes a consultation owns it (20261006248): returns true when
+ * this call just claimed it for the requester, false when they already
+ * owned it, and throws a 403 when another vet does.
+ *
+ * The claim is a single conditional update (`accepted_by is null`), so two
+ * vets acting at the same moment can't both win - the slower one's update
+ * matches no row and gets the same 403. veterinarian_id follows the claim so
+ * "My Patients" lists the vet who actually did the visit;
+ * bookings.assigned_staff_id is left alone, so slot capacity is unaffected.
+ */
+async function claimConsultation(
+  consultation: Consultation,
+  requesterId: string
+): Promise<boolean> {
+  if (consultation.accepted_by) {
+    if (consultation.accepted_by !== requesterId) {
+      throwWithStatus(403, HANDLED_BY_ANOTHER_VET);
+    }
+
+    return false;
+  }
+
+  const { data, error } = await supabase
+    .from('consultations')
+    .update({ accepted_by: requesterId, veterinarian_id: requesterId })
+    .eq('id', consultation.id)
+    .is('accepted_by', null)
+    .select('id')
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(403, HANDLED_BY_ANOTHER_VET);
+
+  return true;
+}
+
+/** Undoes a claim made by this same request when the Start/Complete it was
+ * for then failed (e.g. starting an unpaid booking) - otherwise the vet
+ * would be left owning a consultation they never actually took. */
+async function releaseConsultationClaim(
+  consultation: Consultation,
+  requesterId: string
+): Promise<void> {
+  await supabase
+    .from('consultations')
+    .update({
+      accepted_by: null,
+      veterinarian_id: consultation.veterinarian_id,
+    })
+    .eq('id', consultation.id)
+    .eq('accepted_by', requesterId);
+}
+
+/**
+ * Issue #66, revised: the route still gates on role only (any Veterinarian),
+ * but a consultation now belongs to the vet who takes it - the one who
+ * presses Start, or the first to save/complete one that was already In
+ * Progress (a receptionist check-in or a walk-in). From then on only that
+ * vet may edit or complete it; see claimConsultation. A still-Pending,
+ * unclaimed consultation stays editable by any vet until someone starts it.
+ * On status -> Completed:
  * writes consultation_line_items (professional fee + one row per medication/
  * procedure - AC-2) and, if a vaccination was administered, writes through
  * to pet_vaccination_records immediately (AC-3), reusing the existing #33
@@ -358,10 +420,28 @@ export async function updateConsultation({
     throwWithStatus(409, 'This consultation is already finalized');
   }
 
-  if (input.status === 'Ongoing') {
-    await startBooking({ bookingId: consultation.booking_id });
-  } else if (input.status === 'Completed') {
-    await completeBooking({ bookingId: consultation.booking_id });
+  const takesOwnership =
+    bookingStatus === 'In Progress' || input.status !== undefined;
+  let claimedNow = false;
+
+  if (takesOwnership) {
+    claimedNow = await claimConsultation(consultation, requesterId);
+  } else if (
+    consultation.accepted_by &&
+    consultation.accepted_by !== requesterId
+  ) {
+    throwWithStatus(403, HANDLED_BY_ANOTHER_VET);
+  }
+
+  try {
+    if (input.status === 'Ongoing') {
+      await startBooking({ bookingId: consultation.booking_id });
+    } else if (input.status === 'Completed') {
+      await completeBooking({ bookingId: consultation.booking_id });
+    }
+  } catch (error) {
+    if (claimedNow) await releaseConsultationClaim(consultation, requesterId);
+    throw error;
   }
 
   if (input.status === 'Completed') {
