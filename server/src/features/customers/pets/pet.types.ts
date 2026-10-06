@@ -83,6 +83,14 @@ export interface PetMedicalNote {
 export interface PetPrescriptionHistoryEntry {
   consultation_id: string;
   date: string;
+  /** Pharmacy prescriptions: who prescribed it and where - what a printed
+   * prescription shows when the customer buys from another pharmacy. Null
+   * only if that staff/branch row can no longer be found. */
+  veterinarian_name: string | null;
+  branch_name: string | null;
+  branch_address: string | null;
+  pet_name: string | null;
+  owner_name: string | null;
   medications: Array<{
     name: string;
     dose: string;
@@ -90,6 +98,7 @@ export interface PetPrescriptionHistoryEntry {
     medicine_type?: string | null;
     frequency?: string | null;
     duration?: string | null;
+    quantity?: number | null;
   }>;
 }
 

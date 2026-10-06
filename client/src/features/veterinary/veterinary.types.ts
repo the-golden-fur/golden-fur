@@ -13,6 +13,11 @@ export interface ConsultationMedication {
   medicine_type?: string | null;
   frequency?: string | null;
   duration?: string | null;
+  /** Pharmacy prescriptions: how many units are prescribed. */
+  quantity?: number | null;
+  /** The shared medicine-list entry this row was added from - where the
+   * server reads its selling price. Null on rows saved before this existed. */
+  medication_catalog_id?: string | null;
 }
 
 /** #117 consultation form builder: one field of a vet's reusable custom
@@ -103,6 +108,17 @@ export interface Consultation {
   reason_for_visit: string;
   follow_up_date: string | null;
   follow_up_booking_id: string | null;
+  /** Why the vet asked for the follow-up - set together with it. */
+  follow_up_reason: string | null;
+  /** Pharmacy prescriptions: true when the customer is buying the
+   * prescribed medicines from this branch's pharmacy (billed as their own
+   * transaction); false when they're buying somewhere else (not billed). */
+  sold_at_pharmacy: boolean;
+  /** The transaction billing this visit's medicines, when there is one. */
+  medication_transaction_id: string | null;
+  /** That transaction's payment status - once it isn't 'Pending' the bill
+   * is fixed and an edit only changes the medical record. */
+  medication_transaction?: { payment_status: string } | null;
   created_at: string;
   updated_at: string;
   booking?: Booking;
@@ -143,8 +159,8 @@ export interface MedicationInput {
   medicine_type?: string;
   frequency?: string;
   duration?: string;
-  /** Only required to complete a consultation (#66 AC-2). */
-  amount?: number;
+  quantity?: number;
+  medication_catalog_id?: string | null;
 }
 
 export interface VaccinationInput {
@@ -166,6 +182,47 @@ export interface UpdateConsultationPayload {
   form_responses?: ConsultationFormResponse[];
   professional_fee?: number;
   vaccination?: VaccinationInput;
+  sold_at_pharmacy?: boolean;
+  /** Vet-priced visits: what was done and what each item costs - only read
+   * when completing. */
+  services_done?: ServiceDone[];
+}
+
+/** One thing the vet did at a visit and its price (e.g. Surgery, 10,000) -
+ * picked from the shared service list or typed in, listed in the completion
+ * pop-up and billed as its own transaction. */
+export interface ServiceDone {
+  name: string;
+  amount: number;
+}
+
+/** One entry of the clinic's shared list of veterinary services and their
+ * usual prices - every veterinarian sees and can edit every entry, same as
+ * the medicine list. */
+export interface VetServiceCatalogItem {
+  id: string;
+  name: string;
+  default_price: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateServiceCatalogItemPayload {
+  name: string;
+  default_price: number;
+}
+
+export interface UpdateServiceCatalogItemPayload {
+  name?: string;
+  default_price?: number;
+}
+
+export interface LinkFollowUpPayload {
+  /** The follow-up booking, already created through POST /bookings. */
+  booking_id: string;
+  /** Why the vet wants the pet back. */
+  reason: string;
 }
 
 /** Issue #78: recorded/maintained from the consultation form only. */
@@ -188,8 +245,9 @@ export interface VeterinarianPatient {
   last_visit_at: string;
 }
 
-/** A veterinarian's personal medication catalog entry - owner-scoped, only
- * the veterinarian who created it can see or edit it. Custom change ("My
+/** One entry of the clinic's shared medicine list - every veterinarian
+ * sees and can edit every entry (`veterinarian_id` only records who added
+ * it), and `default_price` is the pharmacy's selling price. Custom change ("My
  * Catalog" broken into Medications/Prescriptions/Forms): a medication is
  * now just a product definition (name/type/price) - `default_dose`/
  * `default_frequency` removed, since dose and frequency belong to a

@@ -3,9 +3,14 @@
 // the box instead of an empty list.
 //
 // Seeds public.vet_medication_catalog / public.vet_prescription_templates /
-// public.vet_consultation_form_templates: a short personal catalog for the
-// first seeded Makati Veterinarian (all three tables are owner-scoped -
-// each vet only ever sees their own rows).
+// public.vet_consultation_form_templates: a short catalog added by the
+// first seeded Makati Veterinarian (prescriptions and forms are
+// owner-scoped; the medication catalog is one clinic-wide list since
+// 20261006249, veterinarian_id only recording who added a row).
+//
+// Also seeds public.vet_service_catalog (20261006250): the clinic-wide list
+// of veterinary services and their usual prices the "Services done"
+// completion pop-up suggests from.
 //
 // Custom change ("My Catalog" broken into Medications/Prescriptions/Forms):
 // - vet_medication_catalog no longer carries dose/frequency (a medication
@@ -54,6 +59,18 @@ export const VET_MEDICATION_SEEDS: Array<{
   },
   { name: 'Apoquel 5.4mg', defaultPrice: 220, defaultMedicineType: 'Oral' },
 ];
+
+/** Starter rows for the shared "services done" list - usual prices only;
+ * the vet can change the price per visit, or type a service that isn't
+ * listed. */
+export const VET_SERVICE_SEEDS: Array<{ name: string; defaultPrice: number }> =
+  [
+    { name: 'Deworming', defaultPrice: 350 },
+    { name: 'Wound Cleaning & Dressing', defaultPrice: 500 },
+    { name: 'Dental Scaling', defaultPrice: 2500 },
+    { name: 'Minor Surgery', defaultPrice: 5000 },
+    { name: 'Major Surgery', defaultPrice: 10000 },
+  ];
 
 export const PRESCRIPTION_TEMPLATE_SEEDS: Array<{
   name: string;
@@ -305,6 +322,45 @@ export async function seedConsultationFormTemplates(
   );
 }
 
+/** One clinic-wide list, so existence is checked by name alone - not per
+ * vet. `veterinarianId` only fills created_by ("added by"), and may be null
+ * when no Veterinarian has been seeded yet. */
+export async function seedVetServiceCatalog(
+  supabase: ReturnType<typeof createClient>,
+  veterinarianId: string | null
+) {
+  let created = 0;
+
+  for (const item of VET_SERVICE_SEEDS) {
+    const { data: existing } = await supabase
+      .from('vet_service_catalog')
+      .select('id')
+      .eq('name', item.name)
+      .maybeSingle();
+
+    if (existing) continue;
+
+    const { error } = await supabase.from('vet_service_catalog').insert({
+      name: item.name,
+      default_price: item.defaultPrice,
+      created_by: veterinarianId,
+    });
+
+    if (error) {
+      console.error(
+        `vet service catalog insert failed (${item.name}): ${error.message}`
+      );
+      continue;
+    }
+
+    created += 1;
+  }
+
+  console.log(
+    `ensured ${VET_SERVICE_SEEDS.length} vet service catalog item(s) exist (${created} row(s) created)`
+  );
+}
+
 async function main() {
   const supabase = getClient();
 
@@ -321,6 +377,8 @@ async function main() {
     );
     await seedConsultationFormTemplates(supabase, veterinarianId);
   }
+
+  await seedVetServiceCatalog(supabase, veterinarianId);
 }
 
 if (process.env.VITEST === undefined) {

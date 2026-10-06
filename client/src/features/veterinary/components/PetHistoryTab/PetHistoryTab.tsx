@@ -1,5 +1,8 @@
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
-import type { Consultation } from '../../veterinary.types';
+import type {
+  Consultation,
+  ConsultationMedication,
+} from '../../veterinary.types';
 import styles from './PetHistoryTab.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
@@ -14,6 +17,20 @@ function formatDate(iso: string): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+}
+
+/** A medicine's prescription on one line - type, quantity, dose, frequency,
+ * duration - leaving out whatever wasn't filled in. */
+function describeMedication(medication: ConsultationMedication): string {
+  return [
+    medication.medicine_type,
+    medication.quantity != null ? `Qty ${medication.quantity}` : null,
+    medication.dose,
+    medication.frequency,
+    medication.duration,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /**
@@ -61,12 +78,18 @@ export function PetHistoryTab({
             <p className={styles.detail}>Diagnosis: {consultation.diagnosis}</p>
           ) : null}
           {consultation.medications && consultation.medications.length > 0 ? (
-            <p className={styles.detail}>
-              Medications:{' '}
-              {consultation.medications
-                .map((medication) => `${medication.name} (${medication.dose})`)
-                .join(', ')}
-            </p>
+            <ul className={styles.medicationList}>
+              {consultation.medications.map((medication, index) => (
+                <li key={index} className={styles.medication}>
+                  <span className={styles.medicationName}>
+                    {medication.name}
+                  </span>
+                  <span className={styles.detail}>
+                    {describeMedication(medication)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           ) : null}
         </li>
       ))}

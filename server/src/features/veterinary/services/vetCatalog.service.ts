@@ -12,21 +12,18 @@ function throwWithStatus(statusCode: number, message: string): never {
 }
 
 /**
- * Each vet's medication/procedure catalog is owner-scoped (unlike every
- * other write in this feature, where any Veterinarian may edit any
- * consultation/health-condition row - see 20260825142's dev note). This
- * service uses the Supabase service-role client (bypasses RLS), so every
- * function here re-checks `veterinarian_id = requesterId` itself rather
- * than relying solely on the DB's own RLS policies - mirrors
- * unavailabilityBlock.service.ts's assertCanActOnTarget rationale.
+ * The medication catalog is one clinic-wide list (pharmacy prescriptions:
+ * its default_price is the selling price, so it can't differ per vet) - any
+ * Veterinarian may read, add to, edit or remove any item, and
+ * veterinarian_id only records who added it. The routes' vetWrite role check
+ * is the access gate; nothing here filters by requester.
  */
-export async function listMedicationCatalog(
-  veterinarianId: string
-): Promise<VetMedicationCatalogItem[]> {
+export async function listMedicationCatalog(): Promise<
+  VetMedicationCatalogItem[]
+> {
   const { data, error } = await supabase
     .from('vet_medication_catalog')
     .select('*')
-    .eq('veterinarian_id', veterinarianId)
     .order('name');
 
   if (error) throwWithStatus(400, error.message);
@@ -56,7 +53,6 @@ export async function createMedicationCatalogItem(
 }
 
 export async function updateMedicationCatalogItem(
-  veterinarianId: string,
   itemId: string,
   updates: UpdateMedicationCatalogItemInput
 ): Promise<VetMedicationCatalogItem> {
@@ -64,7 +60,6 @@ export async function updateMedicationCatalogItem(
     .from('vet_medication_catalog')
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', itemId)
-    .eq('veterinarian_id', veterinarianId)
     .select('*')
     .maybeSingle();
 
@@ -74,14 +69,12 @@ export async function updateMedicationCatalogItem(
 }
 
 export async function deleteMedicationCatalogItem(
-  veterinarianId: string,
   itemId: string
 ): Promise<void> {
   const { data, error } = await supabase
     .from('vet_medication_catalog')
     .delete()
     .eq('id', itemId)
-    .eq('veterinarian_id', veterinarianId)
     .select('id')
     .maybeSingle();
 

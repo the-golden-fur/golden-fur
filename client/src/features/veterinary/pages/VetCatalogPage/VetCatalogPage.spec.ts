@@ -37,6 +37,10 @@ vi.mock('../../api/veterinary.api', () => ({
   createConsultationFormTemplate: vi.fn(),
   updateConsultationFormTemplate: vi.fn(),
   deleteConsultationFormTemplate: vi.fn(),
+  listServiceCatalog: vi.fn(),
+  createServiceCatalogItem: vi.fn(),
+  updateServiceCatalogItem: vi.fn(),
+  deleteServiceCatalogItem: vi.fn(),
 }));
 
 function buildMedication(
@@ -150,6 +154,36 @@ describe('VetCatalogPage', () => {
     await waitFor(() =>
       expect(screen.queryByText('My Catalog')).not.toBeInTheDocument()
     );
+  });
+
+  it('has a Services tab showing the shared service list and its prices', async () => {
+    stubDefaults([buildMedication({ name: 'Amoxicillin' })]);
+    vi.mocked(vetApi.listServiceCatalog).mockResolvedValue({
+      data: [
+        {
+          id: 'svc-1',
+          name: 'Major Surgery',
+          default_price: 10000,
+          created_by: null,
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Services' }));
+
+    expect(await screen.findByText('Major Surgery')).toBeInTheDocument();
+    expect(screen.getByText('₱10,000.00')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Services' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    // The Medications tab's own content is no longer shown.
+    expect(screen.queryByText('Amoxicillin')).not.toBeInTheDocument();
   });
 
   it('lists medications on the Medications tab', async () => {

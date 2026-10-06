@@ -69,6 +69,7 @@ import {
   PRESCRIPTION_TEMPLATE_COMPARATORS,
   PRESCRIPTION_TEMPLATE_SORT_FIELDS,
 } from './vetCatalogBrowserFields';
+import { VetServiceCatalogTab } from './VetServiceCatalogTab';
 import styles from './VetCatalogPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
@@ -81,7 +82,7 @@ const ALLOWED_VIEWER_ROLES = new Set(['Veterinarian']);
 /** Custom change: "My Catalog" broken into Medications (product
  * definitions) / Prescriptions (reusable multi-medication templates) /
  * Forms (renamed from "Consultation Forms"). */
-type CatalogTab = 'medications' | 'prescriptions' | 'forms';
+type CatalogTab = 'medications' | 'prescriptions' | 'forms' | 'services';
 
 // Shared across all three tabs - Table/List/Board, same convention as every
 // other staff queue/catalog page.
@@ -1052,7 +1053,10 @@ export function VetCatalogPage() {
           Save the medications you carry, build reusable prescriptions from
           them, and build reusable consultation form templates - then pick them
           from a dropdown on the consultation form instead of retyping them
-          every visit. Only you can see and edit your own catalog.
+          every visit. Medications and Services are lists shared by every
+          veterinarian: a medication's price is what the pharmacy charges for
+          it, and a service's price is suggested when you list what was done at
+          a visit. Your prescriptions and forms stay your own.
         </p>
 
         <div className={styles.tabs} role="tablist">
@@ -1087,6 +1091,15 @@ export function VetCatalogPage() {
           >
             Forms
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'services'}
+            className={activeTab === 'services' ? styles.tabActive : styles.tab}
+            onClick={() => setActiveTab('services')}
+          >
+            Services
+          </button>
         </div>
 
         {message ? (
@@ -1095,7 +1108,12 @@ export function VetCatalogPage() {
           </p>
         ) : null}
 
-        {isLoading ? (
+        {activeTab === 'services' ? (
+          // Vet-priced visits: the shared service list loads and manages its
+          // own data (VetServiceCatalogTab), independent of the three
+          // catalogs this page fetches above.
+          <VetServiceCatalogTab accessToken={accessToken} />
+        ) : isLoading ? (
           <LoadingState label="Loading your catalog..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">

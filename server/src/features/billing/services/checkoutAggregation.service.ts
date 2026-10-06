@@ -189,6 +189,30 @@ export interface CheckoutResult {
 }
 
 /**
+ * Pharmacy prescriptions: a visit's medicine sale is its own transaction
+ * (pharmacyCharge.service.ts), linked from consultations
+ * .medication_transaction_id. It is separate from the service bill checkout
+ * builds, so the "supersede the booking-time estimate" reconciliation below
+ * must skip it - an unpaid one is not a stale estimate to delete, and a paid
+ * one is not a payment of the service. `medicine_sale` is that reverse link,
+ * non-empty only for a medicine transaction.
+ */
+const EXISTING_TRANSACTION_SELECT =
+  'id, payment_status, medicine_sale:consultations!medication_transaction_id(id)';
+
+interface ExistingTransactionRow {
+  id: string;
+  payment_status: string;
+  medicine_sale?: Array<{ id: string }> | null;
+}
+
+function serviceChargesOnly(rows: unknown): ExistingTransactionRow[] {
+  return ((rows ?? []) as ExistingTransactionRow[]).filter(
+    (row) => !row.medicine_sale?.length
+  );
+}
+
+/**
  * Issue #84: builds the same preview above, then applies Epic B credit
  * (behind creditStub.service.ts until #90 ships), resolves the payment
  * method, and persists everything as one transactions row + its
@@ -208,12 +232,13 @@ export async function checkoutBooking(
   // webhook, an earlier checkout) is a real payment - keep the 409.
   const { data: existingTransactions, error: existingError } = await supabase
     .from('transactions')
-    .select('id, payment_status')
+    .select(EXISTING_TRANSACTION_SELECT)
     .eq('booking_id', input.booking_id);
 
   if (existingError) throwWithStatus(400, existingError.message);
 
-  const settledRows = (existingTransactions ?? []).filter(
+  const serviceCharges = serviceChargesOnly(existingTransactions);
+  const settledRows = serviceCharges.filter(
     (t) => t.payment_status !== 'Pending'
   );
   if (settledRows.length > 0) {
@@ -223,7 +248,7 @@ export async function checkoutBooking(
     );
   }
 
-  const staleChargeIds = (existingTransactions ?? []).map((t) => t.id);
+  const staleChargeIds = serviceCharges.map((t) => t.id);
   if (staleChargeIds.length > 0) {
     await supabase
       .from('transaction_line_items')
@@ -572,12 +597,13 @@ export async function checkoutBookingGroup(
 ): Promise<GroupCheckoutResult> {
   const { data: existingTransactions, error: existingError } = await supabase
     .from('transactions')
-    .select('id, payment_status')
+    .select(EXISTING_TRANSACTION_SELECT)
     .eq('booking_group_id', input.booking_group_id);
 
   if (existingError) throwWithStatus(400, existingError.message);
 
-  const settledRows = (existingTransactions ?? []).filter(
+  const serviceCharges = serviceChargesOnly(existingTransactions);
+  const settledRows = serviceCharges.filter(
     (t) => t.payment_status !== 'Pending'
   );
   if (settledRows.length > 0) {
@@ -587,7 +613,7 @@ export async function checkoutBookingGroup(
     );
   }
 
-  const staleChargeIds = (existingTransactions ?? []).map((t) => t.id);
+  const staleChargeIds = serviceCharges.map((t) => t.id);
   if (staleChargeIds.length > 0) {
     await supabase
       .from('transaction_line_items')

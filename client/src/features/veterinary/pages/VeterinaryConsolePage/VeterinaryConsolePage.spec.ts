@@ -26,6 +26,7 @@ vi.mock('../../../customers/api/customer.api', () => ({
   getPet: vi.fn(),
   getCustomerProfile: vi.fn(),
   getPetHealthConditions: vi.fn(),
+  listPetPrescriptions: vi.fn(),
 }));
 vi.mock('../../api/veterinary.api', () => ({
   listConsultationQueue: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock('../../api/veterinary.api', () => ({
   getPetConsultationHistory: vi.fn(),
   upsertPetHealthConditions: vi.fn(),
   listMedicationCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
+  listServiceCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
   listPrescriptionTemplates: vi
     .fn()
     .mockResolvedValue({ data: [], error: null }),
@@ -40,6 +42,48 @@ vi.mock('../../api/veterinary.api', () => ({
     .fn()
     .mockResolvedValue({ data: [], error: null }),
 }));
+
+// ScheduleFollowUpModal has its own spec (slot/staff pickers, booking,
+// linking) - stubbed here to one button that reports a linked follow-up, so
+// this file only covers when the page offers it and what it does after.
+vi.mock('../../components/ScheduleFollowUpModal/ScheduleFollowUpModal', () => ({
+  ScheduleFollowUpModal: (props: {
+    consultationId: string;
+    petId: string;
+    petName: string;
+    customerId: string;
+    branchId: string;
+    veterinarianId: string;
+    onClose: () => void;
+    onLinked: (consultation: unknown) => void;
+  }) =>
+    createElement(
+      'div',
+      { role: 'dialog', 'aria-label': 'Schedule follow-up' },
+      createElement(
+        'p',
+        null,
+        `for ${props.petName} (${props.petId}) of ${props.customerId} at ${props.branchId} with ${props.veterinarianId}`
+      ),
+      createElement(
+        'button',
+        {
+          onClick: () => {
+            props.onLinked({
+              ...followUpLinkedConsultation,
+              id: props.consultationId,
+            });
+            props.onClose();
+          },
+        },
+        'Mock confirm follow-up'
+      ),
+      createElement('button', { onClick: props.onClose }, 'Mock cancel')
+    ),
+}));
+
+/** What the stubbed form reports back - set by the test before confirming. */
+let followUpLinkedConsultation: Partial<Consultation> = {};
 
 function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
   return {
@@ -84,6 +128,9 @@ function buildConsultation(
     reason_for_visit: 'Annual checkup',
     follow_up_date: null,
     follow_up_booking_id: null,
+    follow_up_reason: null,
+    sold_at_pharmacy: false,
+    medication_transaction_id: null,
     created_at: '2026-07-19T00:00:00.000Z',
     updated_at: '2026-07-19T00:00:00.000Z',
     booking: {
@@ -220,6 +267,793 @@ describe('VeterinaryConsolePage (#70)', () => {
     vi.mocked(veterinaryApi.upsertPetHealthConditions).mockResolvedValue({
       data: null,
       error: null,
+    });
+    vi.mocked(veterinaryApi.updateConsultation).mockReset();
+    vi.mocked(veterinaryApi.listMedicationCatalog).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listPrescriptionTemplates).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationFormTemplates).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listServiceCatalog).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    window.print = vi.fn();
+  });
+
+  const AMOXICILLIN_ON_THE_LIST = {
+    id: 'med-1',
+    veterinarian_id: 'vet-2',
+    name: 'Amoxicillin',
+    default_price: 150,
+    default_medicine_type: 'Oral',
+    icon: null,
+    image_url: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  };
+
+  /** Opens "View Details" for the one consultation in the queue, as a
+   * Veterinarian, and returns its dialog. */
+  async function openDetails(consultation: Consultation) {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: { consultations: [consultation] },
+      error: null,
+    });
+    stubPetAndOwner();
+
+    renderPage();
+
+    await screen.findByText('Whiskers');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Options for Whiskers' })
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'View Details' })
+    );
+
+    return screen.findByRole('dialog', { name: 'Consultation Details' });
+  }
+
+  const servicesDialog = () =>
+    screen.findByRole('dialog', { name: 'Services done for Whiskers' });
+
+  /** Presses Complete in the details form, then confirms the "Services
+   * done" pop-up it opens (with nothing listed unless a test fills it in
+   * first via `fill`). */
+  async function completeFromDetails(
+    dialog: HTMLElement,
+    fill?: (popup: HTMLElement) => Promise<void>
+  ) {
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /complete consultation/i })
+    );
+    const popup = await servicesDialog();
+    if (fill) await fill(popup);
+    await userEvent.click(
+      within(popup).getByRole('button', { name: 'Complete consultation' })
+    );
+  }
+
+  describe('scheduling a follow-up', () => {
+    it('the vet who handled a Completed visit can schedule its follow-up from the details form, and the visit then shows when and why', async () => {
+      const completed = buildConsultation(
+        { accepted_by: 'vet-1' },
+        'Completed'
+      );
+      followUpLinkedConsultation = {
+        ...completed,
+        follow_up_date: '2026-08-01',
+        follow_up_booking_id: 'booking-2',
+        follow_up_reason: 'Recheck the ear',
+      };
+
+      const dialog = await openDetails(completed);
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Schedule follow-up' })
+      );
+
+      const form = await screen.findByRole('dialog', {
+        name: 'Schedule follow-up',
+      });
+      // Booked for this visit's pet, owner and branch, with this vet.
+      expect(
+        within(form).getByText(
+          'for Whiskers (pet-1) of customer-1 at branch-makati with vet-1'
+        )
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        within(form).getByRole('button', { name: 'Mock confirm follow-up' })
+      );
+
+      expect(
+        await within(dialog).findByText(
+          'Follow-up scheduled for 2026-08-01: Recheck the ear'
+        )
+      ).toBeInTheDocument();
+      // One follow-up per visit.
+      expect(
+        within(dialog).queryByRole('button', { name: 'Schedule follow-up' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('dialog', { name: 'Schedule follow-up' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('is also offered straight from the row menu', async () => {
+      vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+        data: buildViewerProfile('Veterinarian'),
+        error: null,
+      });
+      vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+        data: {
+          consultations: [
+            buildConsultation({ accepted_by: 'vet-1' }, 'Completed'),
+          ],
+        },
+        error: null,
+      });
+      stubPetAndOwner();
+
+      renderPage();
+
+      await screen.findByText('Whiskers');
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Options for Whiskers' })
+      );
+      await userEvent.click(
+        screen.getByRole('menuitem', { name: 'Schedule follow-up' })
+      );
+
+      expect(
+        await screen.findByRole('dialog', { name: 'Schedule follow-up' })
+      ).toBeInTheDocument();
+    });
+
+    it.each([
+      [
+        'a visit another vet handled',
+        () => buildConsultation({ accepted_by: 'vet-2' }, 'Completed'),
+      ],
+      [
+        'a visit that is not finished yet',
+        () => buildConsultation({ accepted_by: 'vet-1' }, 'In Progress'),
+      ],
+      [
+        'a visit that already has a follow-up',
+        () =>
+          buildConsultation(
+            {
+              accepted_by: 'vet-1',
+              follow_up_date: '2026-08-01',
+              follow_up_booking_id: 'booking-2',
+              follow_up_reason: 'Recheck the ear',
+            },
+            'Completed'
+          ),
+      ],
+    ])('is not offered for %s', async (_label, build) => {
+      const dialog = await openDetails(build());
+
+      expect(
+        within(dialog).queryByRole('button', { name: 'Schedule follow-up' })
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Options for Whiskers' })
+      );
+      expect(
+        screen.queryByRole('menuitem', { name: 'Schedule follow-up' })
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('services done (vet-priced visits)', () => {
+    const MAJOR_SURGERY = {
+      id: 'svc-1',
+      name: 'Major Surgery',
+      default_price: 10000,
+      created_by: null,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+
+    it('Complete in the details form opens the pop-up first, then sends the form and the services done in one save', async () => {
+      vi.mocked(veterinaryApi.listServiceCatalog).mockResolvedValue({
+        data: [MAJOR_SURGERY],
+        error: null,
+      });
+      vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+        data: buildConsultation({}, 'Completed'),
+        error: null,
+      });
+
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+      await userEvent.type(
+        within(dialog).getByLabelText('Diagnosis'),
+        'Torn ligament'
+      );
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: /complete consultation/i })
+      );
+
+      const popup = await servicesDialog();
+      // Nothing is saved until the pop-up is confirmed.
+      expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
+
+      // Picked from the shared list: its usual price comes with it.
+      await userEvent.type(
+        within(popup).getByRole('combobox', { name: 'Service 1 name' }),
+        'Major Surgery'
+      );
+      expect(
+        within(popup).getByRole('spinbutton', { name: 'Service 1 price' })
+      ).toHaveValue(10000);
+      // Typed in: not on the list.
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Add service' })
+      );
+      await userEvent.type(
+        within(popup).getByRole('combobox', { name: 'Service 2 name' }),
+        'Wound dressing'
+      );
+      await userEvent.type(
+        within(popup).getByRole('spinbutton', { name: 'Service 2 price' }),
+        '350'
+      );
+
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Complete consultation' })
+      );
+
+      await waitFor(() =>
+        expect(veterinaryApi.updateConsultation).toHaveBeenCalledTimes(1)
+      );
+      expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+        'consultation-1',
+        'token',
+        expect.objectContaining({
+          status: 'Completed',
+          diagnosis: 'Torn ligament',
+          services_done: [
+            { name: 'Major Surgery', amount: 10000 },
+            { name: 'Wound dressing', amount: 350 },
+          ],
+        })
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('dialog', { name: 'Services done for Whiskers' })
+        ).not.toBeInTheDocument()
+      );
+    });
+
+    it('cancelling the pop-up leaves the visit open and unsaved', async () => {
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: /complete consultation/i })
+      );
+      const popup = await servicesDialog();
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Cancel' })
+      );
+
+      expect(
+        screen.queryByRole('dialog', { name: 'Services done for Whiskers' })
+      ).not.toBeInTheDocument();
+      expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
+      expect(
+        within(dialog).getByRole('button', { name: /complete consultation/i })
+      ).toBeEnabled();
+    });
+
+    it('keeps the pop-up open with the reason when the server refuses to complete', async () => {
+      vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+        data: null,
+        error: 'Amoxicillin has no price on the medicine list',
+      });
+
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+      await completeFromDetails(dialog);
+
+      const popup = await servicesDialog();
+      expect(await within(popup).findByRole('alert')).toHaveTextContent(
+        'Amoxicillin has no price'
+      );
+    });
+  });
+
+  /** Types a medicine's name into the Prescription section and adds it. */
+  async function addMedicine(dialog: HTMLElement, name: string) {
+    // The medicine list loads when the panel opens - a real vet is never
+    // faster than it, but a test is.
+    await waitFor(() =>
+      expect(veterinaryApi.listMedicationCatalog).toHaveBeenCalled()
+    );
+    await userEvent.type(
+      within(dialog).getByRole('combobox', { name: 'Medicine name' }),
+      name
+    );
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Add medicine' })
+    );
+  }
+
+  describe('pharmacy prescriptions', () => {
+    it('a typed medicine that is on the medicine list picks up its type and list entry, whatever case it was typed in', async () => {
+      vi.mocked(veterinaryApi.listMedicationCatalog).mockResolvedValue({
+        data: [AMOXICILLIN_ON_THE_LIST],
+        error: null,
+      });
+      vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+        data: buildConsultation({}, 'Completed'),
+        error: null,
+      });
+
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+      await waitFor(() =>
+        expect(veterinaryApi.listMedicationCatalog).toHaveBeenCalled()
+      );
+
+      await addMedicine(dialog, 'amoxicillin');
+
+      // The list's own spelling and type are used, and the box is cleared
+      // ready for the next medicine.
+      expect(within(dialog).getByText('Amoxicillin')).toBeInTheDocument();
+      expect(within(dialog).getByPlaceholderText('Medicine type')).toHaveValue(
+        'Oral'
+      );
+      expect(
+        within(dialog).getByRole('combobox', { name: 'Medicine name' })
+      ).toHaveValue('');
+
+      await userEvent.type(within(dialog).getByPlaceholderText('Dose'), '50mg');
+      await completeFromDetails(dialog);
+
+      await waitFor(() =>
+        expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+          'consultation-1',
+          'token',
+          expect.objectContaining({
+            medications: [
+              expect.objectContaining({
+                name: 'Amoxicillin',
+                medication_catalog_id: 'med-1',
+              }),
+            ],
+          })
+        )
+      );
+    });
+
+    it('any medicine can be typed in, even one that is not on the medicine list - it just cannot be sold here', async () => {
+      vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+        data: buildConsultation({}, 'Completed'),
+        error: null,
+      });
+
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+
+      // Pressing Enter adds it too.
+      await userEvent.type(
+        within(dialog).getByRole('combobox', { name: 'Medicine name' }),
+        'Mystery syrup{Enter}'
+      );
+      await userEvent.type(within(dialog).getByPlaceholderText('Dose'), '5ml');
+
+      await userEvent.click(
+        within(dialog).getByRole('radio', { name: 'Buying from our pharmacy' })
+      );
+      expect(within(dialog).getByText('No price set')).toBeInTheDocument();
+      expect(within(dialog).getByRole('status')).toHaveTextContent(
+        'Mystery syrup'
+      );
+
+      await userEvent.click(
+        within(dialog).getByRole('radio', {
+          name: 'Buying from another pharmacy',
+        })
+      );
+      await completeFromDetails(dialog);
+
+      await waitFor(() =>
+        expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+          'consultation-1',
+          'token',
+          expect.objectContaining({
+            sold_at_pharmacy: false,
+            medications: [
+              expect.objectContaining({
+                name: 'Mystery syrup',
+                dose: '5ml',
+                medication_catalog_id: null,
+              }),
+            ],
+          })
+        )
+      );
+    });
+
+    it('the Consultation Details form has no Professional Fee box and completes without one', async () => {
+      vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+        data: buildConsultation({}, 'Completed'),
+        error: null,
+      });
+
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+
+      expect(within(dialog).queryByText(/professional fee/i)).toBeNull();
+
+      await completeFromDetails(dialog);
+
+      await waitFor(() =>
+        expect(veterinaryApi.updateConsultation).toHaveBeenCalled()
+      );
+      const payload = vi.mocked(veterinaryApi.updateConsultation).mock
+        .calls[0][2];
+      expect(payload.status).toBe('Completed');
+      expect(payload.professional_fee).toBeUndefined();
+    });
+
+    it('opens straight onto the form - no "Choose consultation form(s)" popup, even with a default form saved', async () => {
+      vi.mocked(veterinaryApi.listConsultationFormTemplates).mockResolvedValue({
+        data: [
+          {
+            id: 'tmpl-1',
+            veterinarian_id: 'vet-1',
+            name: 'General Consultation',
+            fields: [{ id: 'f1', label: 'Temperature', type: 'number' }],
+            is_default: true,
+            icon: null,
+            created_at: '2026-01-01T00:00:00.000Z',
+            updated_at: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+      await waitFor(() =>
+        expect(veterinaryApi.listConsultationFormTemplates).toHaveBeenCalled()
+      );
+      // Let the loaded templates reach the panel before asserting on it.
+      await within(dialog).findByText('Results');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(
+        screen.queryByRole('dialog', { name: 'Choose consultation form(s)' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/Pick which of your saved consultation forms/)
+      ).not.toBeInTheDocument();
+      // The only dialog open is the details panel itself.
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    });
+
+    it('does not add a blank medicine', async () => {
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+
+      await userEvent.type(
+        within(dialog).getByRole('combobox', { name: 'Medicine name' }),
+        '   '
+      );
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Add medicine' })
+      );
+
+      expect(within(dialog).queryByPlaceholderText('Dose')).toBeNull();
+    });
+
+    it('no longer offers "Add from a saved prescription" in the Prescription section', async () => {
+      vi.mocked(veterinaryApi.listPrescriptionTemplates).mockResolvedValue({
+        data: [
+          {
+            id: 'rx-1',
+            veterinarian_id: 'vet-1',
+            name: 'Ear infection kit',
+            items: [],
+            created_at: '2026-01-01T00:00:00.000Z',
+            updated_at: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+      await waitFor(() =>
+        expect(veterinaryApi.listPrescriptionTemplates).toHaveBeenCalled()
+      );
+
+      expect(
+        within(dialog).getByRole('combobox', { name: 'Medicine name' })
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).queryByRole('combobox', {
+          name: 'Add from a saved prescription',
+        })
+      ).not.toBeInTheDocument();
+    });
+
+    it('completes with a diagnosis and a quantity, and bills no medicine unless the vet says it is bought here', async () => {
+      vi.mocked(veterinaryApi.listMedicationCatalog).mockResolvedValue({
+        data: [AMOXICILLIN_ON_THE_LIST],
+        error: null,
+      });
+      vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+        data: buildConsultation({}, 'Completed'),
+        error: null,
+      });
+
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+
+      await userEvent.type(
+        within(dialog).getByLabelText('Diagnosis'),
+        'Ear infection'
+      );
+      await addMedicine(dialog, 'Amoxicillin');
+      const quantity = within(dialog).getByLabelText('Quantity of Amoxicillin');
+      await userEvent.clear(quantity);
+      await userEvent.type(quantity, '2');
+      await userEvent.type(within(dialog).getByPlaceholderText('Dose'), '50mg');
+
+      // A price is never typed in - it comes from the medicine list.
+      expect(
+        within(dialog).queryByPlaceholderText(/amount/i)
+      ).not.toBeInTheDocument();
+      // Buying elsewhere is the default, so nothing is billed by accident.
+      expect(
+        within(dialog).getByRole('radio', {
+          name: 'Buying from another pharmacy',
+        })
+      ).toBeChecked();
+
+      await completeFromDetails(dialog);
+
+      await waitFor(() =>
+        expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+          'consultation-1',
+          'token',
+          expect.objectContaining({
+            status: 'Completed',
+            diagnosis: 'Ear infection',
+            sold_at_pharmacy: false,
+            medications: [
+              expect.objectContaining({
+                name: 'Amoxicillin',
+                dose: '50mg',
+                quantity: 2,
+                medication_catalog_id: 'med-1',
+              }),
+            ],
+          })
+        )
+      );
+      const payload = vi.mocked(veterinaryApi.updateConsultation).mock
+        .calls[0][2];
+      expect(payload.medications?.[0]).not.toHaveProperty('amount');
+    });
+
+    it('choosing "Buying from our pharmacy" shows the medicine total from the list prices and sends that choice', async () => {
+      vi.mocked(veterinaryApi.listMedicationCatalog).mockResolvedValue({
+        data: [AMOXICILLIN_ON_THE_LIST],
+        error: null,
+      });
+      vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+        data: buildConsultation({}, 'Completed'),
+        error: null,
+      });
+
+      const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+
+      await addMedicine(dialog, 'Amoxicillin');
+      const quantity = within(dialog).getByLabelText('Quantity of Amoxicillin');
+      await userEvent.clear(quantity);
+      await userEvent.type(quantity, '2');
+      await userEvent.type(within(dialog).getByPlaceholderText('Dose'), '50mg');
+
+      expect(within(dialog).queryByText(/Medicine total/)).toBeNull();
+
+      await userEvent.click(
+        within(dialog).getByRole('radio', { name: 'Buying from our pharmacy' })
+      );
+
+      expect(
+        within(dialog).getByText(/Medicine total: ₱300\.00/)
+      ).toBeInTheDocument();
+
+      await completeFromDetails(dialog);
+
+      await waitFor(() =>
+        expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+          'consultation-1',
+          'token',
+          expect.objectContaining({ sold_at_pharmacy: true })
+        )
+      );
+    });
+
+    it('lets the vet who handled a Completed visit edit its diagnosis and prescription, saved without a status', async () => {
+      const completed = buildConsultation(
+        {
+          accepted_by: 'vet-1',
+          diagnosis: 'Ear infection',
+          medications: [
+            {
+              name: 'Amoxicillin',
+              dose: '50mg',
+              quantity: 2,
+              medication_catalog_id: 'med-1',
+            },
+          ],
+        },
+        'Completed'
+      );
+      vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+        data: { ...completed, diagnosis: 'Otitis externa' },
+        error: null,
+      });
+
+      const dialog = await openDetails(completed);
+
+      const diagnosis = within(dialog).getByLabelText('Diagnosis');
+      expect(diagnosis).toBeDisabled();
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Edit record' })
+      );
+      expect(diagnosis).toBeEnabled();
+      // Only the diagnosis and prescription unlock - the visit stays final.
+      expect(
+        within(dialog).queryByRole('button', { name: /complete consultation/i })
+      ).not.toBeInTheDocument();
+
+      await userEvent.clear(diagnosis);
+      await userEvent.type(diagnosis, 'Otitis externa');
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Save changes' })
+      );
+
+      await waitFor(() =>
+        expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+          'consultation-1',
+          'token',
+          {
+            diagnosis: 'Otitis externa',
+            sold_at_pharmacy: false,
+            medications: [
+              expect.objectContaining({
+                name: 'Amoxicillin',
+                quantity: 2,
+                medication_catalog_id: 'med-1',
+              }),
+            ],
+          }
+        )
+      );
+      // Saved - back to read-only.
+      await waitFor(() => expect(diagnosis).toBeDisabled());
+    });
+
+    it('Cancel discards an unsaved edit', async () => {
+      const dialog = await openDetails(
+        buildConsultation(
+          { accepted_by: 'vet-1', diagnosis: 'Ear infection' },
+          'Completed'
+        )
+      );
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Edit record' })
+      );
+      const diagnosis = within(dialog).getByLabelText('Diagnosis');
+      await userEvent.clear(diagnosis);
+      await userEvent.type(diagnosis, 'Wrong');
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Cancel' })
+      );
+
+      expect(diagnosis).toHaveValue('Ear infection');
+      expect(diagnosis).toBeDisabled();
+      expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
+    });
+
+    it('offers no Edit record on a Completed visit another vet handled', async () => {
+      const dialog = await openDetails(
+        buildConsultation({ accepted_by: 'vet-2' }, 'Completed')
+      );
+
+      expect(
+        within(dialog).queryByRole('button', { name: 'Edit record' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('says the bill will not change once the medicine has been paid, and locks where it was bought', async () => {
+      const dialog = await openDetails(
+        buildConsultation(
+          {
+            accepted_by: 'vet-1',
+            sold_at_pharmacy: true,
+            medication_transaction_id: 'txn-1',
+            medication_transaction: { payment_status: 'Fully Paid' },
+            medications: [
+              {
+                name: 'Amoxicillin',
+                dose: '50mg',
+                quantity: 2,
+                medication_catalog_id: 'med-1',
+              },
+            ],
+          },
+          'Completed'
+        )
+      );
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Edit record' })
+      );
+
+      expect(within(dialog).getByText(/already been paid/)).toBeInTheDocument();
+      expect(
+        within(dialog).getByRole('radio', { name: 'Buying from our pharmacy' })
+      ).toBeDisabled();
+      expect(within(dialog).getByPlaceholderText('Dose')).toBeEnabled();
+    });
+
+    it('prints a Completed visit prescription with the vet and branch on it', async () => {
+      vi.mocked(customerApi.listPetPrescriptions).mockResolvedValue({
+        data: [
+          {
+            consultation_id: 'consultation-1',
+            date: '2026-07-19T03:00:00.000Z',
+            veterinarian_name: 'Dr. Reyes',
+            branch_name: 'Golden Fur Makati',
+            branch_address: '123 Ayala Ave, Makati',
+            pet_name: 'Whiskers',
+            owner_name: 'Jane Doe',
+            medications: [{ name: 'Amoxicillin', dose: '50mg', quantity: 2 }],
+          },
+        ],
+        error: null,
+      });
+
+      const dialog = await openDetails(
+        buildConsultation(
+          {
+            medications: [{ name: 'Amoxicillin', dose: '50mg', quantity: 2 }],
+          },
+          'Completed'
+        )
+      );
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Print prescription' })
+      );
+
+      const sheet = await screen.findByRole('document', {
+        name: 'Prescription',
+      });
+      expect(within(sheet).getByText('Golden Fur Makati')).toBeInTheDocument();
+      expect(within(sheet).getAllByText('Dr. Reyes').length).toBeGreaterThan(0);
+      expect(customerApi.listPetPrescriptions).toHaveBeenCalledWith(
+        'pet-1',
+        'token'
+      );
+      await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
     });
   });
 
@@ -438,9 +1272,7 @@ describe('VeterinaryConsolePage (#70)', () => {
     const dialog = await screen.findByRole('dialog', {
       name: 'Consultation Details',
     });
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: /complete consultation/i })
-    );
+    await completeFromDetails(dialog);
 
     await waitFor(() =>
       expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
@@ -451,7 +1283,7 @@ describe('VeterinaryConsolePage (#70)', () => {
     );
   });
 
-  it('an In Progress row has a Complete button that finishes the consultation with just the professional fee', async () => {
+  it('an In Progress row has a Complete button that opens the same Services done pop-up and finishes the visit from there', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Veterinarian'),
       error: null,
@@ -472,24 +1304,33 @@ describe('VeterinaryConsolePage (#70)', () => {
       await screen.findByRole('button', { name: /^complete$/i })
     );
 
-    const dialog = await screen.findByRole('dialog', {
-      name: 'Complete Consultation',
+    const popup = await screen.findByRole('dialog', {
+      name: 'Services done for Whiskers',
     });
     expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
+    // The old Professional Fee box is gone - prices go on the services.
+    expect(within(popup).queryByText(/professional fee/i)).toBeNull();
 
     await userEvent.type(
-      within(dialog).getByLabelText(/professional fee/i),
-      '500'
+      within(popup).getByRole('combobox', { name: 'Service 1 name' }),
+      'Surgery'
+    );
+    await userEvent.type(
+      within(popup).getByRole('spinbutton', { name: 'Service 1 price' }),
+      '10000'
     );
     await userEvent.click(
-      within(dialog).getByRole('button', { name: /^complete$/i })
+      within(popup).getByRole('button', { name: 'Complete consultation' })
     );
 
     await waitFor(() =>
       expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
         'consultation-1',
         'token',
-        { status: 'Completed', professional_fee: 500 }
+        {
+          status: 'Completed',
+          services_done: [{ name: 'Surgery', amount: 10000 }],
+        }
       )
     );
     // Saved medications/results are left alone - not overwritten with [].
@@ -500,7 +1341,7 @@ describe('VeterinaryConsolePage (#70)', () => {
 
     await waitFor(() =>
       expect(
-        screen.queryByRole('dialog', { name: 'Complete Consultation' })
+        screen.queryByRole('dialog', { name: 'Services done for Whiskers' })
       ).not.toBeInTheDocument()
     );
     expect(

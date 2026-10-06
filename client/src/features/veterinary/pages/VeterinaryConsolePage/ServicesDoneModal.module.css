@@ -1,0 +1,138 @@
+.body {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.rows {
+  display: grid;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Name takes the room; the price column stays a fixed, scannable width so
+   the amounts line up down the list. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9rem auto;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.input {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+}
+
+.price {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.removeButton,
+.addButton,
+.cancelButton {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-2);
+  width: fit-content;
+}
+
+.removeButton:hover:not(:disabled),
+.addButton:hover:not(:disabled),
+.cancelButton:hover:not(:disabled) {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-2);
+}
+
+.total {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-base, 1rem);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.errorBanner {
+  margin: 0;
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.primaryButton {
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+  cursor: pointer;
+  font-size: var(--text-button);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2) var(--space-3);
+  box-shadow: var(--shadow-sm);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--color-accent-gold-highlight);
+}
+
+.primaryButton:disabled,
+.cancelButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.removeButton:focus-visible,
+.addButton:focus-visible,
+.cancelButton:focus-visible,
+.primaryButton:focus-visible,
+.input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Narrow screens: the name gets its own line, price and Remove share the
+   next one. */
+@media (max-width: 30rem) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .row > :first-child {
+    grid-column: 1 / -1;
+  }
+}

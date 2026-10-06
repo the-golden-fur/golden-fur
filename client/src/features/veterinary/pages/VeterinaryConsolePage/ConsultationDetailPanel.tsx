@@ -1,8 +1,12 @@
 import { useEffect, useState, type DragEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { GripVertical } from 'lucide-react';
-import { Modal } from '../../../../shared/components/Modal/Modal';
+import { PrescriptionPrintout } from '../../../../shared/components/PrescriptionPrintout/PrescriptionPrintout';
+import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { FINISHED_BOOKING_STATUSES } from '../../../booking/booking.types';
+import { listPetPrescriptions } from '../../../customers/api/customer.api';
+import type { PetPrescriptionHistoryEntry } from '../../../customers/customer.types';
 import { HealthConditionsField } from '../../components/HealthConditionsField/HealthConditionsField';
 import {
   listConsultationFormTemplates,
@@ -33,9 +37,12 @@ export interface ConsultationDetailPanelProps {
   saveError: string | null;
   onStart: () => void;
   onComplete: (fields: {
+    diagnosis: string;
     medications: MedicationInput[];
+    /** True = the customer is buying the medicine from this branch's
+     * pharmacy (billed as its own transaction); false = somewhere else. */
+    soldAtPharmacy: boolean;
     formResponses: ConsultationFormResponse[];
-    professionalFee: number;
     vaccination?: {
       vaccine_name: string;
       date_administered: string;
@@ -43,24 +50,30 @@ export interface ConsultationDetailPanelProps {
       notes?: string;
     };
   }) => void;
-  /** Custom change: page-level state (VeterinaryConsolePage) tracking which
-   * consultations have already had the "choose a form" prompt resolved
-   * (started or skipped) during this session, so it only ever auto-shows
-   * once per consultation - reopening "View Details" afterward doesn't nag
-   * again. Adding another form later happens through the Results section's
-   * own "Add result from a form template..." control. */
-  hasSeenFormsPrompt: boolean;
-  /** Called once the picker is dismissed any way (Add, Skip/Cancel, close) -
-   * marks hasSeenFormsPrompt true. */
-  onFormsPromptResolved: () => void;
+  /** Pharmacy prescriptions: whether this viewer may still correct a
+   * Completed visit's diagnosis and prescription - only the vet who handled
+   * it (see VeterinaryConsolePage). */
+  canEditRecord: boolean;
+  /** Saves an edit to a Completed visit. Resolves true when it was saved,
+   * so the panel knows to leave edit mode. */
+  onSaveRecord: (fields: {
+    diagnosis: string;
+    medications: MedicationInput[];
+    soldAtPharmacy: boolean;
+  }) => Promise<boolean>;
+  /** Vet-priced visits: opens the Schedule follow-up form for this visit
+   * (hosted by VeterinaryConsolePage). Offered to the same vet who may edit
+   * the record, once per visit. */
+  onScheduleFollowUp: () => void;
 }
 
 /** #117: build a fresh, empty ConsultationFormResponse from a saved template
  * - one field per template field, all values start empty/false/null
  * depending on the field's type. Custom change: a 'prescription' field
  * starts as an empty medication list, filled in the same way as the
- * top-level Prescription section (add from catalog / bulk-add from a
- * saved prescription template). */
+ * form field's own add-from-catalog / add-from-saved-prescription
+ * controls below (the top-level Prescription section has since become a
+ * typed-in medicine box instead - see addMedicine). */
 function buildEmptyResponse(
   template: ConsultationFormTemplate
 ): ConsultationFormResponse {
@@ -82,6 +95,31 @@ function buildEmptyResponse(
   };
 }
 
+/** The saved prescription as editable rows - also what Cancel restores. */
+function seedMedications(consultation: Consultation): MedicationInput[] {
+  return (consultation.medications ?? []).map((medication) => ({
+    name: medication.name,
+    dose: medication.dose,
+    notes: medication.notes ?? '',
+    medicine_type: medication.medicine_type ?? '',
+    frequency: medication.frequency ?? '',
+    duration: medication.duration ?? '',
+    quantity: medication.quantity ?? 1,
+    medication_catalog_id: medication.medication_catalog_id ?? null,
+  }));
+}
+
+/** A cleared Quantity box is "not typed yet", not zero - it goes out as 1,
+ * and anything typed is kept to a whole number of at least 1. */
+function withValidQuantities(
+  medications: MedicationInput[]
+): MedicationInput[] {
+  return medications.map((medication) => ({
+    ...medication,
+    quantity: Math.max(1, Math.round(medication.quantity ?? 1) || 1),
+  }));
+}
+
 function asMedicationList(
   value: ConsultationFormResponse['fields'][number]['value']
 ): ConsultationMedication[] {
@@ -99,10 +137,18 @@ function asMedicationList(
  * Custom change: vitals (temperature/weight/heart rate/respiratory rate)
  * and diagnosis are no longer fixed fields on this form - they're just
  * another consultation form template now (see the "General Consultation"
- * default template seeded in My Catalog > Forms). The first time a fresh
- * consultation (no form_responses yet) is opened, this panel prompts the
- * vet to choose which of their saved form templates to start with
- * (defaulting to whichever one is marked "default").
+ * default template seeded in My Catalog > Forms). A form is added to a
+ * visit from the Results section's own picker - the "Choose consultation
+ * form(s)" popup that used to open on a fresh consultation was removed.
+ *
+ * Pharmacy prescriptions: Diagnosis is a fixed field again (saved to the
+ * visit itself, so My Patients can show it). Each prescribed medicine has a
+ * quantity and no typed-in price - the vet says where the customer is
+ * buying: "another pharmacy" (the default - a medical record only, nothing
+ * billed) or "our pharmacy" (billed as its own transaction, priced from the
+ * shared medicine list). A Completed visit's diagnosis and prescription can
+ * still be corrected by the vet who handled it ("Edit record"), and its
+ * prescription can be printed for buying elsewhere.
  */
 export function ConsultationDetailPanel({
   consultation,
@@ -114,30 +160,33 @@ export function ConsultationDetailPanel({
   saveError,
   onStart,
   onComplete,
-  hasSeenFormsPrompt,
-  onFormsPromptResolved,
+  canEditRecord,
+  onSaveRecord,
+  onScheduleFollowUp,
 }: ConsultationDetailPanelProps) {
   // Lazy initial state seeded from the selected consultation. The parent
   // renders this component with key={consultation.id} (VeterinaryConsolePage),
   // so React remounts - and re-seeds all of this state fresh - whenever a
   // different consultation is selected, with no synchronizing effect needed.
   const [medications, setMedications] = useState<MedicationInput[]>(() =>
-    (consultation.medications ?? []).map((medication) => ({
-      name: medication.name,
-      dose: medication.dose,
-      notes: medication.notes ?? '',
-      medicine_type: medication.medicine_type ?? '',
-      frequency: medication.frequency ?? '',
-      duration: medication.duration ?? '',
-    }))
+    seedMedications(consultation)
   );
+  const [diagnosis, setDiagnosis] = useState(consultation.diagnosis ?? '');
+  const [soldAtPharmacy, setSoldAtPharmacy] = useState(
+    consultation.sold_at_pharmacy ?? false
+  );
+  const [newMedicineName, setNewMedicineName] = useState('');
+  const [isEditingRecord, setIsEditingRecord] = useState(false);
+  const [printing, setPrinting] = useState<PetPrescriptionHistoryEntry | null>(
+    null
+  );
+  const [printError, setPrintError] = useState<string | null>(null);
   const [formResponses, setFormResponses] = useState<
     ConsultationFormResponse[]
   >(() => consultation.form_responses ?? []);
   const [draggedResponseIndex, setDraggedResponseIndex] = useState<
     number | null
   >(null);
-  const [professionalFee, setProfessionalFee] = useState('');
   const [vaccineName, setVaccineName] = useState('');
   const [vaccineDate, setVaccineDate] = useState('');
 
@@ -150,10 +199,6 @@ export function ConsultationDetailPanel({
   const [formTemplates, setFormTemplates] = useState<
     ConsultationFormTemplate[]
   >([]);
-
-  const [chosenTemplateIds, setChosenTemplateIds] = useState<Set<string>>(
-    new Set()
-  );
 
   // The catalog/template read endpoints are Veterinarian-only (owner-
   // scoped), same as the write actions this whole form already gates on
@@ -174,16 +219,7 @@ export function ConsultationDetailPanel({
       if (prescriptionResult.data) {
         setPrescriptionTemplates(prescriptionResult.data);
       }
-      if (templateResult.data) {
-        setFormTemplates(templateResult.data);
-        setChosenTemplateIds(
-          new Set(
-            templateResult.data
-              .filter((template) => template.is_default)
-              .map((template) => template.id)
-          )
-        );
-      }
+      if (templateResult.data) setFormTemplates(templateResult.data);
     });
 
     return () => {
@@ -191,44 +227,33 @@ export function ConsultationDetailPanel({
     };
   }, [accessToken, canWrite]);
 
-  function addMedicationFromCatalog(itemId: string) {
-    const item = medicationCatalog.find((entry) => entry.id === itemId);
-    if (!item) return;
+  /** The Prescription section's medicine box is free text: the vet types
+   * any medicine name (the shared medicine list is offered as suggestions).
+   * A name that is on the list - whatever case it was typed in - becomes
+   * that list entry, picking up its spelling, type and price; anything else
+   * is still prescribed, it just has no price and so can't be sold here. */
+  function addMedicine() {
+    const name = newMedicineName.trim();
+    if (!name) return;
+
+    const item = medicationCatalog.find(
+      (entry) => entry.name.toLowerCase() === name.toLowerCase()
+    );
 
     setMedications((prev) => [
       ...prev,
       {
-        name: item.name,
+        name: item?.name ?? name,
         dose: '',
         notes: '',
-        medicine_type: item.default_medicine_type ?? '',
+        medicine_type: item?.default_medicine_type ?? '',
         frequency: '',
         duration: '',
-        amount: item.default_price ?? undefined,
+        quantity: 1,
+        medication_catalog_id: item?.id ?? null,
       },
     ]);
-  }
-
-  /** Custom change: bulk-adds every line of a saved prescription template
-   * at once (each already carrying its own dose/frequency/duration),
-   * instead of adding one medication at a time. */
-  function addMedicationsFromPrescriptionTemplate(templateId: string) {
-    const template = prescriptionTemplates.find(
-      (entry) => entry.id === templateId
-    );
-    if (!template) return;
-
-    setMedications((prev) => [
-      ...prev,
-      ...template.items.map((item) => ({
-        name: item.name,
-        dose: item.dose,
-        notes: '',
-        medicine_type: item.medicine_type ?? '',
-        frequency: item.frequency,
-        duration: item.duration ?? '',
-      })),
-    ]);
+    setNewMedicineName('');
   }
 
   function updateMedication(index: number, patch: Partial<MedicationInput>) {
@@ -390,44 +415,20 @@ export function ConsultationDetailPanel({
     );
   }
 
-  function toggleChosenTemplate(templateId: string) {
-    setChosenTemplateIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(templateId)) next.delete(templateId);
-      else next.add(templateId);
-      return next;
-    });
-  }
-
   // Custom change: exclude form templates already added to this visit's
-  // results, so reopening the picker later (the row's "..." > "Choose Form
-  // Template", for adding more/different forms after the initial prompt)
-  // can't add the same template's results twice.
+  // results, so the Results section's picker can't add the same template's
+  // results twice.
   const availableFormTemplates = formTemplates.filter(
     (template) =>
       !formResponses.some((response) => response.template_id === template.id)
   );
 
-  function confirmChooseForms() {
-    const chosen = availableFormTemplates.filter((template) =>
-      chosenTemplateIds.has(template.id)
-    );
-    setFormResponses((prev) => [...prev, ...chosen.map(buildEmptyResponse)]);
-    onFormsPromptResolved();
-  }
-
-  function skipChooseForms() {
-    onFormsPromptResolved();
-  }
-
   function handleComplete() {
     onComplete({
-      medications: medications.map((medication) => ({
-        ...medication,
-        amount: medication.amount ?? 0,
-      })),
+      diagnosis,
+      medications: withValidQuantities(medications),
+      soldAtPharmacy,
       formResponses,
-      professionalFee: Number(professionalFee || 0),
       vaccination:
         vaccineName && vaccineDate
           ? { vaccine_name: vaccineName, date_administered: vaccineDate }
@@ -435,25 +436,79 @@ export function ConsultationDetailPanel({
     });
   }
 
+  async function handleSaveRecord() {
+    const saved = await onSaveRecord({
+      diagnosis,
+      medications: withValidQuantities(medications),
+      soldAtPharmacy,
+    });
+
+    if (saved) setIsEditingRecord(false);
+  }
+
+  function cancelEditRecord() {
+    setDiagnosis(consultation.diagnosis ?? '');
+    setMedications(seedMedications(consultation));
+    setSoldAtPharmacy(consultation.sold_at_pharmacy ?? false);
+    setIsEditingRecord(false);
+  }
+
+  /** Prints the saved prescription. The sheet's letterhead (branch, vet) and
+   * the pet/owner names come from the same per-pet prescription history the
+   * customer's own Print button uses, so both print the identical sheet. */
+  async function handlePrintPrescription() {
+    setPrintError(null);
+
+    const result = await listPetPrescriptions(consultation.pet_id, accessToken);
+    const entry = result.data?.find(
+      (candidate) => candidate.consultation_id === consultation.id
+    );
+
+    if (!entry) {
+      setPrintError(
+        result.error ?? 'Could not load this prescription for printing.'
+      );
+      return;
+    }
+
+    // The sheet has to be in the page before the print dialog opens.
+    flushSync(() => setPrinting(entry));
+    window.print();
+  }
+
   const bookingStatus = consultation.booking?.status;
   const isCompleted = bookingStatus
     ? FINISHED_BOOKING_STATUSES.includes(bookingStatus)
     : false;
-  const isStarted = bookingStatus !== undefined && bookingStatus !== 'Pending';
-  // Custom change: "only appear once" - alreadyResolved covers both a
-  // genuinely already-started visit (consultation.form_responses has
-  // entries, from a prior session) and this session's own prior
-  // Add/Skip/close (hasSeenFormsPrompt, from the parent page). Adding
-  // another form later happens through the Results section's own "Add
-  // result from a form template..." control, not by reshowing this.
-  const alreadyResolved =
-    (consultation.form_responses ?? []).length > 0 || hasSeenFormsPrompt;
-  const showChooseFormsPrompt =
-    canWrite &&
-    isStarted &&
-    !isCompleted &&
-    availableFormTemplates.length > 0 &&
-    !alreadyResolved;
+  // Diagnosis + the top-level Prescription: open while the visit is, and
+  // again while the vet who handled a Completed one is editing its record.
+  // Every other section stays locked once Completed.
+  const recordEditable = canWrite && (!isCompleted || isEditingRecord);
+  // Once the medicine transaction has been paid (fully or partly) the bill
+  // is fixed - an edit then only changes the medical record.
+  const medicinePaid =
+    consultation.medication_transaction != null &&
+    consultation.medication_transaction.payment_status !== 'Pending';
+  const hasSavedPrescription = (consultation.medications ?? []).length > 0;
+
+  function listPriceOf(medication: MedicationInput): number | null {
+    const item = medicationCatalog.find(
+      (entry) => entry.id === medication.medication_catalog_id
+    );
+    return item?.default_price ?? null;
+  }
+
+  // Shown for the vet's information only - the server prices the sale
+  // itself from the medicine list when it writes the transaction.
+  const showsPrices = soldAtPharmacy && canWrite;
+  const unpricedMedicines = medications.filter(
+    (medication) => listPriceOf(medication) === null
+  );
+  const medicineTotal = medications.reduce(
+    (sum, medication) =>
+      sum + (listPriceOf(medication) ?? 0) * (medication.quantity ?? 1),
+    0
+  );
 
   return (
     <div className={styles.panel}>
@@ -491,6 +546,17 @@ export function ConsultationDetailPanel({
               disabled={isCompleted || !canWrite}
             />
 
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Diagnosis</span>
+              <textarea
+                className={styles.input}
+                rows={3}
+                value={diagnosis}
+                disabled={!recordEditable}
+                onChange={(event) => setDiagnosis(event.target.value)}
+              />
+            </label>
+
             <div className={styles.listSection}>
               <span className={styles.fieldLabel}>Prescription</span>
               {medications.map((medication, index) => (
@@ -501,9 +567,27 @@ export function ConsultationDetailPanel({
                     </span>
                     <input
                       className={styles.input}
+                      type="number"
+                      min={1}
+                      step={1}
+                      placeholder="Quantity"
+                      aria-label={`Quantity of ${medication.name}`}
+                      value={medication.quantity ?? ''}
+                      disabled={!recordEditable}
+                      onChange={(event) =>
+                        updateMedication(index, {
+                          quantity:
+                            event.target.value === ''
+                              ? undefined
+                              : Number(event.target.value),
+                        })
+                      }
+                    />
+                    <input
+                      className={styles.input}
                       placeholder="Dose"
                       value={medication.dose}
-                      disabled={isCompleted || !canWrite}
+                      disabled={!recordEditable}
                       onChange={(event) =>
                         updateMedication(index, { dose: event.target.value })
                       }
@@ -513,7 +597,7 @@ export function ConsultationDetailPanel({
                       list="medicine-type-options"
                       placeholder="Medicine type"
                       value={medication.medicine_type ?? ''}
-                      disabled={isCompleted || !canWrite}
+                      disabled={!recordEditable}
                       onChange={(event) =>
                         updateMedication(index, {
                           medicine_type: event.target.value,
@@ -525,7 +609,7 @@ export function ConsultationDetailPanel({
                       list="frequency-options"
                       placeholder="Frequency"
                       value={medication.frequency ?? ''}
-                      disabled={isCompleted || !canWrite}
+                      disabled={!recordEditable}
                       onChange={(event) =>
                         updateMedication(index, {
                           frequency: event.target.value,
@@ -536,27 +620,22 @@ export function ConsultationDetailPanel({
                       className={styles.input}
                       placeholder="Duration"
                       value={medication.duration ?? ''}
-                      disabled={isCompleted || !canWrite}
+                      disabled={!recordEditable}
                       onChange={(event) =>
                         updateMedication(index, {
                           duration: event.target.value,
                         })
                       }
                     />
-                    <input
-                      className={styles.input}
-                      type="number"
-                      placeholder="Amount (₱)"
-                      value={medication.amount ?? ''}
-                      disabled={isCompleted || !canWrite}
-                      onChange={(event) =>
-                        updateMedication(index, {
-                          amount: Number(event.target.value),
-                        })
-                      }
-                    />
+                    {showsPrices ? (
+                      <span className={styles.readOnlyField}>
+                        {listPriceOf(medication) !== null
+                          ? `${formatCurrency(listPriceOf(medication) ?? 0)} each`
+                          : 'No price set'}
+                      </span>
+                    ) : null}
                   </div>
-                  {!isCompleted && canWrite ? (
+                  {recordEditable ? (
                     <button
                       type="button"
                       className={styles.secondaryButton}
@@ -577,60 +656,96 @@ export function ConsultationDetailPanel({
                   <option key={option} value={option} />
                 ))}
               </datalist>
-              {!isCompleted && canWrite ? (
-                <div className={styles.medicationRowFields}>
-                  {prescriptionTemplates.length > 0 ? (
-                    <select
-                      className={styles.catalogSelect}
-                      aria-label="Add from a saved prescription"
-                      value=""
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          addMedicationsFromPrescriptionTemplate(
-                            event.target.value
-                          );
-                        }
-                      }}
-                    >
-                      <option value="">Add from a saved prescription...</option>
-                      {prescriptionTemplates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.name} ({template.items.length})
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
-                  {medicationCatalog.length > 0 ? (
-                    <select
-                      className={styles.catalogSelect}
-                      aria-label="Add medication from your catalog"
-                      value=""
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          addMedicationFromCatalog(event.target.value);
-                        }
-                      }}
-                    >
-                      <option value="">
-                        Add medication from your catalog...
-                      </option>
-                      {medicationCatalog.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
+              {recordEditable ? (
+                <div className={styles.addMedicineRow}>
+                  <input
+                    className={styles.input}
+                    list="medicine-name-options"
+                    aria-label="Medicine name"
+                    placeholder="Type a medicine name"
+                    value={newMedicineName}
+                    onChange={(event) => setNewMedicineName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addMedicine();
+                      }
+                    }}
+                  />
+                  <datalist id="medicine-name-options">
+                    {medicationCatalog.map((item) => (
+                      <option key={item.id} value={item.name} />
+                    ))}
+                  </datalist>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={newMedicineName.trim() === ''}
+                    onClick={addMedicine}
+                  >
+                    Add medicine
+                  </button>
                 </div>
               ) : null}
-              {!isCompleted &&
-              canWrite &&
-              medicationCatalog.length === 0 &&
-              prescriptionTemplates.length === 0 ? (
-                <p className={styles.reason}>
-                  No medications or prescriptions in your catalog yet. Add some
-                  from My Catalog.
-                </p>
+
+              {medications.length > 0 ? (
+                <fieldset className={styles.pharmacyChoice}>
+                  <legend className={styles.fieldLabel}>
+                    Where will the medicine be bought?
+                  </legend>
+                  <label className={styles.checkboxLabel}>
+                    <input
+                      type="radio"
+                      name={`pharmacy-${consultation.id}`}
+                      checked={!soldAtPharmacy}
+                      disabled={!recordEditable || medicinePaid}
+                      onChange={() => setSoldAtPharmacy(false)}
+                    />
+                    Buying from another pharmacy
+                  </label>
+                  <label className={styles.checkboxLabel}>
+                    <input
+                      type="radio"
+                      name={`pharmacy-${consultation.id}`}
+                      checked={soldAtPharmacy}
+                      disabled={!recordEditable || medicinePaid}
+                      onChange={() => setSoldAtPharmacy(true)}
+                    />
+                    Buying from our pharmacy
+                  </label>
+                  {soldAtPharmacy ? (
+                    <p className={styles.reason}>
+                      {showsPrices
+                        ? `Medicine total: ${formatCurrency(medicineTotal)}. `
+                        : ''}
+                      Billed to the customer as its own transaction, which the
+                      cashier collects.
+                    </p>
+                  ) : (
+                    <p className={styles.reason}>
+                      Nothing is charged for the medicine. The prescription can
+                      be printed for the customer.
+                    </p>
+                  )}
+                  {showsPrices &&
+                  recordEditable &&
+                  !medicinePaid &&
+                  unpricedMedicines.length > 0 ? (
+                    <p className={styles.errorBanner} role="status">
+                      Set a price in My Catalog before selling:{' '}
+                      {unpricedMedicines
+                        .map((medication) => medication.name)
+                        .join(', ')}
+                      .
+                    </p>
+                  ) : null}
+                  {isEditingRecord && medicinePaid ? (
+                    <p className={styles.reason}>
+                      The medicine for this visit has already been paid. Changes
+                      here update the medical record only, not the bill.
+                    </p>
+                  ) : null}
+                </fieldset>
               ) : null}
             </div>
 
@@ -923,19 +1038,6 @@ export function ConsultationDetailPanel({
               </div>
             </div>
 
-            {!isCompleted ? (
-              <label className={styles.field}>
-                <span className={styles.fieldLabel}>Professional Fee (₱)</span>
-                <input
-                  className={styles.input}
-                  type="number"
-                  value={professionalFee}
-                  disabled={!canWrite}
-                  onChange={(event) => setProfessionalFee(event.target.value)}
-                />
-              </label>
-            ) : null}
-
             {saveError ? (
               <p className={styles.errorBanner} role="alert">
                 {saveError}
@@ -953,12 +1055,76 @@ export function ConsultationDetailPanel({
               </button>
             ) : null}
 
+            {isCompleted && isEditingRecord ? (
+              <div className={styles.formActions}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={isSaving}
+                  onClick={() => void handleSaveRecord()}
+                >
+                  {isSaving ? 'Saving...' : 'Save changes'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={isSaving}
+                  onClick={cancelEditRecord}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : null}
+
+            {isCompleted &&
+            !isEditingRecord &&
+            (canEditRecord || hasSavedPrescription) ? (
+              <div className={styles.formActions}>
+                {canEditRecord ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => setIsEditingRecord(true)}
+                  >
+                    Edit record
+                  </button>
+                ) : null}
+                {canEditRecord && !consultation.follow_up_booking_id ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={onScheduleFollowUp}
+                  >
+                    Schedule follow-up
+                  </button>
+                ) : null}
+                {hasSavedPrescription ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => void handlePrintPrescription()}
+                  >
+                    Print prescription
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {printError ? (
+              <p className={styles.errorBanner} role="alert">
+                {printError}
+              </p>
+            ) : null}
+
             {consultation.follow_up_booking_id ? (
               <div className={styles.followUpSection}>
                 <span className={styles.followUpIndicator}>
                   Follow-up scheduled
                   {consultation.follow_up_date
                     ? ` for ${consultation.follow_up_date}`
+                    : ''}
+                  {consultation.follow_up_reason
+                    ? `: ${consultation.follow_up_reason}`
                     : ''}
                 </span>
               </div>
@@ -967,45 +1133,18 @@ export function ConsultationDetailPanel({
         )}
       </div>
 
-      <Modal
-        isOpen={showChooseFormsPrompt}
-        title="Choose consultation form(s)"
-        onClose={skipChooseForms}
-      >
-        <p className={styles.reason}>
-          Pick which of your saved consultation forms to fill in for this visit.
-          Your default form is pre-selected.
-        </p>
-        <div className={styles.listSection}>
-          {availableFormTemplates.map((template) => (
-            <label key={template.id} className={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={chosenTemplateIds.has(template.id)}
-                onChange={() => toggleChosenTemplate(template.id)}
-              />
-              {template.name}
-              {template.is_default ? ' (Default)' : ''}
-            </label>
-          ))}
-        </div>
-        <div className={styles.formActions}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={confirmChooseForms}
-          >
-            Add
-          </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={skipChooseForms}
-          >
-            Skip
-          </button>
-        </div>
-      </Modal>
+      {printing ? (
+        <PrescriptionPrintout
+          branchName={printing.branch_name}
+          branchAddress={printing.branch_address}
+          veterinarianName={printing.veterinarian_name}
+          petName={printing.pet_name ?? petName}
+          ownerName={printing.owner_name ?? ownerName}
+          date={printing.date}
+          medications={printing.medications}
+          onDone={() => setPrinting(null)}
+        />
+      ) : null}
     </div>
   );
 }
