@@ -96,7 +96,7 @@ export function AppShell({
           route outside Settings. */}
       <UnsavedChangesProvider>
         <div className={styles.shell}>
-          <div className={styles.navbarWrapper}>
+          <div className={styles.navbarWrapper} data-testid="app-shell-navbar">
             <Navbar
               role={role}
               brandLabel={brandLabel}
@@ -107,12 +107,17 @@ export function AppShell({
             />
           </div>
           <div className={styles.body}>
-            <Sidebar
-              sections={sidebarSections}
-              collapsed={collapsed}
-              onToggleCollapse={toggleCollapse}
-              role={role}
-            />
+            <div
+              className={styles.sidebarWrapper}
+              data-testid="app-shell-sidebar"
+            >
+              <Sidebar
+                sections={sidebarSections}
+                collapsed={collapsed}
+                onToggleCollapse={toggleCollapse}
+                role={role}
+              />
+            </div>
             <main className={styles.main}>
               {children}
               <Outlet />

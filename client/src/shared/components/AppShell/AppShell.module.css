@@ -16,6 +16,10 @@
   flex-shrink: 0;
 }
 
+.sidebarWrapper {
+  display: contents;
+}
+
 .body {
   display: flex;
   flex: 1;
@@ -31,5 +35,26 @@
 @media (max-width: 640px) {
   .body {
     position: relative;
+  }
+}
+
+@media print {
+  .shell {
+    display: block;
+    height: auto;
+  }
+
+  .navbarWrapper,
+  .sidebarWrapper {
+    display: none;
+  }
+
+  .body {
+    display: block;
+    min-height: auto;
+  }
+
+  .main {
+    overflow: visible;
   }
 }
