@@ -12,7 +12,6 @@ import * as mfaApi from '../../../../../../shared/api/mfa.api';
 vi.mock('../../../api/customerAuth.api', () => ({
   login: vi.fn(),
   signInWithGoogle: vi.fn(),
-  signInWithFacebook: vi.fn(),
 }));
 
 vi.mock('../../../../../../shared/api/mfa.api', () => ({

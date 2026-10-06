@@ -145,7 +145,6 @@ describe('customerArchive.service', () => {
           contact_number: null,
           emergency_contact_name: null,
           emergency_contact_number: null,
-          facebook_id: null,
           account_email: 'deleted-customer-1@deleted.goldenfur.internal',
           anonymized_at: expect.any(String),
         })

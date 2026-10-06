@@ -55,7 +55,6 @@ function buildCustomerProfile() {
     preferred_communication_channel: null,
     account_email: 'jane@example.com',
     primary_auth_provider: 'email' as const,
-    facebook_id: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
   };

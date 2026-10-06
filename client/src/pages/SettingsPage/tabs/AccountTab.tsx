@@ -336,7 +336,8 @@ function GoogleAccountForm() {
   // PasswordForm above does NOT add an identity here - updateUser({
   // password }) doesn't create an `email` row in auth.identities
   // (open Supabase issue, supabase/auth#2085), so it can never clear this
-  // check. Only linking a second real OAuth provider (e.g. Facebook) does.
+  // check. Only linking a second real OAuth provider would, and Google is
+  // the only one offered, so a Google-only account cannot unlink.
   const isOnlyIdentity = providers?.length === 1;
 
   const handleUnlink = async () => {
@@ -360,9 +361,8 @@ function GoogleAccountForm() {
       <h2 className={styles.sectionTitle}>Google account</h2>
       {isOnlyIdentity ? (
         <p className={styles.copy}>
-          Google is your only way to sign in to this account. Setting a password
-          does not add a fallback here - link a Facebook account with the same
-          email address first, so you don't lose access when you unlink Google.
+          Google is your only way to sign in to this account, so it can't be
+          unlinked. Setting a password does not add a fallback here.
         </p>
       ) : (
         <>

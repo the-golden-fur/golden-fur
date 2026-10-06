@@ -1,6 +1,6 @@
 ---
 name: auth-access-agent
-description: Helps write and review RBAC, TOTP MFA, and Google/Facebook OAuth account-merge code. Use whenever touching login, session, role-gating, MFA, or OAuth code. Read-mostly so it can't accidentally touch production config.
+description: Helps write and review RBAC, TOTP MFA, and Google OAuth account-merge code. Use whenever touching login, session, role-gating, MFA, or OAuth code. Read-mostly so it can't accidentally touch production config.
 tools: Read, Grep, Glob, Edit
 model: sonnet
 ---

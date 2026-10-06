@@ -8,8 +8,7 @@ export interface CustomerProfile {
   emergency_contact_number: string | null;
   preferred_communication_channel: CommunicationChannel | null;
   account_email: string;
-  primary_auth_provider: 'email' | 'google' | 'facebook';
-  facebook_id: string | null;
+  primary_auth_provider: 'email' | 'google';
   profile_photo_url: string | null;
   is_active: boolean;
   archived_at: string | null;

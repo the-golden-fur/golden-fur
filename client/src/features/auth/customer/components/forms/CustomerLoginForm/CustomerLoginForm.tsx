@@ -1,16 +1,12 @@
 import { useState, type FormEvent } from 'react';
-import { Chrome, Facebook, Lock, Mail } from 'lucide-react';
+import { Chrome, Lock, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
 import { getStoredDeviceToken } from '../../../../../../shared/auth/api/trustedDevice.api';
 import { getMfaStatus } from '../../../../../../shared/api/mfa.api';
 import { LoadingState } from '../../../../../../shared/components/LoadingState/LoadingState';
-import {
-  login,
-  signInWithGoogle,
-  signInWithFacebook,
-} from '../../../api/customerAuth.api';
+import { login, signInWithGoogle } from '../../../api/customerAuth.api';
 import { customerLoginSchema } from '../../../modules/validators/customerAuth.validator';
 import styles from './CustomerLoginForm.module.css';
 
@@ -22,7 +18,6 @@ export function CustomerLoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
-  const [isFacebookSubmitting, setIsFacebookSubmitting] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -123,16 +118,6 @@ export function CustomerLoginForm() {
     }
   };
 
-  const handleFacebookSignIn = async () => {
-    setError(null);
-    setIsFacebookSubmitting(true);
-    const result = await signInWithFacebook();
-    if (result.error) {
-      setError('Could not continue with Facebook.');
-      setIsFacebookSubmitting(false);
-    }
-  };
-
   return (
     <div className={styles.wrapper}>
       <div className={styles.divider}>or continue with email</div>
@@ -146,7 +131,7 @@ export function CustomerLoginForm() {
             type="button"
             className={styles.socialButton}
             onClick={() => void handleGoogleSignIn()}
-            disabled={isGoogleSubmitting || isFacebookSubmitting}
+            disabled={isGoogleSubmitting}
             aria-label="Continue with Google"
           >
             {isGoogleSubmitting ? (
@@ -172,41 +157,6 @@ export function CustomerLoginForm() {
                 </span>
                 <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                   Continue with Google
-                </span>
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            className={styles.socialButton}
-            onClick={() => void handleFacebookSignIn()}
-            disabled={isGoogleSubmitting || isFacebookSubmitting}
-            aria-label="Continue with Facebook"
-          >
-            {isFacebookSubmitting ? (
-              <LoadingState size="inline" label="Redirecting to Facebook..." />
-            ) : (
-              <>
-                <span
-                  aria-hidden="true"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 36,
-                    height: 36,
-                    borderRadius: 9999,
-                    background: '#1877F2',
-                    boxShadow: '0 4px 10px rgba(21, 24, 28, 0.06)',
-                    marginRight: 10,
-                    flexShrink: 0,
-                  }}
-                >
-                  <Facebook size={18} color="#ffffff" />
-                </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  Continue with Facebook
                 </span>
               </>
             )}

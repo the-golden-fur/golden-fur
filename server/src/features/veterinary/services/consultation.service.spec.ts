@@ -38,6 +38,7 @@ function queueFromResults(...results: QueryResult[]) {
     for (const method of [
       'select',
       'eq',
+      'is',
       'in',
       'gte',
       'lt',
@@ -63,6 +64,7 @@ function queueFromResults(...results: QueryResult[]) {
 }
 
 const VET_ID = 'vet-1';
+const OTHER_VET_ID = 'vet-2';
 const MAKATI = { id: 'branch-makati', name: 'Makati', is_vet_branch: true };
 
 function bookingFor(overrides: Record<string, unknown> = {}) {
@@ -84,6 +86,9 @@ function consultationRow(overrides: Record<string, unknown> = {}) {
     booking_id: 'booking-1',
     pet_id: 'pet-1',
     veterinarian_id: VET_ID,
+    // Already taken by VET_ID by default, so the pre-existing tests below
+    // don't each need a claim step - the ownership tests override it.
+    accepted_by: VET_ID,
     temperature: null,
     weight: null,
     heart_rate: null,
@@ -432,6 +437,181 @@ describe('consultation.service (#66)', () => {
         temperature: 38.5,
         diagnosis: 'Ear infection',
         medications: [{ name: 'Amoxicillin', dose: '50mg', notes: 'BID' }],
+      });
+    });
+
+    describe('ownership (whoever takes it owns it)', () => {
+      const claimWrites = () =>
+        recordedWrites.filter(
+          (write) =>
+            write.table === 'consultations' &&
+            write.method === 'update' &&
+            (write.payload as Record<string, unknown>).accepted_by !== undefined
+        );
+
+      it('Start claims an untaken consultation for the vet who pressed it', async () => {
+        queueFromResults(
+          {
+            data: consultationRow({ accepted_by: null }),
+            error: null,
+          }, // getConsultation
+          { data: { id: 'consultation-1' }, error: null }, // claim
+          {
+            data: bookingFor({ status: 'Pending', payment_status: 'Paid' }),
+            error: null,
+          }, // startBooking's getRawBookingById
+          { data: bookingFor({ status: 'In Progress' }), error: null }, // startBooking's updateBookingRow
+          {
+            data: consultationRow({
+              bookingStatus: 'In Progress',
+              accepted_by: OTHER_VET_ID,
+              veterinarian_id: OTHER_VET_ID,
+            }),
+            error: null,
+          } // final consultations update
+        );
+
+        const result = await updateConsultation({
+          requesterId: OTHER_VET_ID,
+          consultationId: 'consultation-1',
+          input: { status: 'Ongoing' },
+        });
+
+        expect(result.accepted_by).toBe(OTHER_VET_ID);
+        expect(claimWrites()[0]?.payload).toEqual({
+          accepted_by: OTHER_VET_ID,
+          veterinarian_id: OTHER_VET_ID,
+        });
+      });
+
+      it('the first vet to save an In Progress consultation nobody took (reception check-in / walk-in) claims it', async () => {
+        queueFromResults(
+          {
+            data: consultationRow({
+              bookingStatus: 'In Progress',
+              accepted_by: null,
+            }),
+            error: null,
+          }, // getConsultation
+          { data: { id: 'consultation-1' }, error: null }, // claim
+          {
+            data: consultationRow({ bookingStatus: 'In Progress' }),
+            error: null,
+          } // final consultations update
+        );
+
+        await updateConsultation({
+          requesterId: OTHER_VET_ID,
+          consultationId: 'consultation-1',
+          input: { diagnosis: 'Ear infection' },
+        });
+
+        expect(claimWrites()).toHaveLength(1);
+      });
+
+      it('another vet cannot edit a consultation someone else took', async () => {
+        queueFromResults({
+          data: consultationRow({ bookingStatus: 'In Progress' }),
+          error: null,
+        });
+
+        await expect(
+          updateConsultation({
+            requesterId: OTHER_VET_ID,
+            consultationId: 'consultation-1',
+            input: { diagnosis: 'Not mine' },
+          })
+        ).rejects.toMatchObject({ statusCode: 403 });
+
+        expect(recordedWrites).toHaveLength(0);
+      });
+
+      it('another vet cannot complete a consultation someone else took', async () => {
+        queueFromResults({
+          data: consultationRow({ bookingStatus: 'In Progress' }),
+          error: null,
+        });
+
+        await expect(
+          updateConsultation({
+            requesterId: OTHER_VET_ID,
+            consultationId: 'consultation-1',
+            input: { status: 'Completed', professional_fee: 500 },
+          })
+        ).rejects.toMatchObject({ statusCode: 403 });
+
+        expect(recordedWrites).toHaveLength(0);
+      });
+
+      it('two vets claiming at the same moment: the one whose claim matches no row is refused', async () => {
+        queueFromResults(
+          {
+            data: consultationRow({
+              bookingStatus: 'In Progress',
+              accepted_by: null,
+            }),
+            error: null,
+          }, // getConsultation - still looked untaken when read
+          { data: null, error: null } // claim - the other vet's landed first
+        );
+
+        await expect(
+          updateConsultation({
+            requesterId: OTHER_VET_ID,
+            consultationId: 'consultation-1',
+            input: { diagnosis: 'Too late' },
+          })
+        ).rejects.toMatchObject({ statusCode: 403 });
+      });
+
+      it('releases the claim again when the Start it was made for is refused', async () => {
+        queueFromResults(
+          {
+            data: consultationRow({ accepted_by: null }),
+            error: null,
+          }, // getConsultation
+          { data: { id: 'consultation-1' }, error: null }, // claim
+          {
+            data: bookingFor({
+              status: 'Pending',
+              booking_source: 'Online',
+              payment_status: 'Pending',
+            }),
+            error: null,
+          }, // startBooking's getRawBookingById - unpaid, so it throws
+          { data: null, error: null } // release
+        );
+
+        await expect(
+          updateConsultation({
+            requesterId: OTHER_VET_ID,
+            consultationId: 'consultation-1',
+            input: { status: 'Ongoing' },
+          })
+        ).rejects.toMatchObject({ statusCode: 409 });
+
+        expect(claimWrites().at(-1)?.payload).toEqual({
+          accepted_by: null,
+          veterinarian_id: VET_ID,
+        });
+      });
+
+      it('any vet may still edit a Pending consultation nobody has taken, without claiming it', async () => {
+        queueFromResults(
+          {
+            data: consultationRow({ accepted_by: null }),
+            error: null,
+          }, // getConsultation
+          { data: consultationRow({ accepted_by: null }), error: null } // final consultations update
+        );
+
+        await updateConsultation({
+          requesterId: OTHER_VET_ID,
+          consultationId: 'consultation-1',
+          input: { reason_for_visit: 'Limping' },
+        });
+
+        expect(claimWrites()).toHaveLength(0);
       });
     });
 

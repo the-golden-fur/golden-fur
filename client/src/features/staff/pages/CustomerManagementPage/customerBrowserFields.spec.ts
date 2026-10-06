@@ -21,7 +21,6 @@ function buildCustomer(
     preferred_communication_channel: null,
     account_email: 'jane@example.com',
     primary_auth_provider: 'email',
-    facebook_id: null,
     is_active: true,
     archived_at: null,
     deactivated_at: null,
@@ -88,7 +87,7 @@ describe('CUSTOMER_GROUP_BY_AXES', () => {
     const methodAxis = CUSTOMER_GROUP_BY_AXES.find(
       (a) => a.id === 'signInMethod'
     );
-    expect(methodAxis?.columns).toEqual(['Email', 'Google', 'Facebook']);
+    expect(methodAxis?.columns).toEqual(['Email', 'Google']);
     expect(
       methodAxis?.columnFor(buildCustomer({ primary_auth_provider: 'google' }))
     ).toBe('Google');

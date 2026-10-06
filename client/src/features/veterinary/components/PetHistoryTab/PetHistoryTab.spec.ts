@@ -12,6 +12,7 @@ function buildConsultation(
     booking_id: 'booking-1',
     pet_id: 'pet-1',
     veterinarian_id: 'vet-1',
+    accepted_by: null,
     temperature: null,
     weight: null,
     heart_rate: null,

@@ -189,7 +189,6 @@ export async function anonymizeCustomer(customerId: string): Promise<void> {
       contact_number: null,
       emergency_contact_name: null,
       emergency_contact_number: null,
-      facebook_id: null,
       account_email: `deleted-${customerId}@deleted.goldenfur.internal`,
       anonymized_at: new Date().toISOString(),
     })

@@ -73,6 +73,7 @@ function buildConsultation(
     booking_id: 'booking-1',
     pet_id: 'pet-1',
     veterinarian_id: 'vet-1',
+    accepted_by: null,
     temperature: null,
     weight: null,
     heart_rate: null,
@@ -145,7 +146,6 @@ function stubPetAndOwner() {
       preferred_communication_channel: null,
       account_email: 'jane@example.com',
       primary_auth_provider: 'email',
-      facebook_id: null,
       created_at: '2026-01-01T00:00:00.000Z',
       updated_at: '2026-01-01T00:00:00.000Z',
     },
@@ -299,6 +299,56 @@ describe('VeterinaryConsolePage (#70)', () => {
         { status: 'Ongoing' }
       )
     );
+  });
+
+  it('a consultation taken by another vet shows no Start/Complete action, only a note', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: {
+        consultations: [
+          buildConsultation({ accepted_by: 'vet-2' }, 'In Progress'),
+        ],
+      },
+      error: null,
+    });
+    stubPetAndOwner();
+
+    renderPage();
+
+    expect(
+      await screen.findByText('Being handled by another veterinarian')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^complete$/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('the vet who took a consultation still gets its Complete action', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: {
+        consultations: [
+          buildConsultation({ accepted_by: 'vet-1' }, 'In Progress'),
+        ],
+      },
+      error: null,
+    });
+    stubPetAndOwner();
+
+    renderPage();
+
+    expect(
+      await screen.findByRole('button', { name: /^complete$/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Being handled by another veterinarian')
+    ).not.toBeInTheDocument();
   });
 
   it('starting a Pending consultation from the detail panel requires confirming in a modal', async () => {

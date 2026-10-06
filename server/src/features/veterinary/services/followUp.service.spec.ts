@@ -68,6 +68,7 @@ function consultationRow(overrides: Record<string, unknown> = {}) {
     booking_id: 'booking-1',
     pet_id: 'pet-1',
     veterinarian_id: 'vet-1',
+    accepted_by: null,
     follow_up_date: null,
     follow_up_booking_id: null,
     booking: bookingRow(),

@@ -11,7 +11,7 @@ customer & pet records.
 
 The system is split into two applications sharing one Supabase backend:
 
-- **Customer Portal** — register/sign in (email or Google/Facebook OAuth),
+- **Customer Portal** — register/sign in (email or Google OAuth),
   manage pet profiles, book and manage appointments across services and
   packages, view service history, and track promo/credit balances.
 - **Staff Console** — role-based dashboards (Superadmin, Admin, Supervisor,

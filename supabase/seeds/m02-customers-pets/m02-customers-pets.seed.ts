@@ -179,10 +179,6 @@ export async function seedCustomers(supabase: ReturnType<typeof createClient>) {
     const email = `customer${n}@goldenfur.com`;
     const fullName = `Customer ${n}`;
     const contactNumber = `+63 917 000 ${String(n).padStart(4, '0')}`;
-    // customer1 carries a stand-in facebook_id so the M02 OAuth
-    // account-merge path can be exercised manually without a live Facebook
-    // consent flow.
-    const facebookId = n === 1 ? 'seed-facebook-id-customer1' : null;
 
     const { data: existing } = await supabase
       .from('customer_profiles')
@@ -217,7 +213,6 @@ export async function seedCustomers(supabase: ReturnType<typeof createClient>) {
           account_email: email,
           full_name: fullName,
           contact_number: contactNumber,
-          facebook_id: facebookId,
         });
 
       if (profileError) {
