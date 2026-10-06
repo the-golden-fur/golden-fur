@@ -291,6 +291,30 @@
       }
     },
 
+    // ── Temp demo data (supabase/seeds/temp-demo) - NOT part of seed:all ──
+    {
+      "label": "supabase:seed:all:temp",
+      "type": "npm",
+      "script": "seed:temp",
+      "detail": "Inserts temp demo data into the database in server/.env (the dev project unless changed). Re-running adds no duplicates.",
+      "presentation": {
+        "group": "seed",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "supabase:reset:temp",
+      "type": "npm",
+      "script": "supabase:reset:temp",
+      "detail": "Re-seeds the temp demo data into the database in server/.env (no reset - nothing is wiped).",
+      "presentation": {
+        "group": "supabase",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+
     // ── Seed Data (folders named for the Modules-Features module) ──
     {
       "label": "🌱 Seed: All Modules",
