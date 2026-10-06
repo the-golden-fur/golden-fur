@@ -374,7 +374,7 @@ export function MyPatientsPage() {
             </div>
 
             <div className={styles.detail}>
-              {selectedRow ? (
+              {selectedRow && (
                 <div className={styles.panel} ref={detailPanelRef}>
                   <div className={styles.header}>
                     <h2 className={styles.petName}>{selectedRow.petName}</h2>
@@ -388,11 +388,6 @@ export function MyPatientsPage() {
                     error={petHistoryError}
                   />
                 </div>
-              ) : (
-                <p className={styles.copy}>
-                  Choose View history on a patient to see their consultation
-                  history.
-                </p>
               )}
             </div>
           </div>

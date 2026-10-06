@@ -62,3 +62,24 @@
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
 }
+
+.medicationList {
+  display: grid;
+  gap: var(--space-0-5);
+  list-style: none;
+  margin: var(--space-0-5) 0 0;
+  padding: 0;
+}
+
+.medication {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-0-5) var(--space-1);
+}
+
+.medicationName {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}

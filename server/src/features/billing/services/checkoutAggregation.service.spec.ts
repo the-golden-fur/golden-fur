@@ -176,6 +176,41 @@ describe('checkoutBooking — initial-charge reconciliation', () => {
     expect(recomputeBookingPaymentStatus).not.toHaveBeenCalled();
   });
 
+  // Pharmacy prescriptions: a visit's medicine sale is its own transaction
+  // (pharmacyCharge.service.ts), separate from the service bill checkout
+  // builds - so it is neither a stale estimate to delete nor a payment of
+  // the service.
+  it('leaves an unpaid medicine transaction alone instead of deleting it as a stale estimate', async () => {
+    const calls = mockSupabase([
+      {
+        id: 'txn-medicine',
+        payment_status: 'Pending',
+        medicine_sale: [{ id: 'consultation-1' }],
+      },
+    ]);
+
+    await checkoutBooking('staff-1', INPUT as never);
+
+    expect(calls.filter((c) => c.op === 'delete')).toEqual([]);
+    expect(
+      calls.some((c) => c.table === 'transactions' && c.op === 'insert')
+    ).toBe(true);
+  });
+
+  it('is not blocked by a medicine transaction that was already paid', async () => {
+    mockSupabase([
+      {
+        id: 'txn-medicine',
+        payment_status: 'Fully Paid',
+        medicine_sale: [{ id: 'consultation-1' }],
+      },
+    ]);
+
+    await expect(
+      checkoutBooking('staff-1', INPUT as never)
+    ).resolves.toBeDefined();
+  });
+
   it('rolls the booking payment_status up from the checkout transaction', async () => {
     mockSupabase([]);
 
@@ -310,6 +345,34 @@ describe('checkoutBookingGroup — multi-booking checkout (booking_groups)', () 
       checkoutBookingGroup('staff-1', GROUP_INPUT as never)
     ).rejects.toMatchObject({ statusCode: 409 });
     expect(recomputeBookingGroupPaymentStatus).not.toHaveBeenCalled();
+  });
+
+  it('leaves an unpaid group medicine transaction alone instead of deleting it as a stale estimate', async () => {
+    const calls = mockGroupSupabase([
+      {
+        id: 'txn-medicine',
+        payment_status: 'Pending',
+        medicine_sale: [{ id: 'consultation-1' }],
+      },
+    ]);
+
+    await checkoutBookingGroup('staff-1', GROUP_INPUT as never);
+
+    expect(calls.filter((c) => c.op === 'delete')).toEqual([]);
+  });
+
+  it('is not blocked by a group medicine transaction that was already paid', async () => {
+    mockGroupSupabase([
+      {
+        id: 'txn-medicine',
+        payment_status: 'Fully Paid',
+        medicine_sale: [{ id: 'consultation-1' }],
+      },
+    ]);
+
+    await expect(
+      checkoutBookingGroup('staff-1', GROUP_INPUT as never)
+    ).resolves.toBeDefined();
   });
 
   it('rolls the whole booking group payment_status up from the checkout transaction', async () => {

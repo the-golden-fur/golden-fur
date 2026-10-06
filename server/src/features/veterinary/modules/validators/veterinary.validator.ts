@@ -53,8 +53,14 @@ const medicationInputValidator = z
     medicine_type: z.string().trim().optional(),
     frequency: z.string().trim().optional(),
     duration: z.string().trim().optional(),
-    // Only required to complete a consultation (see superRefine below) -
-    // medications can be recorded while 'Ongoing' before a price is known.
+    // Pharmacy prescriptions: how many units are prescribed, and which
+    // shared medicine-list entry this row came from - the selling price is
+    // always read from that entry server-side (pharmacyCharge.service.ts),
+    // never taken from the request.
+    quantity: z.number().int().positive().optional(),
+    medication_catalog_id: z.uuid().nullable().optional(),
+    // No longer read - kept only so an older client that still sends a
+    // per-medicine price isn't rejected by .strict().
     amount: z.number().nonnegative().optional(),
   })
   .strict();
@@ -162,12 +168,18 @@ const vaccinationInputValidator = z
 /**
  * Issue #66: vitals/diagnosis/medications can be entered while 'Ongoing';
  * status only ever moves Pending -> Ongoing -> Completed, one direction,
- * mirroring #64's grooming status validator. Completing a consultation
- * additionally requires professional_fee and an amount on every medication
- * (each becomes a consultation_line_items row - AC-2). #117: `procedures`
- * removed (see consultationFormFieldValidator's header note above);
- * `form_responses` added - filling in a Result is always optional, so it
- * never gates Completion the way professional_fee/medication amounts do.
+ * mirroring #64's grooming status validator. #117: `procedures` removed
+ * (see consultationFormFieldValidator's header note above);
+ * `form_responses` added - filling in a Result is always optional.
+ * Pharmacy prescriptions: a medicine no longer needs an amount to complete
+ * (its price comes from the medicine list), and `sold_at_pharmacy` says
+ * where the customer is buying - true = this branch's pharmacy (billed),
+ * false = somewhere else (not). `professional_fee` is optional now too -
+ * the Consultation Details form no longer asks for one (the Consultation
+ * service's own booking price is the visit's charge); when one is sent (the
+ * queue's quick Complete still does) it becomes the visit's
+ * consultation_line_items row - AC-2. So nothing gates Completion here any
+ * more.
  */
 export const updateConsultationValidator = z
   .object({
@@ -182,30 +194,22 @@ export const updateConsultationValidator = z
     form_responses: z.array(consultationFormResponseValidator).optional(),
     professional_fee: z.number().nonnegative().optional(),
     vaccination: vaccinationInputValidator.optional(),
+    sold_at_pharmacy: z.boolean().optional(),
+    // Vet-priced visits: what was done at the visit and what each item
+    // costs, listed in the completion pop-up - billed as its own
+    // transaction (serviceCharge.service.ts). Only read on Completed.
+    services_done: z
+      .array(
+        z
+          .object({
+            name: z.string().trim().min(1),
+            amount: z.number().nonnegative(),
+          })
+          .strict()
+      )
+      .optional(),
   })
-  .strict()
-  .superRefine((input, ctx) => {
-    if (input.status !== 'Completed') return;
-
-    if (input.professional_fee === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'professional_fee is required to complete a consultation',
-        path: ['professional_fee'],
-      });
-    }
-
-    input.medications?.forEach((medication, index) => {
-      if (medication.amount === undefined) {
-        ctx.addIssue({
-          code: 'custom',
-          message:
-            'amount is required on every medication to complete a consultation',
-          path: ['medications', index, 'amount'],
-        });
-      }
-    });
-  });
+  .strict();
 
 export type UpdateConsultationInput = z.infer<
   typeof updateConsultationValidator
@@ -218,6 +222,9 @@ export type UpdateConsultationInput = z.infer<
 export const linkFollowUpValidator = z
   .object({
     booking_id: z.uuid(),
+    // Why the vet wants the pet back - required, and kept on the
+    // originating consultation (follow_up_reason).
+    reason: z.string().trim().min(1),
   })
   .strict();
 
@@ -316,4 +323,28 @@ export const updatePrescriptionTemplateValidator = z
 
 export type UpdatePrescriptionTemplateInput = z.infer<
   typeof updatePrescriptionTemplateValidator
+>;
+
+/** One entry of the clinic's shared veterinary service list - a name and its
+ * usual price, suggested from in the completion pop-up. */
+export const createServiceCatalogItemValidator = z
+  .object({
+    name: z.string().trim().min(1),
+    default_price: z.number().nonnegative(),
+  })
+  .strict();
+
+export type CreateServiceCatalogItemInput = z.infer<
+  typeof createServiceCatalogItemValidator
+>;
+
+export const updateServiceCatalogItemValidator = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    default_price: z.number().nonnegative().optional(),
+  })
+  .strict();
+
+export type UpdateServiceCatalogItemInput = z.infer<
+  typeof updateServiceCatalogItemValidator
 >;

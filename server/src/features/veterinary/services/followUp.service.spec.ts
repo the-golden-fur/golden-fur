@@ -105,6 +105,8 @@ describe('followUp.service (#67, revised for ScheduleFollowUpModal)', () => {
     const result = await linkFollowUpBooking({
       consultationId: 'consultation-1',
       bookingId: 'booking-2',
+      requesterId: 'vet-1',
+      reason: 'Recheck the ear',
     });
 
     expect(result.booking.id).toBe('booking-2');
@@ -116,7 +118,42 @@ describe('followUp.service (#67, revised for ScheduleFollowUpModal)', () => {
     expect(consultationUpdate?.payload).toMatchObject({
       follow_up_date: '2026-08-01',
       follow_up_booking_id: 'booking-2',
+      follow_up_reason: 'Recheck the ear',
     });
+  });
+
+  it('only lets the vet who handled the visit schedule its follow-up', async () => {
+    queueFromResults({
+      data: consultationRow({ accepted_by: 'vet-1' }),
+      error: null,
+    });
+
+    await expect(
+      linkFollowUpBooking({
+        consultationId: 'consultation-1',
+        bookingId: 'booking-2',
+        requesterId: 'vet-2',
+        reason: 'Recheck the ear',
+      })
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    expect(recordedWrites).toEqual([]);
+  });
+
+  it('falls back to the assigned vet on an older visit nobody is recorded as having taken', async () => {
+    queueFromResults({
+      data: consultationRow({ accepted_by: null, veterinarian_id: 'vet-1' }),
+      error: null,
+    });
+
+    await expect(
+      linkFollowUpBooking({
+        consultationId: 'consultation-1',
+        bookingId: 'booking-2',
+        requesterId: 'vet-2',
+        reason: 'Recheck the ear',
+      })
+    ).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it('rejects linking a follow-up while the consultation booking is still Pending or In Progress (not finished yet)', async () => {
@@ -129,6 +166,8 @@ describe('followUp.service (#67, revised for ScheduleFollowUpModal)', () => {
       linkFollowUpBooking({
         consultationId: 'consultation-1',
         bookingId: 'booking-2',
+        requesterId: 'vet-1',
+        reason: 'Recheck the ear',
       })
     ).rejects.toMatchObject({ statusCode: 409 });
   });
@@ -143,6 +182,8 @@ describe('followUp.service (#67, revised for ScheduleFollowUpModal)', () => {
       linkFollowUpBooking({
         consultationId: 'consultation-1',
         bookingId: 'booking-2',
+        requesterId: 'vet-1',
+        reason: 'Recheck the ear',
       })
     ).rejects.toMatchObject({ statusCode: 409 });
   });
@@ -157,6 +198,8 @@ describe('followUp.service (#67, revised for ScheduleFollowUpModal)', () => {
       linkFollowUpBooking({
         consultationId: 'consultation-1',
         bookingId: 'booking-missing',
+        requesterId: 'vet-1',
+        reason: 'Recheck the ear',
       })
     ).rejects.toMatchObject({ statusCode: 404 });
   });
@@ -174,6 +217,8 @@ describe('followUp.service (#67, revised for ScheduleFollowUpModal)', () => {
       linkFollowUpBooking({
         consultationId: 'consultation-1',
         bookingId: 'booking-2',
+        requesterId: 'vet-1',
+        reason: 'Recheck the ear',
       })
     ).rejects.toMatchObject({ statusCode: 400 });
   });

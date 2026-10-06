@@ -26,6 +26,12 @@ import {
 } from './services/vetCatalog.service.ts';
 import { uploadMedicationImage } from './services/vetMedicationImageUpload.service.ts';
 import {
+  createServiceCatalogItem,
+  deleteServiceCatalogItem,
+  listServiceCatalog,
+  updateServiceCatalogItem,
+} from './services/vetServiceCatalog.service.ts';
+import {
   createPrescriptionTemplate,
   deletePrescriptionTemplate,
   listPrescriptionTemplates,
@@ -35,11 +41,13 @@ import {
   createConsultationFormTemplateValidator,
   createMedicationCatalogItemValidator,
   createPrescriptionTemplateValidator,
+  createServiceCatalogItemValidator,
   linkFollowUpValidator,
   updateConsultationFormTemplateValidator,
   updateConsultationValidator,
   updateMedicationCatalogItemValidator,
   updatePrescriptionTemplateValidator,
+  updateServiceCatalogItemValidator,
   upsertHealthConditionsValidator,
 } from './modules/validators/veterinary.validator.ts';
 
@@ -151,6 +159,8 @@ export async function linkFollowUpBookingController(
     const result = await linkFollowUpBooking({
       consultationId: paramId(req, 'id'),
       bookingId: parsed.data.booking_id,
+      requesterId,
+      reason: parsed.data.reason,
     });
 
     return res.status(201).json(result);
@@ -242,7 +252,7 @@ export async function listMedicationCatalogController(
   if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const medications = await listMedicationCatalog(requesterId);
+    const medications = await listMedicationCatalog();
     return res.status(200).json({ medications });
   } catch (error) {
     return sendServiceError(res, error);
@@ -290,7 +300,6 @@ export async function updateMedicationCatalogItemController(
 
   try {
     const medication = await updateMedicationCatalogItem(
-      requesterId,
       paramId(req, 'id'),
       parsed.data
     );
@@ -308,7 +317,7 @@ export async function deleteMedicationCatalogItemController(
   if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    await deleteMedicationCatalogItem(requesterId, paramId(req, 'id'));
+    await deleteMedicationCatalogItem(paramId(req, 'id'));
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
@@ -551,6 +560,86 @@ export async function deletePrescriptionTemplateController(
 
   try {
     await deletePrescriptionTemplate(requesterId, paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// Vet-priced visits: the clinic's shared list of veterinary services and
+// their usual prices - one list for every vet, like the medication catalog.
+
+export async function listServiceCatalogController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const services = await listServiceCatalog();
+    return res.status(200).json({ services });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createServiceCatalogItemController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const parsed = createServiceCatalogItemValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const service = await createServiceCatalogItem(requesterId, parsed.data);
+    return res.status(201).json({ service });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updateServiceCatalogItemController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const parsed = updateServiceCatalogItemValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const service = await updateServiceCatalogItem(
+      paramId(req, 'id'),
+      parsed.data
+    );
+    return res.status(200).json({ service });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function deleteServiceCatalogItemController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    await deleteServiceCatalogItem(paramId(req, 'id'));
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

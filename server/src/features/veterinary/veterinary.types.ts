@@ -21,7 +21,10 @@ export const VETERINARY_WRITE_ROLES: readonly string[] = ['Veterinarian'];
  * prescription (medicine type, dosage, frequency), not just name+dose - all
  * three are free text (see veterinary.validator.ts), not DB/Zod enums, so a
  * vet is never blocked from entering something outside the client's
- * suggested-value lists. */
+ * suggested-value lists. Pharmacy prescriptions: `quantity` is how many
+ * units are prescribed; `medication_catalog_id` points at the shared
+ * medicine-list entry the row was added from (null for rows saved before
+ * this existed), which is where a sale's unit price is read from. */
 export interface ConsultationMedication {
   name: string;
   dose: string;
@@ -29,6 +32,8 @@ export interface ConsultationMedication {
   medicine_type?: string | null;
   frequency?: string | null;
   duration?: string | null;
+  quantity?: number | null;
+  medication_catalog_id?: string | null;
 }
 
 /** #117 consultation form builder: one field of a vet's reusable custom
@@ -118,6 +123,18 @@ export interface Consultation {
   reason_for_visit: string;
   follow_up_date: string | null;
   follow_up_booking_id: string | null;
+  /** Why the vet asked for the follow-up - set with it, by
+   * followUp.service.ts's linkFollowUpBooking. */
+  follow_up_reason: string | null;
+  /** Pharmacy prescriptions: true when the customer is buying the
+   * prescribed medicines from this branch's pharmacy - only then are they
+   * billed. False (the default) means they're buying elsewhere. */
+  sold_at_pharmacy: boolean;
+  /** The Pending/settled transaction billing this visit's medicines, when
+   * there is one - see pharmacyCharge.service.ts. */
+  medication_transaction_id: string | null;
+  /** Joined by CONSULTATION_SELECT - null/absent when nothing was billed. */
+  medication_transaction?: { payment_status: string } | null;
   created_at: string;
   updated_at: string;
   booking?: Booking;
@@ -163,9 +180,9 @@ export interface VeterinarianPatient {
   last_visit_at: string;
 }
 
-/** A veterinarian's personal medication catalog entry - owner-scoped
- * (RLS: auth.uid() = veterinarian_id), unlike everything else in this
- * feature which any Veterinarian may view/edit. Custom change ("My Catalog"
+/** One entry of the clinic's shared medication list - any Veterinarian may
+ * view/edit any entry; `veterinarian_id` only records who added it, and
+ * `default_price` is the pharmacy's selling price. Custom change ("My Catalog"
  * broken into Medications/Prescriptions/Forms): a medication is now just a
  * product definition (name/type/price) - `default_dose`/`default_frequency`
  * removed, since dose and frequency belong to a *prescription* (a specific
@@ -185,6 +202,18 @@ export interface VetMedicationCatalogItem {
   default_medicine_type: string | null;
   icon: string | null;
   image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One entry of the clinic's shared list of veterinary services and their
+ * usual prices (e.g. Surgery) - suggested from when a vet lists what was done
+ * at a visit. `created_by` only records who added it. */
+export interface VetServiceCatalogItem {
+  id: string;
+  name: string;
+  default_price: number;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }

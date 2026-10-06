@@ -36,14 +36,19 @@ import {
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import {
   listConsultationQueue,
+  listServiceCatalog,
   updateConsultation,
 } from '../../api/veterinary.api';
 import type {
   Consultation,
   ConsultationFormResponse,
   MedicationInput,
+  ServiceDone,
+  VetServiceCatalogItem,
 } from '../../veterinary.types';
+import { ScheduleFollowUpModal } from '../../components/ScheduleFollowUpModal/ScheduleFollowUpModal';
 import { ConsultationDetailPanel } from './ConsultationDetailPanel';
+import { ServicesDoneModal } from './ServicesDoneModal';
 import {
   CONSULTATION_QUEUE_FILTER_FIELDS,
   CONSULTATION_QUEUE_SORT_FIELDS,
@@ -82,6 +87,23 @@ function formatScheduledTime(iso: string): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+}
+
+/** What a Complete carries besides the services done: everything the
+ * Consultation Details form holds. All optional - the queue row's quick
+ * Complete sends none of it, so whatever is already saved on the visit is
+ * left alone rather than overwritten with empty values. */
+interface CompleteFields {
+  diagnosis?: string;
+  medications?: MedicationInput[];
+  soldAtPharmacy?: boolean;
+  formResponses?: ConsultationFormResponse[];
+  vaccination?: {
+    vaccine_name: string;
+    date_administered: string;
+    next_due_date?: string;
+    notes?: string;
+  };
 }
 
 /**
@@ -138,21 +160,20 @@ export function VeterinaryConsolePage() {
   // next interval) after a Start/Complete is refused - most often because
   // another vet took the consultation since this list loaded.
   const [queueRefreshKey, setQueueRefreshKey] = useState(0);
-  // The In Progress consultation awaiting the row-level "Complete" confirm -
-  // a quick finish that only needs the professional fee (the one field the
-  // server requires to complete). Prescriptions/results/vaccination still
-  // go through View Details.
-  const [pendingCompleteId, setPendingCompleteId] = useState<string | null>(
-    null
-  );
-  const [quickFee, setQuickFee] = useState('');
-  // Custom change: "only appear once" - which consultations have already
-  // had the "choose a form" prompt resolved (Add/Skip/close) this session,
-  // so reopening "View Details" doesn't show it again. Adding another form
-  // later happens through the Results section's own "Add result from a
-  // form template..." control, not a separate reopen action here.
-  const [seenFormsPromptIds, setSeenFormsPromptIds] = useState<Set<string>>(
-    new Set()
+  // Vet-priced visits: the visit waiting on the "Services done" pop-up.
+  // Every Complete opens it - the queue row's quick Complete (no `fields`,
+  // so nothing already saved on the visit is overwritten) and the details
+  // form's Complete (its diagnosis/prescription/results/vaccination are held
+  // here until the pop-up is confirmed, then sent in the same save).
+  const [pendingComplete, setPendingComplete] = useState<{
+    consultationId: string;
+    fields: CompleteFields;
+  } | null>(null);
+  // The Completed visit whose Schedule follow-up form is open.
+  const [followUpForId, setFollowUpForId] = useState<string | null>(null);
+  // The clinic's shared service list, suggested from in that pop-up.
+  const [serviceCatalog, setServiceCatalog] = useState<VetServiceCatalogItem[]>(
+    []
   );
 
   const dateRange = useMemo(() => deriveDateRange(filterTiles), [filterTiles]);
@@ -280,6 +301,22 @@ export function VeterinaryConsolePage() {
     };
   }, [roleStatus, accessToken, dateRange.from, dateRange.to, queueRefreshKey]);
 
+  useEffect(() => {
+    // Veterinarian-only endpoint (vetWrite), same as the medicine list - any
+    // other viewer can't complete a visit anyway.
+    if (staffRole !== 'Veterinarian' || !accessToken) return;
+
+    let isMounted = true;
+
+    void listServiceCatalog(accessToken).then((result) => {
+      if (isMounted && result.data) setServiceCatalog(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [staffRole, accessToken]);
+
   const rows = useMemo(() => {
     return consultations.map((consultation) => {
       const booking = consultation.booking;
@@ -359,8 +396,9 @@ export function VeterinaryConsolePage() {
   const pendingStartRow = rows.find(
     (row) => row.consultation.id === pendingStartId
   );
+  const followUpRow = rows.find((row) => row.consultation.id === followUpForId);
   const pendingCompleteRow = rows.find(
-    (row) => row.consultation.id === pendingCompleteId
+    (row) => row.consultation.id === pendingComplete?.consultationId
   );
 
   // Mirrors the server's VETERINARY_WRITE_ROLES (veterinary.types.ts) - Admin
@@ -374,6 +412,16 @@ export function VeterinaryConsolePage() {
   function isHandledByAnotherVet(consultation: Consultation): boolean {
     return (
       consultation.accepted_by !== null && consultation.accepted_by !== user?.id
+    );
+  }
+
+  /** Who may still correct a Completed visit's record: the vet who took it,
+   * or - for a visit finished before accepted_by existed - the vet it was
+   * assigned to. Mirrors consultation.service.ts's
+   * updateFinishedConsultation on the server. */
+  function handledThisVisit(consultation: Consultation): boolean {
+    return (
+      (consultation.accepted_by ?? consultation.veterinarian_id) === user?.id
     );
   }
 
@@ -403,24 +451,15 @@ export function VeterinaryConsolePage() {
     );
   }
 
-  /** Shared by the detail panel's "Complete Consultation" and the row-level
-   * quick "Complete". medications/formResponses are optional so the quick
+  /** Runs once the "Services done" pop-up is confirmed - shared by the detail
+   * panel's "Complete Consultation" and the row-level quick "Complete". medications/formResponses are optional so the quick
    * path leaves them out of the PATCH entirely - sending an empty array
    * would wipe whatever the consultation already has saved. Returns whether
    * it succeeded so the quick-complete modal knows to close. */
   async function handleComplete(
     consultationId: string,
-    fields: {
-      medications?: MedicationInput[];
-      formResponses?: ConsultationFormResponse[];
-      professionalFee: number;
-      vaccination?: {
-        vaccine_name: string;
-        date_administered: string;
-        next_due_date?: string;
-        notes?: string;
-      };
-    }
+    fields: CompleteFields,
+    servicesDone: ServiceDone[]
   ): Promise<boolean> {
     if (!accessToken) return false;
 
@@ -429,10 +468,12 @@ export function VeterinaryConsolePage() {
 
     const result = await updateConsultation(consultationId, accessToken, {
       status: 'Completed',
+      diagnosis: fields.diagnosis,
       medications: fields.medications,
+      sold_at_pharmacy: fields.soldAtPharmacy,
       form_responses: fields.formResponses,
-      professional_fee: fields.professionalFee,
       vaccination: fields.vaccination,
+      services_done: servicesDone,
     });
 
     setIsSaving(false);
@@ -452,20 +493,61 @@ export function VeterinaryConsolePage() {
     return true;
   }
 
-  function openQuickComplete(consultationId: string) {
+  /** Pharmacy prescriptions: the vet who handled a Completed visit correcting
+   * its diagnosis/prescription from the detail panel's "Edit record". No
+   * status is sent - the visit stays Completed; the server decides whether
+   * the medicine transaction still follows the edit. Returns whether it
+   * saved, so the panel knows to leave edit mode. */
+  async function handleSaveRecord(
+    consultationId: string,
+    fields: {
+      diagnosis: string;
+      medications: MedicationInput[];
+      soldAtPharmacy: boolean;
+    }
+  ): Promise<boolean> {
+    if (!accessToken) return false;
+
+    setIsSaving(true);
     setSaveError(null);
-    setQuickFee('');
-    setPendingCompleteId(consultationId);
-  }
 
-  async function confirmQuickComplete() {
-    if (!pendingCompleteId) return;
-
-    const succeeded = await handleComplete(pendingCompleteId, {
-      professionalFee: Number(quickFee || 0),
+    const result = await updateConsultation(consultationId, accessToken, {
+      diagnosis: fields.diagnosis,
+      medications: fields.medications,
+      sold_at_pharmacy: fields.soldAtPharmacy,
     });
 
-    if (succeeded) setPendingCompleteId(null);
+    setIsSaving(false);
+
+    if (result.error || !result.data) {
+      setSaveError(result.error ?? 'Could not save these changes.');
+      return false;
+    }
+
+    const updated = result.data;
+    setConsultations((prev) =>
+      prev.map((consultation) =>
+        consultation.id === updated.id ? updated : consultation
+      )
+    );
+    return true;
+  }
+
+  function openServicesDone(consultationId: string, fields: CompleteFields) {
+    setSaveError(null);
+    setPendingComplete({ consultationId, fields });
+  }
+
+  async function confirmServicesDone(servicesDone: ServiceDone[]) {
+    if (!pendingComplete) return;
+
+    const succeeded = await handleComplete(
+      pendingComplete.consultationId,
+      pendingComplete.fields,
+      servicesDone
+    );
+
+    if (succeeded) setPendingComplete(null);
   }
 
   /** The row's direct status action: Start on a Pending row, Complete on
@@ -506,7 +588,7 @@ export function VeterinaryConsolePage() {
           type="button"
           className={styles.startButton}
           disabled={isSaving}
-          onClick={() => openQuickComplete(row.consultation.id)}
+          onClick={() => openServicesDone(row.consultation.id, {})}
         >
           Complete
         </button>
@@ -536,12 +618,32 @@ export function VeterinaryConsolePage() {
     },
   ];
 
+  /** Vet-priced visits: a finished visit's follow-up may be scheduled once,
+   * by the vet who handled it - mirrors followUp.service.ts's own checks on
+   * the server. */
+  function canScheduleFollowUp(consultation: Consultation): boolean {
+    return (
+      canWrite &&
+      consultation.booking?.status === 'Completed' &&
+      !consultation.follow_up_booking_id &&
+      handledThisVisit(consultation)
+    );
+  }
+
   function buildRowMenuItems(row: QueueRow) {
     return [
       {
         label: 'View Details',
         onSelect: () => setOpenId(row.consultation.id),
       },
+      ...(canScheduleFollowUp(row.consultation)
+        ? [
+            {
+              label: 'Schedule follow-up',
+              onSelect: () => setFollowUpForId(row.consultation.id),
+            },
+          ]
+        : []),
     ];
   }
 
@@ -736,65 +838,6 @@ export function VeterinaryConsolePage() {
         </div>
       </Modal>
 
-      <Modal
-        isOpen={pendingCompleteId !== null}
-        title="Complete Consultation"
-        onClose={() => setPendingCompleteId(null)}
-      >
-        <p className={styles.copy}>
-          Complete this consultation for{' '}
-          {pendingCompleteRow?.petName ?? 'this pet'}? This marks the booking
-          Completed so it moves on to checkout.
-        </p>
-        <label className={styles.feeField}>
-          <span className={styles.feeLabel}>Professional Fee (₱)</span>
-          <input
-            className={styles.feeInput}
-            type="number"
-            min={0}
-            value={quickFee}
-            onChange={(event) => setQuickFee(event.target.value)}
-          />
-        </label>
-        <p className={styles.copy}>
-          To add prescriptions, results or a vaccination first, use{' '}
-          <button
-            type="button"
-            className={styles.linkButton}
-            onClick={() => {
-              const id = pendingCompleteId;
-              setPendingCompleteId(null);
-              setOpenId(id);
-            }}
-          >
-            View Details
-          </button>
-          .
-        </p>
-        {saveError ? (
-          <p className={styles.errorBanner} role="alert">
-            {saveError}
-          </p>
-        ) : null}
-        <div className={styles.modalActions}>
-          <button
-            type="button"
-            className={styles.startButton}
-            disabled={isSaving}
-            onClick={() => void confirmQuickComplete()}
-          >
-            {isSaving ? 'Completing...' : 'Complete'}
-          </button>
-          <button
-            type="button"
-            className={styles.cancelButton}
-            onClick={() => setPendingCompleteId(null)}
-          >
-            Cancel
-          </button>
-        </div>
-      </Modal>
-
       {/* Custom change: the single "View Details" action - everything that
           used to be split across an inline panel plus two separate
           read-only modals (View Details, Results) now lives here as one
@@ -821,16 +864,57 @@ export function VeterinaryConsolePage() {
             saveError={saveError}
             onStart={() => setPendingStartId(openRow.consultation.id)}
             onComplete={(fields) =>
-              void handleComplete(openRow.consultation.id, fields)
+              openServicesDone(openRow.consultation.id, fields)
             }
-            hasSeenFormsPrompt={seenFormsPromptIds.has(openRow.consultation.id)}
-            onFormsPromptResolved={() => {
-              const id = openRow.consultation.id;
-              setSeenFormsPromptIds((prev) => new Set(prev).add(id));
-            }}
+            canEditRecord={canWrite && handledThisVisit(openRow.consultation)}
+            onSaveRecord={(fields) =>
+              handleSaveRecord(openRow.consultation.id, fields)
+            }
+            onScheduleFollowUp={() => setFollowUpForId(openRow.consultation.id)}
           />
         ) : null}
       </Modal>
+
+      {followUpRow?.consultation.booking && user?.id ? (
+        <ScheduleFollowUpModal
+          key={followUpRow.consultation.id}
+          accessToken={accessToken}
+          consultationId={followUpRow.consultation.id}
+          petId={followUpRow.consultation.pet_id}
+          petName={followUpRow.petName}
+          customerId={followUpRow.consultation.booking.customer_id}
+          ownerName={followUpRow.ownerName}
+          branchId={followUpRow.consultation.booking.branch_id}
+          veterinarianId={user.id}
+          onClose={() => setFollowUpForId(null)}
+          onLinked={(linked) =>
+            setConsultations((prev) =>
+              prev.map((consultation) =>
+                // Merged, not replaced: the link endpoint returns the visit
+                // without the medicine-transaction join the queue carries.
+                consultation.id === linked.id
+                  ? { ...consultation, ...linked }
+                  : consultation
+              )
+            )
+          }
+        />
+      ) : null}
+
+      {pendingComplete ? (
+        <ServicesDoneModal
+          key={pendingComplete.consultationId}
+          petName={pendingCompleteRow?.petName ?? 'this pet'}
+          catalog={serviceCatalog}
+          isSaving={isSaving}
+          error={saveError}
+          onConfirm={(servicesDone) => void confirmServicesDone(servicesDone)}
+          onCancel={() => {
+            setSaveError(null);
+            setPendingComplete(null);
+          }}
+        />
+      ) : null}
     </main>
   );
 }

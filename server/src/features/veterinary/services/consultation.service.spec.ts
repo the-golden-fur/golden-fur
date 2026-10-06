@@ -10,10 +10,28 @@ import {
   updateConsultation,
 } from './consultation.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  applyPharmacyCharge,
+  planPharmacyCharge,
+} from './pharmacyCharge.service.ts';
+import { postServicesDoneCharge } from './serviceCharge.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
 }));
+
+// The medicine transaction has its own spec (pharmacyCharge.service.spec.ts)
+// - here it's only checked that updateConsultation plans and applies it.
+vi.mock('./pharmacyCharge.service.ts', () => ({
+  planPharmacyCharge: vi.fn(),
+  applyPharmacyCharge: vi.fn(),
+}));
+
+vi.mock('./serviceCharge.service.ts', () => ({
+  postServicesDoneCharge: vi.fn(),
+}));
+
+const NOTHING_TO_BILL = { locked: false, existing: null, lines: [] };
 
 interface QueryResult {
   data: unknown;
@@ -98,6 +116,8 @@ function consultationRow(overrides: Record<string, unknown> = {}) {
     reason_for_visit: 'Checkup',
     follow_up_date: null,
     follow_up_booking_id: null,
+    sold_at_pharmacy: false,
+    medication_transaction_id: null,
     booking: bookingFor({ status: bookingStatus ?? 'Pending' }),
     ...rest,
   };
@@ -107,6 +127,9 @@ describe('consultation.service (#66)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     recordedWrites.length = 0;
+    vi.mocked(planPharmacyCharge).mockResolvedValue(NOTHING_TO_BILL);
+    vi.mocked(applyPharmacyCharge).mockResolvedValue(undefined);
+    vi.mocked(postServicesDoneCharge).mockResolvedValue(undefined);
   });
 
   describe('listConsultationQueue', () => {
@@ -630,25 +653,223 @@ describe('consultation.service (#66)', () => {
       ).rejects.toMatchObject({ statusCode: 409 });
     });
 
-    it('rejects updating an already-finalized (Completed/Paid) consultation', async () => {
-      queueFromResults({
-        data: consultationRow({ bookingStatus: 'Completed' }),
-        error: null,
-      });
+    describe('editing a finished consultation', () => {
+      const AMOXICILLIN = {
+        name: 'Amoxicillin',
+        dose: '50mg',
+        quantity: 2,
+        medication_catalog_id: 'med-1',
+      };
 
-      await expect(
-        updateConsultation({
+      it('lets the vet who handled it correct the diagnosis and prescription', async () => {
+        queueFromResults(
+          {
+            data: consultationRow({ bookingStatus: 'Completed' }),
+            error: null,
+          }, // getConsultation
+          {
+            data: consultationRow({
+              bookingStatus: 'Completed',
+              diagnosis: 'Ear infection',
+            }),
+            error: null,
+          } // consultations update
+        );
+
+        const result = await updateConsultation({
           requesterId: VET_ID,
           consultationId: 'consultation-1',
-          input: { diagnosis: 'Late edit' },
-        })
-      ).rejects.toMatchObject({
-        statusCode: 409,
-        message: expect.stringContaining('already finalized'),
+          input: { diagnosis: 'Ear infection', medications: [AMOXICILLIN] },
+        });
+
+        expect(result.diagnosis).toBe('Ear infection');
+        expect(recordedWrites).toEqual([
+          {
+            table: 'consultations',
+            method: 'update',
+            payload: expect.objectContaining({
+              diagnosis: 'Ear infection',
+              medications: [expect.objectContaining(AMOXICILLIN)],
+            }),
+          },
+        ]);
+      });
+
+      it('plans and applies the medicine transaction from the edited prescription', async () => {
+        const plan = {
+          locked: false,
+          existing: null,
+          lines: [
+            {
+              description: 'Amoxicillin',
+              quantity: 2,
+              unit_price: 150,
+              line_total: 300,
+            },
+          ],
+        };
+        vi.mocked(planPharmacyCharge).mockResolvedValue(plan);
+        queueFromResults(
+          {
+            data: consultationRow({ bookingStatus: 'Completed' }),
+            error: null,
+          }, // getConsultation
+          {
+            data: consultationRow({
+              bookingStatus: 'Completed',
+              sold_at_pharmacy: true,
+            }),
+            error: null,
+          }, // consultations update
+          {
+            data: consultationRow({
+              bookingStatus: 'Completed',
+              sold_at_pharmacy: true,
+              medication_transaction_id: 'txn-1',
+            }),
+            error: null,
+          } // re-read after the transaction was posted
+        );
+
+        const result = await updateConsultation({
+          requesterId: VET_ID,
+          consultationId: 'consultation-1',
+          input: { medications: [AMOXICILLIN], sold_at_pharmacy: true },
+        });
+
+        expect(planPharmacyCharge).toHaveBeenCalledWith(
+          expect.objectContaining({
+            medications: [expect.objectContaining(AMOXICILLIN)],
+            soldAtPharmacy: true,
+          })
+        );
+        expect(applyPharmacyCharge).toHaveBeenCalledWith(
+          expect.objectContaining({ plan, requesterId: VET_ID })
+        );
+        expect(result.medication_transaction_id).toBe('txn-1');
+      });
+
+      it('keeps where the medicine is bought as it was when the edit does not say', async () => {
+        queueFromResults(
+          {
+            data: consultationRow({
+              bookingStatus: 'Completed',
+              sold_at_pharmacy: true,
+              medications: [AMOXICILLIN],
+            }),
+            error: null,
+          }, // getConsultation
+          {
+            data: consultationRow({ bookingStatus: 'Completed' }),
+            error: null,
+          } // consultations update
+        );
+
+        await updateConsultation({
+          requesterId: VET_ID,
+          consultationId: 'consultation-1',
+          input: { diagnosis: 'Ear infection' },
+        });
+
+        expect(planPharmacyCharge).toHaveBeenCalledWith(
+          expect.objectContaining({
+            medications: [AMOXICILLIN],
+            soldAtPharmacy: true,
+          })
+        );
+      });
+
+      it('saves nothing when a medicine being sold cannot be priced', async () => {
+        vi.mocked(planPharmacyCharge).mockRejectedValue(
+          Object.assign(new Error('Amoxicillin has no price'), {
+            statusCode: 400,
+          })
+        );
+        queueFromResults({
+          data: consultationRow({ bookingStatus: 'Completed' }),
+          error: null,
+        });
+
+        await expect(
+          updateConsultation({
+            requesterId: VET_ID,
+            consultationId: 'consultation-1',
+            input: { medications: [AMOXICILLIN], sold_at_pharmacy: true },
+          })
+        ).rejects.toMatchObject({ statusCode: 400 });
+
+        expect(recordedWrites).toHaveLength(0);
+      });
+
+      it('refuses another vet', async () => {
+        queueFromResults({
+          data: consultationRow({ bookingStatus: 'Completed' }),
+          error: null,
+        });
+
+        await expect(
+          updateConsultation({
+            requesterId: OTHER_VET_ID,
+            consultationId: 'consultation-1',
+            input: { diagnosis: 'Not mine' },
+          })
+        ).rejects.toMatchObject({ statusCode: 403 });
+
+        expect(recordedWrites).toHaveLength(0);
+      });
+
+      it('falls back to the assigned vet on an older visit nobody is recorded as having taken', async () => {
+        queueFromResults(
+          {
+            data: consultationRow({
+              bookingStatus: 'Completed',
+              accepted_by: null,
+            }),
+            error: null,
+          }, // getConsultation
+          {
+            data: consultationRow({ bookingStatus: 'Completed' }),
+            error: null,
+          } // consultations update
+        );
+
+        await expect(
+          updateConsultation({
+            requesterId: VET_ID,
+            consultationId: 'consultation-1',
+            input: { diagnosis: 'Ear infection' },
+          })
+        ).resolves.toBeDefined();
+      });
+
+      it.each([
+        ['its status', { status: 'Ongoing' as const }],
+        ['its professional fee', { professional_fee: 900 }],
+        ['its vitals', { temperature: 39 }],
+        ['its form results', { form_responses: [] }],
+        ['its services done', { services_done: [] }],
+      ])('still refuses to change %s', async (_label, input) => {
+        queueFromResults({
+          data: consultationRow({ bookingStatus: 'Completed' }),
+          error: null,
+        });
+
+        await expect(
+          updateConsultation({
+            requesterId: VET_ID,
+            consultationId: 'consultation-1',
+            input,
+          })
+        ).rejects.toMatchObject({
+          statusCode: 409,
+          message: expect.stringContaining('already finalized'),
+        });
+
+        expect(recordedWrites).toHaveLength(0);
       });
     });
 
-    it('AC-2: marking Completed delegates to completeBooking, writes a line item for the professional fee/each medication, and returns the post-transition booking status', async () => {
+    it('AC-2: marking Completed delegates to completeBooking, bills only the professional fee as a line item, and returns the post-transition booking status', async () => {
       queueFromResults(
         {
           data: consultationRow({ bookingStatus: 'In Progress' }),
@@ -676,19 +897,215 @@ describe('consultation.service (#66)', () => {
         input: {
           status: 'Completed',
           professional_fee: 500,
-          medications: [{ name: 'Amoxicillin', dose: '50mg', amount: 150 }],
+          diagnosis: 'Ear infection',
+          sold_at_pharmacy: true,
+          medications: [
+            {
+              name: 'Amoxicillin',
+              dose: '50mg',
+              quantity: 2,
+              medication_catalog_id: 'med-1',
+            },
+          ],
         },
       });
 
       expect(result.booking?.status).toBe('Completed');
 
+      // Medicines are billed through the pharmacy transaction, never here -
+      // a medication row would bill them a second time at checkout.
       const lineItemsInsert = recordedWrites.find(
         (write) => write.table === 'consultation_line_items'
       );
-      expect(lineItemsInsert?.payload).toMatchObject([
-        { item_type: 'professional_fee', amount: 500 },
-        { item_type: 'medication', description: 'Amoxicillin', amount: 150 },
+      expect(lineItemsInsert?.payload).toEqual([
+        expect.objectContaining({ item_type: 'professional_fee', amount: 500 }),
       ]);
+
+      const update = recordedWrites.find(
+        (write) => write.table === 'consultations' && write.method === 'update'
+      );
+      expect(update?.payload).toMatchObject({
+        diagnosis: 'Ear infection',
+        sold_at_pharmacy: true,
+        medications: [
+          expect.objectContaining({
+            name: 'Amoxicillin',
+            quantity: 2,
+            medication_catalog_id: 'med-1',
+          }),
+        ],
+      });
+      expect(planPharmacyCharge).toHaveBeenCalledWith(
+        expect.objectContaining({ soldAtPharmacy: true })
+      );
+      expect(applyPharmacyCharge).toHaveBeenCalledWith(
+        expect.objectContaining({
+          plan: NOTHING_TO_BILL,
+          requesterId: VET_ID,
+        })
+      );
+    });
+
+    it('records the services done at completion and bills them, re-reading the visit so the new total shows', async () => {
+      const servicesDone = [
+        { name: 'Surgery', amount: 10000 },
+        { name: 'Wound dressing', amount: 350 },
+      ];
+      queueFromResults(
+        {
+          data: consultationRow({ bookingStatus: 'In Progress' }),
+          error: null,
+        }, // getConsultation
+        { data: bookingFor({ status: 'In Progress' }), error: null }, // completeBooking's getRawBookingById
+        { data: bookingFor({ status: 'Completed' }), error: null }, // completeBooking's updateBookingRow
+        { data: null, error: null }, // consultation_line_items insert
+        {
+          data: consultationRow({ bookingStatus: 'Completed' }),
+          error: null,
+        }, // final consultations update
+        {
+          data: consultationRow({
+            booking: bookingFor({ status: 'Completed', total_price: 10350 }),
+          }),
+          error: null,
+        } // re-read after the charge was posted
+      );
+
+      const result = await updateConsultation({
+        requesterId: VET_ID,
+        consultationId: 'consultation-1',
+        input: { status: 'Completed', services_done: servicesDone },
+      });
+
+      expect(
+        recordedWrites.find(
+          (write) => write.table === 'consultation_line_items'
+        )?.payload
+      ).toEqual([
+        {
+          consultation_id: 'consultation-1',
+          item_type: 'procedure',
+          description: 'Surgery',
+          amount: 10000,
+        },
+        {
+          consultation_id: 'consultation-1',
+          item_type: 'procedure',
+          description: 'Wound dressing',
+          amount: 350,
+        },
+      ]);
+      expect(postServicesDoneCharge).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lines: servicesDone,
+          requesterId: VET_ID,
+        })
+      );
+      expect(result.booking?.total_price).toBe(10350);
+    });
+
+    it('bills no services when the vet listed none', async () => {
+      queueFromResults(
+        {
+          data: consultationRow({ bookingStatus: 'In Progress' }),
+          error: null,
+        }, // getConsultation
+        { data: bookingFor({ status: 'In Progress' }), error: null }, // completeBooking's getRawBookingById
+        { data: bookingFor({ status: 'Completed' }), error: null }, // completeBooking's updateBookingRow
+        {
+          data: consultationRow({ bookingStatus: 'Completed' }),
+          error: null,
+        } // final consultations update
+      );
+
+      await updateConsultation({
+        requesterId: VET_ID,
+        consultationId: 'consultation-1',
+        input: { status: 'Completed', services_done: [] },
+      });
+
+      expect(postServicesDoneCharge).not.toHaveBeenCalled();
+      expect(
+        recordedWrites.filter(
+          (write) => write.table === 'consultation_line_items'
+        )
+      ).toEqual([]);
+    });
+
+    it('does not bill services listed on a save that is not a completion', async () => {
+      queueFromResults(
+        {
+          data: consultationRow({ bookingStatus: 'In Progress' }),
+          error: null,
+        }, // getConsultation
+        {
+          data: consultationRow({ bookingStatus: 'In Progress' }),
+          error: null,
+        } // final consultations update
+      );
+
+      await updateConsultation({
+        requesterId: VET_ID,
+        consultationId: 'consultation-1',
+        input: { services_done: [{ name: 'Surgery', amount: 10000 }] },
+      });
+
+      expect(postServicesDoneCharge).not.toHaveBeenCalled();
+    });
+
+    it('completing without a professional fee writes no fee line item at all', async () => {
+      queueFromResults(
+        {
+          data: consultationRow({ bookingStatus: 'In Progress' }),
+          error: null,
+        }, // getConsultation
+        { data: bookingFor({ status: 'In Progress' }), error: null }, // completeBooking's getRawBookingById
+        { data: bookingFor({ status: 'Completed' }), error: null }, // completeBooking's updateBookingRow
+        {
+          data: consultationRow({ bookingStatus: 'Completed' }),
+          error: null,
+        } // final consultations update
+      );
+
+      const result = await updateConsultation({
+        requesterId: VET_ID,
+        consultationId: 'consultation-1',
+        input: { status: 'Completed', diagnosis: 'Ear infection' },
+      });
+
+      expect(result.booking?.status).toBe('Completed');
+      expect(
+        recordedWrites.filter(
+          (write) => write.table === 'consultation_line_items'
+        )
+      ).toEqual([]);
+    });
+
+    it('does not complete the visit when a medicine being sold cannot be priced', async () => {
+      vi.mocked(planPharmacyCharge).mockRejectedValue(
+        Object.assign(new Error('Amoxicillin has no price'), {
+          statusCode: 400,
+        })
+      );
+      queueFromResults({
+        data: consultationRow({ bookingStatus: 'In Progress' }),
+        error: null,
+      });
+
+      await expect(
+        updateConsultation({
+          requesterId: VET_ID,
+          consultationId: 'consultation-1',
+          input: {
+            status: 'Completed',
+            professional_fee: 500,
+            sold_at_pharmacy: true,
+            medications: [{ name: 'Amoxicillin', dose: '50mg' }],
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      expect(recordedWrites).toHaveLength(0);
     });
 
     it('AC-3: a vaccination entered at completion writes through to pet_vaccination_records immediately', async () => {
@@ -797,6 +1214,64 @@ describe('#117 prescription/consultation-results reads', () => {
         consultation_id: 'consultation-1',
         medications: [{ name: 'Amoxicillin', dose: '50mg' }],
       });
+    });
+
+    it('carries what a printed prescription needs - quantity, the vet, the branch, the pet and its owner - and no prices', async () => {
+      queueFromResults(
+        { data: { customer_id: 'customer-1', name: 'Whiskers' }, error: null }, // pet lookup
+        {
+          data: [
+            consultationRow({
+              bookingStatus: 'Completed',
+              medications: [
+                {
+                  name: 'Amoxicillin',
+                  dose: '50mg',
+                  quantity: 2,
+                  medication_catalog_id: 'med-1',
+                },
+              ],
+              booking: bookingFor({
+                status: 'Completed',
+                branch_id: 'branch-makati',
+              }),
+            }),
+          ],
+          error: null,
+        }, // listPetConsultationHistory
+        { data: [{ id: VET_ID, display_name: 'Dr. Reyes' }], error: null }, // staff_profiles
+        {
+          data: [
+            { id: 'branch-makati', name: 'Makati', address: '123 Ayala Ave' },
+          ],
+          error: null,
+        }, // branches
+        { data: [{ id: 'customer-1', full_name: 'Jane Doe' }], error: null } // customer_profiles
+      );
+
+      const result = await listPetPrescriptionsForRequester({
+        requesterId: 'customer-1',
+        petId: 'pet-1',
+      });
+
+      expect(result[0]).toMatchObject({
+        veterinarian_name: 'Dr. Reyes',
+        branch_name: 'Makati',
+        branch_address: '123 Ayala Ave',
+        pet_name: 'Whiskers',
+        owner_name: 'Jane Doe',
+      });
+      expect(result[0].medications).toEqual([
+        {
+          name: 'Amoxicillin',
+          dose: '50mg',
+          notes: null,
+          medicine_type: null,
+          frequency: null,
+          duration: null,
+          quantity: 2,
+        },
+      ]);
     });
 
     it('rejects a non-owner with no staff role as a 403', async () => {

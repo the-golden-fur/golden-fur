@@ -57,25 +57,25 @@ describe('vetCatalog.service', () => {
   });
 
   describe('listMedicationCatalog', () => {
-    it("returns only the requesting veterinarian's own catalog", async () => {
+    it('returns the shared clinic list, whichever vet added each item', async () => {
       queueFromResults({
-        data: [{ id: 'med-1', veterinarian_id: VET_ID, name: 'Amoxicillin' }],
+        data: [
+          { id: 'med-1', veterinarian_id: VET_ID, name: 'Amoxicillin' },
+          { id: 'med-2', veterinarian_id: OTHER_VET_ID, name: 'Meloxicam' },
+        ],
         error: null,
       });
 
-      const result = await listMedicationCatalog(VET_ID);
+      const result = await listMedicationCatalog();
 
-      expect(result).toHaveLength(1);
-      expect(recordedQueries[0].eqCalls).toContainEqual([
-        'veterinarian_id',
-        VET_ID,
-      ]);
+      expect(result).toHaveLength(2);
+      expect(recordedQueries[0].eqCalls).toEqual([]);
     });
 
     it('propagates a query error as a 400', async () => {
       queueFromResults({ data: null, error: { message: 'boom' } });
 
-      await expect(listMedicationCatalog(VET_ID)).rejects.toMatchObject({
+      await expect(listMedicationCatalog()).rejects.toMatchObject({
         statusCode: 400,
       });
     });
@@ -97,55 +97,45 @@ describe('vetCatalog.service', () => {
   });
 
   describe('updateMedicationCatalogItem', () => {
-    it("updates the requester's own item", async () => {
+    it('lets any vet update an item on the shared list', async () => {
       queueFromResults({
         data: { id: 'med-1', veterinarian_id: VET_ID, name: 'Renamed' },
         error: null,
       });
 
-      const result = await updateMedicationCatalogItem(VET_ID, 'med-1', {
+      const result = await updateMedicationCatalogItem('med-1', {
         name: 'Renamed',
       });
 
       expect(result.name).toBe('Renamed');
-      expect(recordedQueries[0].eqCalls).toContainEqual(['id', 'med-1']);
-      expect(recordedQueries[0].eqCalls).toContainEqual([
-        'veterinarian_id',
-        VET_ID,
-      ]);
+      expect(recordedQueries[0].eqCalls).toEqual([['id', 'med-1']]);
     });
 
-    it("rejects updating another veterinarian's item with a 404", async () => {
-      // The .eq('veterinarian_id', requesterId) filter means another vet's
-      // row simply doesn't match - maybeSingle resolves with no data, not an
-      // error, exactly like an unknown id.
+    it('rejects an unknown item with a 404', async () => {
       queueFromResults({ data: null, error: null });
 
       await expect(
-        updateMedicationCatalogItem(OTHER_VET_ID, 'med-1', { name: 'X' })
+        updateMedicationCatalogItem('med-1', { name: 'X' })
       ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 
   describe('deleteMedicationCatalogItem', () => {
-    it("deletes the requester's own item", async () => {
+    it('lets any vet delete an item on the shared list', async () => {
       queueFromResults({ data: { id: 'med-1' }, error: null });
 
       await expect(
-        deleteMedicationCatalogItem(VET_ID, 'med-1')
+        deleteMedicationCatalogItem('med-1')
       ).resolves.toBeUndefined();
-      expect(recordedQueries[0].eqCalls).toContainEqual([
-        'veterinarian_id',
-        VET_ID,
-      ]);
+      expect(recordedQueries[0].eqCalls).toEqual([['id', 'med-1']]);
     });
 
-    it("rejects deleting another veterinarian's item with a 404", async () => {
+    it('rejects an unknown item with a 404', async () => {
       queueFromResults({ data: null, error: null });
 
-      await expect(
-        deleteMedicationCatalogItem(OTHER_VET_ID, 'med-1')
-      ).rejects.toMatchObject({ statusCode: 404 });
+      await expect(deleteMedicationCatalogItem('med-1')).rejects.toMatchObject({
+        statusCode: 404,
+      });
     });
   });
 

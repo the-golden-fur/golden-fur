@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { PrescriptionPrintout } from '../../../../../shared/components/PrescriptionPrintout/PrescriptionPrintout';
 import { listPetPrescriptions } from '../../../api/customer.api';
 import type { PetPrescriptionHistoryEntry } from '../../../customer.types';
 import styles from './PrescriptionList.module.css';
@@ -24,6 +26,9 @@ function formatDate(iso: string): string {
  * search/sort/filter/view toolbar that the staff-facing Prescriptions page
  * uses (that one browses every patient, this one is always just one pet's
  * small, permanently-read-only list).
+ *
+ * Pharmacy prescriptions: each entry can be printed, for a customer buying
+ * the medicine from another pharmacy - see PrescriptionPrintout.
  */
 export function PrescriptionList({
   petId,
@@ -32,6 +37,16 @@ export function PrescriptionList({
   const [entries, setEntries] = useState<PetPrescriptionHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [printing, setPrinting] = useState<PetPrescriptionHistoryEntry | null>(
+    null
+  );
+
+  function printEntry(entry: PetPrescriptionHistoryEntry) {
+    // The sheet has to be in the page before the print dialog opens, so its
+    // render is flushed rather than left for the next paint.
+    flushSync(() => setPrinting(entry));
+    window.print();
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -74,7 +89,16 @@ export function PrescriptionList({
     <ul className={styles.list}>
       {entries.map((entry) => (
         <li className={styles.item} key={entry.consultation_id}>
-          <span className={styles.date}>{formatDate(entry.date)}</span>
+          <div className={styles.itemHeader}>
+            <span className={styles.date}>{formatDate(entry.date)}</span>
+            <button
+              type="button"
+              className={styles.printButton}
+              onClick={() => printEntry(entry)}
+            >
+              Print prescription
+            </button>
+          </div>
           <ul className={styles.medicationList}>
             {entry.medications.map((medication, index) => (
               <li key={index} className={styles.medication}>
@@ -86,14 +110,34 @@ export function PrescriptionList({
                     {medication.medicine_type}
                   </span>
                 ) : null}
+                {medication.quantity != null ? (
+                  <span className={styles.badge}>
+                    Qty {medication.quantity}
+                  </span>
+                ) : null}
                 {medication.frequency ? (
                   <span className={styles.badge}>{medication.frequency}</span>
+                ) : null}
+                {medication.duration ? (
+                  <span className={styles.badge}>{medication.duration}</span>
                 ) : null}
               </li>
             ))}
           </ul>
         </li>
       ))}
+      {printing ? (
+        <PrescriptionPrintout
+          branchName={printing.branch_name}
+          branchAddress={printing.branch_address}
+          veterinarianName={printing.veterinarian_name}
+          petName={printing.pet_name}
+          ownerName={printing.owner_name}
+          date={printing.date}
+          medications={printing.medications}
+          onDone={() => setPrinting(null)}
+        />
+      ) : null}
     </ul>
   );
 }

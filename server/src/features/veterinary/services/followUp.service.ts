@@ -20,6 +20,10 @@ export interface LinkFollowUpBookingResult {
 interface LinkFollowUpBookingParams {
   consultationId: string;
   bookingId: string;
+  /** The vet scheduling the follow-up. */
+  requesterId: string;
+  /** Why the vet wants the pet back. */
+  reason: string;
 }
 
 /**
@@ -33,13 +37,30 @@ interface LinkFollowUpBookingParams {
  * old placeholder-creation version enforced (must be finished, only one
  * follow-up per consultation) plus a new ownership check (the linked booking
  * must actually be for the same pet).
+ *
+ * Vet-priced visits: the vet's Schedule follow-up form is back (it books the
+ * free "Follow-up Consultation" service), so this also records WHY the vet
+ * wants the pet back (follow_up_reason), and only the vet who handled the
+ * visit may schedule its follow-up - accepted_by, or veterinarian_id for a
+ * visit finished before that column existed, same rule as
+ * consultation.service.ts's updateFinishedConsultation.
  */
 export async function linkFollowUpBooking({
   consultationId,
   bookingId,
+  requesterId,
+  reason,
 }: LinkFollowUpBookingParams): Promise<LinkFollowUpBookingResult> {
   const consultation = await getConsultation(consultationId);
   const bookingStatus = consultation.booking?.status;
+
+  const handledBy = consultation.accepted_by ?? consultation.veterinarian_id;
+  if (handledBy !== requesterId) {
+    throwWithStatus(
+      403,
+      'Only the veterinarian who handled this consultation can schedule its follow-up'
+    );
+  }
 
   if (!bookingStatus || !FINISHED_BOOKING_STATUSES.includes(bookingStatus)) {
     throwWithStatus(
@@ -81,6 +102,7 @@ export async function linkFollowUpBooking({
     .update({
       follow_up_date: followUpDate,
       follow_up_booking_id: bookingId,
+      follow_up_reason: reason,
       updated_at: new Date().toISOString(),
     })
     .eq('id', consultationId)

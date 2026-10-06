@@ -57,6 +57,36 @@ describe('PetHistoryTab (#70)', () => {
     expect(screen.getByText(/Amoxicillin/)).toBeInTheDocument();
   });
 
+  it("shows each medicine's full prescription: type, quantity, dose, frequency and duration", () => {
+    render(
+      createElement(PetHistoryTab, {
+        consultations: [
+          buildConsultation({
+            medications: [
+              {
+                name: 'Amoxicillin',
+                dose: '50mg',
+                medicine_type: 'Oral',
+                frequency: 'Twice daily',
+                duration: '7 days',
+                quantity: 14,
+              },
+              { name: 'Meloxicam', dose: '1 tab', notes: null },
+            ],
+          }),
+        ],
+        isLoading: false,
+        error: null,
+      })
+    );
+
+    expect(
+      screen.getByText('Oral · Qty 14 · 50mg · Twice daily · 7 days')
+    ).toBeInTheDocument();
+    // Details that were never filled in are left out, not shown as blanks.
+    expect(screen.getByText('1 tab')).toBeInTheDocument();
+  });
+
   it('shows a loading state', () => {
     render(
       createElement(PetHistoryTab, {
