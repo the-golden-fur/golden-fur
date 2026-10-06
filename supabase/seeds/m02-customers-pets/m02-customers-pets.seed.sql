@@ -5,10 +5,8 @@
 -- rather paste this into the Supabase SQL Editor / run it via psql than a
 -- Node script. The customer block below is the original dev-convenience
 -- seed content (previously supabase/seed.sql), moved here as part of
--- grouping seeds by module - with one addition: customer1 now also gets a
--- placeholder facebook_id (the original predates the M02 OAuth
--- account-merge path), and a pets block was appended since `pets` didn't
--- exist yet when the original was written.
+-- grouping seeds by module - with one addition: a pets block was appended
+-- since `pets` didn't exist yet when the original was written.
 --
 -- Runs automatically on `supabase db reset` (see supabase/config.toml
 -- [db.seed] sql_paths). Not idempotent by design - like the original, this
@@ -39,16 +37,11 @@ declare
   v_user_id uuid;
   v_email text;
   v_full_name text;
-  v_facebook_id text;
 begin
   for v_n in 1 .. 5 loop
     v_email := 'customer' || v_n || '@goldenfur.com';
     v_full_name := 'Customer ' || v_n;
     v_user_id := gen_random_uuid();
-    -- customer1 carries a stand-in facebook_id so the M02 OAuth
-    -- account-merge path can be exercised manually without a live Facebook
-    -- consent flow.
-    v_facebook_id := case when v_n = 1 then 'seed-facebook-id-customer1' else null end;
 
     insert into auth.users (
       id, instance_id, aud, role, email, encrypted_password,
@@ -76,10 +69,10 @@ begin
     );
 
     insert into public.customer_profiles (
-      id, full_name, contact_number, account_email, primary_auth_provider, facebook_id
+      id, full_name, contact_number, account_email, primary_auth_provider
     )
     values (
-      v_user_id, v_full_name, '+63 917 000 ' || lpad(v_n::text, 4, '0'), v_email, 'email', v_facebook_id
+      v_user_id, v_full_name, '+63 917 000 ' || lpad(v_n::text, 4, '0'), v_email, 'email'
     );
   end loop;
 end $$;

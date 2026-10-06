@@ -76,9 +76,8 @@ service (it is not auto-applied to the existing one — reconcile by hand).
 | `BREVO_FROM_EMAIL`          | optional  | verified Brevo sender, `"Display Name <address@domain.com>"`; defaults to `Golden Fur <noreply@goldenfur.com>` if unset                                                |
 | `DAYCARE_SESSION_CAPACITY`  | optional  | bare number or JSON branch map; defaults to `15`                                                                                                                       |
 
-Facebook/Google OAuth is configured in the **Supabase** dashboard (Auth →
-Providers), not through server env vars. Facebook login stays dormant until
-the client provisions an app.
+Google OAuth is configured in the **Supabase** dashboard (Auth →
+Providers), not through server env vars.
 
 ## The database (Supabase)
 

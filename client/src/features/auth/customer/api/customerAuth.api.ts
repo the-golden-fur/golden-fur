@@ -89,10 +89,7 @@ export async function login(payload: CustomerLoginPayload) {
 }
 
 function getStoredOAuthProvider() {
-  return window.sessionStorage.getItem('oauthProvider') as
-    | 'google'
-    | 'facebook'
-    | null;
+  return window.sessionStorage.getItem('oauthProvider') as 'google' | null;
 }
 
 function clearStoredOAuthProvider() {
@@ -113,32 +110,6 @@ export async function signInWithGoogle() {
     options: {
       redirectTo: `${window.location.origin}/auth/callback`,
       scopes: 'email profile',
-    },
-  });
-
-  return {
-    data: null,
-    error: error?.message ?? null,
-  };
-}
-
-export async function signInWithFacebook() {
-  const client = getSupabaseClient();
-
-  if (!client) {
-    return { data: null, error: 'Supabase client is not configured' };
-  }
-
-  window.sessionStorage.setItem('oauthProvider', 'facebook');
-
-  const { error } = await client.auth.signInWithOAuth({
-    provider: 'facebook',
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
-      // Supabase needs an email to create/match the user; without an
-      // explicit scope, Facebook may only return public_profile and the
-      // exchange fails silently on Supabase's side.
-      scopes: 'email',
     },
   });
 

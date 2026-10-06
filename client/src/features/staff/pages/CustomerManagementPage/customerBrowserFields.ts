@@ -18,7 +18,6 @@ const SIGN_IN_METHOD_LABELS: Record<
 > = {
   email: 'Email',
   google: 'Google',
-  facebook: 'Facebook',
 };
 
 export const CUSTOMER_FILTER_FIELDS: FilterField[] = [
@@ -43,7 +42,7 @@ export const CUSTOMER_GROUP_BY_AXES: GroupByAxis<CustomerProfile>[] = [
   {
     id: 'signInMethod',
     label: 'Sign-in method',
-    columns: ['Email', 'Google', 'Facebook'],
+    columns: ['Email', 'Google'],
     columnFor: (customer) =>
       SIGN_IN_METHOD_LABELS[customer.primary_auth_provider],
   },
