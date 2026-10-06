@@ -2,7 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../../../config/supabase/supabase.config.ts';
 
 /**
- * Thrown when the OAuth provider (e.g. Facebook) never handed Supabase an
+ * Thrown when the OAuth provider never handed Supabase an
  * email for this identity - typically an unconfirmed provider-side email,
  * not a bug in this app. Kept distinct from other failures so the
  * controller can respond with a clear, actionable message instead of a
@@ -18,7 +18,7 @@ export class MissingProviderEmailError extends Error {
 /**
  * Handles merging OAuth identities or creating new customer profiles.
  * Looks up existing customer_profiles by account_email.
- * If found: updates primary_auth_provider and facebook_id.
+ * If found: updates primary_auth_provider.
  * If not found: creates new customer_profiles row.
  */
 export async function mergeOrCreate(session: Session) {
@@ -27,8 +27,6 @@ export async function mergeOrCreate(session: Session) {
   const email = user.email;
   const fullName =
     user.user_metadata.full_name || user.user_metadata.name || 'Anonymous User';
-  const providerId =
-    user.user_metadata.provider_id || user.user_metadata.sub || null;
 
   if (!email) {
     throw new MissingProviderEmailError();
@@ -49,14 +47,10 @@ export async function mergeOrCreate(session: Session) {
     // MERGE flow: Link new identity to existing profile by updating the profile
     const updates: Record<string, any> = {
       primary_auth_provider:
-        provider === 'facebook' || provider === 'google'
+        provider === 'google'
           ? provider
           : existingProfile.primary_auth_provider,
     };
-
-    if (provider === 'facebook' && providerId) {
-      updates.facebook_id = providerId;
-    }
 
     const { error: updateError } = await supabase
       .from('customer_profiles')
@@ -76,13 +70,8 @@ export async function mergeOrCreate(session: Session) {
       id: user.id, // Primary key links to auth.users.id
       account_email: email,
       full_name: fullName,
-      primary_auth_provider:
-        provider === 'facebook' || provider === 'google' ? provider : 'email',
+      primary_auth_provider: provider === 'google' ? provider : 'email',
     };
-
-    if (provider === 'facebook' && providerId) {
-      newProfile.facebook_id = providerId;
-    }
 
     const { error: insertError } = await supabase
       .from('customer_profiles')

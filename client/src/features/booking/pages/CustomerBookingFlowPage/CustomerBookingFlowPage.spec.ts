@@ -344,7 +344,6 @@ const CUSTOMER = {
   preferred_communication_channel: null,
   account_email: 'jamie@example.com',
   primary_auth_provider: 'email' as const,
-  facebook_id: null,
   created_at: '',
   updated_at: '',
 };

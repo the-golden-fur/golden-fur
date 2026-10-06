@@ -369,7 +369,7 @@ describe('AccountTab', () => {
     ).toBeInTheDocument();
   });
 
-  it('customer: Google as the only linked identity disables Unlink with guidance to link Facebook first', async () => {
+  it('customer: Google as the only linked identity hides Unlink and explains it cannot be unlinked', async () => {
     // Regression test: setting a password does NOT satisfy Supabase's
     // "2+ identities" requirement for unlinkIdentity() (updateUser({
     // password }) never adds an `email` row to auth.identities - see
@@ -393,6 +393,6 @@ describe('AccountTab', () => {
       screen.queryByRole('button', { name: /unlink google/i })
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/set a password/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/link a facebook account/i)).toBeInTheDocument();
+    expect(screen.getByText(/can't be unlinked/i)).toBeInTheDocument();
   });
 });
