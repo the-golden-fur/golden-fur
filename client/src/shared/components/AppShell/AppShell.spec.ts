@@ -110,6 +110,8 @@ describe('AppShell', () => {
   it('renders the navbar, sidebar, and routed page content together', () => {
     renderShell();
 
+    expect(screen.getByTestId('app-shell-navbar')).toBeInTheDocument();
+    expect(screen.getByTestId('app-shell-sidebar')).toBeInTheDocument();
     expect(
       screen.getByRole('navigation', { name: 'Primary' })
     ).toBeInTheDocument();
