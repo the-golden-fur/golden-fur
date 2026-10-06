@@ -11,6 +11,7 @@ import type {
   StaffPreferenceInput,
 } from '../../booking.types';
 import styles from './StaffPickerList.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const SORT_FIELDS: SortFieldDescriptor[] = [
   {
@@ -234,7 +235,7 @@ export function StaffPickerList({
   }
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading available staff...</p>;
+    return <LoadingState label="Loading available staff..." />;
   }
 
   if (error) {

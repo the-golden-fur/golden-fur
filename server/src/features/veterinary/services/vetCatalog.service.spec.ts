@@ -1,13 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createMedicationCatalogItem,
-  createProcedureCatalogItem,
   deleteMedicationCatalogItem,
-  deleteProcedureCatalogItem,
   listMedicationCatalog,
-  listProcedureCatalog,
   updateMedicationCatalogItem,
-  updateProcedureCatalogItem,
 } from './vetCatalog.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 
@@ -153,57 +149,7 @@ describe('vetCatalog.service', () => {
     });
   });
 
-  describe('listProcedureCatalog / createProcedureCatalogItem', () => {
-    it('lists and creates scoped to the requester', async () => {
-      queueFromResults(
-        {
-          data: [
-            {
-              id: 'proc-1',
-              veterinarian_id: VET_ID,
-              procedure_type: 'Dental',
-              description: 'Cleaning',
-            },
-          ],
-          error: null,
-        },
-        {
-          data: {
-            id: 'proc-2',
-            veterinarian_id: VET_ID,
-            procedure_type: 'Surgery',
-            description: 'Spay',
-          },
-          error: null,
-        }
-      );
-
-      const listed = await listProcedureCatalog(VET_ID);
-      const created = await createProcedureCatalogItem(VET_ID, {
-        procedure_type: 'Surgery',
-        description: 'Spay',
-      });
-
-      expect(listed).toHaveLength(1);
-      expect(created.id).toBe('proc-2');
-    });
-  });
-
-  describe('updateProcedureCatalogItem / deleteProcedureCatalogItem', () => {
-    it("rejects acting on another veterinarian's procedure with a 404", async () => {
-      queueFromResults(
-        { data: null, error: null },
-        { data: null, error: null }
-      );
-
-      await expect(
-        updateProcedureCatalogItem(OTHER_VET_ID, 'proc-1', {
-          description: 'X',
-        })
-      ).rejects.toMatchObject({ statusCode: 404 });
-      await expect(
-        deleteProcedureCatalogItem(OTHER_VET_ID, 'proc-1')
-      ).rejects.toMatchObject({ statusCode: 404 });
-    });
-  });
+  // #117: procedure-catalog coverage removed alongside the rest of the
+  // personal procedure catalog - see consultationFormTemplate.service.spec.ts
+  // for its owner-scoped replacement's coverage.
 });

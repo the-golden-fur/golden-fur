@@ -23,7 +23,7 @@ vi.mock('../../api/maintenance.api', () => ({
   listPetTypes: vi.fn(),
   createPetType: vi.fn(),
   updatePetType: vi.fn(),
-  deletePetType: vi.fn(),
+  archivePetType: vi.fn(),
   listBranches: vi.fn(),
   listPetTypePriceOverrides: vi.fn(),
   upsertPetTypePriceOverride: vi.fn(),
@@ -139,7 +139,12 @@ describe('AdminPetTypesPage', () => {
     await screen.findByRole('heading', { name: 'Existing pet types' });
     const section = await findBrowserSection();
 
-    expect(within(section).getByText('Dog')).toBeInTheDocument();
+    // findBrowserSection only waits for the heading, which renders before
+    // the pet-types list itself finishes loading ("Loading pet types..."
+    // shows first) - findByText (not getByText) actually waits for that
+    // fetch to resolve instead of racing it. This was flaky in CI (fast
+    // local runs usually beat the race, a loaded CI runner doesn't always).
+    expect(await within(section).findByText('Dog')).toBeInTheDocument();
     expect(within(section).getByText('Cat')).toBeInTheDocument();
     expect(within(section).getByText('Active')).toBeInTheDocument();
     expect(within(section).getByText('Inactive')).toBeInTheDocument();
@@ -182,7 +187,7 @@ describe('AdminPetTypesPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('a row exposes Rename, Configure, Deactivate and Delete behind a single "..." menu', async () => {
+  it('a row exposes Configure, Rename and Archive (no Deactivate/Delete) behind a single "..." menu', async () => {
     stubDefaults();
 
     renderPage();
@@ -205,11 +210,14 @@ describe('AdminPetTypesPage', () => {
       screen.getByRole('menuitem', { name: 'Configure' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: 'Deactivate' })
+      screen.getByRole('menuitem', { name: 'Archive' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: 'Delete' })
-    ).toBeInTheDocument();
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Delete' })
+    ).not.toBeInTheDocument();
   });
 
   it('renames a pet type from the "..." menu', async () => {
@@ -229,10 +237,12 @@ describe('AdminPetTypesPage', () => {
     );
     await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
 
-    const nameInput = within(section).getByDisplayValue('Dog');
+    const nameInput = screen.getByRole('textbox', {
+      name: /new pet type name/i,
+    });
     await user.clear(nameInput);
     await user.type(nameInput, 'Doggo');
-    await user.click(within(section).getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
       expect(maintenanceApi.updatePetType).toHaveBeenCalledWith(
@@ -243,35 +253,9 @@ describe('AdminPetTypesPage', () => {
     );
   });
 
-  it('toggles active/inactive from the "..." menu', async () => {
+  it('archives a pet type from the "..." menu after confirming', async () => {
     stubDefaults();
-    vi.mocked(maintenanceApi.updatePetType).mockResolvedValue({
-      data: { ...DOG, is_active: false } as never,
-      error: null,
-    });
-
-    const user = userEvent.setup();
-    renderPage();
-    const section = await findBrowserSection();
-    await within(section).findByText('Dog');
-
-    await user.click(
-      within(section).getByRole('button', { name: 'Actions for Dog' })
-    );
-    await user.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
-
-    await waitFor(() =>
-      expect(maintenanceApi.updatePetType).toHaveBeenCalledWith(
-        'pt-dog',
-        'token',
-        { is_active: false }
-      )
-    );
-  });
-
-  it('deletes a pet type from the "..." menu', async () => {
-    stubDefaults();
-    vi.mocked(maintenanceApi.deletePetType).mockResolvedValue({
+    vi.mocked(maintenanceApi.archivePetType).mockResolvedValue({
       data: null,
       error: null,
     });
@@ -284,17 +268,21 @@ describe('AdminPetTypesPage', () => {
     await user.click(
       within(section).getByRole('button', { name: 'Actions for Dog' })
     );
-    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    // Nothing is archived until the confirm dialog is accepted.
+    expect(maintenanceApi.archivePetType).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
 
     await waitFor(() =>
-      expect(maintenanceApi.deletePetType).toHaveBeenCalledWith(
+      expect(maintenanceApi.archivePetType).toHaveBeenCalledWith(
         'pt-dog',
         'token'
       )
     );
-    expect(
-      within(await findBrowserSection()).queryByText('Dog')
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(section).queryByText('Dog')).not.toBeInTheDocument()
+    );
   });
 
   it('searching narrows the visible pet types', async () => {
@@ -438,6 +426,46 @@ describe('AdminPetTypesPage', () => {
       'Makati'
     );
 
+    expect(within(dialog).getByText('Makati')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Southwoods')).not.toBeInTheDocument();
+  });
+
+  it("an Admin scoped to their own branch only sees their branch's row - no default row, no other branches", async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        { id: 'staff-1', role: 'Admin', branch_id: 'branch-makati' } as never,
+      ],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listPetTypes).mockResolvedValue({
+      data: [DOG, CAT_INACTIVE] as never,
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
+      data: BRANCHES as never,
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listPetTypePriceOverrides).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    const section = await findBrowserSection();
+    await within(section).findByText('Dog');
+
+    await user.click(
+      within(section).getByRole('button', { name: 'Actions for Dog' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Set price override - Dog',
+    });
+    expect(
+      within(dialog).queryByText('All branches (default)')
+    ).not.toBeInTheDocument();
     expect(within(dialog).getByText('Makati')).toBeInTheDocument();
     expect(within(dialog).queryByText('Southwoods')).not.toBeInTheDocument();
   });

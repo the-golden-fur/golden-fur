@@ -2,10 +2,14 @@ import type { NextFunction, Response } from 'express';
 import multer from 'multer';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
+  archiveService,
   createService,
   getServiceById,
+  hardDeleteService,
   listServices,
+  restoreService,
   setServiceBranchAvailability,
+  setServiceBranchPrice,
   updateService,
 } from './services/services.service.ts';
 import { uploadServiceImage } from './services/maintenanceImageUpload.service.ts';
@@ -33,7 +37,10 @@ import {
 } from './services/promos.service.ts';
 import {
   createBreed,
-  deleteBreed,
+  archiveBreed,
+  hardDeleteBreed,
+  listArchivedBreeds,
+  restoreBreed,
   listBreeds,
   updateBreed,
 } from './services/breeds.service.ts';
@@ -54,13 +61,18 @@ import {
   upsertPromoCapConfiguration,
 } from './services/promoCap.service.ts';
 import {
+  archiveServiceType,
   createServiceType,
+  hardDeleteServiceType,
+  listArchivedServiceTypes,
   listServiceTypes,
+  restoreServiceType,
   setServiceTypeBranchAvailability,
   updateServiceType,
 } from './services/serviceTypes.service.ts';
 import {
   branchAvailabilityValidator,
+  branchPriceValidator,
   createBreedValidator,
   createPackageValidator,
   createPromoValidator,
@@ -80,9 +92,12 @@ import {
   upsertPetTypePriceOverrideValidator,
 } from './modules/validators/maintenance.validator.ts';
 import {
+  archivePetType,
   createPetType,
-  deletePetType,
+  hardDeletePetType,
+  listArchivedPetTypes,
   listPetTypes,
+  restorePetType,
   updatePetType,
 } from './services/petTypes.service.ts';
 import {
@@ -275,8 +290,10 @@ export async function setServiceBranchAvailabilityController(
   res: Response
 ) {
   const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
 
-  if (!requesterId) {
+  if (!requesterId || !requesterRole || !requesterBranchId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -293,6 +310,41 @@ export async function setServiceBranchAvailabilityController(
       serviceId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       isAvailable: parsed.data.is_available,
+      requesterRole,
+      requesterBranchId,
+    });
+
+    return res.status(200).json({ availability });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** A branch's own price for a service - Superadmin-only (route + service). */
+export async function setServiceBranchPriceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+
+  if (!req.user?.sub || !requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = branchPriceValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const availability = await setServiceBranchPrice({
+      serviceId: paramId(req, 'id'),
+      branchId: parsed.data.branch_id,
+      priceOverride: parsed.data.price_override,
+      requesterRole,
     });
 
     return res.status(200).json({ availability });
@@ -395,8 +447,10 @@ export async function setPackageBranchAvailabilityController(
   res: Response
 ) {
   const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
 
-  if (!requesterId) {
+  if (!requesterId || !requesterRole || !requesterBranchId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -413,6 +467,8 @@ export async function setPackageBranchAvailabilityController(
       packageId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       isAvailable: parsed.data.is_available,
+      requesterRole,
+      requesterBranchId,
     });
 
     return res.status(200).json({ availability });
@@ -566,8 +622,10 @@ export async function setPromoBranchAvailabilityController(
   res: Response
 ) {
   const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
 
-  if (!requesterId) {
+  if (!requesterId || !requesterRole || !requesterBranchId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -584,6 +642,8 @@ export async function setPromoBranchAvailabilityController(
       promoId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       isAvailable: parsed.data.is_available,
+      requesterRole,
+      requesterBranchId,
     });
 
     return res.status(200).json({ availability });
@@ -886,12 +946,14 @@ export async function updateBreedController(
   }
 }
 
+/** DELETE /maintenance/breeds/:id archives (Config-menu consistency change);
+ * permanent delete is DELETE .../:id/permanent. */
 export async function deleteBreedController(
   req: AuthenticatedRequest,
   res: Response
 ) {
   try {
-    await deleteBreed(paramId(req, 'id'));
+    await archiveBreed(paramId(req, 'id'));
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
@@ -975,8 +1037,10 @@ export async function setServiceTypeBranchAvailabilityController(
   res: Response
 ) {
   const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
 
-  if (!requesterId) {
+  if (!requesterId || !requesterRole || !requesterBranchId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -993,6 +1057,8 @@ export async function setServiceTypeBranchAvailabilityController(
       serviceTypeId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       isAvailable: parsed.data.is_available,
+      requesterRole,
+      requesterBranchId,
     });
 
     return res.status(200).json({ availability });
@@ -1057,12 +1123,14 @@ export async function updatePetTypeController(
   }
 }
 
+/** DELETE /maintenance/pet-types/:id archives (Config-menu consistency
+ * change); permanent delete is DELETE .../:id/permanent. */
 export async function deletePetTypeController(
   req: AuthenticatedRequest,
   res: Response
 ) {
   try {
-    await deletePetType(paramId(req, 'id'));
+    await archivePetType(paramId(req, 'id'));
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
@@ -1087,6 +1155,13 @@ export async function upsertPetTypePriceOverrideController(
   req: AuthenticatedRequest,
   res: Response
 ) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const parsed = upsertPetTypePriceOverrideValidator.safeParse(req.body);
 
   if (!parsed.success) {
@@ -1096,7 +1171,11 @@ export async function upsertPetTypePriceOverrideController(
   }
 
   try {
-    const override = await upsertPetTypePriceOverride(parsed.data);
+    const override = await upsertPetTypePriceOverride({
+      input: parsed.data,
+      requesterRole,
+      requesterBranchId,
+    });
     return res.status(200).json({ pet_type_price_override: override });
   } catch (error) {
     return sendServiceError(res, error);
@@ -1107,8 +1186,205 @@ export async function deletePetTypePriceOverrideController(
   req: AuthenticatedRequest,
   res: Response
 ) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   try {
-    await deletePetTypePriceOverride(paramId(req, 'id'));
+    await deletePetTypePriceOverride({
+      overrideId: paramId(req, 'id'),
+      requesterRole,
+      requesterBranchId,
+    });
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Archive / restore / permanent delete (Config-menu consistency change)
+// Archive itself is the DELETE /:id route on breeds/pet-types/services/
+// service-types - see deleteBreedController etc. above.
+// ---------------------------------------------------------------------------
+
+export async function listArchivedBreedsController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const breeds = await listArchivedBreeds();
+    return res.status(200).json({ breeds });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreBreedController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await restoreBreed(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteBreedController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await hardDeleteBreed(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedPetTypesController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const petTypes = await listArchivedPetTypes();
+    return res.status(200).json({ pet_types: petTypes });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restorePetTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await restorePetType(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeletePetTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await hardDeletePetType(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedServicesController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const services = await listServices({ archivedOnly: true });
+    return res.status(200).json({ services });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function archiveServiceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await archiveService(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreServiceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await restoreService(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteServiceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await hardDeleteService(paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedServiceTypesController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const serviceTypes = await listArchivedServiceTypes();
+    return res.status(200).json({ service_types: serviceTypes });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function archiveServiceTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await archiveServiceType(paramId(req, 'id'), requesterId);
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreServiceTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await restoreServiceType(paramId(req, 'id'), requesterId);
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteServiceTypeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    await hardDeleteServiceType(paramId(req, 'id'));
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

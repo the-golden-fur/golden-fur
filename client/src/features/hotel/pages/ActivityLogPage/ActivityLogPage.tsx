@@ -36,6 +36,7 @@ import {
   matchesActivityLogQuery,
 } from './activityLogBrowserFields';
 import styles from './ActivityLogPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set([
   'Pet Assistant',
@@ -221,7 +222,7 @@ export function ActivityLogPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );

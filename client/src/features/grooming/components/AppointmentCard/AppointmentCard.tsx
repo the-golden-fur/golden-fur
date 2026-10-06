@@ -71,6 +71,34 @@ export function AppointmentCard({
         {bookingStatus ? <BookingStatusBadge status={bookingStatus} /> : null}
       </div>
 
+      {/* A paid booking shows on the queue before the customer arrives -
+          say so, with the booked time, so it isn't mistaken for a pet
+          that's already waiting. */}
+      {bookingStatus === 'Pending' && session.booking?.scheduled_start ? (
+        <p className={styles.notArrived}>
+          Booked for{' '}
+          {new Date(session.booking.scheduled_start).toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          })}{' '}
+          - not checked in yet
+        </p>
+      ) : null}
+
+      {bookingStatus === 'Completed' && session.booking?.completed_at ? (
+        <p className={styles.notArrived}>
+          Completed{' '}
+          {new Date(session.booking.completed_at).toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          })}
+        </p>
+      ) : null}
+
       <div className={styles.badges}>
         <span className={styles.badge}>{weightClass}</span>
         <span className={styles.badge}>{coatType}</span>

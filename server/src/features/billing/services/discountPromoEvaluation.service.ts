@@ -24,9 +24,10 @@ interface DiscountRow {
   id: string;
   name: string;
   is_mandated: boolean;
+  mandated_kind: 'senior_citizen' | 'pwd' | null;
   discount_type: 'Percentage' | 'Flat';
   value: number;
-  scope_type: 'service' | 'package' | 'category';
+  scope_type: 'service' | 'package' | 'category' | 'misc_sale';
   scope_service_id: string | null;
   scope_package_id: string | null;
   scope_category: string | null;
@@ -46,9 +47,10 @@ export interface DiscountEligibility {
  * (Issue #84 AC-2 - no manual code entry). Mandated discounts (Senior
  * Citizen 20%, PWD - #44 seed) still must match scope like any other
  * discount (an Admin enables them per branch+category); the eligibility
- * flags are an *additional* gate on top of that, not a replacement -
- * matching by exact name is safe here because updateDiscount
- * (discounts.service.ts) already blocks renaming a mandated row.
+ * flags are an *additional* gate on top of that, not a replacement. The
+ * gate keys on mandated_kind (20260928220), not the display name, so an
+ * admin renaming a mandated discount can't silently drop its eligibility
+ * check.
  */
 export async function evaluateDiscounts(
   booking: BookingForBilling,
@@ -98,12 +100,12 @@ export async function evaluateDiscounts(
 
     if (discount.is_mandated) {
       if (
-        discount.name === 'Senior Citizen Discount' &&
+        discount.mandated_kind === 'senior_citizen' &&
         !eligibility.seniorCitizenEligible
       ) {
         continue;
       }
-      if (discount.name === 'PWD Discount' && !eligibility.pwdEligible) {
+      if (discount.mandated_kind === 'pwd' && !eligibility.pwdEligible) {
         continue;
       }
     }
@@ -124,6 +126,96 @@ export async function evaluateDiscounts(
   }
 
   return lines;
+}
+
+/** What the misc-sale wizard's Discount/Promo step lists for the cashier to
+ * pick from - see listMiscSaleOptions. */
+export interface MiscSaleDiscountOption {
+  id: string;
+  name: string;
+  discount_type: 'Percentage' | 'Flat';
+  value: number;
+  is_mandated: boolean;
+}
+
+export interface MiscSalePromoOption {
+  id: string;
+  name: string;
+  discount_type: 'Percentage' | 'Flat';
+  value: number;
+  end_date: string | null;
+}
+
+/**
+ * Session 115: a misc sale has no service_id/package_id/service_category to
+ * scope-match against, so only scope_type = 'misc_sale' discounts (migration
+ * 20260927217) ever qualify. Deliberately separate from evaluateDiscounts'
+ * own scopeMatches check, so a category/service/package-scoped discount can
+ * never accidentally apply to a misc sale (or vice versa) through one
+ * shared, harder-to-audit branch. Active, not archived, and available at
+ * the cashier's branch - exactly what the admin Discounts page configures.
+ */
+async function loadMiscSaleDiscounts(branchId: string): Promise<DiscountRow[]> {
+  const { data, error } = await supabase
+    .from('discounts')
+    .select('*, discount_branch_availability(branch_id, is_available)')
+    .eq('is_active', true)
+    .eq('scope_type', 'misc_sale')
+    .is('archived_at', null);
+
+  if (error) throwWithStatus(400, error.message);
+
+  return ((data ?? []) as DiscountRow[]).filter((discount) =>
+    discount.discount_branch_availability.some(
+      (row) => row.branch_id === branchId && row.is_available
+    )
+  );
+}
+
+/**
+ * Cashier-picks model (replaces the session 115 auto-apply + Senior/PWD
+ * checkbox gate): only the discounts the cashier ticked are applied, each
+ * re-checked against loadMiscSaleDiscounts so a stale or forged id is
+ * rejected rather than silently priced. Picking a mandated (Senior Citizen/
+ * PWD) discount is the cashier's own ID-verified-onsite assertion, same as
+ * a staff-picked discount_id at booking time (resolveDiscountAndPromos).
+ * Still Cash-only (paymentMethod.service.ts's rule): a non-Cash sale gets
+ * no discount lines even if some were picked.
+ */
+export async function evaluateMiscSaleDiscounts(params: {
+  branchId: string;
+  paymentMethod: string;
+  discountIds: string[];
+  subtotal: number;
+}): Promise<DraftLineItem[]> {
+  const discountIds = [...new Set(params.discountIds)];
+  if (discountIds.length === 0 || params.paymentMethod !== 'Cash') return [];
+
+  const available = await loadMiscSaleDiscounts(params.branchId);
+
+  return discountIds.map((discountId) => {
+    const discount = available.find((row) => row.id === discountId);
+    if (!discount) {
+      throwWithStatus(
+        400,
+        'A selected discount is no longer available for misc sales at this branch'
+      );
+    }
+
+    const amount =
+      discount.discount_type === 'Percentage'
+        ? (params.subtotal * Number(discount.value)) / 100
+        : Math.min(Number(discount.value), params.subtotal);
+
+    return {
+      line_item_type: 'discount',
+      reference_id: discount.id,
+      description: discount.name,
+      quantity: 1,
+      unit_price: -round2(amount),
+      line_total: -round2(amount),
+    };
+  });
 }
 
 interface PromoRow {
@@ -185,25 +277,12 @@ export interface EvaluatedPromo {
  * surprising.
  */
 export async function evaluatePromos(
-  booking: BookingForBilling,
+  booking: Pick<BookingForBilling, 'branch_id' | 'items'>,
   subtotal: number
 ): Promise<EvaluatedPromo[]> {
-  const { data: promos, error } = await supabase
-    .from('promos')
-    .select(
-      '*, promo_scope(*), promo_branch_availability(branch_id, is_available)'
-    )
-    .eq('is_active', true)
-    // Session 114: spin-wheel promos hand out spins, never a discount; and
-    // an archived promo must never auto-apply (a pre-existing gap - archive
-    // requires is_active = false first, but a later reactivation of an
-    // archived row would otherwise slip through).
-    .neq('promo_type', 'spin_wheel')
-    .is('archived_at', null);
+  const promos = await loadDiscountPromos();
 
-  if (error) throwWithStatus(400, error.message);
-
-  const matched = ((promos ?? []) as PromoRow[]).filter((promo) => {
+  const matched = promos.filter((promo) => {
     const availableAtBranch = promo.promo_branch_availability.some(
       (row) => row.branch_id === booking.branch_id && row.is_available
     );
@@ -221,9 +300,39 @@ export async function evaluatePromos(
     );
   });
 
+  return cappedPromoLines(matched, booking.branch_id, subtotal);
+}
+
+async function loadDiscountPromos(): Promise<PromoRow[]> {
+  const { data: promos, error } = await supabase
+    .from('promos')
+    .select(
+      '*, promo_scope(*), promo_branch_availability(branch_id, is_available)'
+    )
+    .eq('is_active', true)
+    // Session 114: spin-wheel promos hand out spins, never a discount; and
+    // an archived promo must never auto-apply (a pre-existing gap - archive
+    // requires is_active = false first, but a later reactivation of an
+    // archived row would otherwise slip through).
+    .neq('promo_type', 'spin_wheel')
+    .is('archived_at', null);
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (promos ?? []) as PromoRow[];
+}
+
+/** Applies the branch's promo cap to an already-matched promo list and
+ * builds the promo line items - shared by the booking auto-evaluate path
+ * and the misc-sale cashier-picks path. */
+async function cappedPromoLines(
+  matched: PromoRow[],
+  branchId: string,
+  subtotal: number
+): Promise<EvaluatedPromo[]> {
   if (matched.length === 0) return [];
 
-  const capRow = await getEffectivePromoCap(booking.branch_id);
+  const capRow = await getEffectivePromoCap(branchId);
 
   const candidates = matched.map((promo) => ({
     key: promo,
@@ -248,6 +357,86 @@ export async function evaluatePromos(
       },
     })
   );
+}
+
+/**
+ * Session 115: a misc sale has no service_id/package_id to scope-match, so
+ * only 'all_services' promos can ever apply to one. Same eligibility rules
+ * as evaluatePromos (active, in its date/weekday window, not a spin wheel,
+ * not archived, available at the branch).
+ */
+async function loadMiscSalePromos(branchId: string): Promise<PromoRow[]> {
+  const promos = await loadDiscountPromos();
+
+  return promos.filter(
+    (promo) =>
+      promo.scope_type === 'all_services' &&
+      isPromoCurrentlyEligible(promo) &&
+      promo.promo_branch_availability.some(
+        (row) => row.branch_id === branchId && row.is_available
+      )
+  );
+}
+
+/**
+ * Cashier-picks model: only the promos the cashier ticked, each re-checked
+ * against loadMiscSalePromos (a stale/forged id is rejected), then capped
+ * by the branch's promo_cap_configuration exactly like a booking checkout -
+ * picking more promos than the cap allows trims/drops the excess the same
+ * way it would at checkout.
+ */
+export async function evaluateMiscSalePromos(params: {
+  branchId: string;
+  promoIds: string[];
+  subtotal: number;
+}): Promise<EvaluatedPromo[]> {
+  const promoIds = [...new Set(params.promoIds)];
+  if (promoIds.length === 0) return [];
+
+  const available = await loadMiscSalePromos(params.branchId);
+
+  const picked = promoIds.map((promoId) => {
+    const promo = available.find((row) => row.id === promoId);
+    if (!promo) {
+      throwWithStatus(
+        400,
+        'A selected promo is no longer available for misc sales at this branch'
+      );
+    }
+    return promo;
+  });
+
+  return cappedPromoLines(picked, params.branchId, params.subtotal);
+}
+
+/** Backs GET /billing/misc-sale/options: every discount/promo the admin has
+ * made available for misc sales at this branch right now, for the wizard's
+ * Discount/Promo step to list. */
+export async function listMiscSaleOptions(branchId: string): Promise<{
+  discounts: MiscSaleDiscountOption[];
+  promos: MiscSalePromoOption[];
+}> {
+  const [discounts, promos] = await Promise.all([
+    loadMiscSaleDiscounts(branchId),
+    loadMiscSalePromos(branchId),
+  ]);
+
+  return {
+    discounts: discounts.map((discount) => ({
+      id: discount.id,
+      name: discount.name,
+      discount_type: discount.discount_type,
+      value: Number(discount.value),
+      is_mandated: discount.is_mandated,
+    })),
+    promos: promos.map((promo) => ({
+      id: promo.id,
+      name: promo.name,
+      discount_type: promo.discount_type,
+      value: Number(promo.value),
+      end_date: promo.end_date,
+    })),
+  };
 }
 
 async function getEffectivePromoCap(branchId: string): Promise<PromoCapRow> {

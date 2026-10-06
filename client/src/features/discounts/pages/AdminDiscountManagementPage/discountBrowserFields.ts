@@ -12,6 +12,7 @@ const SCOPE_TYPE_OPTIONS = [
   { value: 'service', label: 'Service' },
   { value: 'package', label: 'Package' },
   { value: 'category', label: 'Category' },
+  { value: 'misc_sale', label: 'Misc Sale' },
 ];
 
 const STATUS_OPTIONS = [

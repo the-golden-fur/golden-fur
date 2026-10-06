@@ -256,7 +256,7 @@ describe('AssessmentQueuePage', () => {
 
     await user.click(
       await screen.findByRole('button', {
-        name: /Click to record the assessment/,
+        name: 'Record assessment',
       })
     );
 
@@ -316,7 +316,7 @@ describe('AssessmentQueuePage', () => {
 
     await user.click(
       await screen.findByRole('button', {
-        name: /Click to record the assessment/,
+        name: 'Record assessment',
       })
     );
     const dialog = await screen.findByRole('dialog');
@@ -353,7 +353,7 @@ describe('AssessmentQueuePage', () => {
     const row = await screen.findByRole('listitem');
     expect(
       within(row).queryByRole('button', {
-        name: /Click to record the assessment/,
+        name: 'Record assessment',
       })
     ).not.toBeInTheDocument();
 

@@ -5,6 +5,7 @@ import { UnavailabilityBlockForm } from '../../components/forms/UnavailabilityBl
 import { UnavailabilityBlockBadge } from '../../components/badges/UnavailabilityBlockBadge/UnavailabilityBlockBadge';
 import type { StaffProfile } from '../../staff.types';
 import styles from './DaysOffPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * Self-service day-off requests, reachable from every role's dashboard
@@ -66,7 +67,7 @@ export function DaysOffPage() {
   if (isLoading) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState />
       </main>
     );
   }

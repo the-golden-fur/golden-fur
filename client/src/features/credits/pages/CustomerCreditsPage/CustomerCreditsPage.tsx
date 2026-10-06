@@ -14,6 +14,7 @@ import {
   formatExpiryDate,
 } from '../../utils/expiry';
 import styles from './CustomerCreditsPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * The customer's dedicated account-credit page (/portal/credits, the navbar
@@ -89,7 +90,7 @@ export function CustomerCreditsPage() {
       <h1 className={styles.title}>Account Credit</h1>
 
       {isLoading && balances.length === 0 ? (
-        <p className={styles.copy}>Loading your credit...</p>
+        <LoadingState label="Loading your credit..." />
       ) : balances.length === 0 ? (
         <p className={styles.copy}>
           You have <strong>{formatCurrency(0)}</strong> in account credit.

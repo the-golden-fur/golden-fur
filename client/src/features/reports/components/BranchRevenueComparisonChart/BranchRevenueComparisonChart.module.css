@@ -8,6 +8,33 @@
   padding: var(--space-3);
 }
 
+/* Title on the left, the optional time period control on the right; the
+   control drops under the title when the widget is too narrow for both. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-0-5);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.control {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
 .title {
   margin: 0;
   color: var(--color-text-primary);

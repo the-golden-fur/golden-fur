@@ -9,9 +9,15 @@ import {
 import type { PetWeightClassConfiguration } from '../../maintenance.types';
 import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import styles from './WeightClassConfigurationPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
-/** Same list as MAINTENANCE_WRITE_ROLES server-side. */
-const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
+/** Superadmin-only, unlike other maintenance config (MAINTENANCE_WRITE_ROLES
+ * server-side is Admin+Superadmin): weight class cut-offs are global and
+ * affect every branch's Grooming pricing and Hotel/Daycare cage sizing at
+ * once, so an Admin (scoped to their own branch elsewhere in Config) has no
+ * access here at all - see updatePetWeightClassConfigurationController's
+ * matching Superadmin-only route gate. */
+const ALLOWED_VIEWER_ROLES = new Set(['Superadmin']);
 
 interface FormState {
   mMinKg: string;
@@ -212,7 +218,7 @@ export function WeightClassConfigurationPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -226,7 +232,7 @@ export function WeightClassConfigurationPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading weight class configuration...</p>
+          <LoadingState label="Loading weight class configuration..." />
         </div>
       </main>
     );

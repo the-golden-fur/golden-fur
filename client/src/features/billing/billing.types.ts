@@ -9,11 +9,6 @@ export const PAYMENT_METHODS = [
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
-  'GCash',
-  'Maya',
-];
-
 export const BANK_NAMES = ['BPI', 'BDO'] as const;
 export type BankName = (typeof BANK_NAMES)[number];
 
@@ -54,7 +49,6 @@ export interface Transaction {
   total_amount: number;
   payment_reference: string | null;
   misc_sale_description: string | null;
-  webhook_confirmed_at: string | null;
   processed_by_staff_id: string | null;
   /** Which portion of the booking this payment covers - see PAYMENT_CHOICES.
    * NULL for older rows / misc sales. Drives the "Down payment" / "Balance
@@ -81,7 +75,6 @@ export interface PaymentFields {
   bank_name?: BankName;
   payment_reference?: string;
   cash_tendered?: number;
-  online_channel?: 'portal' | 'walk_in_qr';
   credit_to_apply?: number;
 }
 
@@ -95,7 +88,6 @@ export interface CheckoutResponse {
   transaction: Transaction;
   lineItems: TransactionLineItem[];
   changeAmount: number | null;
-  paymongoCheckoutUrl: string | null;
 }
 
 export interface DraftLineItem {
@@ -123,26 +115,75 @@ export interface CheckoutPreview {
   preCreditTotal: number;
 }
 
-export interface MiscSaleRequest extends PaymentFields {
-  customer_id: string;
+/** One cart line - exactly one of (product_catalog_id [+ quantity]) or
+ * (description + amount), matching CatalogComboBox's own hybrid shape. */
+export interface MiscSaleItem {
   product_catalog_id?: string;
   quantity?: number;
   description?: string;
   amount?: number;
+}
+
+export interface MiscSaleRequest extends PaymentFields {
+  customer_id: string;
+  items: MiscSaleItem[];
+  discount_ids?: string[];
+  promo_ids?: string[];
 }
 
 export interface MiscSaleResponse {
   transaction: Transaction;
-  lineItem: TransactionLineItem;
+  lineItems: TransactionLineItem[];
   changeAmount: number | null;
-  paymongoCheckoutUrl: string | null;
 }
 
+/** Session 115: the wizard's Discount/Promo step live-previews the cart as
+ * the cashier ticks discounts/promos - same shape as CheckoutPreview, minus
+ * the booking-specific `booking` field a misc sale has none of. */
+export interface MiscSalePreviewRequest {
+  items: MiscSaleItem[];
+  payment_method: PaymentMethod;
+  discount_ids?: string[];
+  promo_ids?: string[];
+}
+
+/** GET /billing/misc-sale/options - what the admin has configured for misc
+ * sales at the cashier's branch (misc-sale-scoped discounts, all-services
+ * promos), listed on the wizard's Discount/Promo step. */
+export interface MiscSaleDiscountOption {
+  id: string;
+  name: string;
+  discount_type: 'Percentage' | 'Flat';
+  value: number;
+  is_mandated: boolean;
+}
+
+export interface MiscSalePromoOption {
+  id: string;
+  name: string;
+  discount_type: 'Percentage' | 'Flat';
+  value: number;
+  end_date: string | null;
+}
+
+export interface MiscSaleOptions {
+  discounts: MiscSaleDiscountOption[];
+  promos: MiscSalePromoOption[];
+}
+
+export interface MiscSalePreview {
+  itemLines: DraftLineItem[];
+  discountLines: DraftLineItem[];
+  promoLines: DraftLineItem[];
+  subtotal: number;
+  discountAmount: number;
+  promoAmount: number;
+  preCreditTotal: number;
+}
+
+/** Session 115: narrowed to payment-fields-only now that a sale can carry
+ * multiple line items - see the server validator's own doc comment. */
 export interface UpdateMiscSaleRequest {
-  product_catalog_id?: string;
-  quantity?: number;
-  description?: string;
-  amount?: number;
   payment_method?: PaymentMethod;
   bank_name?: BankName;
   payment_reference?: string;

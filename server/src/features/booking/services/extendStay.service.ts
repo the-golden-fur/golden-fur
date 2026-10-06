@@ -26,8 +26,10 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
  * file's dependency on booking.service.ts limited to its exported surface
  * (round2), same rationale as bookingGroup.service.ts's own copy of the
  * reschedule-grace constant. Hotel-only: "how many of this item's own
- * duration_minutes_at_booking fit in the scheduled window". */
-function resolveQuantity(
+ * duration_minutes_at_booking fit in the scheduled window". Exported for
+ * checkout.service.ts's pay-at-checkout repricing, which needs the same
+ * per-night rate. */
+export function resolveQuantity(
   scheduledStartIso: string,
   scheduledEndIso: string,
   itemDurationMinutes: number
@@ -300,7 +302,6 @@ export async function extendHotelStay({
         payment_choice: 'balance',
         subtotal_amount: addedAmount,
         total_amount: addedAmount,
-        initiated_by: 'staff',
         processed_by_staff_id: requesterId,
       })
       .select('*')

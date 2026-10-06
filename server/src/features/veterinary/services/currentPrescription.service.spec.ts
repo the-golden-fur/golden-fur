@@ -11,6 +11,8 @@ interface QueryResult {
   error: unknown;
 }
 
+const selectArgs: string[] = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
 
@@ -18,7 +20,11 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'order', 'limit', 'in']) {
+    builder.select = vi.fn((arg: string) => {
+      selectArgs.push(arg);
+      return builder;
+    });
+    for (const method of ['eq', 'order', 'limit', 'in']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -32,6 +38,15 @@ function queueFromResults(...results: QueryResult[]) {
 describe('currentPrescription.service (#66)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    selectArgs.length = 0;
+  });
+
+  it('regression: qualifies the bookings embed with !booking_id, since consultations also has a follow_up_booking_id FK to bookings (an unqualified embed 400s as ambiguous)', async () => {
+    queueFromResults({ data: [], error: null });
+
+    await getCurrentPrescription('pet-1');
+
+    expect(selectArgs[0]).toContain('bookings!booking_id!inner');
   });
 
   it('AC-4: returns the medications from the single most recent Completed/Paid consultation', async () => {

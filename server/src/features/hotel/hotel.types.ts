@@ -81,6 +81,39 @@ export type CareLogEntryStatus =
 export type StayType = 'Hotel' | 'Daycare';
 export type StayStatus = 'Active' | 'Completed';
 
+/** Who is in an occupied cage and when they're expected to leave - see
+ * cageOccupants.service.ts. */
+export interface CageOccupant {
+  /** The Active stay (Hotel) / session (Daycare) behind this occupant - what
+   * a check-out acts on. */
+  stay_id: string;
+  cage_id: string;
+  pet_name: string | null;
+  owner_name: string | null;
+  service: 'Hotel' | 'Daycare';
+  booking_id: string | null;
+  since: string | null;
+  /** The booking's own scheduled end (Hotel nights / Daycare hours as
+   * booked); null when there is no booking behind the stay. */
+  expected_checkout_at: string | null;
+  /** The flat fee a Daycare pet is charged for each hour past
+   * expected_checkout_at, and how late it may be before that starts - see
+   * daycareCharge.util.ts. Both null for Hotel, which has no hourly overdue
+   * fee. */
+  overdue_fee_per_hour: number | null;
+  overdue_grace_minutes: number | null;
+  /** How the stay is being paid for: 'pay_at_checkout' for a booking billed
+   * at checkout (bookings.pay_at_checkout), otherwise the booking's own
+   * payment_status. Null when there is no booking behind the stay. */
+  payment: CageOccupantPayment | null;
+}
+
+export type CageOccupantPayment =
+  | 'pay_at_checkout'
+  | 'paid'
+  | 'partially_paid'
+  | 'unpaid';
+
 export interface Cage {
   id: string;
   branch_id: string;
@@ -92,6 +125,10 @@ export interface Cage {
    * cage_pet_types junction table, since one physical cage can house either
    * a dog or a cat, unlike size which is fixed per cage. Always non-empty. */
   pet_types: string[];
+  /** Config-menu consistency change (20260928218): set when an admin archives
+   * the cage from Settings > Config. Archived cages are hidden from the cage
+   * grid, cage picker, assignment, and capacity counts. */
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -242,4 +279,7 @@ export interface CheckoutResult {
   downpaymentAmount: number;
   extensionFee: number | null;
   remainingBalance: number;
+  /** Set only for a pay-at-checkout booking: the nights it was billed for.
+   * remainingBalance is then the bill just sent to the cashier. */
+  payAtCheckout?: { nights: number };
 }

@@ -11,7 +11,8 @@ export type NotificationEventType =
   | 'message_received'
   | 'staff_assigned'
   | 'booking_slot_conflict'
-  | 'spin_wheel_earned';
+  | 'spin_wheel_earned'
+  | 'daycare_overdue';
 
 export interface Notification {
   id: string;

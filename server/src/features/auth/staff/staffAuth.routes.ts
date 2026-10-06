@@ -3,9 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 import {
   staffLoginController,
   mfaEnrollController,
+  mfaEmailRequestCodeController,
   mfaVerifyController,
   mfaStatusController,
   mfaUnenrollController,
+  mfaPreferenceController,
+  mfaEmailVerificationStartController,
+  mfaEmailVerificationConfirmController,
+  mfaEmailVerificationUnbindController,
   forgotPasswordController,
 } from './staffAuth.controller.ts';
 import { jwtMiddleware } from '../../../shared/auth/middleware/jwt/jwt.middleware.ts';
@@ -221,9 +226,30 @@ const router = Router();
 
 router.post('/staff/login', staffLoginController);
 router.post('/staff/mfa/enroll', jwtMiddleware, mfaEnrollController);
+router.post(
+  '/staff/mfa/email/request-code',
+  jwtMiddleware,
+  mfaEmailRequestCodeController
+);
 router.post('/staff/mfa/verify', jwtMiddleware, mfaVerifyController);
 router.get('/staff/mfa/status', jwtMiddleware, mfaStatusController);
 router.post('/staff/mfa/unenroll', jwtMiddleware, mfaUnenrollController);
+router.patch('/staff/mfa/preference', jwtMiddleware, mfaPreferenceController);
+router.post(
+  '/staff/mfa/email-verification/start',
+  jwtMiddleware,
+  mfaEmailVerificationStartController
+);
+router.post(
+  '/staff/mfa/email-verification/confirm',
+  jwtMiddleware,
+  mfaEmailVerificationConfirmController
+);
+router.post(
+  '/staff/mfa/email-verification/unbind',
+  jwtMiddleware,
+  mfaEmailVerificationUnbindController
+);
 router.post('/staff/forgot-password', forgotPasswordController);
 router.patch('/staff/preferences', jwtMiddleware, staffPreferencesController);
 router.patch(

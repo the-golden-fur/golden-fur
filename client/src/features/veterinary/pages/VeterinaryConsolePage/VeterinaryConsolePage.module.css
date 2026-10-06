@@ -116,37 +116,9 @@
   margin-top: calc(var(--text-label) * var(--lh-base) + var(--space-0-5));
 }
 
-.layout {
-  display: grid;
-  grid-template-columns: minmax(420px, 1.3fr) 2fr;
-  gap: var(--space-3);
-  align-items: start;
-}
-
-.queue {
-  display: grid;
-  gap: var(--space-3);
-}
-
-/* Table view's Pet column - the row's selection trigger there, same job
-   .rowButton does for the List/Board card. */
-.petNameButton {
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  padding: 0;
-  color: var(--color-text-primary);
-  font-weight: var(--weight-semibold);
-}
-
-.petNameButtonActive {
-  composes: petNameButton;
-  color: var(--color-accent-gold-primary);
-}
-
 /* Table view's trailing actions column - Start Consultation + the "..."
    menu, side by side (Table keeps a persistent, tap-to-open menu; List/
-   Board use CardContextMenu's hold-to-open instead - see renderQueueCard). */
+   Board use CardContextMenu's hold-to-open instead - see renderBoardCard). */
 .rowActions {
   display: flex;
   align-items: center;
@@ -154,13 +126,9 @@
   justify-content: flex-end;
 }
 
-/* Custom change (kebab-inside-card fix): the border/background/shadow used
-   to live on .rowButton alone, so a flex sibling (Start Consultation button,
-   the "..." kebab) rendered visually outside the card's own box instead of
-   inside it. Moved onto .rowItem (the <li>, now the actual visual card) so
-   every sibling control shares the same bordered box - mirrors the
-   established list-row pattern elsewhere (e.g. AdminServicesPage's
-   .serviceRow), just with an inner clickable element instead of a plain div. */
+/* List/Board card - a plain (non-interactive) bordered box now that a row
+   click no longer opens anything itself; "..." (List) or hold/right-click
+   (Board) is the only way to act on a row - see .rowActions' own note. */
 .rowItem {
   display: flex;
   align-items: center;
@@ -170,32 +138,13 @@
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
   padding: var(--space-3);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
 }
 
-.rowItem:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.rowItemActive {
-  composes: rowItem;
-  border-color: var(--color-accent-gold-primary);
-}
-
-.rowButton {
+.rowBody {
   display: grid;
   gap: var(--space-0-5);
   flex: 1;
   min-width: 0;
-  text-align: left;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  padding: 0;
 }
 
 .rowHeader {
@@ -220,6 +169,10 @@
 
 .startButton {
   flex-shrink: 0;
+  /* Only as wide as its label - inside a List/Board card (.rowBody, a
+     grid) it would otherwise stretch across the whole card. */
+  width: fit-content;
+  justify-self: start;
   border: none;
   border-radius: var(--radius-pill);
   background: var(--color-accent-gold-primary);
@@ -268,76 +221,49 @@
     border-color 0.15s ease;
 }
 
-.cancelButton:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-  border-color: var(--color-accent-gold-primary);
-}
-
-.detail {
-  min-width: 0;
-}
-
-/* Read-only "View Details" modal - vet-only consultation fields (vitals/
-   diagnosis/medications), distinct from BookingDetailsPage's booking-side
-   (payment/branch/items) receipt view. */
-.viewDetailsBody {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.viewDetailsHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.viewDetailsName {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-bold);
-}
-
-.viewDetailsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--space-2);
-}
-
-.detailField {
+/* Quick-complete modal's fee input - same look as ConsultationDetailPanel's
+   own .field/.fieldLabel/.input. */
+.feeField {
   display: grid;
   gap: var(--space-0-5);
+  margin-bottom: var(--space-2);
 }
 
-.detailLabel {
+.feeLabel {
   color: var(--color-text-secondary);
   font-size: var(--text-label);
   font-weight: var(--weight-normal);
   text-transform: uppercase;
 }
 
-.detailValue {
+.feeInput {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
   color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
 }
 
-.medicationList {
-  display: grid;
-  gap: var(--space-0-5);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.followUpIndicator {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  background: var(--color-followup-indicator-bg);
-  color: var(--color-followup-indicator-text);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-sm);
+.linkButton {
+  border: none;
+  background: none;
+  color: var(--color-accent-gold-primary);
+  cursor: pointer;
+  font: inherit;
   font-weight: var(--weight-semibold);
-  padding: var(--space-0-5) var(--space-2);
+  padding: 0;
+  text-decoration: underline;
 }
+
+.cancelButton:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-accent-gold-primary);
+}
+
+/* .detail/.layout/.viewDetails/.detailField/.detailLabel/.detailValue/
+   .medicationList/.followUpIndicator removed - the inline split-panel
+   layout and the two separate read-only modals they backed are gone;
+   "View Details" now opens ConsultationDetailPanel itself (its own CSS
+   module already has equivalents for all of this) in a Modal instead. */

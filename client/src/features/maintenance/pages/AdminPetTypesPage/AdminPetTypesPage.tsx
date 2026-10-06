@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -20,22 +14,23 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import { CardRowWithMenu } from '../../../../shared/components/MoreOptionsMenu/CardRowWithMenu';
+import { RenameModal } from '../../../../shared/components/RenameModal/RenameModal';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
+  archivePetType,
   createPetType,
-  deletePetType,
   deletePetTypePriceOverride,
   listBranches,
   listPetTypePriceOverrides,
@@ -59,6 +54,7 @@ import {
   PET_TYPE_SORT_FIELDS,
 } from './petTypeBrowserFields';
 import styles from './AdminPetTypesPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side - this page is a write
  * surface, so the UI guard matches the API/RLS boundary by construction. */
@@ -96,6 +92,7 @@ export function AdminPetTypesPage() {
   const { user, accessToken } = useAuth();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [petTypes, setPetTypes] = useState<PetTypeRow[]>([]);
@@ -107,8 +104,13 @@ export function AdminPetTypesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
+  const [renamingPetType, setRenamingPetType] = useState<PetTypeRow | null>(
+    null
+  );
+  const [archivingPetType, setArchivingPetType] = useState<PetTypeRow | null>(
+    null
+  );
+  const [isArchiving, setIsArchiving] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
 
   const [message, setMessage] = useState<string | null>(null);
@@ -141,6 +143,7 @@ export function AdminPetTypesPage() {
       setIsRoleLoading(false);
       const self = result.data?.find((staff) => staff.id === user.id);
       setViewerRole(self?.role ?? null);
+      setViewerBranchId(self?.branch_id ?? null);
     });
 
     return () => {
@@ -150,6 +153,9 @@ export function AdminPetTypesPage() {
 
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
+  // An Admin only configures their own branch's pet type price overrides;
+  // Superadmin can touch any branch (and the all-branches default row).
+  const lockedBranchId = viewerRole === 'Admin' ? viewerBranchId : null;
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -227,83 +233,16 @@ export function AdminPetTypesPage() {
     closeCreateModal();
   }
 
-  function startEditing(petType: PetTypeRow) {
-    setEditingId(petType.id);
-    setEditingName(petType.name);
-    setRowError(null);
-  }
+  async function handleRename(
+    petType: PetTypeRow,
+    name: string
+  ): Promise<string | null> {
+    if (!accessToken) return 'You are signed out.';
 
-  async function handleRename(petTypeId: string) {
-    if (!accessToken || !editingName.trim()) {
-      const message = 'Name is required.';
-      setRowError(message);
-      throw new Error(message);
-    }
-
-    setRowError(null);
-
-    const result = await updatePetType(petTypeId, accessToken, {
-      name: editingName.trim(),
-    });
+    const result = await updatePetType(petType.id, accessToken, { name });
 
     if (result.error || !result.data) {
-      const message = result.error ?? 'Could not rename pet type.';
-      setRowError(message);
-      throw new Error(message);
-    }
-
-    setPetTypes((prev) =>
-      prev.map((petType) =>
-        petType.id === petTypeId ? (result.data as PetTypeRow) : petType
-      )
-    );
-    setEditingId(null);
-    setMessage('Pet type renamed.');
-  }
-
-  const editingPetType = petTypes.find((p) => p.id === editingId) ?? null;
-
-  const handleDiscardEdit = useCallback(() => {
-    setEditingId(null);
-    setRowError(null);
-  }, []);
-
-  // handleRename is a plain function (redefined every render), so this
-  // wrapper must list every piece of state it reads as its own deps -
-  // otherwise an unmemoized onSave identity re-triggers useUnsavedChanges'
-  // registration effect on every render, changing the provider's context
-  // value, re-rendering this component, creating another fresh onSave... an
-  // infinite loop with no user action needed to sustain it.
-  const handleUnsavedSave = useCallback(
-    () => (editingId !== null ? handleRename(editingId) : Promise.resolve()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editingId, accessToken, editingName]
-  );
-
-  // Pet Types only ever has one row mid-edit at a time (editingId), so this
-  // is the "per-in-progress-edit" shape of the pattern - a stable id with
-  // entering edit mode itself as the dirty signal, no deeper per-field
-  // diffing.
-  useUnsavedChanges({
-    id: 'pet-type-edit',
-    label: editingPetType ? `Pet type: ${editingPetType.name}` : 'Pet type',
-    isDirty: editingId !== null,
-    onSave: handleUnsavedSave,
-    onDiscard: handleDiscardEdit,
-  });
-
-  async function handleToggleActive(petType: PetTypeRow) {
-    if (!accessToken) return;
-
-    setRowError(null);
-
-    const result = await updatePetType(petType.id, accessToken, {
-      is_active: !petType.is_active,
-    });
-
-    if (result.error || !result.data) {
-      setRowError(result.error ?? 'Could not update pet type.');
-      return;
+      return result.error ?? 'Could not rename pet type.';
     }
 
     setPetTypes((prev) =>
@@ -311,24 +250,33 @@ export function AdminPetTypesPage() {
         row.id === petType.id ? (result.data as PetTypeRow) : row
       )
     );
+    setMessage('Pet type renamed.');
+    return null;
   }
 
-  async function handleDelete(petTypeId: string) {
-    if (!accessToken) {
-      return;
-    }
+  async function handleConfirmArchive() {
+    if (!accessToken || !archivingPetType) return;
 
+    setIsArchiving(true);
     setRowError(null);
 
-    const result = await deletePetType(petTypeId, accessToken);
+    const result = await archivePetType(archivingPetType.id, accessToken);
+
+    setIsArchiving(false);
 
     if (result.error) {
+      setArchivingPetType(null);
       setRowError(result.error);
       return;
     }
 
-    setPetTypes((prev) => prev.filter((petType) => petType.id !== petTypeId));
-    setMessage('Pet type deleted.');
+    setPetTypes((prev) =>
+      prev.filter((petType) => petType.id !== archivingPetType.id)
+    );
+    setArchivingPetType(null);
+    setMessage(
+      'Pet type archived. Restore it from Settings > Config > Archive.'
+    );
   }
 
   async function handleSaveOverride(
@@ -427,45 +375,16 @@ export function AdminPetTypesPage() {
 
   function buildPetTypeActionItems(petType: PetTypeRow): MoreOptionsMenuItem[] {
     return [
-      { label: 'Rename', onSelect: () => startEditing(petType) },
       {
         label: 'Configure',
         onSelect: () => setPriceModalPetType(petType),
       },
-      {
-        label: petType.is_active ? 'Deactivate' : 'Activate',
-        onSelect: () => void handleToggleActive(petType),
-      },
-      { label: 'Delete', onSelect: () => void handleDelete(petType.id) },
+      { label: 'Rename', onSelect: () => setRenamingPetType(petType) },
+      { label: 'Archive', onSelect: () => setArchivingPetType(petType) },
     ];
   }
 
   function renderPetTypeActions(petType: PetTypeRow) {
-    if (editingId === petType.id) {
-      return (
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.smallButton}
-            onClick={() =>
-              void handleRename(petType.id).catch(() => {
-                // rowError is already set and shown below - nothing else to do.
-              })
-            }
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            className={styles.smallButtonSecondary}
-            onClick={handleDiscardEdit}
-          >
-            Cancel
-          </button>
-        </div>
-      );
-    }
-
     return (
       <div className={styles.actions}>
         <MoreOptionsMenu
@@ -481,24 +400,17 @@ export function AdminPetTypesPage() {
       {
         id: 'name',
         header: 'Name',
-        render: (petType) =>
-          editingId === petType.id ? (
-            <input
-              className={styles.input}
-              value={editingName}
-              onChange={(event) => setEditingName(event.target.value)}
-            />
-          ) : (
-            <span
-              className={
-                petType.is_active
-                  ? styles.itemName
-                  : `${styles.itemName} ${styles.itemInactive}`
-              }
-            >
-              {petType.name}
-            </span>
-          ),
+        render: (petType) => (
+          <span
+            className={
+              petType.is_active
+                ? styles.itemName
+                : `${styles.itemName} ${styles.itemInactive}`
+            }
+          >
+            {petType.name}
+          </span>
+        ),
       },
       {
         id: 'status',
@@ -514,29 +426,17 @@ export function AdminPetTypesPage() {
         ),
       },
     ],
-    [editingId, editingName]
+    []
   );
 
   // List/Board card - tap-to-hold (CardContextMenu) instead of a
   // persistent "..." button, matching Cages/Staff/Customer Management.
   // Table view keeps the visible tap-to-open button (renderPetTypeActions
   // above) - only the dense card grid gets the hold gesture.
-  function renderPetTypeCard(petType: PetTypeRow) {
-    if (editingId === petType.id) {
-      return (
-        <div className={styles.rowMain}>
-          <input
-            className={styles.input}
-            value={editingName}
-            onChange={(event) => setEditingName(event.target.value)}
-          />
-          {renderPetTypeActions(petType)}
-        </div>
-      );
-    }
-
+  function renderPetTypeCard(petType: PetTypeRow, showMenuButton = false) {
     return (
-      <CardContextMenu
+      <CardRowWithMenu
+        showMenuButton={showMenuButton}
         label={`Actions for ${petType.name}`}
         items={buildPetTypeActionItems(petType)}
       >
@@ -558,7 +458,7 @@ export function AdminPetTypesPage() {
             {petType.is_active ? 'Active' : 'Inactive'}
           </span>
         </div>
-      </CardContextMenu>
+      </CardRowWithMenu>
     );
   }
 
@@ -566,7 +466,7 @@ export function AdminPetTypesPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -600,7 +500,7 @@ export function AdminPetTypesPage() {
             Existing pet types
           </h2>
           {isLoading ? (
-            <p className={styles.copy}>Loading pet types...</p>
+            <LoadingState label="Loading pet types..." />
           ) : loadError ? (
             <p className={styles.errorBanner} role="alert">
               {loadError}
@@ -659,7 +559,7 @@ export function AdminPetTypesPage() {
                 <DataList
                   items={visiblePetTypes}
                   getRowKey={(petType) => petType.id}
-                  renderItem={renderPetTypeCard}
+                  renderItem={(petType) => renderPetTypeCard(petType, true)}
                   emptyMessage="No pet types match this filter."
                 />
               ) : (
@@ -722,11 +622,34 @@ export function AdminPetTypesPage() {
         </form>
       </Modal>
 
+      <RenameModal
+        isOpen={renamingPetType !== null}
+        entityLabel="pet type"
+        currentName={renamingPetType?.name ?? ''}
+        onSubmit={(name) =>
+          renamingPetType
+            ? handleRename(renamingPetType, name)
+            : Promise.resolve(null)
+        }
+        onClose={() => setRenamingPetType(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={archivingPetType !== null}
+        title="Archive pet type?"
+        body={`"${archivingPetType?.name ?? ''}" will no longer be offered when adding pets, breeds or cages. Existing pets keep it, and you can restore it from Settings > Config > Archive.`}
+        confirmLabel="Archive"
+        isConfirming={isArchiving}
+        onConfirm={() => void handleConfirmArchive()}
+        onCancel={() => setArchivingPetType(null)}
+      />
+
       <PetTypePriceOverrideModal
         key={priceModalPetType?.id ?? 'none'}
         isOpen={priceModalPetType !== null}
         petTypeName={priceModalPetType?.name ?? ''}
         branches={branches}
+        lockedBranchId={lockedBranchId}
         overrides={overrides.filter(
           (row) => row.pet_type === priceModalPetType?.key
         )}

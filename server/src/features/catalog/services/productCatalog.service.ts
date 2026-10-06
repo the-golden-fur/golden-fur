@@ -1,7 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
+  archivePatch,
   assertArchivedBeforeHardDelete,
-  assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
 import type { ProductCatalogItem } from '../catalog.types.ts';
 import type {
@@ -131,17 +131,18 @@ async function getProductOrThrow(itemId: string): Promise<ProductCatalogItem> {
 }
 
 /**
- * Deactivate-first CRUD safety (archive workflow): archiving is soft - the
- * row moves to the archive list via archived_at, it is not deleted. Only
- * hardDeleteProduct below actually removes the row.
+ * Archiving is soft - the row moves to the archive list via archived_at, it
+ * is not deleted, and (Config-menu consistency change) it deactivates the
+ * row in the same step - Deactivate is no longer a separate action, so an
+ * active product can be archived directly. Only hardDeleteProduct below
+ * actually removes the row.
  */
 export async function archiveProduct(itemId: string): Promise<void> {
-  const product = await getProductOrThrow(itemId);
-  assertInactiveBeforeArchive(product.is_active, 'This product');
+  await getProductOrThrow(itemId);
 
   const { error } = await supabase
     .from('product_catalog')
-    .update({ archived_at: new Date().toISOString() })
+    .update(archivePatch())
     .eq('id', itemId);
 
   if (error) throwWithStatus(400, error.message);
@@ -150,7 +151,7 @@ export async function archiveProduct(itemId: string): Promise<void> {
 export async function restoreProduct(itemId: string): Promise<void> {
   const { error } = await supabase
     .from('product_catalog')
-    .update({ archived_at: null })
+    .update({ archived_at: null, is_active: true })
     .eq('id', itemId);
 
   if (error) throwWithStatus(400, error.message);

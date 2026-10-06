@@ -1,5 +1,6 @@
 import type { ThemeRole } from '../providers/ThemeProvider/themeContext';
 import type {
+  MfaMethod,
   MfaSessionResponse,
   MfaStatusResponse,
   MfaUnenrollResponse,
@@ -16,19 +17,30 @@ const AUTH_PREFIX = '/auth';
 
 const MFA_PATHS_BY_ROLE: Record<
   ThemeRole,
-  { enroll: string; verify: string; status: string; unenroll: string }
+  {
+    enroll: string;
+    emailRequestCode: string;
+    verify: string;
+    status: string;
+    unenroll: string;
+    preference: string;
+  }
 > = {
   staff: {
     enroll: '/staff/mfa/enroll',
+    emailRequestCode: '/staff/mfa/email/request-code',
     verify: '/staff/mfa/verify',
     status: '/staff/mfa/status',
     unenroll: '/staff/mfa/unenroll',
+    preference: '/staff/mfa/preference',
   },
   customer: {
     enroll: '/customers/mfa/enroll',
+    emailRequestCode: '/customers/mfa/email/request-code',
     verify: '/customers/mfa/verify',
     status: '/customers/mfa/status',
     unenroll: '/customers/mfa/unenroll',
+    preference: '/customers/mfa/preference',
   },
 };
 
@@ -50,23 +62,45 @@ async function parseResponse<T>(response: Response): Promise<MfaApiResult<T>> {
   return { data: body as T, error: null };
 }
 
+/** `fetch` itself throws on a network failure (connection dropped, dev
+ * server mid-restart, offline) rather than resolving - every caller here is
+ * a login/MFA step gating a `setIsSubmitting(false)`, so an uncaught throw
+ * leaves that button disabled forever with no visible error (the reported
+ * "random freeze" on login). Catching here, once, means every MFA call is
+ * safe by construction instead of each caller needing its own try/catch. */
+async function fetchJson<T>(
+  url: string,
+  init?: RequestInit
+): Promise<MfaApiResult<T>> {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch {
+    return {
+      data: null,
+      error: 'Could not reach the server. Check your connection and try again.',
+    };
+  }
+
+  return parseResponse<T>(response);
+}
+
 export async function getMfaStatus(
   role: ThemeRole,
   accessToken: string
 ): Promise<MfaApiResult<MfaStatusResponse>> {
-  const response = await fetch(
+  return fetchJson<MfaStatusResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].status}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-
-  return parseResponse<MfaStatusResponse>(response);
 }
 
 export async function enrollMfa(
   role: ThemeRole,
-  accessToken: string
+  accessToken: string,
+  method: MfaMethod = 'authenticator'
 ): Promise<MfaApiResult<TotpEnrollResponse>> {
-  const response = await fetch(
+  return fetchJson<TotpEnrollResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].enroll}`,
     {
       method: 'POST',
@@ -74,19 +108,107 @@ export async function enrollMfa(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
+      body: JSON.stringify({ method }),
     }
   );
+}
 
-  return parseResponse<TotpEnrollResponse>(response);
+/** Emails a fresh code for the 'email' method - required before the user can
+ * enter one, both when switching to it mid-login ("Other ways to verify")
+ * and for a "Resend code" action. Not needed for 'authenticator' (the code
+ * already lives in the user's own app) or for enrolling 'email' for the
+ * first time (enrollMfa sends the first code itself). */
+export async function requestMfaEmailCode(
+  role: ThemeRole,
+  accessToken: string
+): Promise<MfaApiResult<{ sent: boolean }>> {
+  return fetchJson<{ sent: boolean }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].emailRequestCode}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+}
+
+interface VerifyMfaOptions {
+  method?: MfaMethod;
+  rememberDevice?: boolean;
 }
 
 export async function verifyMfa(
   role: ThemeRole,
   code: string,
-  accessToken: string
+  accessToken: string,
+  { method = 'authenticator', rememberDevice = false }: VerifyMfaOptions = {}
 ): Promise<MfaApiResult<MfaSessionResponse>> {
-  const response = await fetch(
+  return fetchJson<MfaSessionResponse>(
     `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].verify}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        code,
+        method,
+        remember_device: rememberDevice,
+      }),
+    }
+  );
+}
+
+export async function unenrollMfa(
+  role: ThemeRole,
+  accessToken: string,
+  method: MfaMethod
+): Promise<MfaApiResult<MfaUnenrollResponse>> {
+  return fetchJson<MfaUnenrollResponse>(
+    `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].unenroll}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ method }),
+    }
+  );
+}
+
+// Admin-tier staff only (Admin/Supervisor/Superadmin) - customers and other
+// staff roles have no bind/unbind/change-email concept, so these bypass the
+// role-keyed MFA_PATHS_BY_ROLE map entirely.
+const EMAIL_VERIFICATION_PATHS = {
+  start: '/staff/mfa/email-verification/start',
+  confirm: '/staff/mfa/email-verification/confirm',
+  unbind: '/staff/mfa/email-verification/unbind',
+};
+
+export async function startMfaEmailVerification(
+  accessToken: string,
+  email?: string
+): Promise<MfaApiResult<{ sent: boolean; email: string }>> {
+  return fetchJson<{ sent: boolean; email: string }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${EMAIL_VERIFICATION_PATHS.start}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(email ? { email } : {}),
+    }
+  );
+}
+
+export async function confirmMfaEmailVerification(
+  accessToken: string,
+  code: string
+): Promise<MfaApiResult<{ verified: boolean }>> {
+  return fetchJson<{ verified: boolean }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${EMAIL_VERIFICATION_PATHS.confirm}`,
     {
       method: 'POST',
       headers: {
@@ -96,21 +218,34 @@ export async function verifyMfa(
       body: JSON.stringify({ code }),
     }
   );
-
-  return parseResponse<MfaSessionResponse>(response);
 }
 
-export async function unenrollMfa(
-  role: ThemeRole,
+export async function unbindMfaEmail(
   accessToken: string
-): Promise<MfaApiResult<MfaUnenrollResponse>> {
-  const response = await fetch(
-    `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].unenroll}`,
+): Promise<MfaApiResult<{ unbound: boolean }>> {
+  return fetchJson<{ unbound: boolean }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${EMAIL_VERIFICATION_PATHS.unbind}`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}` },
     }
   );
+}
 
-  return parseResponse<MfaUnenrollResponse>(response);
+export async function setMfaPreference(
+  role: ThemeRole,
+  accessToken: string,
+  preferredMethod: MfaMethod
+): Promise<MfaApiResult<{ preferred_method: MfaMethod }>> {
+  return fetchJson<{ preferred_method: MfaMethod }>(
+    `${API_BASE_URL}${AUTH_PREFIX}${MFA_PATHS_BY_ROLE[role].preference}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ preferred_method: preferredMethod }),
+    }
+  );
 }

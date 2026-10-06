@@ -2,6 +2,7 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
 import {
   applyFirstBookingPaymentSideEffects,
+  getBookingById,
   recomputeBookingGroupPaymentStatus,
 } from '../../booking/services/booking.service.ts';
 import type { PaymentStatus } from '../../booking/booking.types.ts';
@@ -426,4 +427,60 @@ export async function payTransactionWithCredit({
     creditTransaction: creditRow,
     leftover,
   };
+}
+
+export interface AddCustomerBalancePaymentParams {
+  requesterId: string;
+  bookingId: string;
+  amount: number;
+}
+
+/**
+ * Payment/transactions rework, gap B: a customer splitting their own
+ * remaining balance into instalments. A booking that is 'Partially Paid'
+ * had a down payment settled and still owes a balance (the down-payment
+ * scheme - a 'full'-scheme booking is either Pending or Fully Paid), so the
+ * customer may create a fresh Pending 'balance' charge for any amount up to
+ * what's left and settle it like any other transaction; if it doesn't cover
+ * the rest they can do it again.
+ *
+ * Reuses the staff `add_booking_payment` RPC (which re-checks amount <=
+ * remaining atomically under a booking row lock). p_processed_by is null -
+ * no staff member handled it, and the column FKs staff_profiles.
+ */
+export async function addCustomerBalancePayment({
+  requesterId,
+  bookingId,
+  amount,
+}: AddCustomerBalancePaymentParams): Promise<Transaction> {
+  const booking = await getBookingById({ requesterId, bookingId });
+
+  if (booking.customer_id !== requesterId) {
+    throwWithStatus(403, 'You can only pay for your own bookings');
+  }
+
+  if (booking.payment_status !== 'Partially Paid') {
+    throwWithStatus(
+      400,
+      'You can only split a payment on a booking with a partly-paid balance'
+    );
+  }
+
+  // No "one Pending charge only" guard: since 20260902165 add_booking_payment
+  // nets the already-Pending charges too, so it can't over-collect even while
+  // the booking still carries its original Pending 'balance' row.
+  const { data, error } = await supabase.rpc('add_booking_payment', {
+    p_booking_id: booking.id,
+    p_amount: amount,
+    p_processed_by: null,
+  });
+
+  if (error || !data) {
+    const message = /exceeds remaining balance/.test(error?.message ?? '')
+      ? 'That amount is more than the balance left on this booking'
+      : (error?.message ?? 'Could not add this payment');
+    throwWithStatus(400, message);
+  }
+
+  return data as Transaction;
 }

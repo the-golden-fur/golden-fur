@@ -7,6 +7,28 @@
   padding: var(--space-4) var(--space-2);
 }
 
+/* Board view only: the page goes full width so the board panel can run
+   wider than the usual 60rem column, while the title, toolbar and banners
+   stay in that same centered column - so the toolbar doesn't move when
+   switching views. */
+.pageWide {
+  max-width: none;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, calc(60rem - 2 * var(--space-2)))
+    minmax(0, 1fr);
+  column-gap: 0;
+}
+
+.pageWide > * {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.pageWide > .boardPanel {
+  grid-column: 1 / -1;
+}
+
 .title {
   margin: 0;
   color: var(--color-text-primary);
@@ -38,18 +60,72 @@
   color: var(--color-success-text);
 }
 
-.bookingList {
+/* The view's own setting (board: Group by, calendar: range) sits on its own
+   row under the toolbar, so the toolbar looks the same in every view. */
+.viewOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: fit-content;
+}
+
+/* Board view: Group by + every column in one panel, wider than the rest of
+   the page (see .pageWide) so the columns sit side by side on one row. They
+   only wrap onto a second row (DataBoard's wrapColumns) when the window is
+   too narrow for --column-min-width each - never a sideways scroll. */
+.boardPanel {
+  --column-min-width: 8rem;
   display: grid;
+  gap: var(--space-2);
+  justify-self: center;
+  width: 100%;
+  max-width: 100rem;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-2);
+}
+
+.filterLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.filterSelect {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-1) var(--space-2);
+}
+
+/* List view: the summary grows, the "..." sits at the row's end. */
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.listRow > .bookingMain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
   gap: var(--space-2);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.bookingRow {
-  display: grid;
-  gap: var(--space-2);
-  min-height: var(--booking-queue-row-min-height);
+.galleryCard,
+.boardCard {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -60,16 +136,88 @@
     box-shadow 0.15s ease;
 }
 
-.bookingRow:hover {
+.galleryCard:hover,
+.boardCard:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
+/* Board columns get narrow with every status side by side - tighter card
+   padding, and long words break instead of pushing the column wider. */
+.boardCard {
+  padding: var(--space-1);
+}
+
+.boardCard .bookingMain {
+  gap: var(--space-1);
+}
+
+.boardCard .bookingMain > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.calendarChip {
+  display: block;
+  width: 100%;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  overflow: hidden;
+  padding: var(--space-0-5) var(--space-1);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendarChip:hover {
+  background: var(--color-surface);
+}
+
+.linkButton {
+  border: none;
+  background: none;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.panelTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-lg);
+}
+
+/* The whole summary is a button, so the card surface is the click target. */
 .bookingMain {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+  box-sizing: border-box;
+  width: 100%;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.bookingMain:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
 }
 
 .bookingTitle {
@@ -91,8 +239,10 @@
 .actionPanel {
   display: grid;
   gap: var(--space-2);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-3);
 }
 
 .field {

@@ -34,6 +34,8 @@ import {
   rescheduleBooking,
   startBooking,
 } from '../../api/booking.api';
+import { listDaycareSessions } from '../../../daycare/api/daycare.api';
+import { DaycareCheckoutPanel } from '../../../daycare/pages/DaycareQueuePage/DaycareCheckoutPanel';
 import {
   listPolicyConfigurations,
   resolveEffectivePolicy,
@@ -58,6 +60,7 @@ import {
   deriveBookingConfirmationState,
 } from '../../bookingConfirmation';
 import styles from './ReceptionistBookingsQueuePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 // Same gap noted on Consultation Queue/Groomer Dashboard: no WebSocket/
 // realtime infra exists anywhere in this codebase yet, so this queue
@@ -100,8 +103,9 @@ function confirmationToStatusParam(
 type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: 'soonest', label: 'Sort: Scheduled time (soonest)' },
+  // Default: the latest service on top.
   { value: 'latest', label: 'Sort: Scheduled time (latest)' },
+  { value: 'soonest', label: 'Sort: Scheduled time (soonest)' },
   { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
   { value: 'owner-name', label: 'Sort: Owner name (A-Z)' },
 ];
@@ -337,6 +341,22 @@ export function ReceptionistBookingsQueuePage() {
     bookingId: string;
     message: string;
   } | null>(null);
+  // Daycare check-in/check-out from this queue: each checked-in Daycare
+  // booking's Active session id, keyed by booking id. A booking in here has
+  // been through the check-in form (so it can be checked out); an In
+  // Progress Daycare booking that isn't still needs checking in. Null until
+  // that lookup first succeeds (and for a viewer the endpoint refuses) - a
+  // Daycare booking then gets neither extra button, exactly as before.
+  const [daycareSessionIdByBookingId, setDaycareSessionIdByBookingId] =
+    useState<Map<string, string> | null>(null);
+  // The Daycare booking whose check-out panel is open, with the session id
+  // captured when it was opened - the session drops out of the Active list
+  // above the moment it's checked out, but the panel (showing the bill)
+  // stays until it's closed.
+  const [daycareCheckout, setDaycareCheckout] = useState<{
+    bookingId: string;
+    sessionId: string;
+  } | null>(null);
 
   // Viewer role/branch via the requester's own row in GET /staff, same
   // recipe as every other admin-adjacent staff page (the JWT's user.role is
@@ -450,6 +470,18 @@ export function ReceptionistBookingsQueuePage() {
         paymentStatus:
           paymentStatusFilter === 'All' ? undefined : paymentStatusFilter,
       }).then(handleQueueResult);
+
+      void listDaycareSessions(token, { status: 'Active' }).then((result) => {
+        if (!isMounted || !result.data) return;
+
+        setDaycareSessionIdByBookingId(
+          new Map(
+            result.data
+              .filter((session) => session.booking_id !== null)
+              .map((session) => [session.booking_id as string, session.id])
+          )
+        );
+      });
     }
 
     fetchQueue();
@@ -530,7 +562,7 @@ export function ReceptionistBookingsQueuePage() {
           owners[b.customer_id]?.full_name ?? ''
         ),
     },
-    initialSortKey: 'soonest',
+    initialSortKey: 'latest',
   });
 
   const filterChips = useMemo(() => {
@@ -578,13 +610,13 @@ export function ReceptionistBookingsQueuePage() {
         onClear: () => setSearch(''),
       });
     }
-    if (sortKey !== 'soonest') {
+    if (sortKey !== 'latest') {
       chips.push({
         id: 'sort',
         label:
           SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
           sortKey,
-        onClear: () => setSortKey('soonest'),
+        onClear: () => setSortKey('latest'),
       });
     }
 
@@ -769,12 +801,47 @@ export function ReceptionistBookingsQueuePage() {
     setActiveAction(null);
   }
 
+  /** A walk-in Daycare booking is created already In Progress, but with no
+   * Daycare session (and no cage) until it goes through the check-in form -
+   * this is that "still needs checking in" state. */
+  function daycareNeedsCheckIn(booking: Booking): boolean {
+    return (
+      booking.service_category === 'Daycare' &&
+      booking.status === 'In Progress' &&
+      daycareSessionIdByBookingId !== null &&
+      !daycareSessionIdByBookingId.has(booking.id)
+    );
+  }
+
+  /** The Active session of a checked-in Daycare booking - what Check Out
+   * acts on - or null when there's nothing to check out. */
+  function daycareSessionToCheckOut(booking: Booking): string | null {
+    if (
+      booking.service_category !== 'Daycare' ||
+      booking.status !== 'In Progress'
+    ) {
+      return null;
+    }
+    return daycareSessionIdByBookingId?.get(booking.id) ?? null;
+  }
+
   /** Walk-in booking flow: Pending -> In Progress, the moment the customer
    * physically arrives for their appointment. Calls the same POST
    * /bookings/:id/start endpoint the old Start action used
-   * (startBookingController, unchanged server-side) - no new endpoint. */
+   * (startBookingController, unchanged server-side) - no new endpoint.
+   *
+   * Daycare is the exception: checking a Daycare pet in means assigning its
+   * cage and care instructions, so Check In opens the Daycare check-in form
+   * instead (which itself moves a Pending booking to In Progress on
+   * submit). `from=bookings` brings the receptionist back here afterwards
+   * rather than to the Daycare Queue. */
   async function handleCheckIn(booking: Booking) {
     if (!accessToken) return;
+
+    if (booking.service_category === 'Daycare') {
+      navigate(`/staff/daycare/queue/check-in/${booking.id}?from=bookings`);
+      return;
+    }
 
     setCheckingInBookingId(booking.id);
     setCheckInError(null);
@@ -810,7 +877,7 @@ export function ReceptionistBookingsQueuePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -958,7 +1025,7 @@ export function ReceptionistBookingsQueuePage() {
           </button>
         </div>
 
-        {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
+        {isLoading ? <LoadingState label="Loading bookings..." /> : null}
 
         {loadError ? (
           <p className={styles.errorBanner} role="alert">
@@ -1216,8 +1283,9 @@ export function ReceptionistBookingsQueuePage() {
                           starting it via this generic Check In would skip
                           the mandatory pet-assessment capture that only
                           that page's Start does. */}
-                      {confirmationState === 'Confirmed' &&
-                      booking.service_category !== 'Assessment' ? (
+                      {(confirmationState === 'Confirmed' &&
+                        booking.service_category !== 'Assessment') ||
+                      daycareNeedsCheckIn(booking) ? (
                         <button
                           type="button"
                           className={styles.secondaryButton}
@@ -1227,6 +1295,24 @@ export function ReceptionistBookingsQueuePage() {
                           {checkingInBookingId === booking.id
                             ? 'Checking in...'
                             : 'Check In'}
+                        </button>
+                      ) : null}
+                      {/* Daycare check-out from this queue: a checked-in
+                          Daycare pet's session is closed here too - the
+                          panel below confirms, then shows the bill. */}
+                      {daycareSessionToCheckOut(booking) &&
+                      daycareCheckout?.bookingId !== booking.id ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() =>
+                            setDaycareCheckout({
+                              bookingId: booking.id,
+                              sessionId: daycareSessionToCheckOut(booking)!,
+                            })
+                          }
+                        >
+                          Check Out
                         </button>
                       ) : null}
                       {canReschedule ? (
@@ -1263,6 +1349,29 @@ export function ReceptionistBookingsQueuePage() {
                     <p className={styles.errorBanner} role="alert">
                       {checkInError.message}
                     </p>
+                  ) : null}
+
+                  {daycareCheckout?.bookingId === booking.id ? (
+                    <div className={styles.actionPanel}>
+                      <DaycareCheckoutPanel
+                        accessToken={accessToken}
+                        sessionId={daycareCheckout.sessionId}
+                        // Reflect it on the row straight away rather than
+                        // waiting for the next poll - otherwise the row
+                        // would briefly read as "In Progress, not checked
+                        // in" once its session leaves the Active list.
+                        onCheckedOut={() =>
+                          replaceBooking({ ...booking, status: 'Completed' })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => setDaycareCheckout(null)}
+                      >
+                        Close
+                      </button>
+                    </div>
                   ) : null}
 
                   {isRescheduling ? (

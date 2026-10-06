@@ -8,6 +8,7 @@ import type { Notification } from '../../../notifications/notifications.types';
 import { listCustomerPets } from '../../api/customer.api';
 import type { Pet } from '../../customer.types';
 import styles from './CustomerPortalWidgets.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface CustomerPortalWidgetsProps {
   customerId: string;
@@ -115,7 +116,7 @@ function NotificationBoardWidget({ accessToken }: { accessToken: string }) {
           {error}
         </p>
       ) : notifications === null ? (
-        <p className={styles.copy}>Loading notifications...</p>
+        <LoadingState label="Loading notifications..." size="inline" />
       ) : notifications.length === 0 ? (
         <p className={styles.copy}>You&apos;re all caught up - no notices.</p>
       ) : (
@@ -191,7 +192,7 @@ function MyPetsWidget({
           {error}
         </p>
       ) : pets === null ? (
-        <p className={styles.copy}>Loading pets...</p>
+        <LoadingState label="Loading pets..." size="inline" />
       ) : pets.length === 0 ? (
         <p className={styles.copy}>No pets yet - add one from Pet Manager.</p>
       ) : (
@@ -224,7 +225,7 @@ function CreditsWidget() {
       </span>
       <span className={styles.actionLabel}>Account Credit</span>
       {isLoading ? (
-        <span className={styles.actionHint}>Loading balance...</span>
+        <LoadingState label="Loading balance..." size="inline" />
       ) : (
         <>
           <p className={styles.creditAmount}>{formatCurrency(total)}</p>

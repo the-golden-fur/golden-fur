@@ -10,6 +10,7 @@ import * as mfaApi from '../../shared/api/mfa.api';
 import * as staffApi from '../../features/staff/api/staff.api';
 import * as customerApi from '../../features/customers/api/customer.api';
 import { getSupabaseClient } from '../../shared/auth/api/auth.api';
+import { ToastProvider } from '../../shared/providers/ToastProvider/ToastProvider';
 import { SettingsPage } from './SettingsPage';
 
 vi.mock('../../shared/api/mfa.api', () => ({
@@ -17,6 +18,8 @@ vi.mock('../../shared/api/mfa.api', () => ({
   enrollMfa: vi.fn(),
   verifyMfa: vi.fn(),
   unenrollMfa: vi.fn(),
+  requestMfaEmailCode: vi.fn(),
+  setMfaPreference: vi.fn(),
 }));
 
 vi.mock('../../features/staff/api/staff.api', () => ({
@@ -91,6 +94,20 @@ vi.mock('./configTiles.config', () => ({
     icon: Wrench,
     Component: () => createElement('p', null, 'Embedded Branches Page'),
   },
+  WEIGHT_CLASSES_TILE: {
+    title: 'Weight Classes',
+    description: 'Weight class config.',
+    to: '/staff/admin/maintenance/weight-classes',
+    icon: Wrench,
+    Component: () => createElement('p', null, 'Embedded Weight Classes Page'),
+  },
+  FAQS_TILE: {
+    title: 'Mascot FAQs',
+    description: 'Mascot FAQ config.',
+    to: '/staff/admin/maintenance/faqs',
+    icon: Wrench,
+    Component: () => createElement('p', null, 'Embedded Mascot FAQs Page'),
+  },
   HIDDEN_CONFIG_TILES: [],
 }));
 
@@ -118,7 +135,7 @@ function renderPage(role: 'staff' | 'customer') {
         AuthContext.Provider,
         { value: authValue },
         createElement(
-          Fragment,
+          ToastProvider,
           null,
           createElement(SettingsPage, { role }),
           createElement(LocationProbe)
@@ -424,7 +441,12 @@ describe('SettingsPage', () => {
 
   it('shows an enabled confirmation when MFA is already set up', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Groomer', mfa_enrolled: true },
+      data: {
+        role: 'Groomer',
+        mfa_enrolled: true,
+        methods: { authenticator: true, email: false },
+        preferred_method: 'authenticator',
+      },
       error: null,
     });
 
@@ -436,32 +458,46 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers a Disable MFA action for an enrolled, non-mandatory role', async () => {
+  it('offers a Remove action per method for an enrolled, non-mandatory role', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Groomer', mfa_enrolled: true },
+      data: {
+        role: 'Groomer',
+        mfa_enrolled: true,
+        methods: { authenticator: true, email: false },
+        preferred_method: 'authenticator',
+      },
       error: null,
     });
     vi.mocked(mfaApi.unenrollMfa).mockResolvedValue({
-      data: { removed: ['factor-1'], failed: [] },
+      data: { removed: true },
       error: null,
     });
 
     renderPage('staff');
     await goToSecurityTab();
 
-    const disableButton = await screen.findByRole('button', {
-      name: /disable mfa/i,
+    const removeButton = await screen.findByRole('button', {
+      name: /remove/i,
     });
-    await userEvent.click(disableButton);
+    await userEvent.click(removeButton);
 
     await waitFor(() =>
-      expect(mfaApi.unenrollMfa).toHaveBeenCalledWith('staff', 'access')
+      expect(mfaApi.unenrollMfa).toHaveBeenCalledWith(
+        'staff',
+        'access',
+        'authenticator'
+      )
     );
   });
 
-  it('does not offer a Disable MFA action for a mandatory role that is already enrolled', async () => {
+  it('does not offer a Remove action for a mandatory role with only one method enrolled', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Admin', mfa_enrolled: true },
+      data: {
+        role: 'Admin',
+        mfa_enrolled: true,
+        methods: { authenticator: true, email: false },
+        preferred_method: 'authenticator',
+      },
       error: null,
     });
 
@@ -470,13 +506,18 @@ describe('SettingsPage', () => {
 
     await screen.findByText('MFA is enabled on your account.');
     expect(
-      screen.queryByRole('button', { name: /disable mfa/i })
+      screen.queryByRole('button', { name: /remove/i })
     ).not.toBeInTheDocument();
   });
 
   it('shows an error and keeps MFA enrolled when unenroll fails (e.g. missing aal2)', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Groomer', mfa_enrolled: true },
+      data: {
+        role: 'Groomer',
+        mfa_enrolled: true,
+        methods: { authenticator: true, email: false },
+        preferred_method: 'authenticator',
+      },
       error: null,
     });
     vi.mocked(mfaApi.unenrollMfa).mockResolvedValue({
@@ -487,10 +528,10 @@ describe('SettingsPage', () => {
     renderPage('staff');
     await goToSecurityTab();
 
-    const disableButton = await screen.findByRole('button', {
-      name: /disable mfa/i,
+    const removeButton = await screen.findByRole('button', {
+      name: /remove/i,
     });
-    await userEvent.click(disableButton);
+    await userEvent.click(removeButton);
 
     expect(
       await screen.findByText('Failed to remove MFA factor')
@@ -499,7 +540,12 @@ describe('SettingsPage', () => {
 
   it('offers optional setup for a lower-privilege staff role that is not enrolled', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Cashier', mfa_enrolled: false },
+      data: {
+        role: 'Cashier',
+        mfa_enrolled: false,
+        methods: { authenticator: false, email: false },
+        preferred_method: 'authenticator',
+      },
       error: null,
     });
     vi.mocked(mfaApi.enrollMfa).mockResolvedValue({
@@ -513,8 +559,18 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByText(/optional for your role/i)
     ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: /set up multi-factor authentication/i,
+      })
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: /authenticator app/i })
+    );
+
     expect(
-      screen.getByRole('button', { name: /confirm mfa/i })
+      await screen.findByRole('button', { name: /confirm mfa/i })
     ).toBeInTheDocument();
   });
 

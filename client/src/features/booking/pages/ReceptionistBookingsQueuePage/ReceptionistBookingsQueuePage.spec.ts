@@ -11,6 +11,7 @@ import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as bookingApi from '../../api/booking.api';
 import * as policyApi from '../../api/policy.api';
+import * as daycareApi from '../../../daycare/api/daycare.api';
 import type { Booking } from '../../booking.types';
 import { ReceptionistBookingsQueuePage } from './ReceptionistBookingsQueuePage';
 
@@ -38,6 +39,11 @@ vi.mock('../../api/booking.api', () => ({
 // Reschedule button gating (#24) reads policy_configurations - only the
 // fetch is mocked; resolveEffectivePolicy stays the real pure function so
 // its default-vs-branch-override precedence is still exercised as written.
+vi.mock('../../../daycare/api/daycare.api', () => ({
+  listDaycareSessions: vi.fn().mockResolvedValue({ data: [], error: null }),
+  checkOutDaycareSession: vi.fn(),
+}));
+
 vi.mock('../../api/policy.api', async () => {
   const actual = await vi.importActual<typeof import('../../api/policy.api')>(
     '../../api/policy.api'
@@ -833,18 +839,19 @@ describe('ReceptionistBookingsQueuePage', () => {
       expect(screen.getAllByRole('listitem')).toHaveLength(2)
     );
 
+    // Latest service on top by default.
     let rows = screen.getAllByRole('listitem');
-    expect(rows[0].textContent).toContain('Early Bird');
-    expect(rows[1].textContent).toContain('Late Riser');
+    expect(rows[0].textContent).toContain('Late Riser');
+    expect(rows[1].textContent).toContain('Early Bird');
 
     await userEvent.selectOptions(
-      screen.getByDisplayValue('Sort: Scheduled time (soonest)'),
-      'latest'
+      screen.getByDisplayValue('Sort: Scheduled time (latest)'),
+      'soonest'
     );
 
     rows = screen.getAllByRole('listitem');
-    expect(rows[0].textContent).toContain('Late Riser');
-    expect(rows[1].textContent).toContain('Early Bird');
+    expect(rows[0].textContent).toContain('Early Bird');
+    expect(rows[1].textContent).toContain('Late Riser');
   });
 
   it('AC-4: "New booking" navigates to the flow shell in receptionist mode', async () => {
@@ -935,6 +942,183 @@ describe('ReceptionistBookingsQueuePage', () => {
         expect(screen.getByText(/Buddy/)).toBeInTheDocument()
       );
       expect(screen.queryByText('Check In')).not.toBeInTheDocument();
+    });
+
+    describe('Daycare: Check In opens the check-in form (cage + care instructions)', () => {
+      beforeEach(() => {
+        vi.mocked(staffApi.listStaff).mockResolvedValue({
+          data: [buildViewer('Receptionist')],
+          error: null,
+        });
+        vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+          data: [],
+          error: null,
+        });
+      });
+
+      it('a confirmed Pending Daycare booking goes to the form instead of being started here', async () => {
+        const user = userEvent.setup();
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Daycare',
+              status: 'Pending',
+              payment_status: 'Fully Paid',
+            }),
+          ],
+          error: null,
+        });
+
+        renderPage();
+
+        await user.click(await screen.findByText('Check In'));
+
+        expect(navigateMock).toHaveBeenCalledWith(
+          '/staff/daycare/queue/check-in/booking-1?from=bookings'
+        );
+        expect(bookingApi.startBooking).not.toHaveBeenCalled();
+      });
+
+      it('a walk-in Daycare booking (already In Progress, not checked in yet) still offers Check In', async () => {
+        const user = userEvent.setup();
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Daycare',
+              booking_source: 'Walk-in',
+              status: 'In Progress',
+            }),
+          ],
+          error: null,
+        });
+
+        renderPage();
+
+        await user.click(await screen.findByText('Check In'));
+
+        expect(navigateMock).toHaveBeenCalledWith(
+          '/staff/daycare/queue/check-in/booking-1?from=bookings'
+        );
+      });
+
+      it('no Check In once the Daycare pet has an active session', async () => {
+        vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+          data: [{ id: 'session-1', booking_id: 'booking-1' }] as never,
+          error: null,
+        });
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Daycare',
+              status: 'In Progress',
+            }),
+          ],
+          error: null,
+        });
+
+        renderPage();
+
+        await waitFor(() =>
+          expect(screen.getByText(/Buddy/)).toBeInTheDocument()
+        );
+        await waitFor(() =>
+          expect(daycareApi.listDaycareSessions).toHaveBeenCalled()
+        );
+        expect(screen.queryByText('Check In')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Daycare: Check Out closes the session from this queue', () => {
+      beforeEach(() => {
+        vi.mocked(staffApi.listStaff).mockResolvedValue({
+          data: [buildViewer('Receptionist')],
+          error: null,
+        });
+        vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+          data: [{ id: 'session-1', booking_id: 'booking-1' }] as never,
+          error: null,
+        });
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Daycare',
+              status: 'In Progress',
+            }),
+          ],
+          error: null,
+        });
+      });
+
+      it('checks a checked-in Daycare pet out and shows the bill on the row', async () => {
+        const user = userEvent.setup();
+        vi.mocked(daycareApi.checkOutDaycareSession).mockResolvedValue({
+          data: {
+            id: 'session-1',
+            status: 'Completed',
+            computed_charge: 150,
+            charge_breakdown: {
+              first_hour_fee: 100,
+              succeeding_hours: 1,
+              succeeding_hour_fee: 50,
+              hourly_charge: 150,
+              nights: 0,
+              nightly_rate: null,
+              overnight_charge: 0,
+              total: 150,
+            },
+          } as never,
+          error: null,
+        });
+
+        renderPage();
+
+        await user.click(await screen.findByText('Check Out'));
+        // Nothing is checked out until it's confirmed in the panel.
+        expect(daycareApi.checkOutDaycareSession).not.toHaveBeenCalled();
+
+        await user.click(screen.getByRole('button', { name: 'Check out now' }));
+
+        expect(daycareApi.checkOutDaycareSession).toHaveBeenCalledWith(
+          'session-1',
+          'token'
+        );
+        expect(await screen.findByText('Session checked out.')).toBeVisible();
+        expect(screen.getByText('₱150')).toBeInTheDocument();
+        // The row no longer offers either Daycare action.
+        expect(screen.queryByText('Check Out')).not.toBeInTheDocument();
+        expect(screen.queryByText('Check In')).not.toBeInTheDocument();
+      });
+
+      it("surfaces the server's refusal (e.g. care tasks still open) without changing the row", async () => {
+        const user = userEvent.setup();
+        vi.mocked(daycareApi.checkOutDaycareSession).mockResolvedValue({
+          data: null,
+          error: 'Complete the boarding checklist before checking out',
+        });
+
+        renderPage();
+
+        await user.click(await screen.findByText('Check Out'));
+        await user.click(screen.getByRole('button', { name: 'Check out now' }));
+
+        expect(
+          await screen.findByText(
+            'Complete the boarding checklist before checking out'
+          )
+        ).toBeInTheDocument();
+      });
+
+      it('offers no Check Out for a Daycare booking that has not been checked in', async () => {
+        vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+          data: [],
+          error: null,
+        });
+
+        renderPage();
+
+        await screen.findByText('Check In');
+        expect(screen.queryByText('Check Out')).not.toBeInTheDocument();
+      });
     });
 
     it('shows an error scoped to the failing booking when Check In fails, without disturbing its status', async () => {

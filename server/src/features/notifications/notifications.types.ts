@@ -32,6 +32,10 @@ export const NOTIFICATION_EVENT_TYPES = [
    * (20260913199) and the application code that reacts to a newly-inserted
    * row to send this notification. */
   'spin_wheel_earned',
+  /** Custom change (Daycare overdue checkout fee, migration 20261004241):
+   * fires once when a booked Daycare pet is still checked in past its booked
+   * end time - see daycareOverdue.job.ts. */
+  'daycare_overdue',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];

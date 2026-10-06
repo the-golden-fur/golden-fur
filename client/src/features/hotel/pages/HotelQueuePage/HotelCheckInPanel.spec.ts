@@ -117,7 +117,7 @@ function renderPanel(booking: unknown = BOOKING) {
 }
 
 describe('HotelCheckInPanel', () => {
-  it('Care Instructions load read-only - every feeding field is disabled until Edit is clicked', async () => {
+  it('Feeding is permanently read-only - set by the customer, never editable by staff', async () => {
     setupMocks();
     renderPanel(BOOKING_WITH_CATALOG_FEEDING);
 
@@ -135,9 +135,27 @@ describe('HotelCheckInPanel', () => {
       screen.getByPlaceholderText('Special instructions (optional)')
     ).toBeDisabled();
     expect(screen.queryByText(/Hotel supplies this/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Add feeding time' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    // Edit unlocks Walking/Playtime/cage to correct a mistake, but Feeding
+    // stays locked regardless - staff can't set it even in edit mode.
+    expect(screen.getByLabelText('Meal time')).toBeDisabled();
+    expect(
+      screen.getByPlaceholderText(
+        'Food type - search or type a custom value...'
+      )
+    ).toBeDisabled();
+    expect(screen.getByPlaceholderText('Quantity')).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: 'Add feeding time' })
+    ).not.toBeInTheDocument();
   });
 
-  it('clicking Edit unlocks every care instruction field, in case the customer made a mistake', async () => {
+  it('clicking Edit unlocks Walking/Playtime, but Medications stays read-only like Feeding', async () => {
     setupMocks();
     renderPanel(BOOKING_WITH_CATALOG_FEEDING);
 
@@ -145,25 +163,18 @@ describe('HotelCheckInPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    expect(screen.getByLabelText('Meal time')).not.toBeDisabled();
-    expect(
-      screen.getByPlaceholderText(
-        'Food type - search or type a custom value...'
-      )
-    ).not.toBeDisabled();
-    expect(screen.getByPlaceholderText('Quantity')).not.toBeDisabled();
     expect(
       screen.getByRole('button', { name: 'Done editing' })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Add feeding time' })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Add walk time' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Add medication' })
+      screen.getByRole('button', { name: 'Add playtime' })
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Add medication' })
+    ).not.toBeInTheDocument();
   });
 
   it('#22: a freetext food type from the booking (no catalog match) submits with no catalog id and no billing fields', async () => {

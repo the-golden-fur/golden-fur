@@ -4,6 +4,7 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { getStaffProfile, listUnavailabilityBlocks } from '../../api/staff.api';
 import type { StaffProfile, UnavailabilityBlock } from '../../staff.types';
 import styles from './MySchedulePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const WEEKDAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -177,7 +178,7 @@ export function MySchedulePage() {
   if (isLoadingProfile) {
     return (
       <main className={styles.page}>
-        <p className={styles.copy}>Loading...</p>
+        <LoadingState />
       </main>
     );
   }
@@ -234,7 +235,7 @@ export function MySchedulePage() {
         ) : null}
 
         {isLoadingEntries ? (
-          <p className={styles.copy}>Loading schedule...</p>
+          <LoadingState label="Loading schedule..." />
         ) : (
           <div className={styles.calendar}>
             {WEEKDAY_HEADERS.map((label) => (

@@ -6,6 +6,9 @@ import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.mi
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   archiveStaffAccountController,
+  autoBuildClearController,
+  autoBuildCommitController,
+  autoBuildPreviewController,
   cancelUnavailabilityBlockController,
   createStaffAccountController,
   createUnavailabilityBlockController,
@@ -71,6 +74,33 @@ router.get(
   requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
   requireBranch,
   listBranchScheduleController
+);
+
+router.post(
+  '/staff/branches/:branchId/schedule/auto-build/preview',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
+  requireBranch,
+  autoBuildPreviewController
+);
+
+router.post(
+  '/staff/branches/:branchId/schedule/auto-build',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
+  requireBranch,
+  autoBuildCommitController
+);
+
+router.delete(
+  '/staff/branches/:branchId/schedule/auto-build',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
+  requireBranch,
+  autoBuildClearController
 );
 
 router.get(

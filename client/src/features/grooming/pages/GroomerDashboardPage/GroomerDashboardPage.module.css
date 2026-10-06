@@ -7,10 +7,23 @@
 .content {
   display: grid;
   gap: var(--space-3);
+  /* .page is at least a full viewport tall, and a grid stretches its rows
+     to fill spare height by default - with only a few appointments that
+     spread the title, filters and cards far apart and stretched the cards
+     themselves. Pack them at the top. */
+  align-content: start;
   max-width: 72rem;
   width: 100%;
   margin: 0 auto;
   padding: var(--space-4) var(--space-2);
+}
+
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
 .title {

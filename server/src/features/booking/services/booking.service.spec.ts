@@ -8,6 +8,7 @@ import {
   listPetBookingConflicts,
   overrideBookingStatus,
   recomputeBookingPaymentStatus,
+  resolveBookingItems,
   resolvePackagePrice,
   resolveServicePrice,
   startBooking,
@@ -19,6 +20,7 @@ import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
+import { assertWithinGroomingHours } from './availability.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -61,6 +63,15 @@ vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
 // pre-existing booking-creation tests don't need to account for its extra
 // Supabase lookups (customer_profiles/branches/staff_profiles/notifications)
 // in their sequential mock queues below.
+// Per-branch Grooming hours: assertWithinGroomingHours is covered by its own
+// unit tests (availability.service.spec.ts) - mocked here so these tests
+// don't need to queue its extra branches lookup in their sequential
+// Supabase mock results.
+vi.mock('./availability.service.ts', () => ({
+  assertWithinGroomingHours: vi.fn(),
+  assertDaycareStartsBeforeCutoff: vi.fn(),
+}));
+
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
   sendStaffAssignedNotification: vi.fn().mockResolvedValue(undefined),
@@ -399,6 +410,147 @@ describe('booking.service (#51)', () => {
       p_scheme: 'full',
       p_net_total: 500,
       p_downpayment_amount: null,
+    });
+  });
+
+  describe("a pet type's fixed price (e.g. Cat) and individual services", () => {
+    const START = '2026-08-03T01:00:00.000Z';
+
+    function priceFor(category: string, endIso: string) {
+      return resolveBookingItems(
+        [{ service_id: 'service-1' }],
+        PET as never,
+        true,
+        category as never,
+        'branch-makati',
+        START,
+        endIso
+      ).then((items) => items[0].price_at_booking);
+    }
+
+    beforeEach(() => {
+      vi.mocked(getFixedPrice).mockResolvedValue(800);
+    });
+
+    it('does not apply to an individual Grooming service - it is priced the same as for any other pet', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+
+      const price = await priceFor('Grooming', '2026-08-03T02:00:00.000Z');
+
+      expect(price).toBe(
+        resolveServicePrice(GROOMING_SERVICE as never, PET as never, null)
+      );
+      expect(price).not.toBe(800);
+    });
+
+    it("still applies to another category's service (Hotel, per night)", async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(HOTEL_SERVICE as object),
+        base_price: 650,
+      } as never);
+
+      // Two nights at the fixed 800, not the service's own 650.
+      expect(await priceFor('Hotel', '2026-08-05T01:00:00.000Z')).toBe(1600);
+    });
+
+    it('does not apply to a Veterinary service - a cat pays the same as a dog', async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(GROOMING_SERVICE as object),
+        category: 'Veterinary',
+        base_price: 500,
+        use_pricing_matrix: false,
+      } as never);
+
+      expect(await priceFor('Veterinary', '2026-08-03T02:00:00.000Z')).toBe(
+        500
+      );
+    });
+  });
+
+  describe('Daycare is priced by the hours booked (first hour + each succeeding hour)', () => {
+    const DAYCARE_WITH_FEES = {
+      id: 'service-daycare',
+      category: 'Daycare',
+      name: 'Daycare (per hour)',
+      base_price: 100,
+      duration_minutes: 60,
+      first_hour_fee: 100,
+      succeeding_hour_fee: 50,
+      is_active: true,
+      requires_assessed_pet: false,
+      service_pricing_tiers: [],
+    } as never;
+    const START = '2026-08-03T01:00:00.000Z';
+
+    function priceFor(endIso: string, category = 'Daycare') {
+      return resolveBookingItems(
+        [{ service_id: 'service-daycare' }],
+        PET as never,
+        true,
+        category as never,
+        'branch-makati',
+        START,
+        endIso
+      ).then((items) => items[0].price_at_booking);
+    }
+
+    beforeEach(() => {
+      vi.mocked(getFixedPrice).mockResolvedValue(null);
+    });
+
+    it('1 hour is the first-hour fee', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_WITH_FEES);
+
+      expect(await priceFor('2026-08-03T02:00:00.000Z')).toBe(100);
+    });
+
+    it('4 hours is 100 + 3 x 50', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_WITH_FEES);
+
+      expect(await priceFor('2026-08-03T05:00:00.000Z')).toBe(250);
+    });
+
+    it("follows the service's own fees", async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(DAYCARE_WITH_FEES as object),
+        first_hour_fee: 200,
+        succeeding_hour_fee: 75,
+      } as never);
+
+      expect(await priceFor('2026-08-03T04:00:00.000Z')).toBe(350);
+    });
+
+    it('ignores a pet-type fixed-price override, same as Daycare checkout does', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_WITH_FEES);
+      vi.mocked(getFixedPrice).mockResolvedValue(800);
+
+      expect(await priceFor('2026-08-03T05:00:00.000Z')).toBe(250);
+    });
+
+    it('a Daycare service with no hourly fees set keeps its flat base price', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+
+      expect(await priceFor('2026-08-03T05:00:00.000Z')).toBe(100);
+    });
+
+    it("prices Hotel at the booking branch's own nightly price when it has one", async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(HOTEL_SERVICE as object),
+        service_branch_availability: [
+          { branch_id: 'branch-makati', price_override: 500 },
+          { branch_id: 'branch-other', price_override: null },
+        ],
+      } as never);
+
+      // Two nights at this branch's 500, not the 800 base price.
+      expect(await priceFor('2026-08-05T01:00:00.000Z', 'Hotel')).toBe(1000);
+    });
+
+    it('leaves Hotel on its per-night price', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
+
+      // Two nights of the 1440-minute Hotel service.
+      expect(await priceFor('2026-08-05T01:00:00.000Z', 'Hotel')).toBe(1600);
     });
   });
 
@@ -757,6 +909,37 @@ describe('booking.service (#51)', () => {
   // policy entirely and starts already 'In Progress' - see the top-of-file
   // dev note on createBooking and BookingSource in booking.types.ts.
   describe('walk-in booking flow (custom change)', () => {
+    it('per-branch Grooming hours: a Grooming booking outside the configured time is rejected, Walk-ins included', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+      const rejection = new Error('Grooming is only available ...');
+      (rejection as Error & { statusCode?: number }).statusCode = 422;
+      vi.mocked(assertWithinGroomingHours).mockRejectedValueOnce(rejection);
+      queueFromResults({ data: PET, error: null });
+
+      await expect(
+        createBooking({
+          requesterId: 'recept-1',
+          input: {
+            ...BASE_INPUT,
+            customer_id: CUSTOMER_ID,
+            booking_source: 'Walk-in',
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 422 });
+
+      expect(assertWithinGroomingHours).toHaveBeenCalledWith(
+        'branch-1',
+        BASE_INPUT.scheduled_start,
+        BASE_INPUT.scheduled_end
+      );
+      expect(
+        recordedWrites.some(
+          (write) => write.table === 'bookings' && write.method === 'insert'
+        )
+      ).toBe(false);
+    });
+
     it('a staff-created Walk-in booking skips resolveDownpaymentPolicy entirely and starts In Progress', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
@@ -846,6 +1029,144 @@ describe('booking.service (#51)', () => {
         .mocked(supabase.from)
         .mock.calls.filter(([table]) => table === 'policy_configurations');
       expect(policyQueries).toHaveLength(1);
+    });
+
+    // Pay at checkout (custom change): a Walk-in Hotel/Daycare booking can be
+    // created with no upfront charge - billed at checkout from the time
+    // actually stayed (payAtCheckoutCharge.service.ts).
+    describe('pay at checkout', () => {
+      const PAY_AT_CHECKOUT_INPUT = {
+        ...BASE_INPUT,
+        customer_id: CUSTOMER_ID,
+        booking_source: 'Walk-in' as const,
+        service_category: 'Daycare' as const,
+        items: [{ service_id: 'service-daycare' }],
+        payment_scheme: 'pay_at_checkout' as const,
+      };
+
+      it('saves the flag and creates no upfront charge for a Walk-in Daycare booking', async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+        queueFromResults(
+          { data: PET, error: null }, // pet ownership
+          {
+            data: [{ ...DEFAULT_POLICY, pay_at_checkout_enabled: true }],
+            error: null,
+          }, // resolveEffectivePolicy
+          { data: [], error: null }, // pre-insert daycare overlap count
+          { data: { ...INSERTED_BOOKING, id: 'booking-2' }, error: null }, // insert
+          { data: null, error: null }, // booking_items insert
+          {
+            data: [
+              {
+                id: 'booking-2',
+                pet_id: PET.id,
+                created_at: '2026-01-01T00:00:00Z',
+              },
+            ],
+            error: null,
+          }, // post-insert re-count: winner
+          { data: { ...INSERTED_BOOKING, id: 'booking-2' }, error: null } // final fetch
+        );
+
+        await createBooking({
+          requesterId: 'recept-1',
+          input: PAY_AT_CHECKOUT_INPUT,
+        });
+
+        const insert = recordedWrites.find(
+          (write) => write.table === 'bookings' && write.method === 'insert'
+        );
+
+        expect(insert?.payload).toMatchObject({
+          booking_source: 'Walk-in',
+          pay_at_checkout: true,
+          payment_status: 'Pending',
+          downpayment_required: false,
+        });
+        expect(supabase.rpc).not.toHaveBeenCalledWith(
+          'create_initial_booking_charge',
+          expect.anything()
+        );
+      });
+
+      it('is refused when the branch has pay at checkout switched off', async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+        queueFromResults(
+          { data: PET, error: null },
+          {
+            data: [{ ...DEFAULT_POLICY, pay_at_checkout_enabled: false }],
+            error: null,
+          }
+        );
+
+        await expect(
+          createBooking({
+            requesterId: 'recept-1',
+            input: PAY_AT_CHECKOUT_INPUT,
+          })
+        ).rejects.toMatchObject({ statusCode: 422 });
+      });
+
+      it('is refused for an Online booking', async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+
+        await expect(
+          createBooking({
+            requesterId: 'recept-1',
+            input: { ...PAY_AT_CHECKOUT_INPUT, booking_source: 'Online' },
+          })
+        ).rejects.toMatchObject({ statusCode: 422 });
+      });
+
+      it('is refused for a category other than Hotel or Daycare', async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+
+        await expect(
+          createBooking({
+            requesterId: 'recept-1',
+            input: {
+              ...BASE_INPUT,
+              customer_id: CUSTOMER_ID,
+              booking_source: 'Walk-in',
+              payment_scheme: 'pay_at_checkout',
+            },
+          })
+        ).rejects.toMatchObject({ statusCode: 422 });
+      });
+
+      it('an ordinary Walk-in is not flagged and still gets its upfront charge', async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+        queueFromResults(
+          { data: PET, error: null },
+          { data: INSERTED_BOOKING, error: null },
+          { data: null, error: null },
+          { data: null, error: null },
+          { data: [{ id: 'booking-1' }], error: null },
+          { data: INSERTED_BOOKING, error: null }
+        );
+
+        await createBooking({
+          requesterId: 'recept-1',
+          input: {
+            ...BASE_INPUT,
+            customer_id: CUSTOMER_ID,
+            booking_source: 'Walk-in',
+          },
+        });
+
+        const insert = recordedWrites.find(
+          (write) => write.table === 'bookings' && write.method === 'insert'
+        );
+
+        expect(insert?.payload).toMatchObject({ pay_at_checkout: false });
+        expect(supabase.rpc).toHaveBeenCalledWith(
+          'create_initial_booking_charge',
+          expect.objectContaining({ p_scheme: 'full' })
+        );
+      });
     });
 
     it('rejects booking_source Walk-in from a non-staff (customer) requester', async () => {
@@ -1943,6 +2264,104 @@ describe('booking.service (#51)', () => {
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
       expect(insert?.payload).toMatchObject({ total_price: 800 });
+    });
+  });
+
+  // Receptionist/Groomer may only set Walk time/Playtime for a customer -
+  // Feeding and Medications are the customer's own call. The booking-flow UI
+  // already hides those two for these roles; this is the server-side
+  // backstop for a direct API call that still sends them.
+  describe('staff-restricted hotel_preferences fields (Receptionist/Groomer)', () => {
+    const HOTEL_PREFERENCES_INPUT = {
+      uniform_instructions: true,
+      feeding: [
+        { meal_time: 'Morning' as const, food_type: 'Kibble', quantity: '1' },
+      ],
+      walking: [{ time_block: 'Morning' as const, duration_minutes: 15 }],
+      playing: [{ time_block: 'Evening' as const, duration_minutes: 10 }],
+      medications: [
+        {
+          medication_name: 'Amoxicillin',
+          dose: '250mg',
+          dose_unit: 'mg' as const,
+          scheduled_times: ['08:00'],
+        },
+      ],
+    };
+
+    it('strips feeding/medications but keeps walking/playing for a Receptionist-created booking', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [], error: null }, // Hotel overlap - empty
+        { data: null, error: null, count: 10 } as never, // getHotelCageCapacity count
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: 'recept-1',
+        input: {
+          ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
+          service_category: 'Hotel',
+          items: [{ service_id: 'service-hotel' }],
+          scheduled_start: new Date(BASE_START_MS).toISOString(),
+          scheduled_end: new Date(BASE_START_MS + 1440 * 60_000).toISOString(),
+          hotel_preferences: HOTEL_PREFERENCES_INPUT,
+        } as never,
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        hotel_preferences: {
+          feeding: [],
+          medications: [],
+          walking: HOTEL_PREFERENCES_INPUT.walking,
+          playing: HOTEL_PREFERENCES_INPUT.playing,
+        },
+      });
+    });
+
+    it('keeps feeding/medications intact for an Admin-created booking', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(HOTEL_SERVICE);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Admin');
+      queueFromResults(
+        { data: PET, error: null },
+        { data: [DEFAULT_POLICY], error: null },
+        { data: [], error: null },
+        { data: null, error: null, count: 10 } as never, // getHotelCageCapacity count
+        { data: INSERTED_BOOKING, error: null },
+        { data: null, error: null },
+        { data: [{ id: 'booking-1' }], error: null },
+        { data: INSERTED_BOOKING, error: null }
+      );
+
+      await createBooking({
+        requesterId: 'admin-1',
+        input: {
+          ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
+          service_category: 'Hotel',
+          items: [{ service_id: 'service-hotel' }],
+          scheduled_start: new Date(BASE_START_MS).toISOString(),
+          scheduled_end: new Date(BASE_START_MS + 1440 * 60_000).toISOString(),
+          hotel_preferences: HOTEL_PREFERENCES_INPUT,
+        } as never,
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({
+        hotel_preferences: HOTEL_PREFERENCES_INPUT,
+      });
     });
   });
 

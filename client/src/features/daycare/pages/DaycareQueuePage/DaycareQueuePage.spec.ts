@@ -10,6 +10,7 @@ import type { StaffProfile } from '../../../staff/staff.types';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as bookingApi from '../../../booking/api/booking.api';
 import type { Booking } from '../../../booking/booking.types';
+import * as daycareApi from '../../api/daycare.api';
 import { DaycareQueuePage } from './DaycareQueuePage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -21,6 +22,9 @@ vi.mock('../../../customers/api/customer.api', () => ({
 }));
 vi.mock('../../../booking/api/booking.api', () => ({
   listBookings: vi.fn(),
+}));
+vi.mock('../../api/daycare.api', () => ({
+  listDaycareSessions: vi.fn(),
 }));
 
 const navigateMock = vi.fn();
@@ -157,6 +161,12 @@ function stubPetAndOwner() {
 describe('DaycareQueuePage (Daycare Queue redesign)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // booking-1 (buildBooking's default id) has been checked in unless a
+    // test says otherwise.
+    vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+      data: [{ id: 'session-1', booking_id: 'booking-1' }] as never,
+      error: null,
+    });
   });
 
   it('redirects a Cashier viewer (not a check-in/checkout role) to /staff/settings', async () => {
@@ -198,6 +208,25 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('sorts by the latest scheduled time by default', async () => {
+    stubPetAndOwner();
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Groomer'),
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking()],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Buddy');
+    expect(
+      screen.getByDisplayValue('Sort: Scheduled time (latest)')
+    ).toBeInTheDocument();
+  });
+
   it('clicking a Pending row navigates to its check-in finalize page', async () => {
     stubPetAndOwner();
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
@@ -228,6 +257,69 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
       data: [buildBooking({ status: 'In Progress' })],
       error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByText('Buddy'));
+
+    expect(navigateMock).toHaveBeenCalledWith(
+      '/staff/hotel/care-log?petId=pet-1'
+    );
+  });
+
+  it('an In Progress row that has NOT been checked in yet (a walk-in) opens the check-in form instead', async () => {
+    stubPetAndOwner();
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Groomer'),
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'In Progress' })],
+      error: null,
+    });
+    // No Active session for this booking.
+    vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText(/Not checked in yet/)).toBeInTheDocument();
+    await user.click(screen.getByText('Buddy'));
+
+    expect(navigateMock).toHaveBeenCalledWith(
+      '/staff/daycare/queue/check-in/booking-1'
+    );
+  });
+
+  it('redirects a Receptionist - the front desk checks Daycare pets in and out from the Bookings Queue instead', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Receptionist'),
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Staff profile page')).toBeInTheDocument();
+  });
+
+  it('falls back to the Boarding Checklist for an In Progress row when the sessions lookup fails', async () => {
+    stubPetAndOwner();
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Groomer'),
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'In Progress' })],
+      error: null,
+    });
+    vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+      data: null,
+      error: 'boom',
     });
 
     const user = userEvent.setup();

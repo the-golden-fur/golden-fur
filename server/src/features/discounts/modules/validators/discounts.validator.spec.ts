@@ -108,6 +108,25 @@ describe('createDiscountValidator', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('session 115: accepts a misc_sale-scoped discount with no scope field set', () => {
+    const result = createDiscountValidator.safeParse({
+      ...base,
+      scope_type: 'misc_sale',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('session 115: rejects a misc_sale scope with a scope field set', () => {
+    const result = createDiscountValidator.safeParse({
+      ...base,
+      scope_type: 'misc_sale',
+      scope_category: 'Grooming',
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('updateDiscountValidator', () => {
@@ -136,5 +155,11 @@ describe('updateDiscountValidator', () => {
     expect(
       updateDiscountValidator.safeParse({ scope_type: 'package' }).success
     ).toBe(false);
+  });
+
+  it('session 115: accepts changing scope_type to misc_sale with no scope field', () => {
+    expect(
+      updateDiscountValidator.safeParse({ scope_type: 'misc_sale' }).success
+    ).toBe(true);
   });
 });

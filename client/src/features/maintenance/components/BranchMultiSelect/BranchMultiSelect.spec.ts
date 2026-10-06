@@ -80,4 +80,38 @@ describe('BranchMultiSelect', () => {
       'branch-southwoods',
     ]);
   });
+
+  it('lockedBranchId: disables every checkbox except the locked branch, for an Admin scoped to their own branch', () => {
+    render(
+      createElement(BranchMultiSelect, {
+        label: 'Available at',
+        branches: BRANCHES,
+        selectedBranchIds: ['branch-makati'],
+        onChange: vi.fn(),
+        lockedBranchId: 'branch-makati',
+      })
+    );
+
+    expect(screen.getByRole('checkbox', { name: 'Makati' })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: 'Southwoods' })).toBeDisabled();
+  });
+
+  it('lockedBranchId: a disabled checkbox cannot be toggled', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      createElement(BranchMultiSelect, {
+        label: 'Available at',
+        branches: BRANCHES,
+        selectedBranchIds: ['branch-makati'],
+        onChange,
+        lockedBranchId: 'branch-makati',
+      })
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: 'Southwoods' }));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

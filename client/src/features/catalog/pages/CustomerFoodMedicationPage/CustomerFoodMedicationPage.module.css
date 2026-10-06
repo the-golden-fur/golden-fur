@@ -7,6 +7,22 @@
   padding: var(--space-4) var(--space-2);
 }
 
+/* Title + intro on the left, the primary "Add new type" action on the
+   right; wraps under the text on narrow screens. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+.headerText {
+  display: grid;
+  gap: var(--space-1);
+  flex: 1 1 18rem;
+}
+
 .title {
   margin: 0;
   color: var(--color-text-primary);
@@ -76,7 +92,35 @@
 
 .form {
   display: grid;
+  gap: var(--space-3);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.fieldLabel {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
   gap: var(--space-2);
+}
+
+.secondaryButton {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-button);
+  padding: var(--space-2) var(--space-3);
 }
 
 .input,
@@ -89,6 +133,9 @@
 }
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   border: 0;
   border-radius: var(--radius-pill);
   background: var(--color-accent-gold-primary);

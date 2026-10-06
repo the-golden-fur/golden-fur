@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
+  listConsultationFormTemplates,
   listMedicationCatalog,
-  listProcedureCatalog,
 } from '../../../../veterinary/api/veterinary.api';
 import { QueueWidgetCard } from '../QueueWidgetCard/QueueWidgetCard';
 
@@ -10,16 +10,17 @@ interface VeterinaryCatalogWidgetProps {
 }
 
 /**
- * Veterinarian dashboard widget - the caller's own saved medication/
- * procedure catalog at a glance, reusing the same two endpoints
+ * Veterinarian dashboard widget - the caller's own saved medications and
+ * consultation form templates at a glance, reusing the same two endpoints
  * VetCatalogPage itself calls (owner-scoped server-side, same as that page).
+ * #117: procedures replaced by consultation form templates.
  */
 export function VeterinaryCatalogWidget({
   accessToken,
 }: VeterinaryCatalogWidgetProps) {
   const [counts, setCounts] = useState<{
     medications: number;
-    procedures: number;
+    consultationForms: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,22 +31,22 @@ export function VeterinaryCatalogWidget({
 
     void Promise.all([
       listMedicationCatalog(accessToken),
-      listProcedureCatalog(accessToken),
-    ]).then(([medResult, procResult]) => {
+      listConsultationFormTemplates(accessToken),
+    ]).then(([medResult, templateResult]) => {
       if (!isMounted) return;
 
       if (medResult.error || !medResult.data) {
         setError(medResult.error ?? 'Could not load your catalog.');
         return;
       }
-      if (procResult.error || !procResult.data) {
-        setError(procResult.error ?? 'Could not load your catalog.');
+      if (templateResult.error || !templateResult.data) {
+        setError(templateResult.error ?? 'Could not load your catalog.');
         return;
       }
 
       setCounts({
         medications: medResult.data.length,
-        procedures: procResult.data.length,
+        consultationForms: templateResult.data.length,
       });
     });
 
@@ -54,7 +55,7 @@ export function VeterinaryCatalogWidget({
     };
   }, [accessToken]);
 
-  const total = counts ? counts.medications + counts.procedures : 0;
+  const total = counts ? counts.medications + counts.consultationForms : 0;
 
   return (
     <QueueWidgetCard
@@ -64,10 +65,10 @@ export function VeterinaryCatalogWidget({
       error={error}
       count={total}
       countLabel="saved items"
-      emptyLabel="No saved medications or procedures yet."
+      emptyLabel="No saved medications or consultation form templates yet."
       latestLabel={
         counts
-          ? `${counts.medications} medications · ${counts.procedures} procedures`
+          ? `${counts.medications} medications · ${counts.consultationForms} consultation form templates`
           : null
       }
     />

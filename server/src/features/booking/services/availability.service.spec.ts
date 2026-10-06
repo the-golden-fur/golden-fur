@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getDaySlots, resolveOperatingWindow } from './availability.service.ts';
+import {
+  assertDaycareStartsBeforeCutoff,
+  assertWithinGroomingHours,
+  getDaySlots,
+  resolveOperatingWindow,
+} from './availability.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
@@ -576,6 +581,318 @@ describe('availability.service (#56/#60 supporting infra)', () => {
       await expect(
         resolveOperatingWindow({ branchId: 'missing', date: '2026-08-03' })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe('Daycare check-in cutoff', () => {
+    // Monday 2026-08-03, open 08:00-18:00, Daycare check-in closes 16:00.
+    // Asia/Manila is UTC+8, so 16:00 local = 08:00 UTC.
+    const branchWithCutoff = (name: string, cutoff: string) => ({
+      data: {
+        name,
+        timezone: 'Asia/Manila',
+        operating_hours: { monday: { open: '08:00', close: '18:00' } },
+        daycare_checkin_cutoff: cutoff,
+      },
+      error: null,
+    });
+
+    const NO_STAFF_ROLES = {
+      data: { staff_picker_enabled: false, eligible_staff_roles: [] },
+      error: null,
+    };
+
+    function pinBeforeOpening() {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-02T20:00:00.000Z')); // 04:00 Monday
+    }
+
+    it('does not offer Daycare slots that start at or after the cutoff', async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        branchWithCutoff('Southwoods', '16:00:00'),
+        POLICY_ROW_LUNCH_DISABLED,
+        NO_STAFF_ROLES
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Daycare',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      // 08:00 through 15:00 - the 16:00 and 17:00 starts are gone.
+      expect(slots).toHaveLength(8);
+      expect(slots.at(-1)?.start).toBe('2026-08-03T07:00:00.000Z'); // 15:00
+    });
+
+    it("follows the branch's own configured cutoff", async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        branchWithCutoff('Southwoods', '17:00:00'),
+        POLICY_ROW_LUNCH_DISABLED,
+        NO_STAFF_ROLES
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Daycare',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots).toHaveLength(9);
+    });
+
+    it('keeps Makati at its fixed 4 PM cutoff whatever the column says, same as check-in', async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        branchWithCutoff('Makati', '17:30:00'),
+        POLICY_ROW_LUNCH_DISABLED,
+        NO_STAFF_ROLES
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Daycare',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots).toHaveLength(8);
+    });
+
+    it('does not apply the Daycare cutoff to another category', async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        branchWithCutoff('Southwoods', '16:00:00'),
+        POLICY_ROW_LUNCH_DISABLED,
+        NO_STAFF_ROLES
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Hotel',
+        date: '2026-08-03',
+        slotDurationMinutes: 1440,
+        petWeightClass: 'S',
+      });
+
+      // Hourly arrival candidates across the whole 08:00-18:00 day.
+      expect(slots).toHaveLength(10);
+    });
+
+    describe('assertDaycareStartsBeforeCutoff', () => {
+      it('allows a start before the cutoff', async () => {
+        queueFromResults(branchWithCutoff('Southwoods', '16:00:00'));
+
+        await expect(
+          assertDaycareStartsBeforeCutoff(
+            'branch-1',
+            '2026-08-03T07:00:00.000Z' // 15:00
+          )
+        ).resolves.toBeUndefined();
+      });
+
+      it('rejects a start at or after the cutoff, naming the time', async () => {
+        queueFromResults(branchWithCutoff('Southwoods', '16:00:00'));
+
+        await expect(
+          assertDaycareStartsBeforeCutoff(
+            'branch-1',
+            '2026-08-03T08:00:00.000Z' // 16:00
+          )
+        ).rejects.toMatchObject({
+          statusCode: 422,
+          message: expect.stringContaining('4:00 PM'),
+        });
+      });
+    });
+  });
+
+  describe('per-branch Grooming hours', () => {
+    // Monday: open 08:00-18:00, Grooming only 10:00-13:00. 2026-08-03 is a
+    // Monday; Asia/Manila is UTC+8, so 10:00 local = 02:00 UTC.
+    const BRANCH_WITH_GROOMING_HOURS = {
+      data: {
+        timezone: 'Asia/Manila',
+        operating_hours: { monday: { open: '08:00', close: '18:00' } },
+        grooming_hours: { monday: { open: '10:00', close: '13:00' } },
+      },
+      error: null,
+    };
+
+    const GROOMER_CONFIG = {
+      data: { staff_picker_enabled: true, eligible_staff_roles: ['Groomer'] },
+      error: null,
+    };
+
+    function pinBeforeOpening() {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-02T20:00:00.000Z')); // 04:00 Monday, Asia/Manila
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: [],
+        error: null,
+      } as never);
+    }
+
+    it('only generates Grooming slots inside the configured Grooming time', async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        BRANCH_WITH_GROOMING_HOURS,
+        POLICY_ROW_LUNCH_DISABLED,
+        GROOMER_CONFIG,
+        { data: null, error: null, count: 1 }
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots.map((slot) => slot.start)).toEqual([
+        '2026-08-03T02:00:00.000Z', // 10:00
+        '2026-08-03T03:00:00.000Z', // 11:00
+        '2026-08-03T04:00:00.000Z', // 12:00
+      ]);
+    });
+
+    it('leaves Grooming on the full operating hours for a day with no Grooming time set', async () => {
+      pinBeforeOpening();
+      queueFromResults(
+        {
+          data: {
+            ...BRANCH_WITH_GROOMING_HOURS.data,
+            grooming_hours: { tuesday: { open: '10:00', close: '13:00' } },
+          },
+          error: null,
+        },
+        POLICY_ROW_LUNCH_DISABLED,
+        GROOMER_CONFIG,
+        { data: null, error: null, count: 1 }
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      // 08:00-18:00 in 60-minute steps.
+      expect(slots).toHaveLength(10);
+    });
+
+    it('does not narrow another category to the Grooming time', async () => {
+      pinBeforeOpening();
+      queueFromResults(BRANCH_WITH_GROOMING_HOURS, POLICY_ROW_LUNCH_DISABLED, {
+        data: { staff_picker_enabled: false, eligible_staff_roles: [] },
+        error: null,
+      });
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Daycare',
+        date: '2026-08-03',
+        slotDurationMinutes: 60,
+      });
+
+      expect(slots).toHaveLength(10);
+    });
+
+    it('clamps a Grooming time that runs past the operating hours', async () => {
+      queueFromResults({
+        data: {
+          ...BRANCH_WITH_GROOMING_HOURS.data,
+          grooming_hours: { monday: { open: '06:00', close: '20:00' } },
+        },
+        error: null,
+      });
+
+      await expect(
+        resolveOperatingWindow({
+          branchId: 'branch-1',
+          date: '2026-08-03',
+          serviceCategory: 'Grooming',
+        })
+      ).resolves.toEqual({ open: '08:00', close: '18:00' });
+    });
+
+    it('resolveOperatingWindow returns the Grooming time for Grooming and the operating hours otherwise', async () => {
+      queueFromResults(BRANCH_WITH_GROOMING_HOURS);
+      await expect(
+        resolveOperatingWindow({
+          branchId: 'branch-1',
+          date: '2026-08-03',
+          serviceCategory: 'Grooming',
+        })
+      ).resolves.toEqual({ open: '10:00', close: '13:00' });
+
+      queueFromResults(BRANCH_WITH_GROOMING_HOURS);
+      await expect(
+        resolveOperatingWindow({
+          branchId: 'branch-1',
+          date: '2026-08-03',
+          serviceCategory: 'Veterinary',
+        })
+      ).resolves.toEqual({ open: '08:00', close: '18:00' });
+    });
+
+    describe('assertWithinGroomingHours', () => {
+      it('allows a booking inside the Grooming time', async () => {
+        queueFromResults(BRANCH_WITH_GROOMING_HOURS);
+
+        await expect(
+          assertWithinGroomingHours(
+            'branch-1',
+            '2026-08-03T02:00:00.000Z', // 10:00
+            '2026-08-03T05:00:00.000Z' // 13:00
+          )
+        ).resolves.toBeUndefined();
+      });
+
+      it('rejects a booking that starts before the Grooming time, naming the hours', async () => {
+        queueFromResults(BRANCH_WITH_GROOMING_HOURS);
+
+        await expect(
+          assertWithinGroomingHours(
+            'branch-1',
+            '2026-08-03T01:00:00.000Z', // 09:00
+            '2026-08-03T02:00:00.000Z'
+          )
+        ).rejects.toMatchObject({
+          statusCode: 422,
+          message: expect.stringContaining('10:00 AM to 1:00 PM'),
+        });
+      });
+
+      it('rejects a booking that ends after the Grooming time', async () => {
+        queueFromResults(BRANCH_WITH_GROOMING_HOURS);
+
+        await expect(
+          assertWithinGroomingHours(
+            'branch-1',
+            '2026-08-03T04:30:00.000Z', // 12:30
+            '2026-08-03T05:30:00.000Z' // 13:30
+          )
+        ).rejects.toMatchObject({ statusCode: 422 });
+      });
+
+      it('is a no-op on a day with no Grooming time configured', async () => {
+        queueFromResults(BRANCH_WITH_GROOMING_HOURS);
+
+        // 2026-08-04 is a Tuesday - no grooming_hours entry.
+        await expect(
+          assertWithinGroomingHours(
+            'branch-1',
+            '2026-08-03T22:00:00.000Z', // 06:00 Tuesday
+            '2026-08-03T23:00:00.000Z'
+          )
+        ).resolves.toBeUndefined();
+      });
     });
   });
 });

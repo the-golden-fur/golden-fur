@@ -1,12 +1,20 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { applyCredit, getAvailableCredit } from './creditStub.service.ts';
 import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
-import { initiatePaymongoPayment } from './paymongo.service.ts';
+import {
+  evaluateMiscSaleDiscounts,
+  evaluateMiscSalePromos,
+} from './discountPromoEvaluation.service.ts';
 import type {
   CreateMiscSaleInput,
+  MiscSaleItemInput,
   UpdateMiscSaleInput,
 } from '../modules/validators/billing.validator.ts';
-import type { Transaction, TransactionLineItem } from '../billing.types.ts';
+import type {
+  DraftLineItem,
+  Transaction,
+  TransactionLineItem,
+} from '../billing.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -20,9 +28,8 @@ function round2(value: number): number {
 
 export interface MiscSaleResult {
   transaction: Transaction;
-  lineItem: TransactionLineItem;
+  lineItems: TransactionLineItem[];
   changeAmount: number | null;
-  paymongoCheckoutUrl: string | null;
 }
 
 interface ResolvedItem {
@@ -40,12 +47,7 @@ interface ResolvedItem {
  * charged_price), or a pure freetext description + amount when nothing in
  * the catalog matches.
  */
-async function resolveItem(
-  input: Pick<
-    CreateMiscSaleInput,
-    'product_catalog_id' | 'quantity' | 'description' | 'amount'
-  >
-): Promise<ResolvedItem> {
+async function resolveItem(input: MiscSaleItemInput): Promise<ResolvedItem> {
   if (input.product_catalog_id) {
     const { data: product, error } = await supabase
       .from('product_catalog')
@@ -72,6 +74,116 @@ async function resolveItem(
   };
 }
 
+/** Session 115 (Stage C): a misc sale is now a real multi-item cart - one
+ * resolveItem() call per cart line, run in parallel like
+ * checkoutAggregation.service.ts's own line-item batches. */
+async function resolveItems(
+  items: MiscSaleItemInput[]
+): Promise<ResolvedItem[]> {
+  return Promise.all(items.map(resolveItem));
+}
+
+function itemsToDraftLines(items: ResolvedItem[]): DraftLineItem[] {
+  return items.map((item) => ({
+    line_item_type: 'misc_sale_item',
+    reference_id: item.referenceId,
+    description: item.description,
+    quantity: item.quantity,
+    unit_price: item.unitPrice,
+    line_total: round2(item.unitPrice * item.quantity),
+  }));
+}
+
+/** transactions.misc_sale_description is one text column at the
+ * transaction level (unchanged schema) - a multi-item sale summarizes its
+ * cart into it (e.g. "Dry Kibble x2, Leash") rather than needing a schema
+ * change; TransactionHistoryTable/DailySalesReportPage keep rendering it
+ * as a single string, unaware anything changed. */
+function summarizeDescription(items: ResolvedItem[]): string {
+  return items
+    .map((item) =>
+      item.quantity > 1
+        ? `${item.description} x${item.quantity}`
+        : item.description
+    )
+    .join(', ');
+}
+
+export interface MiscSalePreview {
+  itemLines: DraftLineItem[];
+  discountLines: DraftLineItem[];
+  promoLines: DraftLineItem[];
+  subtotal: number;
+  discountAmount: number;
+  promoAmount: number;
+  /** Total before credit is applied - mirrors buildCheckoutPreview's own
+   * preCreditTotal, what the wizard's Discount/Promo and Payment steps show
+   * as the running total. */
+  preCreditTotal: number;
+}
+
+interface MiscSalePreviewParams {
+  branchId: string;
+  items: MiscSaleItemInput[];
+  paymentMethod: string;
+  discountIds: string[];
+  promoIds: string[];
+}
+
+/**
+ * Session 115 (Stage C): the read-only half of recording a misc sale -
+ * aggregates the cart and evaluates discounts/promos without creating
+ * anything, so the wizard's Discount/Promo step can show real line items
+ * (and the Confirmation step a real total) before the cashier submits.
+ * Mirrors buildCheckoutPreview's own preview/create split so no evaluation
+ * logic is duplicated between this and createMiscSale below.
+ */
+export async function buildMiscSalePreview(
+  params: MiscSalePreviewParams
+): Promise<MiscSalePreview> {
+  const resolvedItems = await resolveItems(params.items);
+  const itemLines = itemsToDraftLines(resolvedItems);
+  const subtotal = round2(
+    itemLines.reduce((sum, line) => sum + line.line_total, 0)
+  );
+
+  const discountLines = await evaluateMiscSaleDiscounts({
+    branchId: params.branchId,
+    paymentMethod: params.paymentMethod,
+    discountIds: params.discountIds,
+    subtotal,
+  });
+  const evaluatedPromos = await evaluateMiscSalePromos({
+    branchId: params.branchId,
+    promoIds: params.promoIds,
+    subtotal,
+  });
+  const promoLines = evaluatedPromos.map((evaluated) => evaluated.line);
+
+  const discountAmount = round2(
+    discountLines.reduce((sum, line) => sum - line.line_total, 0)
+  );
+  const promoAmount = round2(
+    promoLines.reduce((sum, line) => sum - line.line_total, 0)
+  );
+  const preCreditTotal = round2(
+    [...itemLines, ...discountLines, ...promoLines].reduce(
+      (sum, line) => sum + line.line_total,
+      0
+    )
+  );
+
+  return {
+    itemLines,
+    discountLines,
+    promoLines,
+    subtotal,
+    discountAmount,
+    promoAmount,
+    preCreditTotal,
+  };
+}
+
 interface CreateMiscSaleParams {
   requesterId: string;
   branchId: string;
@@ -79,26 +191,46 @@ interface CreateMiscSaleParams {
 }
 
 /**
- * Issue #85: a transactions row with booking_id = NULL and
- * transaction_type = 'miscellaneous_sale' (enforced by the CHECK
- * constraint from #82) plus a single misc_sale_item line item. Reuses the
- * same credit-application code path as checkoutAggregation.service.ts
- * (creditStub.service.ts) rather than duplicating it, matching the Guide's
- * explicit instruction.
+ * Issue #85, extended session 115 (Stage C): a transactions row with
+ * booking_id = NULL and transaction_type = 'miscellaneous_sale' (enforced
+ * by the CHECK constraint from #82), now backed by a real multi-item cart
+ * plus auto-evaluated discounts/promos - one transaction_line_items row
+ * per cart item, discount, and promo, exactly like a booking checkout's own
+ * line-item shape. Reuses the same credit-application code path as
+ * checkoutAggregation.service.ts (creditStub.service.ts) rather than
+ * duplicating it, matching the Guide's explicit instruction.
  */
 export async function createMiscSale({
   requesterId,
   branchId,
   input,
 }: CreateMiscSaleParams): Promise<MiscSaleResult> {
-  const item = await resolveItem(input);
-  const subtotal = round2(item.unitPrice * item.quantity);
+  const preview = await buildMiscSalePreview({
+    branchId,
+    items: input.items,
+    paymentMethod: input.payment_method,
+    discountIds: input.discount_ids,
+    promoIds: input.promo_ids,
+  });
 
   const availableCredit = await getAvailableCredit(input.customer_id, branchId);
-  const requestedCredit = Math.max(
-    0,
-    Math.min(input.credit_to_apply, availableCredit, subtotal)
-  );
+  // Paying by 'Credit' settles the whole sale from the branch balance - it
+  // must cover all of it (the wizard disables the option otherwise; this is
+  // the server-side guard). Any other method may still top up with a
+  // partial credit_to_apply.
+  const payWithCredit = input.payment_method === 'Credit';
+  if (payWithCredit && availableCredit < preview.preCreditTotal) {
+    throwWithStatus(
+      400,
+      "The customer's credit at this branch does not cover this sale"
+    );
+  }
+  const requestedCredit = payWithCredit
+    ? preview.preCreditTotal
+    : Math.max(
+        0,
+        Math.min(input.credit_to_apply, availableCredit, preview.preCreditTotal)
+      );
   const creditResult = await applyCredit(
     input.customer_id,
     branchId,
@@ -106,29 +238,30 @@ export async function createMiscSale({
   );
   const creditAppliedAmount = creditResult.appliedAmount;
 
-  const amountDue = round2(subtotal - creditAppliedAmount);
+  const amountDue = round2(preview.preCreditTotal - creditAppliedAmount);
 
-  const { paymentStatus, changeAmount } = resolvePaymentConfirmation({
-    paymentMethod: input.payment_method,
-    onlineChannel: input.online_channel,
-    amountDue,
-    cashTendered: input.cash_tendered,
-  });
+  // A Credit sale is Fully Paid by the redeem above. If the balance shrank
+  // between the check and the atomic redeem (redeem_credit clamps to what's
+  // there), record what WAS redeemed as Partially Paid rather than throwing -
+  // the credit is already spent by now, so aborting would lose it.
+  const { paymentStatus, changeAmount } =
+    input.payment_method === 'Credit'
+      ? {
+          paymentStatus:
+            amountDue > 0
+              ? ('Partially Paid' as const)
+              : ('Fully Paid' as const),
+          changeAmount: null,
+        }
+      : resolvePaymentConfirmation({
+          paymentMethod: input.payment_method,
+          amountDue,
+          cashTendered: input.cash_tendered,
+        });
 
-  let paymentReference = input.payment_reference ?? null;
-  let paymongoCheckoutUrl: string | null = null;
-
-  if (paymentStatus === 'Pending') {
-    const initiated = await initiatePaymongoPayment({
-      paymentMethod: input.payment_method as 'GCash' | 'Maya',
-      amount: amountDue,
-      description: item.description,
-      redirectSuccessUrl: process.env.PAYMONGO_REDIRECT_SUCCESS_URL ?? '',
-      redirectFailedUrl: process.env.PAYMONGO_REDIRECT_FAILED_URL ?? '',
-    });
-    paymentReference = initiated.sourceId;
-    paymongoCheckoutUrl = initiated.checkoutUrl;
-  }
+  const paymentReference = input.payment_reference ?? null;
+  const resolvedItems = await resolveItems(input.items);
+  const description = summarizeDescription(resolvedItems);
 
   const { data: transaction, error: transactionError } = await supabase
     .from('transactions')
@@ -140,14 +273,14 @@ export async function createMiscSale({
       payment_method: input.payment_method,
       bank_name: input.bank_name ?? null,
       payment_status: paymentStatus,
-      subtotal_amount: subtotal,
-      discount_amount: 0,
-      promo_amount: 0,
+      subtotal_amount: preview.subtotal,
+      discount_amount: preview.discountAmount,
+      promo_amount: preview.promoAmount,
       credit_applied_amount: creditAppliedAmount,
-      total_amount: round2(subtotal - creditAppliedAmount),
+      total_amount: round2(preview.preCreditTotal - creditAppliedAmount),
       payment_reference: paymentReference,
-      misc_sale_description: item.description,
-      processed_by_staff_id: paymentStatus === 'Pending' ? null : requesterId,
+      misc_sale_description: description,
+      processed_by_staff_id: requesterId,
     })
     .select('*')
     .maybeSingle();
@@ -159,33 +292,40 @@ export async function createMiscSale({
     );
   }
 
-  const { data: lineItem, error: lineItemError } = await supabase
-    .from('transaction_line_items')
-    .insert({
-      transaction_id: transaction.id,
-      line_item_type: 'misc_sale_item',
-      reference_id: item.referenceId,
-      description: item.description,
-      quantity: item.quantity,
-      unit_price: item.unitPrice,
-      line_total: subtotal,
-    })
-    .select('*')
-    .maybeSingle();
+  const allLines = [
+    ...preview.itemLines,
+    ...preview.discountLines,
+    ...preview.promoLines,
+  ];
 
-  if (lineItemError || !lineItem) {
+  const { data: lineItems, error: lineItemsError } = await supabase
+    .from('transaction_line_items')
+    .insert(
+      allLines.map((line) => ({ ...line, transaction_id: transaction.id }))
+    )
+    .select('*');
+
+  if (lineItemsError) {
     throwWithStatus(
       400,
-      lineItemError?.message ?? 'Failed to record misc sale line item'
+      lineItemsError.message ?? 'Failed to record misc sale line items'
     );
   }
 
   return {
     transaction: transaction as Transaction,
-    lineItem: lineItem as TransactionLineItem,
+    lineItems: (lineItems ?? []) as TransactionLineItem[],
     changeAmount,
-    paymongoCheckoutUrl,
   };
+}
+
+/** The customer's redeemable credit at the cashier's branch - backs the
+ * wizard's Credit payment option (enabled only when it covers the sale). */
+export async function getMiscSaleCredit(
+  customerId: string,
+  branchId: string
+): Promise<{ available: number }> {
+  return { available: await getAvailableCredit(customerId, branchId) };
 }
 
 export async function listMiscSales(branchId?: string): Promise<Transaction[]> {
@@ -228,21 +368,18 @@ export async function getMiscSale(
 ): Promise<MiscSaleResult> {
   const transaction = await getMiscSaleTransaction(transactionId);
 
-  const { data: lineItem, error } = await supabase
+  const { data: lineItems, error } = await supabase
     .from('transaction_line_items')
     .select('*')
     .eq('transaction_id', transactionId)
-    .eq('line_item_type', 'misc_sale_item')
-    .maybeSingle();
+    .order('created_at', { ascending: true });
 
   if (error) throwWithStatus(400, error.message);
-  if (!lineItem) throwWithStatus(404, 'Miscellaneous sale line item not found');
 
   return {
     transaction,
-    lineItem: lineItem as TransactionLineItem,
+    lineItems: (lineItems ?? []) as TransactionLineItem[],
     changeAmount: null,
-    paymongoCheckoutUrl: null,
   };
 }
 
@@ -252,73 +389,21 @@ interface UpdateMiscSaleParams {
 }
 
 /**
- * Admin/Superadmin only (enforced by RLS on transactions/
- * transaction_line_items and mirrored at the route layer) - recomputes
- * line_total/total_amount server-side whenever the item shape changes,
- * never trusting a client-supplied total (same rule createMiscSale
- * follows).
+ * Admin/Superadmin only (enforced by RLS on transactions and mirrored at
+ * the route layer). Session 115: narrowed to payment-fields-only (no more
+ * item/amount editing) now that a sale can carry multiple
+ * transaction_line_items rows - see updateMiscSaleValidator's own doc
+ * comment for why.
  */
 export async function updateMiscSale({
   transactionId,
   updates,
 }: UpdateMiscSaleParams): Promise<MiscSaleResult> {
-  const existing = await getMiscSale(transactionId);
-
-  const itemChanged =
-    updates.product_catalog_id !== undefined ||
-    updates.quantity !== undefined ||
-    updates.description !== undefined ||
-    updates.amount !== undefined;
-
-  let description = existing.transaction.misc_sale_description as string;
-  let referenceId = existing.lineItem.reference_id;
-  let quantity = existing.lineItem.quantity;
-  let unitPrice = existing.lineItem.unit_price;
-
-  if (itemChanged) {
-    const resolved = await resolveItem({
-      product_catalog_id: updates.product_catalog_id,
-      quantity: updates.quantity ?? existing.lineItem.quantity,
-      description: updates.description,
-      amount: updates.amount,
-    });
-    description = resolved.description;
-    referenceId = resolved.referenceId;
-    quantity = resolved.quantity;
-    unitPrice = resolved.unitPrice;
-  }
-
-  const lineTotal = round2(unitPrice * quantity);
-  const totalAmount = round2(
-    lineTotal - existing.transaction.credit_applied_amount
-  );
-
-  const { data: lineItem, error: lineItemError } = await supabase
-    .from('transaction_line_items')
-    .update({
-      reference_id: referenceId,
-      description,
-      quantity,
-      unit_price: unitPrice,
-      line_total: lineTotal,
-    })
-    .eq('id', existing.lineItem.id)
-    .select('*')
-    .maybeSingle();
-
-  if (lineItemError || !lineItem) {
-    throwWithStatus(
-      400,
-      lineItemError?.message ?? 'Failed to update misc sale line item'
-    );
-  }
+  await getMiscSaleTransaction(transactionId);
 
   const { data: transaction, error: transactionError } = await supabase
     .from('transactions')
     .update({
-      subtotal_amount: lineTotal,
-      total_amount: totalAmount,
-      misc_sale_description: description,
       payment_method: updates.payment_method ?? undefined,
       bank_name: updates.bank_name ?? undefined,
       payment_reference: updates.payment_reference ?? undefined,
@@ -335,11 +420,18 @@ export async function updateMiscSale({
     );
   }
 
+  const { data: lineItems, error: lineItemsError } = await supabase
+    .from('transaction_line_items')
+    .select('*')
+    .eq('transaction_id', transactionId)
+    .order('created_at', { ascending: true });
+
+  if (lineItemsError) throwWithStatus(400, lineItemsError.message);
+
   return {
     transaction: transaction as Transaction,
-    lineItem: lineItem as TransactionLineItem,
+    lineItems: (lineItems ?? []) as TransactionLineItem[],
     changeAmount: null,
-    paymongoCheckoutUrl: null,
   };
 }
 

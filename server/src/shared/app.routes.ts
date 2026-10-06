@@ -12,7 +12,6 @@ import hotelRoutes from '../features/hotel/hotel.routes.ts';
 import branchesRoutes from '../features/branches/branches.routes.ts';
 import catalogRoutes from '../features/catalog/catalog.routes.ts';
 import billingRoutes from '../features/billing/billing.routes.ts';
-import paymongoWebhookRoutes from '../features/billing/routes/paymongoWebhook.routes.ts';
 import creditsRoutes from '../features/credits/credits.routes.ts';
 import rewardsRoutes from '../features/rewards/rewards.routes.ts';
 import notificationsRoutes from '../features/notifications/notifications.routes.ts';
@@ -20,6 +19,7 @@ import messagingRoutes from '../features/messaging/messaging.routes.ts';
 import reportsRoutes from '../features/reports/reports.routes.ts';
 import publicRoutes from '../features/public/public.routes.ts';
 import recordsArchiveRoutes from '../features/recordsArchive/recordsArchive.routes.ts';
+import faqRoutes from '../features/faq/faq.routes.ts';
 
 const router = Router();
 
@@ -36,7 +36,6 @@ router.use(hotelRoutes);
 router.use(branchesRoutes);
 router.use(catalogRoutes);
 router.use(billingRoutes);
-router.use(paymongoWebhookRoutes);
 router.use(creditsRoutes);
 router.use(rewardsRoutes);
 router.use(notificationsRoutes);
@@ -44,5 +43,6 @@ router.use(messagingRoutes);
 router.use(reportsRoutes);
 router.use(publicRoutes);
 router.use(recordsArchiveRoutes);
+router.use(faqRoutes);
 
 export default router;

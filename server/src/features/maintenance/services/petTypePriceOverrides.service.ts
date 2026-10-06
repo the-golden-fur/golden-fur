@@ -1,5 +1,6 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { PetTypePriceOverride } from '../maintenance.types.ts';
+import { assertPetTypesNotArchived } from './petTypes.service.ts';
 import type { UpsertPetTypePriceOverrideInput } from '../modules/validators/maintenance.validator.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -76,9 +77,32 @@ export async function getFixedPrice(
  * then insert or update accordingly rather than relying on a single
  * .upsert() call.
  */
-export async function upsertPetTypePriceOverride(
-  input: UpsertPetTypePriceOverrideInput
-): Promise<PetTypePriceOverride> {
+interface UpsertPetTypePriceOverrideParams {
+  input: UpsertPetTypePriceOverrideInput;
+  requesterRole: string;
+  requesterBranchId: string;
+}
+
+/**
+ * Admins are scoped to their own branch; Superadmins may touch any branch,
+ * including the system-wide default row (branch_id null) which affects every
+ * branch at once - an Admin has no legitimate reason to touch that row, so
+ * it's treated the same as "someone else's branch".
+ */
+export async function upsertPetTypePriceOverride({
+  input,
+  requesterRole,
+  requesterBranchId,
+}: UpsertPetTypePriceOverrideParams): Promise<PetTypePriceOverride> {
+  if (requesterRole !== 'Superadmin' && input.branch_id !== requesterBranchId) {
+    throwWithStatus(
+      403,
+      'Admins can only manage price overrides for their own branch'
+    );
+  }
+
+  await assertPetTypesNotArchived([input.pet_type]);
+
   let existingQuery = supabase
     .from('pet_type_price_overrides')
     .select('id')
@@ -124,9 +148,34 @@ export async function upsertPetTypePriceOverride(
   return data;
 }
 
-export async function deletePetTypePriceOverride(
-  overrideId: string
-): Promise<void> {
+interface DeletePetTypePriceOverrideParams {
+  overrideId: string;
+  requesterRole: string;
+  requesterBranchId: string;
+}
+
+export async function deletePetTypePriceOverride({
+  overrideId,
+  requesterRole,
+  requesterBranchId,
+}: DeletePetTypePriceOverrideParams): Promise<void> {
+  if (requesterRole !== 'Superadmin') {
+    const { data: existing, error: lookupError } = await supabase
+      .from('pet_type_price_overrides')
+      .select('branch_id')
+      .eq('id', overrideId)
+      .maybeSingle();
+
+    if (lookupError) throwWithStatus(400, lookupError.message);
+    if (!existing) throwWithStatus(404, 'Pet type price override not found');
+    if (existing.branch_id !== requesterBranchId) {
+      throwWithStatus(
+        403,
+        'Admins can only manage price overrides for their own branch'
+      );
+    }
+  }
+
   const { error } = await supabase
     .from('pet_type_price_overrides')
     .delete()

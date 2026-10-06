@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listVaccinationRecords } from '../../../api/customer.api';
 import type { PetVaccinationRecord } from '../../../customer.types';
 import styles from './VaccinationRecordList.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface VaccinationRecordListProps {
   petId: string;
@@ -45,7 +46,7 @@ export function VaccinationRecordList({
   }, [petId, accessToken]);
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading vaccination records...</p>;
+    return <LoadingState label="Loading vaccination records..." />;
   }
 
   if (error) {

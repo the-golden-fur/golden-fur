@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cancelUnavailabilityBlock,
+  clearAutoBuildSchedule,
+  commitAutoBuildSchedule,
   createUnavailabilityBlock,
   listBranchSchedule,
   listPendingUnavailabilityBlocks,
   listUnavailabilityBlocks,
+  previewAutoBuildSchedule,
   reviewUnavailabilityBlock,
 } from './unavailabilityBlock.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -27,6 +30,7 @@ function queueFromResults(...results: QueryResult[]) {
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
     builder.in = vi.fn(() => builder);
+    builder.is = vi.fn(() => builder);
     builder.lt = vi.fn(() => builder);
     builder.gt = vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
@@ -298,6 +302,25 @@ describe('unavailabilityBlock.service', () => {
 
       expect(result.staff_id).toBe('staff-2');
     });
+
+    it.each(['Supervisor', 'Admin', 'Superadmin'])(
+      'rejects a %s requesting their own day off with 403 before touching supabase',
+      async (role) => {
+        await expect(
+          createUnavailabilityBlock({
+            requesterId: 'staff-1',
+            requesterRole: role,
+            targetStaffId: 'staff-1',
+            isFullDay: true,
+            date: '2026-07-20',
+            leaveType: 'Vacation',
+            now: new Date('2026-07-01T00:00:00.000Z'),
+          })
+        ).rejects.toMatchObject({ statusCode: 403 });
+
+        expect(supabase.from).not.toHaveBeenCalled();
+      }
+    );
 
     it('Rest Day: rejects a self-service request with 403 before touching supabase', async () => {
       await expect(
@@ -1053,6 +1076,359 @@ describe('unavailabilityBlock.service', () => {
           branchId: 'branch-a',
           rangeStart: '2026-08-01T00:00:00.000Z',
           rangeEnd: '2026-09-01T00:00:00.000Z',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+  });
+
+  const OPEN_ALL_WEEK = {
+    sunday: { open: '09:00', close: '18:00' },
+    monday: { open: '09:00', close: '18:00' },
+    tuesday: { open: '09:00', close: '18:00' },
+    wednesday: { open: '09:00', close: '18:00' },
+    thursday: { open: '09:00', close: '18:00' },
+    friday: { open: '09:00', close: '18:00' },
+    saturday: { open: '09:00', close: '18:00' },
+  };
+
+  describe('previewAutoBuildSchedule (Auto Build Monthly Schedule)', () => {
+    it('proposes close to the full weekly quota per staff when nothing conflicts (July 2026 = 31 days)', async () => {
+      queueFromResults(
+        { data: [{ id: 'staff-1' }], error: null },
+        {
+          data: { timezone: 'Asia/Manila', operating_hours: OPEN_ALL_WEEK },
+          error: null,
+        },
+        { data: [], error: null }
+      );
+
+      const result = await previewAutoBuildSchedule({
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        branchId: 'branch-a',
+        year: 2026,
+        month: 7,
+        restDaysPerWeek: 1,
+      });
+
+      expect(result.assignments).toHaveLength(1);
+      expect(result.assignments[0].staff_id).toBe('staff-1');
+      // July 2026 spans 5 Monday-start weeks - 1/week with zero conflicts
+      // should hit the target exactly.
+      expect(result.targetPerStaff).toBeGreaterThanOrEqual(4);
+      expect(result.assignments[0].dates).toHaveLength(result.targetPerStaff);
+      expect(new Set(result.assignments[0].dates).size).toBe(
+        result.assignments[0].dates.length
+      );
+      for (const date of result.assignments[0].dates) {
+        expect(date).toMatch(/^2026-07-\d{2}$/);
+      }
+    });
+
+    it('proposes no dates for a staff member whose entire month is already blocked', async () => {
+      queueFromResults(
+        { data: [{ id: 'staff-1' }], error: null },
+        {
+          data: { timezone: 'Asia/Manila', operating_hours: OPEN_ALL_WEEK },
+          error: null,
+        },
+        {
+          data: [
+            {
+              staff_id: 'staff-1',
+              start_time: '2026-06-25T00:00:00.000Z',
+              end_time: '2026-08-05T00:00:00.000Z',
+            },
+          ],
+          error: null,
+        }
+      );
+
+      const result = await previewAutoBuildSchedule({
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        branchId: 'branch-a',
+        year: 2026,
+        month: 7,
+        restDaysPerWeek: 1,
+      });
+
+      expect(result.assignments[0].dates).toEqual([]);
+      expect(result.targetPerStaff).toBeGreaterThan(0);
+    });
+
+    it('rejects a non-manager role with 403 before touching supabase', async () => {
+      await expect(
+        previewAutoBuildSchedule({
+          requesterRole: 'Groomer',
+          requesterBranchId: 'branch-a',
+          branchId: 'branch-a',
+          year: 2026,
+          month: 7,
+          restDaysPerWeek: 1,
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+
+    it("rejects an Admin building a different branch's schedule", async () => {
+      await expect(
+        previewAutoBuildSchedule({
+          requesterRole: 'Admin',
+          requesterBranchId: 'branch-b',
+          branchId: 'branch-a',
+          year: 2026,
+          month: 7,
+          restDaysPerWeek: 1,
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('commitAutoBuildSchedule (Auto Build Monthly Schedule)', () => {
+    it('inserts one Rest Day row per assignment date, tagged created_by_auto_build', async () => {
+      const insertSpy = vi.fn((payload: unknown) => payload);
+
+      queueFromResults(
+        {
+          data: { timezone: 'Asia/Manila', operating_hours: OPEN_ALL_WEEK },
+          error: null,
+        },
+        { data: [], error: null },
+        { data: [{ id: 'new-1' }, { id: 'new-2' }], error: null }
+      );
+
+      const originalFrom = vi.mocked(supabase.from).getMockImplementation()!;
+      vi.mocked(supabase.from).mockImplementation((table) => {
+        const builder = originalFrom(table) as unknown as Record<
+          string,
+          unknown
+        >;
+        const originalInsert = builder.insert as (_payload: unknown) => unknown;
+        builder.insert = vi.fn((payload: unknown) => {
+          insertSpy(payload);
+          return originalInsert(payload);
+        });
+        return builder as never;
+      });
+
+      const result = await commitAutoBuildSchedule({
+        requesterId: 'admin-1',
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        branchId: 'branch-a',
+        year: 2026,
+        month: 7,
+        assignments: [
+          { staff_id: 'staff-1', dates: ['2026-07-06', '2026-07-13'] },
+        ],
+      });
+
+      expect(result).toEqual({ inserted: 2 });
+      expect(insertSpy).toHaveBeenCalledWith([
+        expect.objectContaining({
+          staff_id: 'staff-1',
+          leave_type: 'Rest Day',
+          is_full_day: true,
+          created_by: 'admin-1',
+          created_by_auto_build: true,
+        }),
+        expect.objectContaining({
+          staff_id: 'staff-1',
+          leave_type: 'Rest Day',
+          created_by_auto_build: true,
+        }),
+      ]);
+    });
+
+    it("drops a date that's now conflicting since the preview, without failing the rest", async () => {
+      const insertSpy = vi.fn((payload: unknown) => payload);
+
+      queueFromResults(
+        {
+          data: { timezone: 'Asia/Manila', operating_hours: OPEN_ALL_WEEK },
+          error: null,
+        },
+        {
+          // 2026-07-06 now conflicts; 2026-07-13 is still free.
+          data: [
+            {
+              staff_id: 'staff-1',
+              start_time: '2026-07-06T00:00:00.000Z',
+              end_time: '2026-07-07T00:00:00.000Z',
+            },
+          ],
+          error: null,
+        },
+        { data: [{ id: 'new-1' }], error: null }
+      );
+
+      const originalFrom = vi.mocked(supabase.from).getMockImplementation()!;
+      vi.mocked(supabase.from).mockImplementation((table) => {
+        const builder = originalFrom(table) as unknown as Record<
+          string,
+          unknown
+        >;
+        const originalInsert = builder.insert as (_payload: unknown) => unknown;
+        builder.insert = vi.fn((payload: unknown) => {
+          insertSpy(payload);
+          return originalInsert(payload);
+        });
+        return builder as never;
+      });
+
+      const result = await commitAutoBuildSchedule({
+        requesterId: 'admin-1',
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        branchId: 'branch-a',
+        year: 2026,
+        month: 7,
+        assignments: [
+          { staff_id: 'staff-1', dates: ['2026-07-06', '2026-07-13'] },
+        ],
+      });
+
+      expect(result).toEqual({ inserted: 1 });
+      expect(insertSpy).toHaveBeenCalledWith([
+        expect.objectContaining({ staff_id: 'staff-1' }),
+      ]);
+      const insertedRows = insertSpy.mock.calls[0][0] as Array<{
+        start_time: string;
+      }>;
+      expect(insertedRows).toHaveLength(1);
+      expect(insertedRows[0].start_time.startsWith('2026-07-13')).toBe(true);
+    });
+
+    it('returns { inserted: 0 } without ever calling insert when every date now conflicts', async () => {
+      queueFromResults(
+        {
+          data: { timezone: 'Asia/Manila', operating_hours: OPEN_ALL_WEEK },
+          error: null,
+        },
+        {
+          data: [
+            {
+              staff_id: 'staff-1',
+              start_time: '2026-07-01T00:00:00.000Z',
+              end_time: '2026-08-01T00:00:00.000Z',
+            },
+          ],
+          error: null,
+        }
+      );
+
+      const result = await commitAutoBuildSchedule({
+        requesterId: 'admin-1',
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        branchId: 'branch-a',
+        year: 2026,
+        month: 7,
+        assignments: [{ staff_id: 'staff-1', dates: ['2026-07-06'] }],
+      });
+
+      expect(result).toEqual({ inserted: 0 });
+    });
+
+    it('rejects a non-manager role with 403 before touching supabase', async () => {
+      await expect(
+        commitAutoBuildSchedule({
+          requesterId: 'staff-1',
+          requesterRole: 'Groomer',
+          requesterBranchId: 'branch-a',
+          branchId: 'branch-a',
+          year: 2026,
+          month: 7,
+          assignments: [],
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('clearAutoBuildSchedule (Auto Build Monthly Schedule)', () => {
+    it("deletes only this branch roster's auto-build rows for the month and returns the count", async () => {
+      const deleteEqSpy = vi.fn();
+
+      queueFromResults({
+        data: [{ id: 'staff-1' }, { id: 'staff-2' }],
+        error: null,
+      });
+
+      const originalFrom = vi.mocked(supabase.from).getMockImplementation()!;
+      vi.mocked(supabase.from).mockImplementation((table) => {
+        if (table === 'staff_profiles') {
+          return originalFrom(table);
+        }
+
+        const builder: Record<string, unknown> = {};
+        builder.delete = vi.fn(() => builder);
+        builder.in = vi.fn((...args: unknown[]) => {
+          deleteEqSpy('in', ...args);
+          return builder;
+        });
+        builder.eq = vi.fn((...args: unknown[]) => {
+          deleteEqSpy('eq', ...args);
+          return builder;
+        });
+        builder.lt = vi.fn(() => builder);
+        builder.gt = vi.fn(() => builder);
+        builder.select = vi
+          .fn()
+          .mockResolvedValue({ data: [{ id: 'a' }, { id: 'b' }], error: null });
+        return builder as never;
+      });
+
+      const result = await clearAutoBuildSchedule({
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        branchId: 'branch-a',
+        year: 2026,
+        month: 7,
+      });
+
+      expect(result).toEqual({ deleted: 2 });
+      expect(deleteEqSpy).toHaveBeenCalledWith('in', 'staff_id', [
+        'staff-1',
+        'staff-2',
+      ]);
+      expect(deleteEqSpy).toHaveBeenCalledWith(
+        'eq',
+        'created_by_auto_build',
+        true
+      );
+    });
+
+    it('returns { deleted: 0 } without querying further when the branch has no staff', async () => {
+      queueFromResults({ data: [], error: null });
+
+      const result = await clearAutoBuildSchedule({
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        branchId: 'branch-a',
+        year: 2026,
+        month: 7,
+      });
+
+      expect(result).toEqual({ deleted: 0 });
+      expect(supabase.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a non-manager role with 403 before touching supabase', async () => {
+      await expect(
+        clearAutoBuildSchedule({
+          requesterRole: 'Groomer',
+          requesterBranchId: 'branch-a',
+          branchId: 'branch-a',
+          year: 2026,
+          month: 7,
         })
       ).rejects.toMatchObject({ statusCode: 403 });
 

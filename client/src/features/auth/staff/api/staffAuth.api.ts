@@ -7,8 +7,6 @@ import type {
   StaffForgotPasswordPayload,
   StaffLoginPayload,
   StaffLoginResponse,
-  TotpChallengePayload,
-  TotpEnrollResponse,
 } from '../staffAuth.types';
 
 interface StaffApiResult<T> {
@@ -65,32 +63,30 @@ async function postJson<T>(
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${AUTH_PREFIX}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
+  // `fetch` itself throws on a network failure (connection dropped, dev
+  // server mid-restart, offline) rather than resolving. Every caller here
+  // gates a `setIsSubmitting(false)` (login, MFA enroll/verify, password
+  // reset) - an uncaught throw skips that and leaves the button disabled
+  // forever with no visible error (the reported "random freeze" on login).
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${AUTH_PREFIX}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return {
+      data: null,
+      error: 'Could not reach the server. Check your connection and try again.',
+    };
+  }
 
   return parseResponse<T>(response);
 }
 
 export function login(payload: StaffLoginPayload) {
   return postJson<StaffLoginResponse>('/staff/login', payload);
-}
-
-export function mfaEnroll(accessToken: string | null) {
-  return postJson<TotpEnrollResponse>('/staff/mfa/enroll', {}, accessToken);
-}
-
-export function mfaVerify(
-  payload: TotpChallengePayload,
-  accessToken: string | null
-) {
-  return postJson<StaffLoginResponse | StaffAuthMessageResponse>(
-    '/staff/mfa/verify',
-    payload,
-    accessToken
-  );
 }
 
 export function forgotPassword(payload: StaffForgotPasswordPayload) {

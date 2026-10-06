@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  archivePatch,
+  assertArchivedBeforeHardDelete,
+} from '../../../shared/archive/archiveGuard.ts';
 import type {
   ServiceType,
   ServiceTypeBranchAvailability,
@@ -24,7 +28,20 @@ export async function listServiceTypes(): Promise<ServiceType[]> {
   const { data, error } = await supabase
     .from('service_types')
     .select(SERVICE_TYPE_SELECT)
+    .is('archived_at', null)
     .order('created_at');
+
+  if (error) throwWithStatus(400, error.message);
+
+  return (data ?? []) as ServiceType[];
+}
+
+export async function listArchivedServiceTypes(): Promise<ServiceType[]> {
+  const { data, error } = await supabase
+    .from('service_types')
+    .select(SERVICE_TYPE_SELECT)
+    .not('archived_at', 'is', null)
+    .order('archived_at', { ascending: false });
 
   if (error) throwWithStatus(400, error.message);
 
@@ -107,11 +124,31 @@ export async function createServiceType(
   return withAvailability as ServiceType;
 }
 
+async function assertServiceTypeNotArchived(
+  serviceTypeId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('service_types')
+    .select('archived_at')
+    .eq('id', serviceTypeId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (data?.archived_at) {
+    throwWithStatus(
+      409,
+      'This service type is archived - restore it to edit it'
+    );
+  }
+}
+
 export async function updateServiceType(
   serviceTypeId: string,
   updates: UpdateServiceTypeInput,
   requesterId: string
 ): Promise<ServiceType> {
+  await assertServiceTypeNotArchived(serviceTypeId);
+
   const { error } = await supabase
     .from('service_types')
     .update({
@@ -139,6 +176,8 @@ interface SetServiceTypeBranchAvailabilityParams {
   serviceTypeId: string;
   branchId: string;
   isAvailable: boolean;
+  requesterRole: string;
+  requesterBranchId: string;
 }
 
 /**
@@ -156,15 +195,30 @@ export async function setServiceTypeBranchAvailability({
   serviceTypeId,
   branchId,
   isAvailable,
+  requesterRole,
+  requesterBranchId,
 }: SetServiceTypeBranchAvailabilityParams): Promise<ServiceTypeBranchAvailability> {
+  // Admins are scoped to their own branch; Superadmins may toggle any branch.
+  if (requesterRole !== 'Superadmin' && branchId !== requesterBranchId) {
+    throwWithStatus(
+      403,
+      'Admins can only manage branch availability for their own branch'
+    );
+  }
+
   const { data: existing, error: lookupError } = await supabase
     .from('service_types')
-    .select('id')
+    .select('id, archived_at')
     .eq('id', serviceTypeId)
     .maybeSingle();
 
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Service type not found');
+  // The is_active sync below would otherwise silently un-hide an archived
+  // service type the moment any branch toggle is touched.
+  if (existing.archived_at) {
+    throwWithStatus(409, 'This service type is archived - restore it first');
+  }
 
   const { data, error } = await supabase
     .from('service_type_branch_availability')
@@ -198,4 +252,135 @@ export async function setServiceTypeBranchAvailability({
   if (syncError) throwWithStatus(400, syncError.message);
 
   return data as ServiceTypeBranchAvailability;
+}
+
+async function loadServiceTypeForArchiveAction(
+  serviceTypeId: string
+): Promise<{ id: string; key: string; archived_at: string | null }> {
+  const { data, error } = await supabase
+    .from('service_types')
+    .select('id, key, archived_at')
+    .eq('id', serviceTypeId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(404, 'Service type not found');
+
+  return data;
+}
+
+async function reloadServiceType(serviceTypeId: string): Promise<ServiceType> {
+  const { data, error } = await supabase
+    .from('service_types')
+    .select(SERVICE_TYPE_SELECT)
+    .eq('id', serviceTypeId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(404, 'Service type not found');
+
+  return data as ServiceType;
+}
+
+/** Config-menu consistency change: archive hides the type from the booking
+ * flow's type picker and the admin list; existing services keep their
+ * category. */
+export async function archiveServiceType(
+  serviceTypeId: string,
+  requesterId: string
+): Promise<ServiceType> {
+  const existing = await loadServiceTypeForArchiveAction(serviceTypeId);
+
+  if (existing.archived_at) {
+    throwWithStatus(409, 'Service type is already archived');
+  }
+
+  const { error } = await supabase
+    .from('service_types')
+    .update({
+      ...archivePatch(),
+      updated_by: requesterId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', serviceTypeId);
+
+  if (error) throwWithStatus(400, error.message);
+
+  return reloadServiceType(serviceTypeId);
+}
+
+/** is_active is derived from branch availability for service types, so
+ * restore recomputes it rather than blindly setting it true. */
+export async function restoreServiceType(
+  serviceTypeId: string,
+  requesterId: string
+): Promise<ServiceType> {
+  const existing = await loadServiceTypeForArchiveAction(serviceTypeId);
+
+  if (!existing.archived_at) {
+    throwWithStatus(409, 'Service type is not archived');
+  }
+
+  const { data: rows, error: rowsError } = await supabase
+    .from('service_type_branch_availability')
+    .select('is_available')
+    .eq('service_type_id', serviceTypeId);
+
+  if (rowsError) throwWithStatus(400, rowsError.message);
+
+  const { error } = await supabase
+    .from('service_types')
+    .update({
+      archived_at: null,
+      is_active: (rows ?? []).some((row) => row.is_available),
+      updated_by: requesterId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', serviceTypeId);
+
+  if (error) throwWithStatus(400, error.message);
+
+  return reloadServiceType(serviceTypeId);
+}
+
+const BUILT_IN_SERVICE_TYPE_KEYS = [
+  'Grooming',
+  'Hotel',
+  'Daycare',
+  'Veterinary',
+  'Assessment',
+];
+
+/** Built-in types (Grooming, Hotel, ...) are joined to code by `key` and
+ * services.category is an enum of exactly those keys, so those types can only
+ * ever be archived. Custom (UUID-keyed) types can't own services at all, so
+ * they're safe to delete once archived. */
+export async function hardDeleteServiceType(
+  serviceTypeId: string
+): Promise<void> {
+  const existing = await loadServiceTypeForArchiveAction(serviceTypeId);
+
+  assertArchivedBeforeHardDelete(existing.archived_at, 'This service type');
+
+  if (BUILT_IN_SERVICE_TYPE_KEYS.includes(existing.key)) {
+    throwWithStatus(
+      409,
+      'Built-in service types are used by the booking system and can only be archived, not permanently deleted'
+    );
+  }
+
+  const { error } = await supabase
+    .from('service_types')
+    .delete()
+    .eq('id', serviceTypeId);
+
+  if (error) {
+    if (error.code === '23503') {
+      throwWithStatus(
+        409,
+        'This service type is still referenced and cannot be permanently deleted'
+      );
+    }
+    throwWithStatus(400, error.message);
+  }
 }

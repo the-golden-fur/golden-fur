@@ -14,6 +14,10 @@ import {
   resolveEffectivePolicy,
   resolveServiceTypeStaffConfig,
 } from './staffPicker.service.ts';
+import {
+  formatDaycareCutoff,
+  resolveDaycareCutoffTime,
+} from '../../daycare/modules/daycareCutoff.util.ts';
 
 /** Which notice-period floor getDaySlots applies: a new booking uses
  * booking_notice_period_days (default 0); a reschedule keeps the stricter
@@ -68,9 +72,19 @@ export interface GetDaySlotsParams {
   intent?: BookingIntent;
 }
 
+type WeeklyHours = Record<string, { open: string; close: string } | undefined>;
+
 interface BranchRow {
-  operating_hours: Record<string, { open: string; close: string } | undefined>;
+  operating_hours: WeeklyHours;
+  /** Custom change (per-branch Grooming hours, migration 20261004243): the
+   * times Grooming is bookable each weekday. A day absent here means
+   * Grooming follows that day's full operating hours. */
+  grooming_hours?: WeeklyHours | null;
   timezone: string;
+  /** Only selected where the Daycare check-in cutoff matters - see
+   * resolveDaycareCutoffInstant. */
+  name?: string;
+  daycare_checkin_cutoff?: string | null;
 }
 
 /**
@@ -158,6 +172,45 @@ export interface ResolveOperatingWindowParams {
   branchId: string;
   /** YYYY-MM-DD, interpreted in the branch's own timezone. */
   date: string;
+  /** Narrows the window to the branch's Grooming hours when 'Grooming';
+   * omitted (or any other category) = the plain operating hours. */
+  serviceCategory?: ServiceCategory;
+}
+
+/**
+ * The window a category is bookable in on one weekday: the branch's
+ * operating hours for every category, narrowed for Grooming to its overlap
+ * with the branch's own grooming_hours for that day. Clamped to the
+ * operating hours so a stale grooming_hours entry can never widen them; null
+ * when the branch is closed that day or the two don't overlap at all.
+ * "HH:MM" strings compare correctly as plain strings.
+ */
+function resolveCategoryWindow(
+  branch: BranchRow,
+  dayName: string,
+  serviceCategory?: ServiceCategory
+): OperatingWindow | null {
+  const operating = branch.operating_hours?.[dayName];
+  if (!operating) return null;
+
+  const grooming =
+    serviceCategory === 'Grooming'
+      ? branch.grooming_hours?.[dayName]
+      : undefined;
+  if (!grooming) return operating;
+
+  const open = grooming.open > operating.open ? grooming.open : operating.open;
+  const close =
+    grooming.close < operating.close ? grooming.close : operating.close;
+
+  return open < close ? { open, close } : null;
+}
+
+/** The lowercase weekday name ("monday") of a YYYY-MM-DD date in `timeZone`. */
+function weekdayName(date: string, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long' })
+    .format(zonedTimeToUtc(date, '12:00', timeZone))
+    .toLowerCase();
 }
 
 /**
@@ -171,26 +224,144 @@ export interface ResolveOperatingWindowParams {
 export async function resolveOperatingWindow({
   branchId,
   date,
+  serviceCategory,
 }: ResolveOperatingWindowParams): Promise<OperatingWindow | null> {
   const { data: branch, error: branchError } = await supabase
     .from('branches')
-    .select('operating_hours, timezone')
+    .select('operating_hours, grooming_hours, timezone')
     .eq('id', branchId)
     .maybeSingle();
 
   if (branchError) throwWithStatus(400, branchError.message);
   if (!branch) throwWithStatus(404, 'Branch not found');
 
-  const { operating_hours: operatingHours, timezone } = branch as BranchRow;
+  const branchRow = branch as BranchRow;
 
-  const dayName = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    weekday: 'long',
-  })
-    .format(zonedTimeToUtc(date, '12:00', timezone))
-    .toLowerCase();
+  return resolveCategoryWindow(
+    branchRow,
+    weekdayName(date, branchRow.timezone),
+    serviceCategory
+  );
+}
 
-  return operatingHours?.[dayName] ?? null;
+/**
+ * The instant, on `date`, after which the branch no longer checks pets in to
+ * Daycare (daycareCheckIn.service.ts's own cutoff) - a Daycare session has to
+ * START before it, or it could be booked but never checked in. Null when the
+ * branch row carries no cutoff.
+ */
+function resolveDaycareCutoffInstant(
+  branch: BranchRow,
+  date: string
+): Date | null {
+  if (!branch.daycare_checkin_cutoff) return null;
+
+  const cutoffTime = resolveDaycareCutoffTime({
+    name: branch.name ?? '',
+    daycare_checkin_cutoff: branch.daycare_checkin_cutoff,
+  });
+
+  return zonedTimeToUtc(date, cutoffTime.slice(0, 5), branch.timezone);
+}
+
+/**
+ * Throws a 422 when a Daycare booking would start at or after the branch's
+ * Daycare check-in cutoff. The hard gate behind getDaySlots' own filter that
+ * a direct API call (or a typed-in time) still has to clear.
+ */
+export async function assertDaycareStartsBeforeCutoff(
+  branchId: string,
+  scheduledStart: string
+): Promise<void> {
+  const { data: branch, error } = await supabase
+    .from('branches')
+    .select('name, timezone, daycare_checkin_cutoff')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!branch) return;
+
+  const branchRow = branch as BranchRow;
+  const date = new Intl.DateTimeFormat('en-CA', {
+    timeZone: branchRow.timezone,
+  }).format(new Date(scheduledStart));
+  const cutoff = resolveDaycareCutoffInstant(branchRow, date);
+
+  if (cutoff && new Date(scheduledStart).getTime() >= cutoff.getTime()) {
+    const cutoffTime = resolveDaycareCutoffTime({
+      name: branchRow.name ?? '',
+      daycare_checkin_cutoff: branchRow.daycare_checkin_cutoff!,
+    });
+
+    throwWithStatus(
+      422,
+      `Daycare check-in closes at ${formatDaycareCutoff(cutoffTime)} at this branch - please choose an earlier start time`
+    );
+  }
+}
+
+/** "HH:MM" (24h) as a 12-hour clock label, e.g. "15:00" -> "3:00 PM". */
+function formatClockTime(time: string): string {
+  const [hour, minute] = time.split(':').map(Number);
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+
+  return `${hour12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+/**
+ * Custom change (per-branch Grooming hours): throws a 422 when a Grooming
+ * booking's [scheduledStart, scheduledEnd] does not sit inside the branch's
+ * Grooming hours for that day. The hard gate behind getDaySlots' narrowed
+ * slot list that a direct API call - and a Walk-in, which never goes through
+ * the Slot Picker at all - still has to clear. A no-op for a day with no
+ * Grooming hours configured (Grooming then follows the operating hours,
+ * which this deliberately does not start enforcing on its own).
+ */
+export async function assertWithinGroomingHours(
+  branchId: string,
+  scheduledStart: string,
+  scheduledEnd: string
+): Promise<void> {
+  const { data: branch, error } = await supabase
+    .from('branches')
+    .select('operating_hours, grooming_hours, timezone')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!branch) return;
+
+  const branchRow = branch as BranchRow;
+  const { timezone } = branchRow;
+  const date = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(
+    new Date(scheduledStart)
+  );
+  const dayName = weekdayName(date, timezone);
+
+  if (!branchRow.grooming_hours?.[dayName]) return;
+
+  const window = resolveCategoryWindow(branchRow, dayName, 'Grooming');
+
+  if (!window) {
+    throwWithStatus(
+      422,
+      'Grooming is not available at this branch on this day'
+    );
+  }
+
+  const startMs = new Date(scheduledStart).getTime();
+  const endMs = new Date(scheduledEnd).getTime();
+
+  if (
+    startMs < zonedTimeToUtc(date, window.open, timezone).getTime() ||
+    endMs > zonedTimeToUtc(date, window.close, timezone).getTime()
+  ) {
+    throwWithStatus(
+      422,
+      `Grooming at this branch is only available ${formatClockTime(window.open)} to ${formatClockTime(window.close)} on this day - please choose a time within those hours`
+    );
+  }
 }
 
 /**
@@ -213,14 +384,17 @@ export async function getDaySlots({
 
   const { data: branch, error: branchError } = await supabase
     .from('branches')
-    .select('operating_hours, timezone')
+    .select(
+      'name, operating_hours, grooming_hours, daycare_checkin_cutoff, timezone'
+    )
     .eq('id', branchId)
     .maybeSingle();
 
   if (branchError) throwWithStatus(400, branchError.message);
   if (!branch) throwWithStatus(404, 'Branch not found');
 
-  const { operating_hours: operatingHours, timezone } = branch as BranchRow;
+  const branchRow = branch as BranchRow;
+  const { timezone } = branchRow;
 
   // A fully past date is never bookable, in any category - previously Hotel
   // was exempt from every time-based check below (by design, for its
@@ -259,14 +433,14 @@ export async function getDaySlots({
     return [];
   }
 
-  const dayName = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    weekday: 'long',
-  })
-    .format(zonedTimeToUtc(date, '12:00', timezone))
-    .toLowerCase();
-
-  const window = operatingHours?.[dayName];
+  // Grooming is narrowed to the branch's own Grooming hours for the day -
+  // everything below (lunch break, past-slot filter, staff checks) then runs
+  // unchanged on that narrower window.
+  const window = resolveCategoryWindow(
+    branchRow,
+    weekdayName(date, timezone),
+    serviceCategory
+  );
 
   if (!window) {
     return [];
@@ -344,12 +518,25 @@ export async function getDaySlots({
   // a future day's slots by the current time-of-day, e.g. picking tomorrow at
   // 1 PM only offered 2 PM onward.) The day-level minimum-notice floor is
   // already fully enforced above, so nothing here needs the lead-time term.
-  const futureCandidates =
+  const notPastCandidates =
     date === todayInBranchTz
       ? lunchCandidates.filter(
           (candidate) => candidate.start.getTime() > Date.now()
         )
       : lunchCandidates;
+
+  // Daycare stops checking pets in at the branch's cutoff (4 PM by default),
+  // so a session that starts at or after it could be booked but never
+  // checked in - don't offer it.
+  const daycareCutoff =
+    serviceCategory === 'Daycare'
+      ? resolveDaycareCutoffInstant(branchRow, date)
+      : null;
+  const futureCandidates = daycareCutoff
+    ? notPastCandidates.filter(
+        (candidate) => candidate.start.getTime() < daycareCutoff.getTime()
+      )
+    : notPastCandidates;
 
   const { eligible_staff_roles: roles } =
     await resolveServiceTypeStaffConfig(serviceCategory);
@@ -475,18 +662,17 @@ export async function partsOfDayWithinOperatingHours(
 }
 
 /**
- * #22: how many of the branch's daily closing times fall strictly between
- * checkInAt and checkOutAt - i.e. how many nights a daycare pet was still
- * there when the branch closed (0 for a same-day pickup before close,
- * matching today's behavior exactly). Used to add a flat per-night
- * overnight/no-pickup fee on top of the usual hourly daycare charge
- * (daycareBilling.service.ts).
+ * #22: every one of the branch's daily closing times that falls strictly
+ * between checkInAt and checkOutAt, oldest first - i.e. each night a
+ * daycare pet was still there when the branch closed (empty for a same-day
+ * pickup before close). daycareBilling.service.ts stops the hourly charge at
+ * the first one and bills one overnight rate per entry.
  */
-export async function countOvernightNights(
+export async function listClosingTimesBetween(
   checkInAt: Date,
   checkOutAt: Date,
   branchId: string
-): Promise<number> {
+): Promise<Date[]> {
   const { data: branch, error: branchError } = await supabase
     .from('branches')
     .select('operating_hours, timezone')
@@ -501,7 +687,7 @@ export async function countOvernightNights(
   const branchLocalDate = (instant: Date): string =>
     new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(instant);
 
-  let nights = 0;
+  const closings: Date[] = [];
   let cursor = branchLocalDate(checkInAt);
   const lastDate = branchLocalDate(checkOutAt);
 
@@ -521,12 +707,23 @@ export async function countOvernightNights(
         closeInstant.getTime() > checkInAt.getTime() &&
         closeInstant.getTime() < checkOutAt.getTime()
       ) {
-        nights += 1;
+        closings.push(closeInstant);
       }
     }
 
     cursor = nextDateString(cursor);
   }
 
-  return nights;
+  return closings;
+}
+
+/** How many nights a daycare pet was still there when the branch closed -
+ * see listClosingTimesBetween. */
+export async function countOvernightNights(
+  checkInAt: Date,
+  checkOutAt: Date,
+  branchId: string
+): Promise<number> {
+  return (await listClosingTimesBetween(checkInAt, checkOutAt, branchId))
+    .length;
 }

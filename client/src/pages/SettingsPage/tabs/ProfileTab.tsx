@@ -19,6 +19,7 @@ import { useUnsavedChanges } from '../../../shared/providers/UnsavedChangesProvi
 import { AvatarPicker } from '../../../shared/components/AvatarPicker/AvatarPicker';
 import { notifyIdentityChanged } from '../../../shared/events/identityEvents';
 import styles from '../SettingsPage.module.css';
+import { LoadingState } from '../../../shared/components/LoadingState/LoadingState';
 
 const COMMUNICATION_CHANNELS = ['Call', 'Text', 'Viber', 'Messenger'] as const;
 
@@ -195,7 +196,7 @@ function StaffProfileForm({
   });
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading your profile...</p>;
+    return <LoadingState label="Loading your profile..." />;
   }
 
   if (loadError || !profile) {
@@ -443,7 +444,7 @@ function CustomerProfileForm({
   });
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading your profile...</p>;
+    return <LoadingState label="Loading your profile..." />;
   }
 
   if (loadError || !profile) {

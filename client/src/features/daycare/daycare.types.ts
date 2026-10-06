@@ -18,6 +18,33 @@ export type DaycareStatus = 'Active' | 'Completed';
  */
 export type DaycareSession = HotelStay;
 
+/** How a checked-out session's computed_charge was arrived at - sent with
+ * the checkout response only (mirrors the server's DaycareChargeBreakdown). */
+export interface DaycareChargeBreakdown {
+  first_hour_fee: number;
+  succeeding_hours: number;
+  succeeding_hour_fee: number;
+  hourly_charge: number;
+  /** Hours past the booked end time, after the grace period - 0 for an
+   * on-time pickup or a walk-in. Billed at overdue_hour_fee. */
+  overdue_hours: number;
+  overdue_hour_fee: number;
+  overdue_charge: number;
+  /** Closing times the pet was still there for - 0 for a same-day pickup. */
+  nights: number;
+  /** The branch's Hotel nightly rate; null when nights is 0. */
+  nightly_rate: number | null;
+  overnight_charge: number;
+  total: number;
+}
+
+export type DaycareCheckoutResult = DaycareSession & {
+  charge_breakdown?: DaycareChargeBreakdown;
+  /** Pay at checkout: true when this checkout sent the whole charge to the
+   * cashier's Transactions list (the booking had no upfront charge). */
+  billed_at_checkout?: boolean;
+};
+
 export type CheckInPayload = (
   | { booking_id: string; pet_id?: never; branch_id?: never }
   | { pet_id: string; branch_id: string; booking_id?: never }

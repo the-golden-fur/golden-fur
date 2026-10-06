@@ -240,7 +240,7 @@ describe('AdminDiscountManagementPage', () => {
     expect(screen.queryByText('Inactive')).not.toBeInTheDocument();
   });
 
-  it("unify active/available: turning off a discount's only available branch makes Archive appear (is_active derives from availability, no Configure toggle needed)", async () => {
+  it('Config-menu consistency: a custom discount offers Configure, Rename and Archive (never Deactivate or a separate Branch Availability), even while active', async () => {
     vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
       data: [
         buildDiscount({
@@ -251,12 +251,60 @@ describe('AdminDiscountManagementPage', () => {
       ],
       error: null,
     });
-    vi.mocked(discountsApi.setDiscountBranchAvailability).mockResolvedValue({
-      data: {
-        discount_id: 'discount-custom',
-        branch_id: 'branch-makati',
-        is_available: false,
-      },
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await openActionsMenu(user, 'Loyalty Discount');
+
+    for (const name of ['Configure', 'Rename', 'Archive']) {
+      expect(screen.getByRole('menuitem', { name })).toBeInTheDocument();
+    }
+    expect(
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Branch Availability' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('a government-mandated discount has the same Configure, Rename and Archive menu as any other', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await openActionsMenu(user, 'Senior Citizen');
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Archive' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Branch Availability' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Rename saves only the new discount name', async () => {
+    vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
+      data: [
+        buildDiscount({
+          id: 'discount-custom',
+          name: 'Loyalty Discount',
+          is_mandated: false,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(discountsApi.updateDiscount).mockResolvedValue({
+      data: buildDiscount({
+        id: 'discount-custom',
+        name: 'VIP Discount',
+        is_mandated: false,
+      }),
       error: null,
     });
 
@@ -264,34 +312,57 @@ describe('AdminDiscountManagementPage', () => {
     const user = userEvent.setup();
 
     await openActionsMenu(user, 'Loyalty Discount');
-    await user.click(
-      await screen.findByRole('menuitem', { name: 'Branch Availability' })
-    );
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
 
-    // Before: available at Makati (its only branch) - Archive isn't offered
-    // yet (still effectively active).
-    await openActionsMenu(user, 'Loyalty Discount');
-    expect(
-      screen.queryByRole('menuitem', { name: 'Archive' })
-    ).not.toBeInTheDocument();
-    await user.keyboard('{Escape}');
+    const input = screen.getByRole('textbox', { name: /new discount name/i });
+    await user.clear(input);
+    await user.type(input, 'VIP Discount');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await user.click(screen.getByRole('switch', { name: 'Makati' }));
-
-    await waitFor(() => {
-      expect(discountsApi.setDiscountBranchAvailability).toHaveBeenCalledWith(
+    await waitFor(() =>
+      expect(discountsApi.updateDiscount).toHaveBeenCalledWith(
         'discount-custom',
         'token',
-        { branch_id: 'branch-makati', is_available: false }
-      );
+        { name: 'VIP Discount' }
+      )
+    );
+    expect(await screen.findByText('VIP Discount')).toBeInTheDocument();
+  });
+
+  it('Archive asks for confirmation, then removes the discount from the list', async () => {
+    vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
+      data: [
+        buildDiscount({
+          id: 'discount-custom',
+          name: 'Loyalty Discount',
+          is_mandated: false,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(discountsApi.archiveDiscount).mockResolvedValue({
+      data: null,
+      error: null,
     });
 
-    await user.click(screen.getByRole('button', { name: 'Close' }));
-    await openActionsMenu(user, 'Loyalty Discount');
+    renderPage();
+    const user = userEvent.setup();
 
-    expect(
-      await screen.findByRole('menuitem', { name: 'Archive' })
-    ).toBeInTheDocument();
+    await openActionsMenu(user, 'Loyalty Discount');
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    expect(discountsApi.archiveDiscount).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    await waitFor(() =>
+      expect(discountsApi.archiveDiscount).toHaveBeenCalledWith(
+        'discount-custom',
+        'token'
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Loyalty Discount')).not.toBeInTheDocument()
+    );
   });
 
   it('branch builder: New custom discount opens in a modal dialog, not an inline panel', async () => {
@@ -317,6 +388,13 @@ describe('AdminDiscountManagementPage', () => {
         is_mandated: false,
         value: 10,
       }),
+      error: null,
+    });
+    // Superadmin, not the default Admin viewer - a branch-scoped Admin can't
+    // check a branch other than their own (see BranchMultiSelect's
+    // lockedBranchId), which is exactly what this test needs to do.
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
       error: null,
     });
 
@@ -358,7 +436,7 @@ describe('AdminDiscountManagementPage', () => {
     expect(await screen.findByText('Discount created.')).toBeInTheDocument();
   });
 
-  it("AC-4: a mandated discount's name field is read-only in the edit form, opened via the actions menu", async () => {
+  it("a mandated discount's name field is editable in the Configure form (identity is mandated_kind, not the name)", async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -367,31 +445,20 @@ describe('AdminDiscountManagementPage', () => {
       await screen.findByRole('menuitem', { name: 'Configure' })
     );
 
-    expect(await screen.findByLabelText('Name')).toBeDisabled();
+    expect(await screen.findByLabelText('Name')).toBeEnabled();
   });
 
-  it('branch builder: the actions menu offers Branch Availability, which opens the per-branch toggle modal', async () => {
+  it('Configure carries the per-branch "Available at" selection, so availability needs no menu item of its own', async () => {
     renderPage();
     const user = userEvent.setup();
 
     await openActionsMenu(user, 'Senior Citizen');
     await user.click(
-      await screen.findByRole('menuitem', { name: 'Branch Availability' })
+      await screen.findByRole('menuitem', { name: 'Configure' })
     );
 
-    expect(
-      await screen.findByRole('dialog', {
-        name: 'Branch Availability - Senior Citizen',
-      })
-    ).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Makati' })).toHaveAttribute(
-      'aria-checked',
-      'true'
-    );
-    expect(screen.getByRole('switch', { name: 'Southwoods' })).toHaveAttribute(
-      'aria-checked',
-      'false'
-    );
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Available at')).toBeInTheDocument();
   });
 
   it('Epic B #85 (custom change): renders discounts as a list, not table rows or cards', async () => {
@@ -510,5 +577,31 @@ describe('AdminDiscountManagementPage', () => {
 
     expect(await screen.findByText('Service Scoped')).toBeInTheDocument();
     expect(screen.getByText('Service: Bath')).toBeInTheDocument();
+  });
+
+  it('Rename on a mandated discount saves only the new name', async () => {
+    vi.mocked(discountsApi.updateDiscount).mockResolvedValue({
+      data: buildDiscount({ name: 'Golden Years' }),
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await openActionsMenu(user, 'Senior Citizen');
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+
+    const input = screen.getByRole('textbox', { name: /new discount name/i });
+    await user.clear(input);
+    await user.type(input, 'Golden Years');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(discountsApi.updateDiscount).toHaveBeenCalledWith(
+        'discount-1',
+        'token',
+        { name: 'Golden Years' }
+      )
+    );
   });
 });

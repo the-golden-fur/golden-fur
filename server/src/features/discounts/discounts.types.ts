@@ -19,7 +19,15 @@ export const DISCOUNT_WRITE_ROLES: readonly string[] = ['Admin', 'Superadmin'];
 
 export type DiscountValueType = 'Percentage' | 'Flat';
 
-export type DiscountScopeType = 'service' | 'package' | 'category';
+/** 'misc_sale' (session 115): applies to any miscellaneous sale, no further
+ * sub-scoping - scope_service_id/scope_package_id/scope_category all stay
+ * NULL for it, mirroring how a promo's 'all_services' scope needs no scope
+ * row either. */
+export type DiscountScopeType =
+  | 'service'
+  | 'package'
+  | 'category'
+  | 'misc_sale';
 
 export type DiscountCategory =
   | 'Grooming'
@@ -41,10 +49,14 @@ export interface Discount {
   name: string;
   /**
    * True only for the seeded Senior Citizen / PWD rows (#44). Informational
-   * - mandated rows share the custom CRUD path - but their name and this
-   * flag are immutable (#43 AC-3).
+   * - mandated rows share the custom CRUD path - and this flag is immutable
+   * (#43 AC-3). The name is now editable: checkout identifies these rows by
+   * mandated_kind, not by name.
    */
   is_mandated: boolean;
+  /** Stable identity of a mandated discount, used by checkout's eligibility
+   * gate (20260928220). null for custom discounts. */
+  mandated_kind: 'senior_citizen' | 'pwd' | null;
   discount_type: DiscountValueType;
   value: number;
   scope_type: DiscountScopeType;

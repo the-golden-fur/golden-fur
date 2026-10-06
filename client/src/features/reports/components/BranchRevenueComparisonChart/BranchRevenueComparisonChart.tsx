@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { getAnalyticsSummary } from '../../api/reports.api';
-import type { AnalyticsTimeFilter } from '../../reports.types';
+import {
+  ANALYTICS_TIME_FILTERS,
+  type AnalyticsTimeFilter,
+} from '../../reports.types';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import styles from './BranchRevenueComparisonChart.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface BranchRevenueComparisonChartProps {
   branches: BranchSummary[];
   timeFilter: AnalyticsTimeFilter;
   accessToken: string;
+  /** Gives the chart its own "Time period" control, starting on
+   * `timeFilter` - for a host with no period control of its own (the
+   * Superadmin home dashboard). Left off, the chart simply follows
+   * `timeFilter` (the Analytics page, which has its own dropdown). */
+  filterable?: boolean;
 }
 
 interface BranchRevenueSlice {
@@ -34,7 +43,11 @@ export function BranchRevenueComparisonChart({
   branches,
   timeFilter,
   accessToken,
+  filterable = false,
 }: BranchRevenueComparisonChartProps) {
+  const [ownTimeFilter, setOwnTimeFilter] =
+    useState<AnalyticsTimeFilter>(timeFilter);
+  const activeTimeFilter = filterable ? ownTimeFilter : timeFilter;
   const [slices, setSlices] = useState<BranchRevenueSlice[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +61,8 @@ export function BranchRevenueComparisonChart({
     let isMounted = true;
 
     void Promise.all([
-      getAnalyticsSummary(timeFilter, makati.id, accessToken),
-      getAnalyticsSummary(timeFilter, southwoods.id, accessToken),
+      getAnalyticsSummary(activeTimeFilter, makati.id, accessToken),
+      getAnalyticsSummary(activeTimeFilter, southwoods.id, accessToken),
     ]).then(([makatiResult, southwoodsResult]) => {
       if (!isMounted) return;
 
@@ -61,6 +74,8 @@ export function BranchRevenueComparisonChart({
         return;
       }
 
+      // A period that failed must not leave its error up once another loads.
+      setError(null);
       setSlices([
         {
           branchId: makati.id,
@@ -80,7 +95,7 @@ export function BranchRevenueComparisonChart({
     return () => {
       isMounted = false;
     };
-  }, [accessToken, timeFilter, makati, southwoods]);
+  }, [accessToken, activeTimeFilter, makati, southwoods]);
 
   if (!makati || !southwoods) {
     return null;
@@ -91,10 +106,31 @@ export function BranchRevenueComparisonChart({
 
   return (
     <section className={styles.panel}>
-      <h2 className={styles.title}>Makati vs Southwoods Revenue</h2>
+      <div className={styles.header}>
+        <h2 className={styles.title}>Makati vs Southwoods Revenue</h2>
+
+        {filterable ? (
+          <label className={styles.field}>
+            Time period
+            <select
+              className={styles.control}
+              value={ownTimeFilter}
+              onChange={(event) =>
+                setOwnTimeFilter(event.target.value as AnalyticsTimeFilter)
+              }
+            >
+              {ANALYTICS_TIME_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading comparison...</p>
+        <LoadingState label="Loading comparison..." />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

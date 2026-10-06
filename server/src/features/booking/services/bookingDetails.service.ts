@@ -109,7 +109,7 @@ async function resolveTransactions(
   let query = supabase
     .from('transactions')
     .select(
-      'id, total_amount, payment_choice, payment_status, payment_method, bank_name, credit_applied_amount, payment_reference, created_at, webhook_confirmed_at'
+      'id, total_amount, payment_choice, payment_status, payment_method, bank_name, credit_applied_amount, payment_reference, created_at'
     )
     .eq('transaction_type', 'booking_payment')
     .order('created_at', { ascending: true });

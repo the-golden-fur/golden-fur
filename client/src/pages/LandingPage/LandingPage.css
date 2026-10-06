@@ -25,12 +25,10 @@ body {
   top: 24px;
   left: 50%;
   width: min(900px, calc(100% - 40px));
-  transform: translateX(-50%) scaleX(0.05);
-  transform-origin: center;
+  transform: translateX(-50%);
   padding: 14px 24px;
   border-radius: var(--radius-pill);
   z-index: 1000;
-  animation: navExpand 900ms ease-out forwards;
   /* Translucent floating pill over the hero photo - reuses the same glass-
      panel tokens as .service-card/.review-card (tokens.css) so it reads as
      a light frosted pill in light mode and a dark one in dark mode, instead
@@ -44,17 +42,6 @@ body {
     border-color 0.3s ease,
     box-shadow 0.3s ease,
     backdrop-filter 0.3s ease;
-}
-
-@keyframes navExpand {
-  0% {
-    transform: translateX(-50%) scaleX(0.05);
-    opacity: 0.35;
-  }
-  100% {
-    transform: translateX(-50%) scaleX(1);
-    opacity: 1;
-  }
 }
 
 .nav-inner {

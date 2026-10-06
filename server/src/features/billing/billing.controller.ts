@@ -7,9 +7,11 @@ import {
   checkoutBookingGroup,
 } from './services/checkoutAggregation.service.ts';
 import {
+  buildMiscSalePreview,
   createMiscSale,
   deleteMiscSale,
   getMiscSale,
+  getMiscSaleCredit,
   listMiscSales,
   updateMiscSale,
 } from './services/miscSale.service.ts';
@@ -17,7 +19,6 @@ import {
   listBookingGroupTransactions,
   listBookingTransactions,
 } from './services/bookingTransactions.service.ts';
-import { getPaymongoServiceFeeRate } from './services/paymongo.service.ts';
 import {
   addBookingPayment,
   payTransactionWithCredit,
@@ -28,10 +29,13 @@ import {
   checkoutGroupValidator,
   checkoutValidator,
   createMiscSaleValidator,
+  miscSaleCreditQueryValidator,
   payTransactionWithCreditValidator,
+  previewMiscSaleValidator,
   recordTransactionPaymentValidator,
   updateMiscSaleValidator,
 } from './modules/validators/billing.validator.ts';
+import { listMiscSaleOptions } from './services/discountPromoEvaluation.service.ts';
 import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
 import { BILLING_STAFF_ROLES } from './billing.types.ts';
 
@@ -53,13 +57,6 @@ function sendServiceError(res: Response, error: unknown) {
       : ((error as Error).message ?? 'Request failed');
 
   return res.status(statusCode).json({ error: message });
-}
-
-export async function paymongoFeeRateController(
-  _req: AuthenticatedRequest,
-  res: Response
-) {
-  return res.status(200).json({ feePercent: getPaymongoServiceFeeRate() });
 }
 
 /** Read-only preview backing the cashier checkout screen's line-item list
@@ -153,6 +150,87 @@ export async function checkoutGroupController(
   }
 }
 
+/** Session 115: read-only preview backing the misc-sale wizard's
+ * Discount/Promo step - same shape as previewCheckoutController above, for
+ * a cart that doesn't exist as a transaction yet. */
+export async function previewMiscSaleController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = previewMiscSaleValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const preview = await buildMiscSalePreview({
+      branchId,
+      items: parsed.data.items,
+      paymentMethod: parsed.data.payment_method,
+      discountIds: parsed.data.discount_ids,
+      promoIds: parsed.data.promo_ids,
+    });
+    return res.status(200).json(preview);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Lists the discounts/promos the admin has made available for misc sales
+ * at the cashier's own branch - the wizard's Discount/Promo step options. */
+export async function listMiscSaleOptionsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const options = await listMiscSaleOptions(branchId);
+    return res.status(200).json(options);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function getMiscSaleCreditController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = miscSaleCreditQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const credit = await getMiscSaleCredit(parsed.data.customer_id, branchId);
+    return res.status(200).json(credit);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
 export async function createMiscSaleController(
   req: AuthenticatedRequest,
   res: Response
@@ -184,12 +262,34 @@ export async function createMiscSaleController(
   }
 }
 
+/** Code-review fix (session 115): this route only ever had `staffAccess`
+ * (no `requireBranch`), and this controller trusted the client-supplied
+ * `branch_id` query param with no fallback - a branch-scoped Cashier/
+ * Receptionist/Supervisor who simply omitted it (as the client always did)
+ * saw every branch's misc sales, since listMiscSales() skips its own
+ * `.eq('branch_id', ...)` filter when passed nothing. Mirrors
+ * transactionHistoryController's own pattern (reports.controller.ts):
+ * Superadmin may see all branches or filter to one via the query param;
+ * every other role is always forced to their own req.user.branch_id
+ * (populated by `requireBranch`, never client-controlled), regardless of
+ * what the query string says. */
 export async function listMiscSalesController(
   req: AuthenticatedRequest,
   res: Response
 ) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const requestedBranchId = queryString(req.query.branch_id);
+  const branchId =
+    requesterRole === 'Superadmin' ? requestedBranchId : requesterBranchId;
+
   try {
-    const transactions = await listMiscSales(queryString(req.query.branch_id));
+    const transactions = await listMiscSales(branchId);
     return res.status(200).json({ transactions });
   } catch (error) {
     return sendServiceError(res, error);

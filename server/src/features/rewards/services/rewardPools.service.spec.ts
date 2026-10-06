@@ -191,11 +191,34 @@ describe('rewardPools.service', () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it('archive requires the pool to be deactivated first', async () => {
-    queueFromResults({ data: poolRow(), error: null });
+  it('archive works on an active pool that no live spin wheel promo uses', async () => {
+    queueFromResults(
+      { data: poolRow(), error: null },
+      { data: null, error: null }
+    );
+
+    await expect(archiveRewardPool('pool-1')).resolves.toBeUndefined();
+  });
+
+  it('refuses to archive a pool that an active spin wheel promo uses', async () => {
+    queueFromResults({
+      data: poolRow({
+        spin_wheel_promo_settings: [
+          {
+            promos: {
+              id: 'promo-1',
+              name: 'Loyalty Spin',
+              is_active: true,
+              archived_at: null,
+            },
+          },
+        ],
+      }),
+      error: null,
+    });
 
     await expect(archiveRewardPool('pool-1')).rejects.toMatchObject({
-      statusCode: 403,
+      statusCode: 409,
     });
   });
 

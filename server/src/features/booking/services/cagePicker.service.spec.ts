@@ -24,6 +24,9 @@ function queueFromResults(...results: QueryResult[]) {
     const builder: Record<string, unknown> = {};
     builder.select = vi.fn(() => builder);
     builder.eq = vi.fn(() => builder);
+    builder.is = vi.fn(() => builder);
+    builder.not = vi.fn(() => builder);
+    builder.in = builder.in ?? vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
     builder.limit = vi.fn(() => builder);
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
@@ -39,7 +42,7 @@ describe('cagePicker.service', () => {
   });
 
   describe('isCagePickerEnabled', () => {
-    it('is always false for a non-Hotel category, without querying', async () => {
+    it('is always false for a category that never holds a cage, without querying', async () => {
       const result = await isCagePickerEnabled('Grooming');
 
       expect(result).toBe(false);
@@ -52,6 +55,15 @@ describe('cagePicker.service', () => {
       const result = await isCagePickerEnabled('Hotel');
 
       expect(result).toBe(true);
+    });
+
+    it('reads the Daycare service type row too - Daycare claims a real cage at check-in', async () => {
+      queueFromResults({ data: { cage_picker_enabled: true }, error: null });
+
+      const result = await isCagePickerEnabled('Daycare');
+
+      expect(result).toBe(true);
+      expect(supabase.from).toHaveBeenCalledWith('service_types');
     });
 
     it('defaults to false when no service_types row exists for Hotel', async () => {

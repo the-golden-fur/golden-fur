@@ -25,10 +25,13 @@ import {
 } from './services/staffManagement.service.ts';
 import {
   cancelUnavailabilityBlock,
+  clearAutoBuildSchedule,
+  commitAutoBuildSchedule,
   createUnavailabilityBlock,
   listBranchSchedule,
   listPendingUnavailabilityBlocks,
   listUnavailabilityBlocks,
+  previewAutoBuildSchedule,
   reviewUnavailabilityBlock,
 } from './services/unavailabilityBlock.service.ts';
 import { ADMIN_ROLES, UNAVAILABILITY_LEAVE_TYPES } from './staff.types.ts';
@@ -60,6 +63,32 @@ const reviewUnavailabilityBlockValidator = z
 const listBranchScheduleQueryValidator = z.object({
   from: z.iso.datetime({ offset: true }),
   to: z.iso.datetime({ offset: true }),
+});
+
+const autoBuildPreviewValidator = z
+  .object({
+    year: z.number().int().min(2000).max(2100),
+    month: z.number().int().min(1).max(12),
+    rest_days_per_week: z.number().int().min(0).max(7),
+  })
+  .strict();
+
+const autoBuildAssignmentValidator = z.object({
+  staff_id: z.string().uuid(),
+  dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
+});
+
+const autoBuildCommitValidator = z
+  .object({
+    year: z.number().int().min(2000).max(2100),
+    month: z.number().int().min(1).max(12),
+    assignments: z.array(autoBuildAssignmentValidator),
+  })
+  .strict();
+
+const autoBuildClearQueryValidator = z.object({
+  year: z.coerce.number().int().min(2000).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
 });
 
 /** Custom change (My Schedule): both optional and required together - a
@@ -788,6 +817,121 @@ export async function listBranchScheduleController(
     });
 
     return res.status(200).json({ entries });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function autoBuildPreviewController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+  const branchId = Array.isArray(req.params.branchId)
+    ? req.params.branchId[0]
+    : req.params.branchId;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = autoBuildPreviewValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await previewAutoBuildSchedule({
+      requesterRole,
+      requesterBranchId,
+      branchId: branchId as string,
+      year: parsed.data.year,
+      month: parsed.data.month,
+      restDaysPerWeek: parsed.data.rest_days_per_week,
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function autoBuildCommitController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+  const branchId = Array.isArray(req.params.branchId)
+    ? req.params.branchId[0]
+    : req.params.branchId;
+
+  if (!requesterId || !requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = autoBuildCommitValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await commitAutoBuildSchedule({
+      requesterId,
+      requesterRole,
+      requesterBranchId,
+      branchId: branchId as string,
+      year: parsed.data.year,
+      month: parsed.data.month,
+      assignments: parsed.data.assignments,
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function autoBuildClearController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+  const branchId = Array.isArray(req.params.branchId)
+    ? req.params.branchId[0]
+    : req.params.branchId;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = autoBuildClearQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await clearAutoBuildSchedule({
+      requesterRole,
+      requesterBranchId,
+      branchId: branchId as string,
+      year: parsed.data.year,
+      month: parsed.data.month,
+    });
+
+    return res.status(200).json(result);
   } catch (error) {
     return sendServiceError(res, error);
   }

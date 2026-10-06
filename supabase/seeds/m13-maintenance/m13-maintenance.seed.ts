@@ -4,7 +4,8 @@
 // Seeds the M13 pieces that need real branches.id values, which only exist
 // once m01's seed has run:
 //   - public.service_branch_availability: every base service (migration
-//     20260715034) available at every branch.
+//     20260715034) available at every branch. The Hotel service's Southwoods
+//     row is created with its own PHP 500 price (migration 20261006245).
 //   - public.packages / package_services / package_branch_availability: the
 //     Golden Package, one shared row available at every branch.
 //   - public.promos (+ promo_branch_availability): two always-on,
@@ -95,6 +96,23 @@ async function getBranches(supabase: ReturnType<typeof createClient>) {
   return data as { id: string; name: string }[];
 }
 
+/** "Overnight Stay (Aircon Room)" - migration 20260807105. */
+export const HOTEL_SERVICE_ID = 'a1300000-0000-4000-a000-000000000024';
+
+/** Per-branch service price (migration 20261006245): Hotel is PHP 500 a
+ * night at Southwoods, the base price everywhere else. On a fresh database
+ * that migration's own UPDATE runs before these rows exist, so the price is
+ * set here instead - only when the row is created, never on a row already
+ * there, so a price a Superadmin later changes or clears is left alone. */
+function seededPriceOverride(
+  serviceId: string,
+  branchName: string
+): number | null {
+  return serviceId === HOTEL_SERVICE_ID && branchName === 'Southwoods'
+    ? 500
+    : null;
+}
+
 /** Every base service (migration 20260715034) available at every branch. */
 export async function seedServiceBranchAvailability(
   supabase: ReturnType<typeof createClient>
@@ -133,6 +151,7 @@ export async function seedServiceBranchAvailability(
           service_id: service.id,
           branch_id: branch.id,
           is_available: true,
+          price_override: seededPriceOverride(service.id, branch.name),
         });
 
       if (error) {

@@ -6,6 +6,7 @@ import type {
 } from '../../messaging.types';
 import { AttachmentPicker } from '../AttachmentPicker/AttachmentPicker';
 import styles from './ThreadDetail.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface ThreadDetailProps {
   thread: ThreadDetailType | null;
@@ -54,7 +55,7 @@ export function ThreadDetail({
   );
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading thread...</p>;
+    return <LoadingState label="Loading thread..." />;
   }
 
   if (error) {

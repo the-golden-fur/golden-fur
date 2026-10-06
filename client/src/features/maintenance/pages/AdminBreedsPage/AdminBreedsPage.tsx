@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router';
 import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -20,22 +14,23 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import { CardRowWithMenu } from '../../../../shared/components/MoreOptionsMenu/CardRowWithMenu';
+import { RenameModal } from '../../../../shared/components/RenameModal/RenameModal';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
+  archiveBreedAdmin,
   createBreedAdmin,
-  deleteBreedAdmin,
   listBreedsAdmin,
   listPetTypes,
   updateBreedAdmin,
@@ -51,6 +46,7 @@ import {
   matchesBreedQuery,
 } from './breedBrowserFields';
 import styles from './AdminBreedsPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side - this page is a write
  * surface, so the UI guard matches the API/RLS boundary by construction. */
@@ -95,8 +91,14 @@ export function AdminBreedsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
+  const [renamingBreed, setRenamingBreed] = useState<Breed | null>(null);
+  const [archivingBreed, setArchivingBreed] = useState<Breed | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [configuringBreed, setConfiguringBreed] = useState<Breed | null>(null);
+  const [configPetType, setConfigPetType] = useState<PetType>('');
+  const [configName, setConfigName] = useState('');
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [isConfiguring, setIsConfiguring] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
 
   const [message, setMessage] = useState<string | null>(null);
@@ -270,122 +272,101 @@ export function AdminBreedsPage() {
     closeCreateModal();
   }
 
-  function startEditing(breed: Breed) {
-    setEditingId(breed.id);
-    setEditingName(breed.name);
-    setRowError(null);
+  function replaceBreed(updated: Breed) {
+    setBreeds((prev) =>
+      prev.map((breed) => (breed.id === updated.id ? updated : breed))
+    );
   }
 
-  async function handleRename(breedId: string) {
-    if (!accessToken || !editingName.trim()) {
-      const message = 'Name is required.';
-      setRowError(message);
-      throw new Error(message);
-    }
+  async function handleRename(
+    breed: Breed,
+    name: string
+  ): Promise<string | null> {
+    if (!accessToken) return 'You are signed out.';
 
-    setRowError(null);
-
-    const result = await updateBreedAdmin(breedId, accessToken, {
-      name: editingName.trim(),
-    });
+    const result = await updateBreedAdmin(breed.id, accessToken, { name });
 
     if (result.error || !result.data) {
-      const message = result.error ?? 'Could not rename breed.';
-      setRowError(message);
-      throw new Error(message);
+      return result.error ?? 'Could not rename breed.';
     }
 
-    setBreeds((prev) =>
-      prev.map((breed) =>
-        breed.id === breedId ? (result.data as Breed) : breed
-      )
-    );
-    setEditingId(null);
+    replaceBreed(result.data);
     setMessage('Breed renamed.');
+    return null;
   }
 
-  const editingBreed = breeds.find((b) => b.id === editingId) ?? null;
+  function openConfigure(breed: Breed) {
+    setConfiguringBreed(breed);
+    setConfigPetType(breed.pet_type);
+    setConfigName(breed.name);
+    setConfigError(null);
+  }
 
-  const handleDiscardEdit = useCallback(() => {
-    setEditingId(null);
-    setRowError(null);
-  }, []);
+  function closeConfigure() {
+    setConfiguringBreed(null);
+    setConfigError(null);
+  }
 
-  // handleRename is a plain function (redefined every render), so this
-  // wrapper must list every piece of state it reads as its own deps -
-  // otherwise an unmemoized onSave identity re-triggers useUnsavedChanges'
-  // registration effect on every render, changing the provider's context
-  // value, re-rendering this component, creating another fresh onSave... an
-  // infinite loop with no user action needed to sustain it.
-  const handleUnsavedSave = useCallback(
-    () => (editingId !== null ? handleRename(editingId) : Promise.resolve()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editingId, accessToken, editingName]
-  );
+  async function handleConfigure(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
-  // Breeds only ever has one row mid-edit at a time (editingId), so this is
-  // the "per-in-progress-edit" shape of the pattern - a stable id with
-  // entering edit mode itself as the dirty signal, no deeper per-field
-  // diffing.
-  useUnsavedChanges({
-    id: 'breed-edit',
-    label: editingBreed ? `Breed: ${editingBreed.name}` : 'Breed',
-    isDirty: editingId !== null,
-    onSave: handleUnsavedSave,
-    onDiscard: handleDiscardEdit,
-  });
+    if (!accessToken || !configuringBreed) return;
 
-  async function handleDelete(breedId: string) {
-    if (!accessToken) {
+    if (!configName.trim()) {
+      setConfigError('Name is required.');
       return;
     }
 
+    setIsConfiguring(true);
+    setConfigError(null);
+
+    const result = await updateBreedAdmin(configuringBreed.id, accessToken, {
+      pet_type: configPetType,
+      name: configName.trim(),
+    });
+
+    setIsConfiguring(false);
+
+    if (result.error || !result.data) {
+      setConfigError(result.error ?? 'Could not update breed.');
+      return;
+    }
+
+    replaceBreed(result.data);
+    setMessage('Breed updated.');
+    closeConfigure();
+  }
+
+  async function handleConfirmArchive() {
+    if (!accessToken || !archivingBreed) return;
+
+    setIsArchiving(true);
     setRowError(null);
 
-    const result = await deleteBreedAdmin(breedId, accessToken);
+    const result = await archiveBreedAdmin(archivingBreed.id, accessToken);
+
+    setIsArchiving(false);
 
     if (result.error) {
+      setArchivingBreed(null);
       setRowError(result.error);
       return;
     }
 
-    setBreeds((prev) => prev.filter((breed) => breed.id !== breedId));
-    setMessage('Breed deleted.');
+    setBreeds((prev) => prev.filter((breed) => breed.id !== archivingBreed.id));
+    setArchivingBreed(null);
+    setMessage('Breed archived. Restore it from Settings > Config > Archive.');
   }
 
   function buildBreedActionItems(breed: Breed): MoreOptionsMenuItem[] {
     return [
-      { label: 'Rename', onSelect: () => startEditing(breed) },
-      { label: 'Delete', onSelect: () => void handleDelete(breed.id) },
+      { label: 'Configure', onSelect: () => openConfigure(breed) },
+      { label: 'Rename', onSelect: () => setRenamingBreed(breed) },
+      { label: 'Archive', onSelect: () => setArchivingBreed(breed) },
     ];
   }
 
   function renderBreedActions(breed: Breed) {
-    if (editingId === breed.id) {
-      return (
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.smallButton}
-            onClick={() =>
-              void handleRename(breed.id).catch(() => {
-                // rowError is already set and shown below - nothing else to do.
-              })
-            }
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            className={styles.smallButtonSecondary}
-            onClick={handleDiscardEdit}
-          >
-            Cancel
-          </button>
-        </div>
-      );
-    }
-
     return (
       <div className={styles.actions}>
         <MoreOptionsMenu
@@ -401,16 +382,9 @@ export function AdminBreedsPage() {
       {
         id: 'name',
         header: 'Name',
-        render: (breed) =>
-          editingId === breed.id ? (
-            <input
-              className={styles.input}
-              value={editingName}
-              onChange={(event) => setEditingName(event.target.value)}
-            />
-          ) : (
-            <span className={styles.breedName}>{breed.name}</span>
-          ),
+        render: (breed) => (
+          <span className={styles.breedName}>{breed.name}</span>
+        ),
       },
       {
         id: 'petType',
@@ -423,25 +397,13 @@ export function AdminBreedsPage() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editingId, editingName, petTypes]
+    [petTypes]
   );
 
-  function renderBreedCard(breed: Breed) {
-    if (editingId === breed.id) {
-      return (
-        <div className={styles.rowMain}>
-          <input
-            className={styles.input}
-            value={editingName}
-            onChange={(event) => setEditingName(event.target.value)}
-          />
-          {renderBreedActions(breed)}
-        </div>
-      );
-    }
-
+  function renderBreedCard(breed: Breed, showMenuButton = false) {
     return (
-      <CardContextMenu
+      <CardRowWithMenu
+        showMenuButton={showMenuButton}
         label={`Actions for ${breed.name}`}
         items={buildBreedActionItems(breed)}
       >
@@ -451,7 +413,7 @@ export function AdminBreedsPage() {
             {petTypeName(breed.pet_type)}
           </span>
         </div>
-      </CardContextMenu>
+      </CardRowWithMenu>
     );
   }
 
@@ -459,7 +421,7 @@ export function AdminBreedsPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -490,7 +452,7 @@ export function AdminBreedsPage() {
             Breeds
           </h2>
           {isLoading ? (
-            <p className={styles.copy}>Loading breeds...</p>
+            <LoadingState label="Loading breeds..." />
           ) : loadError ? (
             <p className={styles.errorBanner} role="alert">
               {loadError}
@@ -532,7 +494,7 @@ export function AdminBreedsPage() {
                 <DataList
                   items={visibleBreeds}
                   getRowKey={(breed) => breed.id}
-                  renderItem={renderBreedCard}
+                  renderItem={(breed) => renderBreedCard(breed, true)}
                   emptyMessage="No breeds match this filter."
                 />
               ) : (
@@ -609,6 +571,77 @@ export function AdminBreedsPage() {
           </button>
         </form>
       </Modal>
+
+      <Modal
+        isOpen={configuringBreed !== null}
+        title="Configure breed"
+        onClose={closeConfigure}
+        closeOnBackdropClick={false}
+      >
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleConfigure(event)}
+        >
+          <label className={styles.field}>
+            <span className={styles.label}>Pet Type</span>
+            <select
+              className={styles.input}
+              value={configPetType}
+              onChange={(event) =>
+                setConfigPetType(event.target.value as PetType)
+              }
+            >
+              {petTypes.map((option) => (
+                <option key={option.id} value={option.key}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span className={styles.label}>Name</span>
+            <input
+              className={styles.input}
+              value={configName}
+              onChange={(event) => setConfigName(event.target.value)}
+            />
+          </label>
+          {configError ? (
+            <p className={styles.errorBanner} role="alert">
+              {configError}
+            </p>
+          ) : null}
+          <button
+            className={styles.button}
+            type="submit"
+            disabled={isConfiguring}
+          >
+            {isConfiguring ? 'Saving...' : 'Save changes'}
+          </button>
+        </form>
+      </Modal>
+
+      <RenameModal
+        isOpen={renamingBreed !== null}
+        entityLabel="breed"
+        currentName={renamingBreed?.name ?? ''}
+        onSubmit={(name) =>
+          renamingBreed
+            ? handleRename(renamingBreed, name)
+            : Promise.resolve(null)
+        }
+        onClose={() => setRenamingBreed(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={archivingBreed !== null}
+        title="Archive breed?"
+        body={`"${archivingBreed?.name ?? ''}" will no longer be offered when adding or editing pets. Pets that already have this breed keep it, and you can restore it from Settings > Config > Archive.`}
+        confirmLabel="Archive"
+        isConfirming={isArchiving}
+        onConfirm={() => void handleConfirmArchive()}
+        onCancel={() => setArchivingBreed(null)}
+      />
     </main>
   );
 }

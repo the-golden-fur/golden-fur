@@ -29,6 +29,11 @@ import type {
 } from '../../../maintenance/maintenance.types';
 import { BookingStepper } from '../../components/BookingStepper/BookingStepper';
 import { BookingCountBadge } from '../../components/BookingCountBadge/BookingCountBadge';
+import {
+  BookingSummaryPanel,
+  type BookingSummaryLine,
+  type BookingSummaryRow,
+} from '../../components/BookingSummaryPanel/BookingSummaryPanel';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
@@ -66,6 +71,10 @@ import {
   type StaffPreferenceInput,
 } from '../../booking.types';
 import { friendlyBookingError } from '../../bookingErrors';
+import {
+  isPayAtCheckoutAvailable,
+  resolvePaymentChoice,
+} from '../../paymentChoice';
 import { listStaff } from '../../../staff/api/staff.api';
 import { listMyPatients } from '../../../veterinary/api/veterinary.api';
 import { listDiscounts } from '../../../discounts/api/discounts.api';
@@ -92,6 +101,7 @@ import { NightTabs } from '../../components/NightTabs/NightTabs';
 import { getHotelNightDates, formatNightLabel } from '../../utils/hotelNights';
 import { formatDuration } from '../../../../shared/utils/formatDuration';
 import styles from './CustomerBookingFlowPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
  * no-picks-yet case, so those useMemo values don't return a fresh empty
@@ -132,6 +142,34 @@ function deriveHotelCageSize(
   if (lower.includes('medium')) return 'M';
   if (lower.includes('small')) return 'S';
   return null;
+}
+
+/** Staff-or-cage wording shared by the 'Your bookings' step's list rows and
+ * the BookingSummaryPanel, so both describe a booking the same way. */
+function describeStaffOrCage(
+  category: ServiceCategory,
+  staffPreference: StaffPreferenceInput | null,
+  cagePreference: CagePreferenceInput | null
+): string {
+  // Daycare only talks about a cage once the receptionist's Cage Picker
+  // actually produced a preference - it's off unless enabled for Daycare.
+  if (category === 'Hotel' || (category === 'Daycare' && cagePreference)) {
+    return cagePreference?.type === 'specific'
+      ? 'Specific cage requested'
+      : 'No cage preference';
+  }
+  return staffPreference?.type === 'specific'
+    ? 'Specific staff requested'
+    : staffPreference?.type === 'no_preference'
+      ? 'No staff preference'
+      : 'No staff selection needed';
+}
+
+function formatSlotStart(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 }
 
 /** Module-level (not inside the component) so calling Date.now()/
@@ -202,6 +240,9 @@ interface SubBookingDraft {
   selectedSlot: { start: string; end: string } | null;
   finalScheduledEnd: string | null;
   hotelNights: number;
+  /** Optional - an entry saved before Daycare had an hours picker has none
+   * and reads as 1 hour. */
+  daycareHours?: number;
   staffPreference: StaffPreferenceInput | null;
   cagePreference: CagePreferenceInput | null;
   specialInstructions: string;
@@ -266,6 +307,33 @@ const PARTS_OF_DAY: HotelBookingPreferenceWalking['time_block'][] = [
 const DURATION_PRESETS_MINUTES = [10, 15, 20, 30];
 
 const NIGHT_COUNT_PRESETS = [3, 5];
+
+const DAYCARE_HOUR_PRESETS = [2, 4];
+const MAX_DAYCARE_HOURS = 12;
+
+/** What a Daycare booking costs for the hours booked: the service's own
+ * first-hour fee, plus its succeeding-hour fee for each further hour.
+ * Mirrors the server (booking.service.ts's resolveBookingItem, via
+ * daycareHourlyCharge), which prices the booking the same way from the
+ * scheduled window - so the panel and the charge agree. A Daycare service
+ * with no hourly fees set keeps its flat base price, same as the server. */
+function daycareBookingPrice(
+  service: {
+    base_price: number;
+    first_hour_fee?: number | null;
+    succeeding_hour_fee?: number | null;
+  },
+  hours: number
+): number {
+  if (service.first_hour_fee == null || service.succeeding_hour_fee == null) {
+    return service.base_price;
+  }
+
+  return (
+    service.first_hour_fee +
+    Math.max(0, hours - 1) * service.succeeding_hour_fee
+  );
+}
 
 interface HotelFeedingRowState {
   meal_time: HotelBookingPreferenceFeeding['meal_time'];
@@ -388,6 +456,8 @@ interface PersistedBookingDraft {
   bookingSource: BookingSource;
   selectedSlot: { start: string; end: string } | null;
   hotelNights: number;
+  /** Optional - a draft saved before Daycare had an hours picker has none. */
+  daycareHours?: number;
   // Multiselect (session 86): replaces the old singular selectedPromoId.
   selectedPromoIds: string[];
   selectedCouponIds: string[];
@@ -565,6 +635,16 @@ export function CustomerBookingFlowPage() {
   const [treatedCustomerIds, setTreatedCustomerIds] =
     useState<Set<string> | null>(null);
 
+  // Receptionist/Groomer may only set Walk time and Playtime when booking a
+  // Hotel/Daycare stay on a customer's behalf - Feeding and Medications are
+  // the customer's own call (allergies, dosing), not something front-desk
+  // staff should be guessing at or overwriting. Other staff roles (Admin/
+  // Supervisor/Superadmin/Veterinarian/Cashier/Pet Assistant) keep full
+  // access here.
+  const restrictsToPlayWalkOnly =
+    isReceptionistMode &&
+    (viewerRole === 'Receptionist' || viewerRole === 'Groomer');
+
   useEffect(() => {
     if (!isVeterinarianStaff || !accessToken) return;
 
@@ -644,9 +724,14 @@ export function CustomerBookingFlowPage() {
   // (see the catalog-loading effect below). When set, it replaces every
   // selected service/package's own price in the running total, matching
   // what booking.service.ts actually charges at confirmation.
-  const [catalogFixedPrice, setCatalogFixedPrice] = useState<number | null>(
+  const [petTypeFixedPrice, setPetTypeFixedPrice] = useState<number | null>(
     null
   );
+  // Veterinary never uses the pet type's fixed price - a cat pays the same
+  // as a dog for every vet service/package. Mirrors resolveBookingItems in
+  // booking.service.ts.
+  const catalogFixedPrice =
+    category === 'Veterinary' ? null : petTypeFixedPrice;
   const [downpaymentStatus, setDownpaymentStatus] =
     useState<DownpaymentStatus | null>(null);
   // Checkboxes over both the "Individual service" and "Package" sub-tabs -
@@ -713,6 +798,11 @@ export function CustomerBookingFlowPage() {
    * actual submitted scheduled_end is computed from this instead so a stay
    * can span more than one night. */
   const [hotelNights, setHotelNights] = useState(1);
+  /** Daycare's own counterpart to hotelNights: how many hours the pet is
+   * booked in for, set on the Date & Time step. Drives both the booking's
+   * length (scheduled_end) and its price (first hour + each succeeding
+   * hour - see daycareBookingPrice). */
+  const [daycareHours, setDaycareHours] = useState(1);
   const [staffPreference, setStaffPreference] =
     useState<StaffPreferenceInput | null>(null);
   // Resolved from GET /bookings/staff-picker (customer-accessible) once the
@@ -739,14 +829,6 @@ export function CustomerBookingFlowPage() {
   const [selectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
   const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
   const [selectedDiscountId, setSelectedDiscountId] = useState('');
-  // Staff attestation that they physically checked the customer's Senior
-  // Citizen/PWD ID before selecting a mandated discount - mirrors
-  // CashierCheckoutPage's own seniorCitizenEligible/pwdEligible checkboxes,
-  // just collapsed to one confirmation since only one discount can be picked
-  // here. Never sent to the server or persisted (same as the checkout-time
-  // checkboxes) - the act of a qualifying staff role choosing a Cash booking
-  // and checking this box IS the attestation.
-  const [discountIdVerified, setDiscountIdVerified] = useState(false);
   // Payment scheme: only sent when the branch requires a down payment (see
   // showPaymentChoice). Decides the size of the booking's initial charge.
   const [paymentChoice, setPaymentChoice] =
@@ -930,7 +1012,6 @@ export function CustomerBookingFlowPage() {
     setSelectedDiscountId('');
     setSelectedPromoIds([]);
     setSelectedCouponIds([]);
-    setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
@@ -952,6 +1033,16 @@ export function CustomerBookingFlowPage() {
     setStaffPickerUnavailable(false);
     setCagePreference(null);
     setCagePickerUnavailable(false);
+  }
+
+  /** Changing the hours changes the booking's length, exactly like changing
+   * the item set does for the other categories - so a slot already picked
+   * for the old length is dropped and re-picked against the new one. */
+  function changeDaycareHours(hours: number) {
+    const next = Math.min(MAX_DAYCARE_HOURS, Math.max(1, Math.round(hours)));
+    if (next === daycareHours) return;
+    setDaycareHours(next);
+    resetSlotForItemChange();
   }
 
   // ---- Data loads ----
@@ -1040,7 +1131,7 @@ export function CustomerBookingFlowPage() {
       setAllServices(result.data.services);
       setPackages(result.data.packages);
       setPromos(result.data.promos);
-      setCatalogFixedPrice(result.data.fixedPrice);
+      setPetTypeFixedPrice(result.data.fixedPrice);
       if (result.data.promoCap) setPromoCap(result.data.promoCap);
     });
 
@@ -1152,6 +1243,7 @@ export function CustomerBookingFlowPage() {
       }
       setSelectedSlot(draft.selectedSlot);
       setHotelNights(draft.hotelNights);
+      setDaycareHours(draft.daycareHours ?? 1);
       setSelectedPromoIds(draft.selectedPromoIds ?? []);
       setSelectedCouponIds(draft.selectedCouponIds ?? []);
       setSelectedDiscountId(draft.selectedDiscountId);
@@ -1167,8 +1259,6 @@ export function CustomerBookingFlowPage() {
         setWalkInCustomer(draft.walkInCustomer);
       }
       setBookingsList(draft.bookingsList ?? []);
-      // discountIdVerified is deliberately NOT restored - it's an onsite ID
-      // check attestation, not something that should survive a page reload.
       setShowRestoredBanner(true);
     });
   }, [draftStorageKey, isReceptionistMode, lockedServiceCategory]);
@@ -1202,6 +1292,7 @@ export function CustomerBookingFlowPage() {
         bookingSource,
         selectedSlot,
         hotelNights,
+        daycareHours,
         selectedPromoIds,
         selectedCouponIds,
         selectedDiscountId,
@@ -1231,6 +1322,7 @@ export function CustomerBookingFlowPage() {
     bookingSource,
     selectedSlot,
     hotelNights,
+    daycareHours,
     selectedPromoIds,
     selectedCouponIds,
     selectedDiscountId,
@@ -1267,12 +1359,12 @@ export function CustomerBookingFlowPage() {
     setBookingSource('Online');
     setSelectedSlot(null);
     setHotelNights(1);
+    setDaycareHours(1);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
     setSelectedPromoIds([]);
     setSelectedCouponIds([]);
     setSelectedDiscountId('');
-    setDiscountIdVerified(false);
     setPaymentChoice('downpayment');
     setSpecialInstructions('');
     resetHotelPreferences();
@@ -1456,17 +1548,38 @@ export function CustomerBookingFlowPage() {
     [packages, selectedPackageIds]
   );
 
+  /** The pet type's fixed price as it applies to an individual SERVICE: not
+   * at all for Grooming, whose individual services cost a cat (or any pet
+   * type with a fixed price) exactly what they cost any other pet. Packages
+   * and every other category's services still use catalogFixedPrice.
+   * Mirrors resolveBookingItem in booking.service.ts. */
+  const serviceFixedPrice = category === 'Grooming' ? null : catalogFixedPrice;
+
+  /** The selected Daycare service, when it has hourly fees to price by -
+   * null otherwise (not Daycare, nothing picked yet, or a Daycare service
+   * left on a flat base price). */
+  const daycareRateService =
+    category === 'Daycare'
+      ? (selectedServices.find(
+          (service) =>
+            service.first_hour_fee != null &&
+            service.succeeding_hour_fee != null
+        ) ?? null)
+      : null;
+
   /** Flattened services + packages for the in-progress booking, name +
-   * price only - feeds the persistent selection summary shown on every
-   * step after 'items' (see SelectedItemsSummary below) so a customer/
-   * receptionist doesn't have to jump back to the Services step just to
-   * recall what they picked. */
+   * price only - feeds the Services row of the "Your booking" summary panel
+   * (BookingSummaryPanel) so a customer/receptionist doesn't have to jump
+   * back to the Services step just to recall what they picked. */
   const selectedItemsSummary = useMemo(
     () => [
       ...selectedServices.map((service) => ({
         id: service.id,
         name: service.name,
-        price: catalogFixedPrice ?? service.base_price,
+        price:
+          category === 'Daycare'
+            ? daycareBookingPrice(service, daycareHours)
+            : (serviceFixedPrice ?? service.base_price),
       })),
       ...selectedPackages.map((pkg) => ({
         id: pkg.id,
@@ -1474,7 +1587,14 @@ export function CustomerBookingFlowPage() {
         price: catalogFixedPrice ?? pkg.bundled_price,
       })),
     ],
-    [selectedServices, selectedPackages, catalogFixedPrice]
+    [
+      selectedServices,
+      selectedPackages,
+      catalogFixedPrice,
+      serviceFixedPrice,
+      category,
+      daycareHours,
+    ]
   );
 
   const serviceNameById = useMemo(
@@ -1554,6 +1674,12 @@ export function CustomerBookingFlowPage() {
         0
       ) || 60;
 
+  /** How long one "unit" of this booking runs. Daycare's is the hours picked
+   * on the Date & Time step, not the service's own nominal duration - the
+   * pet stays (and the slot has to be free) for all of them. */
+  const bookingMinutes =
+    category === 'Daycare' ? daycareHours * 60 : slotDurationMinutes;
+
   /** The real scheduled_end, computed from the item-derived
    * slotDurationMinutes (Services is picked before the 'availability' step,
    * so this is known there) plus the Hotel nights multiplier. SlotPicker's
@@ -1564,7 +1690,7 @@ export function CustomerBookingFlowPage() {
   const finalScheduledEnd = selectedSlot
     ? new Date(
         new Date(selectedSlot.start).getTime() +
-          (category === 'Hotel' ? hotelNights : 1) * slotDurationMinutes * 60000
+          (category === 'Hotel' ? hotelNights : 1) * bookingMinutes * 60000
       ).toISOString()
     : null;
 
@@ -1620,9 +1746,17 @@ export function CustomerBookingFlowPage() {
   // bundled_price entirely, same as booking.service.ts's resolveServicePrice/
   // resolvePackagePrice at actual booking creation - so this preview shows
   // the real charged price instead of a stale service-list price.
+  //
+  // Daycare is the exception to both: it's priced by the hours booked, from
+  // the service's own hourly fees (daycareBookingPrice), again exactly as
+  // the server does.
   const itemsTotal =
     (selectedServices.reduce(
-      (sum, service) => sum + (catalogFixedPrice ?? service.base_price),
+      (sum, service) =>
+        sum +
+        (category === 'Daycare'
+          ? daycareBookingPrice(service, daycareHours)
+          : (serviceFixedPrice ?? service.base_price)),
       0
     ) +
       selectedPackages.reduce(
@@ -1759,6 +1893,10 @@ export function CustomerBookingFlowPage() {
 
     return discounts.filter((discount) => {
       if (!discount.is_active) return false;
+      // Senior Citizen/PWD (the mandated discounts) aren't offered at
+      // booking time - they need an onsite ID check, which happens at
+      // CashierCheckoutPage's own seniorCitizenEligible/pwdEligible step.
+      if (discount.is_mandated) return false;
 
       if (discount.scope_type === 'service') {
         return groupServiceIds.includes(discount.scope_service_id ?? '');
@@ -1843,7 +1981,22 @@ export function CustomerBookingFlowPage() {
   // recorded later at the counter) or the full amount. No payment method is
   // chosen here any more - that happens per transaction on the Transactions
   // page.
-  const showPaymentChoice = downpaymentRequired;
+  //
+  // Pay at checkout: a third scheme, offered only to staff for a checkout
+  // made up entirely of walk-in Hotel/Daycare bookings (see paymentChoice.ts
+  // - a walk-in never has a down payment, so there it sits beside "Full
+  // payment" alone).
+  const payAtCheckoutAvailable = isPayAtCheckoutAvailable({
+    isStaff: isReceptionistMode,
+    enabled: downpaymentStatus?.pay_at_checkout_enabled ?? false,
+    bookings: bookingsList,
+  });
+  const showPaymentChoice = downpaymentRequired || payAtCheckoutAvailable;
+  const effectivePaymentChoice = resolvePaymentChoice(paymentChoice, {
+    downpaymentRequired,
+    payAtCheckoutAvailable,
+  });
+  const payingAtCheckout = effectivePaymentChoice === 'pay_at_checkout';
 
   // ---- Steps ----
 
@@ -1887,8 +2040,11 @@ export function CustomerBookingFlowPage() {
       list.push({ key: 'bookingType', label: 'Booking Type' });
     }
 
+    // Daycare only becomes "Cage & Date" once the receptionist's Cage
+    // Picker has actually loaded (it sets a preference the moment it does) -
+    // it's off unless enabled for Daycare, and customers never get it.
     const availabilityLabel =
-      category === 'Hotel'
+      category === 'Hotel' || (category === 'Daycare' && cagePreference)
         ? 'Cage & Date'
         : staffPickerAppliesToCategory && !staffPickerUnavailable
           ? 'Staff & Date'
@@ -1921,6 +2077,7 @@ export function CustomerBookingFlowPage() {
     isReceptionistMode,
     lockedServiceCategory,
     category,
+    cagePreference,
     staffPickerUnavailable,
     staffPickerAppliesToCategory,
   ]);
@@ -1936,18 +2093,6 @@ export function CustomerBookingFlowPage() {
   );
 
   const currentStep = steps[currentStepIndex] ?? steps[0];
-
-  // Persistent selection summary (below): only past the Services step, and
-  // only while there's actually something selected for the booking in
-  // progress - once it's committed to bookingsList, selectedServiceIds/
-  // selectedPackageIds reset for the next booking and this naturally stops
-  // showing (the 'Your bookings' and 'Review' steps already show their own,
-  // fuller breakdown per committed booking).
-  const itemsStepIndex = steps.findIndex((step) => step.key === 'items');
-  const showSelectedItemsSummary =
-    itemsStepIndex >= 0 &&
-    currentStepIndex > itemsStepIndex &&
-    selectedItemsSummary.length > 0;
 
   // Repairs `currentStepKey` when the step it points at just disappeared
   // from `steps` (e.g. the Staff step, once Staff Picker turns out to be
@@ -2011,8 +2156,6 @@ export function CustomerBookingFlowPage() {
         // 'hotelDetails' is left), but the guard stays consistent with
         // every other step's own validity check.
         return bookingsList.length > 0;
-      case 'payment':
-        return !selectedDiscount?.is_mandated || discountIdVerified;
       default:
         return true;
     }
@@ -2136,7 +2279,6 @@ export function CustomerBookingFlowPage() {
     setSelectedDiscountId('');
     setSelectedPromoIds([]);
     setSelectedCouponIds([]);
-    setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
@@ -2161,7 +2303,6 @@ export function CustomerBookingFlowPage() {
     setSelectedDiscountId('');
     setSelectedPromoIds([]);
     setSelectedCouponIds([]);
-    setDiscountIdVerified(false);
     setSelectedSlot(null);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
@@ -2515,6 +2656,7 @@ export function CustomerBookingFlowPage() {
       selectedSlot,
       finalScheduledEnd,
       hotelNights,
+      daycareHours,
       staffPreference,
       cagePreference,
       specialInstructions,
@@ -2544,6 +2686,7 @@ export function CustomerBookingFlowPage() {
     setBookingSource(entry.bookingSource);
     setSelectedSlot(entry.selectedSlot);
     setHotelNights(entry.hotelNights);
+    setDaycareHours(entry.daycareHours ?? 1);
     setStaffPreference(entry.staffPreference);
     setCagePreference(entry.cagePreference);
     setSpecialInstructions(entry.specialInstructions);
@@ -2573,6 +2716,7 @@ export function CustomerBookingFlowPage() {
     setBookingSource('Online');
     setSelectedSlot(null);
     setHotelNights(1);
+    setDaycareHours(1);
     setStaffPreference(null);
     setStaffPickerUnavailable(false);
     setCagePreference(null);
@@ -2653,7 +2797,9 @@ export function CustomerBookingFlowPage() {
         ...(isReceptionistMode && walkInCustomer
           ? { customer_id: walkInCustomer.id }
           : {}),
-        ...(showPaymentChoice ? { payment_scheme: paymentChoice } : {}),
+        ...(showPaymentChoice
+          ? { payment_scheme: effectivePaymentChoice }
+          : {}),
         ...(selectedDiscount ? { discount_id: selectedDiscount.id } : {}),
         // Multiselect (session 86): the server re-validates and re-caps
         // every id authoritatively (resolveDiscountAndPromos) - these
@@ -2745,21 +2891,25 @@ export function CustomerBookingFlowPage() {
             })}
             .{' '}
             {!isGroup
-              ? requiresPayment
-                ? booking.payment_status === 'Fully Paid'
-                  ? 'Your payment has been received.'
-                  : 'Payment is due at the counter.'
-                : "You're all set!"
+              ? booking.pay_at_checkout
+                ? 'Nothing is charged yet - the bill goes to the cashier at checkout.'
+                : requiresPayment
+                  ? booking.payment_status === 'Fully Paid'
+                    ? 'Your payment has been received.'
+                    : 'Payment is due at the counter.'
+                  : "You're all set!"
               : null}
           </p>
         ))}
         {isGroup ? (
           <p className={styles.copy}>
-            {requiresPayment
-              ? confirmedBookingGroup.payment_status === 'Fully Paid'
-                ? 'Your payment for these bookings has been received.'
-                : 'Payment for these bookings is due at the counter.'
-              : "You're all set!"}
+            {confirmedBookingGroup.pay_at_checkout
+              ? 'Nothing is charged yet - each bill goes to the cashier at checkout.'
+              : requiresPayment
+                ? confirmedBookingGroup.payment_status === 'Fully Paid'
+                  ? 'Your payment for these bookings has been received.'
+                  : 'Payment for these bookings is due at the counter.'
+                : "You're all set!"}
           </p>
         ) : null}
         {/* Down-payment slot gate: an unpaid down-payment booking/group
@@ -2824,7 +2974,7 @@ export function CustomerBookingFlowPage() {
         // restrictToCustomerIds would read as "no restriction" and briefly
         // flash every customer.
         if (isVeterinarianStaff && treatedCustomerIds === null) {
-          return <p className={styles.copy}>Loading your patients...</p>;
+          return <LoadingState label="Loading your patients..." />;
         }
         return (
           <CustomerPicker
@@ -2839,7 +2989,7 @@ export function CustomerBookingFlowPage() {
 
       case 'pet':
         if (isPetsLoading) {
-          return <p className={styles.copy}>Loading pets...</p>;
+          return <LoadingState label="Loading pets..." />;
         }
         return (
           <div className={styles.optionGrid}>
@@ -2935,7 +3085,16 @@ export function CustomerBookingFlowPage() {
               <button
                 type="button"
                 className={styles.secondaryButton}
-                onClick={() => setShowAddPet(true)}
+                // A customer adds pets in their own Pet Manager (the full
+                // pet profile lives there); the booking draft is saved, so
+                // they can come back and carry on. Staff booking for a
+                // walk-in customer have no such page, so they keep the
+                // inline form.
+                onClick={() =>
+                  isReceptionistMode
+                    ? setShowAddPet(true)
+                    : navigate('/portal/pets')
+                }
               >
                 + Add a pet
               </button>
@@ -3009,7 +3168,10 @@ export function CustomerBookingFlowPage() {
                         {allServices.length === 0 ? (
                           // Catalog still loading - don't claim the branch
                           // offers nothing until we actually know.
-                          <p className={styles.infoText}>Loading services…</p>
+                          <LoadingState
+                            label="Loading services…"
+                            size="inline"
+                          />
                         ) : bookableServices.length > 0 ? (
                           // Names only - prices vary by category (Daycare is
                           // hourly, Hotel is per-night, Grooming can use a
@@ -3120,6 +3282,7 @@ export function CustomerBookingFlowPage() {
                 branchId={selectedBranchId}
                 petId={selectedPet.id}
                 petName={selectedPet.name}
+                scheduledStart={selectedSlot?.start ?? null}
               />
             ) : null}
 
@@ -3152,6 +3315,46 @@ export function CustomerBookingFlowPage() {
               </div>
             ) : null}
 
+            {category === 'Daycare' ? (
+              <>
+                <div className={styles.nightsField}>
+                  <label>
+                    <span>Number of hours</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={MAX_DAYCARE_HOURS}
+                      value={daycareHours}
+                      onChange={(event) =>
+                        changeDaycareHours(Number(event.target.value) || 1)
+                      }
+                    />
+                  </label>
+                  {DAYCARE_HOUR_PRESETS.map((hours) => (
+                    <button
+                      key={hours}
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => changeDaycareHours(hours)}
+                    >
+                      {hours} hours
+                    </button>
+                  ))}
+                </div>
+                {daycareRateService ? (
+                  <p className={styles.copy}>
+                    PHP {daycareRateService.first_hour_fee!.toFixed(2)} for the
+                    first hour, PHP{' '}
+                    {daycareRateService.succeeding_hour_fee!.toFixed(2)} for
+                    each hour after - {daycareHours} hour
+                    {daycareHours === 1 ? '' : 's'} is{' '}
+                    <strong>PHP {itemsTotal.toFixed(2)}</strong>. The final bill
+                    is based on the actual pickup time.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+
             <SlotPicker
               accessToken={accessToken!}
               branchId={selectedBranchId}
@@ -3165,10 +3368,7 @@ export function CustomerBookingFlowPage() {
               // shorter window than it occupies, but that is not a real
               // grooming/vet scenario - Hotel's length rides the nights
               // multiplier, not this sum.
-              slotDurationMinutes={Math.min(
-                1440,
-                Math.max(15, slotDurationMinutes)
-              )}
+              slotDurationMinutes={Math.min(1440, Math.max(15, bookingMinutes))}
               petWeightClass={
                 category === 'Hotel'
                   ? (selectedPet?.weight_class ?? undefined)
@@ -3209,7 +3409,7 @@ export function CustomerBookingFlowPage() {
                         { hour: 'numeric', minute: '2-digit' }
                       )}
                     </strong>{' '}
-                    · {formatDuration(slotDurationMinutes)}
+                    · {formatDuration(bookingMinutes)}
                   </>
                 )}
               </p>
@@ -3232,7 +3432,8 @@ export function CustomerBookingFlowPage() {
             ) : null}
 
             {/* Custom change: Cage Picker addendum - lets the receptionist
-              name a specific cage preference. Only renders once the Hotel
+              name a specific cage preference, for Hotel and Daycare (both
+              claim a real cage at check-in). Only renders once that
               service type's cage_picker_enabled toggle (Admin Settings >
               Service Types) resolves true; CagePickerList's own
               onUnavailable degrades this to "no preference" otherwise, same
@@ -3251,7 +3452,7 @@ export function CustomerBookingFlowPage() {
               mismatches are already excluded from the option list itself
               (getCagePickerOptions), not merely disabled. */}
             {selectedSlot &&
-            category === 'Hotel' &&
+            (category === 'Hotel' || category === 'Daycare') &&
             isReceptionistMode &&
             !cagePickerUnavailable &&
             selectedPet ? (
@@ -3259,6 +3460,7 @@ export function CustomerBookingFlowPage() {
                 accessToken={accessToken!}
                 branchId={selectedBranchId}
                 petId={selectedPet.id}
+                serviceCategory={category}
                 selected={cagePreference}
                 onSelect={setCagePreference}
                 onUnavailable={() => setCagePickerUnavailable(true)}
@@ -3367,7 +3569,7 @@ export function CustomerBookingFlowPage() {
                       </span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${(catalogFixedPrice ?? service.base_price).toFixed(2)}/night`
+                          ? `PHP ${(serviceFixedPrice ?? service.base_price).toFixed(2)}/night`
                           : category === 'Daycare' &&
                               service.first_hour_fee !== null &&
                               service.succeeding_hour_fee !== null
@@ -3379,13 +3581,12 @@ export function CustomerBookingFlowPage() {
                               // price would be misleading about what's
                               // actually billed at pickup.
                               `PHP ${service.first_hour_fee.toFixed(2)} first hr, PHP ${service.succeeding_hour_fee.toFixed(2)}/hr after`
-                            : `PHP ${(catalogFixedPrice ?? service.base_price).toFixed(2)}`}
+                            : `PHP ${(serviceFixedPrice ?? service.base_price).toFixed(2)}`}
                       </span>
                       {category === 'Daycare' ? (
                         <span className={styles.optionMeta}>
-                          PHP{' '}
-                          {(service.daycare_overnight_fee ?? 850).toFixed(2)}
-                          /night if not picked up before closing
+                          Hotel nightly rate applies if not picked up before
+                          closing
                         </span>
                       ) : null}
                       {category !== 'Hotel' ? (
@@ -3456,7 +3657,9 @@ export function CustomerBookingFlowPage() {
                   Running total (before promos/discounts)
                   {category === 'Hotel' && hotelNightsMultiplier > 1
                     ? ` × ${hotelNightsMultiplier} nights`
-                    : ''}
+                    : category === 'Daycare' && daycareHours > 1
+                      ? ` for ${daycareHours} hours`
+                      : ''}
                 </span>
                 <span>PHP {itemsTotal.toFixed(2)}</span>
               </div>
@@ -3490,9 +3693,9 @@ export function CustomerBookingFlowPage() {
         return (
           <div className={styles.hotelDetailsStep}>
             <p className={styles.copy}>
-              Optional - let us know your pet's usual feeding, walking, and
-              medication routine. Our receptionist will confirm and finalize
-              these details when your pet checks in.
+              {restrictsToPlayWalkOnly
+                ? "Optional - let us know this pet's usual walking and playtime routine. Feeding and medication instructions can only be set by the customer."
+                : "Optional - let us know your pet's usual feeding, walking, and medication routine. Our receptionist will confirm and finalize these details when your pet checks in."}
             </p>
 
             {category === 'Hotel' ? (
@@ -3564,160 +3767,165 @@ export function CustomerBookingFlowPage() {
                 })()
               : null}
 
-            <section className={styles.hotelDetailsSection}>
-              <span className={styles.sectionTitle}>Feeding</span>
-              {hotelFeeding.map((row, index) => {
-                if (
-                  !hotelUniformInstructions &&
-                  row.stay_date !== activeNightDate
-                ) {
-                  return null;
-                }
+            {!restrictsToPlayWalkOnly ? (
+              <section className={styles.hotelDetailsSection}>
+                <span className={styles.sectionTitle}>Feeding</span>
+                {hotelFeeding.map((row, index) => {
+                  if (
+                    !hotelUniformInstructions &&
+                    row.stay_date !== activeNightDate
+                  ) {
+                    return null;
+                  }
 
-                const notOnDayOne =
-                  hotelCheckInTime !== null &&
-                  !isMealApplicableOnDayOne(row.meal_time, hotelCheckInTime);
-                const notOnLastDay =
-                  hotelCheckOutTime !== null &&
-                  !isMealApplicableOnLastDay(row.meal_time, hotelCheckOutTime);
+                  const notOnDayOne =
+                    hotelCheckInTime !== null &&
+                    !isMealApplicableOnDayOne(row.meal_time, hotelCheckInTime);
+                  const notOnLastDay =
+                    hotelCheckOutTime !== null &&
+                    !isMealApplicableOnLastDay(
+                      row.meal_time,
+                      hotelCheckOutTime
+                    );
 
-                return (
-                  <div key={index} className={styles.instructionBlock}>
-                    <div className={styles.inlineFields}>
-                      <select
-                        className={styles.input}
-                        aria-label="Meal time"
-                        value={row.meal_time}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            meal_time: event.target
-                              .value as HotelBookingPreferenceFeeding['meal_time'],
-                          })
-                        }
-                      >
-                        {MEAL_TIMES.map((mealTime) => (
-                          <option key={mealTime} value={mealTime}>
-                            {mealTime}
-                          </option>
-                        ))}
-                      </select>
-                      <CatalogComboBox
-                        placeholder="Food type"
-                        items={foodCatalog}
-                        hidePrice
-                        value={{
-                          catalogId: row.food_catalog_id,
-                          text: row.food_type,
-                        }}
-                        onChange={(next) =>
-                          updateHotelFeeding(index, {
-                            food_type: next.text,
-                            food_catalog_id: next.catalogId,
-                          })
-                        }
-                      />
-                      <input
-                        className={styles.input}
-                        type="number"
-                        min={1}
-                        placeholder="Quantity"
-                        value={row.quantity}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            quantity: event.target.value,
-                          })
-                        }
-                      />
-                      <select
-                        className={styles.input}
-                        aria-label="Quantity unit"
-                        value={row.quantity_unit}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            quantity_unit: event.target
-                              .value as FoodQuantityUnit,
-                          })
-                        }
-                      >
-                        {FOOD_QUANTITY_UNITS.map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        className={styles.input}
-                        placeholder="Special instructions (optional)"
-                        value={row.special_instructions}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            special_instructions: event.target.value,
-                          })
-                        }
-                      />
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => removeHotelFeeding(index)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <div className={styles.inlineFields}>
-                      {row.photo_url ? (
-                        <>
-                          <img
-                            className={styles.carePhotoThumbnail}
-                            src={row.photo_url}
-                            alt="Food item"
-                          />
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() =>
-                              updateHotelFeeding(index, { photo_url: null })
-                            }
-                          >
-                            Remove photo
-                          </button>
-                        </>
-                      ) : (
-                        <label className={styles.copy}>
-                          {row.photo_uploading
-                            ? 'Uploading photo...'
-                            : 'Attach a photo (optional)'}
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            disabled={row.photo_uploading}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) uploadHotelFeedingPhoto(index, file);
-                              event.target.value = '';
-                            }}
-                          />
-                        </label>
-                      )}
-                      {row.photo_error ? (
-                        <p className={styles.errorText}>{row.photo_error}</p>
+                  return (
+                    <div key={index} className={styles.instructionBlock}>
+                      <div className={styles.inlineFields}>
+                        <select
+                          className={styles.input}
+                          aria-label="Meal time"
+                          value={row.meal_time}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              meal_time: event.target
+                                .value as HotelBookingPreferenceFeeding['meal_time'],
+                            })
+                          }
+                        >
+                          {MEAL_TIMES.map((mealTime) => (
+                            <option key={mealTime} value={mealTime}>
+                              {mealTime}
+                            </option>
+                          ))}
+                        </select>
+                        <CatalogComboBox
+                          placeholder="Food type"
+                          items={foodCatalog}
+                          hidePrice
+                          value={{
+                            catalogId: row.food_catalog_id,
+                            text: row.food_type,
+                          }}
+                          onChange={(next) =>
+                            updateHotelFeeding(index, {
+                              food_type: next.text,
+                              food_catalog_id: next.catalogId,
+                            })
+                          }
+                        />
+                        <input
+                          className={styles.input}
+                          type="number"
+                          min={1}
+                          placeholder="Quantity"
+                          value={row.quantity}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              quantity: event.target.value,
+                            })
+                          }
+                        />
+                        <select
+                          className={styles.input}
+                          aria-label="Quantity unit"
+                          value={row.quantity_unit}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              quantity_unit: event.target
+                                .value as FoodQuantityUnit,
+                            })
+                          }
+                        >
+                          {FOOD_QUANTITY_UNITS.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          className={styles.input}
+                          placeholder="Special instructions (optional)"
+                          value={row.special_instructions}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              special_instructions: event.target.value,
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => removeHotelFeeding(index)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className={styles.inlineFields}>
+                        {row.photo_url ? (
+                          <>
+                            <img
+                              className={styles.carePhotoThumbnail}
+                              src={row.photo_url}
+                              alt="Food item"
+                            />
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() =>
+                                updateHotelFeeding(index, { photo_url: null })
+                              }
+                            >
+                              Remove photo
+                            </button>
+                          </>
+                        ) : (
+                          <label className={styles.copy}>
+                            {row.photo_uploading
+                              ? 'Uploading photo...'
+                              : 'Attach a photo (optional)'}
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              disabled={row.photo_uploading}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) uploadHotelFeedingPhoto(index, file);
+                                event.target.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                        {row.photo_error ? (
+                          <p className={styles.errorText}>{row.photo_error}</p>
+                        ) : null}
+                      </div>
+                      {notOnDayOne || notOnLastDay ? (
+                        <p className={styles.copy}>
+                          {`Not served on ${notOnDayOne ? 'arrival day' : ''}${notOnDayOne && notOnLastDay ? ' or ' : ''}${notOnLastDay ? 'departure day' : ''} due to check-in/checkout time.`}
+                        </p>
                       ) : null}
                     </div>
-                    {notOnDayOne || notOnLastDay ? (
-                      <p className={styles.copy}>
-                        {`Not served on ${notOnDayOne ? 'arrival day' : ''}${notOnDayOne && notOnLastDay ? ' or ' : ''}${notOnLastDay ? 'departure day' : ''} due to check-in/checkout time.`}
-                      </p>
-                    ) : null}
-                  </div>
-                );
-              })}
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addHotelFeeding}
-              >
-                Add feeding time
-              </button>
-            </section>
+                  );
+                })}
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={addHotelFeeding}
+                >
+                  Add feeding time
+                </button>
+              </section>
+            ) : null}
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Walking</span>
@@ -3899,141 +4107,147 @@ export function CustomerBookingFlowPage() {
               </button>
             </section>
 
-            <section className={styles.hotelDetailsSection}>
-              <span className={styles.sectionTitle}>Medications</span>
-              {hotelMedications.map((row, index) => {
-                if (
-                  !hotelUniformInstructions &&
-                  row.stay_date !== activeNightDate
-                ) {
-                  return null;
-                }
+            {!restrictsToPlayWalkOnly ? (
+              <section className={styles.hotelDetailsSection}>
+                <span className={styles.sectionTitle}>Medications</span>
+                {hotelMedications.map((row, index) => {
+                  if (
+                    !hotelUniformInstructions &&
+                    row.stay_date !== activeNightDate
+                  ) {
+                    return null;
+                  }
 
-                return (
-                  <div key={index} className={styles.instructionBlock}>
-                    <div className={styles.inlineFields}>
-                      <CatalogComboBox
-                        placeholder="Medication name"
-                        items={medicationCatalog}
-                        hidePrice
-                        value={{
-                          catalogId: row.medication_catalog_id,
-                          text: row.medication_name,
-                        }}
-                        onChange={(next) =>
-                          updateHotelMedication(index, {
-                            medication_name: next.text,
-                            medication_catalog_id: next.catalogId,
-                          })
-                        }
-                      />
-                      <input
-                        className={styles.input}
-                        placeholder="Dose"
-                        value={row.dose}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            dose: event.target.value,
-                          })
-                        }
-                      />
-                      <select
-                        className={styles.input}
-                        aria-label="Dose unit"
-                        value={row.dose_unit}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            dose_unit: event.target.value as MedicationDoseUnit,
-                          })
-                        }
-                      >
-                        {MEDICATION_DOSE_UNITS.map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
-                        ))}
-                      </select>
-                      <TimeInput
-                        aria-label="Medication time"
-                        value={row.scheduled_time}
-                        onChange={(value) =>
-                          updateHotelMedication(index, {
-                            scheduled_time: value,
-                          })
-                        }
-                      />
-                      <input
-                        className={styles.input}
-                        placeholder="Notes (optional)"
-                        value={row.administration_notes}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            administration_notes: event.target.value,
-                          })
-                        }
-                      />
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => removeHotelMedication(index)}
-                      >
-                        Remove
-                      </button>
+                  return (
+                    <div key={index} className={styles.instructionBlock}>
+                      <div className={styles.inlineFields}>
+                        <CatalogComboBox
+                          placeholder="Medication name"
+                          items={medicationCatalog}
+                          hidePrice
+                          value={{
+                            catalogId: row.medication_catalog_id,
+                            text: row.medication_name,
+                          }}
+                          onChange={(next) =>
+                            updateHotelMedication(index, {
+                              medication_name: next.text,
+                              medication_catalog_id: next.catalogId,
+                            })
+                          }
+                        />
+                        <input
+                          className={styles.input}
+                          placeholder="Dose"
+                          value={row.dose}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              dose: event.target.value,
+                            })
+                          }
+                        />
+                        <select
+                          className={styles.input}
+                          aria-label="Dose unit"
+                          value={row.dose_unit}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              dose_unit: event.target
+                                .value as MedicationDoseUnit,
+                            })
+                          }
+                        >
+                          {MEDICATION_DOSE_UNITS.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </select>
+                        <TimeInput
+                          aria-label="Medication time"
+                          value={row.scheduled_time}
+                          onChange={(value) =>
+                            updateHotelMedication(index, {
+                              scheduled_time: value,
+                            })
+                          }
+                        />
+                        <input
+                          className={styles.input}
+                          placeholder="Notes (optional)"
+                          value={row.administration_notes}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              administration_notes: event.target.value,
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => removeHotelMedication(index)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className={styles.inlineFields}>
+                        {row.photo_url ? (
+                          <>
+                            <img
+                              className={styles.carePhotoThumbnail}
+                              src={row.photo_url}
+                              alt="Medication"
+                            />
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() =>
+                                updateHotelMedication(index, {
+                                  photo_url: null,
+                                })
+                              }
+                            >
+                              Remove photo
+                            </button>
+                          </>
+                        ) : (
+                          <label className={styles.copy}>
+                            {row.photo_uploading
+                              ? 'Uploading photo...'
+                              : 'Attach a photo (optional)'}
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              disabled={row.photo_uploading}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file)
+                                  uploadHotelMedicationPhoto(index, file);
+                                event.target.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                        {row.photo_error ? (
+                          <p className={styles.errorText}>{row.photo_error}</p>
+                        ) : null}
+                      </div>
+                      <p className={styles.copy}>
+                        Applies daily - won&apos;t happen before check-in on
+                        arrival day or after checkout on departure day.
+                      </p>
                     </div>
-                    <div className={styles.inlineFields}>
-                      {row.photo_url ? (
-                        <>
-                          <img
-                            className={styles.carePhotoThumbnail}
-                            src={row.photo_url}
-                            alt="Medication"
-                          />
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() =>
-                              updateHotelMedication(index, { photo_url: null })
-                            }
-                          >
-                            Remove photo
-                          </button>
-                        </>
-                      ) : (
-                        <label className={styles.copy}>
-                          {row.photo_uploading
-                            ? 'Uploading photo...'
-                            : 'Attach a photo (optional)'}
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            disabled={row.photo_uploading}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) uploadHotelMedicationPhoto(index, file);
-                              event.target.value = '';
-                            }}
-                          />
-                        </label>
-                      )}
-                      {row.photo_error ? (
-                        <p className={styles.errorText}>{row.photo_error}</p>
-                      ) : null}
-                    </div>
-                    <p className={styles.copy}>
-                      Applies daily - won&apos;t happen before check-in on
-                      arrival day or after checkout on departure day.
-                    </p>
-                  </div>
-                );
-              })}
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addHotelMedication}
-              >
-                Add medication
-              </button>
-            </section>
+                  );
+                })}
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={addHotelMedication}
+                >
+                  Add medication
+                </button>
+              </section>
+            ) : null}
           </div>
         );
 
@@ -4051,16 +4265,11 @@ export function CustomerBookingFlowPage() {
                     ...entry.selectedServiceNames,
                     ...entry.selectedPackageNames,
                   ].join(', ') || 'No items selected';
-                const staffOrCage =
-                  entry.category === 'Hotel'
-                    ? entry.cagePreference?.type === 'specific'
-                      ? 'Specific cage requested'
-                      : 'No cage preference'
-                    : entry.staffPreference?.type === 'specific'
-                      ? 'Specific staff requested'
-                      : entry.staffPreference?.type === 'no_preference'
-                        ? 'No staff preference'
-                        : 'No staff selection needed';
+                const staffOrCage = describeStaffOrCage(
+                  entry.category,
+                  entry.staffPreference,
+                  entry.cagePreference
+                );
 
                 return (
                   <div key={entry.id} className={styles.instructionBlock}>
@@ -4079,10 +4288,7 @@ export function CustomerBookingFlowPage() {
                     <p className={styles.bookingListRowMeta}>{itemNames}</p>
                     <p className={styles.bookingListRowMeta}>
                       {entry.selectedSlot
-                        ? new Date(entry.selectedSlot.start).toLocaleString(
-                            undefined,
-                            { dateStyle: 'medium', timeStyle: 'short' }
-                          )
+                        ? formatSlotStart(entry.selectedSlot.start)
                         : 'No date/time selected'}
                       {' · '}
                       {staffOrCage}
@@ -4097,7 +4303,7 @@ export function CustomerBookingFlowPage() {
             )}
             <button
               type="button"
-              className={styles.secondaryButton}
+              className={styles.secondaryButtonGold}
               onClick={handleAddAnotherBooking}
             >
               Add another booking
@@ -4195,7 +4401,7 @@ export function CustomerBookingFlowPage() {
                 <span>PHP {estimatedTotal.toFixed(2)}</span>
               </div>
               {showPaymentChoice &&
-              paymentChoice === 'downpayment' &&
+              effectivePaymentChoice === 'downpayment' &&
               downpaymentAmount !== null ? (
                 <>
                   <div className={styles.downpaymentDueNow}>
@@ -4217,7 +4423,14 @@ export function CustomerBookingFlowPage() {
               ) : null}
             </section>
 
-            {requiresPayment ? (
+            {payingAtCheckout ? (
+              <p className={styles.copy}>
+                Nothing is charged now. The total above is only an estimate from
+                the expected checkout - billing starts when the pet is checked
+                in, and the bill for the actual stay goes to the cashier at
+                checkout.
+              </p>
+            ) : requiresPayment ? (
               <p className={styles.copy}>
                 No payment is collected in this step - you are only choosing the
                 payment scheme. The charge(s) are settled afterwards (at the
@@ -4232,47 +4445,55 @@ export function CustomerBookingFlowPage() {
             {showPaymentChoice ? (
               <fieldset className={styles.field}>
                 <legend className={styles.fieldLabel}>Payment scheme</legend>
+                {downpaymentRequired ? (
+                  <label className={styles.radioOption}>
+                    <input
+                      type="radio"
+                      name="paymentChoice"
+                      checked={effectivePaymentChoice === 'downpayment'}
+                      onChange={() => setPaymentChoice('downpayment')}
+                    />
+                    Downpayment - PHP {(downpaymentAmount ?? 0).toFixed(2)} now,
+                    PHP{' '}
+                    {Math.max(
+                      0,
+                      estimatedTotal - (downpaymentAmount ?? 0)
+                    ).toFixed(2)}{' '}
+                    remaining balance
+                  </label>
+                ) : null}
                 <label className={styles.radioOption}>
                   <input
                     type="radio"
                     name="paymentChoice"
-                    checked={paymentChoice === 'downpayment'}
-                    onChange={() => setPaymentChoice('downpayment')}
-                  />
-                  Downpayment - PHP {(downpaymentAmount ?? 0).toFixed(2)} now,
-                  PHP{' '}
-                  {Math.max(
-                    0,
-                    estimatedTotal - (downpaymentAmount ?? 0)
-                  ).toFixed(2)}{' '}
-                  remaining balance
-                </label>
-                <label className={styles.radioOption}>
-                  <input
-                    type="radio"
-                    name="paymentChoice"
-                    checked={paymentChoice === 'full'}
+                    checked={effectivePaymentChoice === 'full'}
                     onChange={() => setPaymentChoice('full')}
                   />
                   Full payment - PHP {estimatedTotal.toFixed(2)}
                 </label>
+                {payAtCheckoutAvailable ? (
+                  <label className={styles.radioOption}>
+                    <input
+                      type="radio"
+                      name="paymentChoice"
+                      checked={payingAtCheckout}
+                      onChange={() => setPaymentChoice('pay_at_checkout')}
+                    />
+                    Pay at checkout - nothing now, billed for the actual stay
+                  </label>
+                ) : null}
               </fieldset>
             ) : null}
 
-            {canApplyDiscounts ? (
+            {applicableDiscounts.length > 0 ? (
               <fieldset className={styles.field}>
-                <legend className={styles.fieldLabel}>
-                  Discount (verify the customer&apos;s ID before applying)
-                </legend>
+                <legend className={styles.fieldLabel}>Discount</legend>
                 <label className={styles.radioOption}>
                   <input
                     type="radio"
                     name="discount"
                     checked={selectedDiscountId === ''}
-                    onChange={() => {
-                      setSelectedDiscountId('');
-                      setDiscountIdVerified(false);
-                    }}
+                    onChange={() => setSelectedDiscountId('')}
                   />
                   None
                 </label>
@@ -4282,10 +4503,7 @@ export function CustomerBookingFlowPage() {
                       type="radio"
                       name="discount"
                       checked={selectedDiscountId === discount.id}
-                      onChange={() => {
-                        setSelectedDiscountId(discount.id);
-                        setDiscountIdVerified(false);
-                      }}
+                      onChange={() => setSelectedDiscountId(discount.id)}
                     />
                     {discount.name} (
                     {discount.discount_type === 'Percentage'
@@ -4294,23 +4512,6 @@ export function CustomerBookingFlowPage() {
                     )
                   </label>
                 ))}
-                {applicableDiscounts.length === 0 ? (
-                  <p className={styles.copy}>
-                    No discounts apply to the selected items.
-                  </p>
-                ) : null}
-                {selectedDiscount?.is_mandated ? (
-                  <label className={styles.radioOption}>
-                    <input
-                      type="checkbox"
-                      checked={discountIdVerified}
-                      onChange={(event) =>
-                        setDiscountIdVerified(event.target.checked)
-                      }
-                    />
-                    I have verified the customer&apos;s ID for this discount
-                  </label>
-                ) : null}
               </fieldset>
             ) : null}
 
@@ -4359,113 +4560,246 @@ export function CustomerBookingFlowPage() {
 
   const isLastStep = currentStepIndex === steps.length - 1;
 
-  return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>Book a service</h1>
-
-      {showRestoredBanner ? (
-        <div className={styles.restoredBanner} role="status">
-          <span>We restored your in-progress booking.</span>
-          <div className={styles.restoredBannerActions}>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={handleStartOver}
-            >
-              Start over
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => setShowRestoredBanner(false)}
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      <BookingStepper
-        steps={steps.map((step) => step.label)}
-        currentStepIndex={currentStepIndex}
-        furthestCompletedIndex={maxReachedIndex}
-        onStepSelect={handleStepperSelect}
-      />
-      <BookingCountBadge count={bookingsList.length} />
-
-      {showSelectedItemsSummary ? (
-        <SelectedItemsSummary items={selectedItemsSummary} total={itemsTotal} />
-      ) : null}
-
-      <div className={styles.stepContent}>{renderStepContent()}</div>
-
-      {currentStep.key !== 'customer' && currentStep.key !== 'payment' ? (
-        <div className={styles.navRow}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            disabled={currentStepIndex === 0}
-            onClick={goBack}
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={!isCurrentStepValid || isLastStep}
-            onClick={goNext}
-          >
-            Next
-          </button>
-        </div>
-      ) : (
-        <div className={styles.navRow}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            disabled={currentStepIndex === 0}
-            onClick={goBack}
-          >
-            Back
-          </button>
-        </div>
-      )}
-    </main>
+  // ---- "Your booking" summary panel ----
+  //
+  // One row per stepper step. The per-booking steps (pet through care
+  // instructions) describe the working draft, which is committed into
+  // bookingsList and reset on the way into 'bookingsList' - so from there
+  // on those rows are hidden and the committed entries (shown at the top of
+  // the panel) carry that information instead.
+  const bookingsListStepIndex = steps.findIndex(
+    (step) => step.key === 'bookingsList'
   );
-}
+  const isPastWorkingDraft =
+    bookingsListStepIndex >= 0 && currentStepIndex >= bookingsListStepIndex;
+  const perBookingStepKeys = new Set<StepDef['key']>([
+    'pet',
+    'category',
+    'items',
+    'bookingType',
+    'availability',
+    'hotelDetails',
+  ]);
 
-/**
- * Persistent "what have I picked so far" recap, shown on every step after
- * Services for the booking currently being configured (see
- * showSelectedItemsSummary above) - so a customer/receptionist doesn't have
- * to jump back to the Services step just to recall the services/packages
- * and running total already chosen. Deliberately minimal (a native
- * <details>, collapsed by default) so it never crowds out the current
- * step's own content, and deliberately a separate small component (rather
- * than inlined where it's used) so it stays easy to extend later without
- * touching the wizard's step-switch logic.
- */
-function SelectedItemsSummary({
-  items,
-  total,
-}: {
-  items: { id: string; name: string; price: number }[];
-  total: number;
-}) {
+  function summaryLinesFor(key: StepDef['key']): BookingSummaryLine[] {
+    switch (key) {
+      case 'branch':
+        return selectedBranch ? [{ text: selectedBranch.name }] : [];
+      case 'customer':
+        return walkInCustomer ? [{ text: walkInCustomer.full_name }] : [];
+      case 'pet':
+        return selectedPet ? [{ text: selectedPet.name }] : [];
+      case 'category':
+        return category ? [{ text: category }] : [];
+      case 'items': {
+        const lines: BookingSummaryLine[] = selectedItemsSummary.map(
+          (item) => ({ text: item.name, amount: item.price })
+        );
+        if (category === 'Hotel' && hotelNights > 1 && lines.length > 0) {
+          lines.push({ text: `× ${hotelNights} nights` });
+        }
+        if (category === 'Daycare' && daycareRateService && daycareHours > 1) {
+          lines.push({
+            text: `${daycareHours} hours - PHP ${daycareRateService.first_hour_fee} + ${daycareHours - 1} × PHP ${daycareRateService.succeeding_hour_fee}`,
+          });
+        }
+        return lines;
+      }
+      case 'bookingType':
+        return [{ text: bookingSource }];
+      case 'availability': {
+        if (!selectedSlot || !category) return [];
+        const lines: BookingSummaryLine[] = [
+          { text: formatSlotStart(selectedSlot.start) },
+        ];
+        if (category === 'Hotel' && finalScheduledEnd) {
+          lines.push({ text: `Until ${formatSlotStart(finalScheduledEnd)}` });
+        }
+        if (category === 'Hotel' || staffPreference || cagePreference) {
+          lines.push({
+            text: describeStaffOrCage(
+              category,
+              staffPreference,
+              cagePreference
+            ),
+          });
+        }
+        return lines;
+      }
+      case 'hotelDetails': {
+        const lines: BookingSummaryLine[] = [];
+        const prefs = hotelPreferencesPayload;
+        if (prefs) {
+          const counts: [number, string][] = [
+            [prefs.feeding.length, 'feeding'],
+            [prefs.walking.length, 'walk'],
+            [prefs.playing.length, 'playtime'],
+            [prefs.medications.length, 'medication'],
+          ];
+          const parts = counts
+            .filter(([count]) => count > 0)
+            .map(([count, label]) => `${count} ${label}`);
+          lines.push({ text: parts.join(', ') });
+        }
+        if (specialInstructions.trim()) {
+          lines.push({ text: 'Special instructions added' });
+        }
+        return lines;
+      }
+      case 'bookingsList':
+        return bookingsList.length > 0
+          ? [
+              {
+                text: `${bookingsList.length} booking${bookingsList.length === 1 ? '' : 's'}`,
+              },
+            ]
+          : [];
+      case 'promos': {
+        const lines: BookingSummaryLine[] = [];
+        if (selectedDiscount) lines.push({ text: selectedDiscount.name });
+        for (const promo of promos) {
+          if (selectedPromoIds.includes(promo.id)) {
+            lines.push({ text: promo.name });
+          }
+        }
+        if (selectedCouponIds.length > 0) {
+          lines.push({
+            text: `${selectedCouponIds.length} reward coupon${selectedCouponIds.length === 1 ? '' : 's'}`,
+          });
+        }
+        return lines;
+      }
+      case 'payment':
+        return [];
+    }
+  }
+
+  const summaryRows: BookingSummaryRow[] = steps.flatMap((step, index) => {
+    if (isPastWorkingDraft && perBookingStepKeys.has(step.key)) return [];
+
+    const status =
+      index === currentStepIndex
+        ? 'current'
+        : index < currentStepIndex
+          ? 'done'
+          : 'upcoming';
+
+    return [
+      {
+        key: step.key,
+        label: step.label,
+        status,
+        lines: summaryLinesFor(step.key),
+        onSelect:
+          index !== currentStepIndex && index <= maxReachedIndex
+            ? () => handleStepperSelect(index)
+            : undefined,
+      },
+    ];
+  });
+
+  const summaryCommittedEntries = bookingsList.map((entry) => ({
+    id: entry.id,
+    title: `${entry.petName} — ${entry.category}`,
+    lines: [
+      [...entry.selectedServiceNames, ...entry.selectedPackageNames].join(
+        ', '
+      ) || 'No items selected',
+      entry.selectedSlot
+        ? formatSlotStart(entry.selectedSlot.start)
+        : 'No date/time selected',
+    ],
+    subtotal: entry.itemsSubtotal,
+  }));
+
+  const summarySubtotal =
+    bookingsList.reduce((sum, entry) => sum + entry.itemsSubtotal, 0) +
+    itemsTotal;
+
   return (
-    <details className={styles.selectedItemsSummary}>
-      <summary className={styles.selectedItemsSummaryTitle}>
-        {items.length} service{items.length === 1 ? '' : 's'} selected · PHP{' '}
-        {total.toFixed(2)}
-      </summary>
-      <ul className={styles.selectedItemsSummaryList}>
-        {items.map((item) => (
-          <li key={item.id} className={styles.pricingRow}>
-            <span>{item.name}</span>
-            <span>PHP {item.price.toFixed(2)}</span>
-          </li>
-        ))}
-      </ul>
-    </details>
+    <main className={`${styles.page} ${styles.pageWithSummary}`}>
+      <div className={styles.summaryLayout}>
+        <section
+          className={styles.flowColumn}
+          aria-labelledby="booking-flow-title"
+        >
+          <h1 id="booking-flow-title" className={styles.title}>
+            Book a service
+          </h1>
+
+          {showRestoredBanner ? (
+            <div className={styles.restoredBanner} role="status">
+              <span>We restored your in-progress booking.</span>
+              <div className={styles.restoredBannerActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={handleStartOver}
+                >
+                  Start over
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setShowRestoredBanner(false)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <BookingStepper
+            steps={steps.map((step) => step.label)}
+            currentStepIndex={currentStepIndex}
+            furthestCompletedIndex={maxReachedIndex}
+            onStepSelect={handleStepperSelect}
+          />
+          <BookingCountBadge count={bookingsList.length} />
+
+          <div className={styles.stepContent}>{renderStepContent()}</div>
+
+          {currentStep.key !== 'customer' && currentStep.key !== 'payment' ? (
+            <div className={styles.navRow}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={currentStepIndex === 0}
+                onClick={goBack}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={!isCurrentStepValid || isLastStep}
+                onClick={goNext}
+              >
+                Next
+              </button>
+            </div>
+          ) : (
+            <div className={styles.navRow}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={currentStepIndex === 0}
+                onClick={goBack}
+              >
+                Back
+              </button>
+            </div>
+          )}
+        </section>
+
+        <div className={styles.summaryColumn}>
+          <BookingSummaryPanel
+            rows={summaryRows}
+            committedEntries={summaryCommittedEntries}
+            subtotal={summarySubtotal}
+          />
+        </div>
+      </div>
+    </main>
   );
 }

@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { AuthCard } from '../../../../../shared/components/AuthCard/AuthCard';
-import { TotpEnrollPanel } from '../../../../../shared/components/TotpEnrollPanel/TotpEnrollPanel';
+import { MfaMethodEnrollFlow } from '../../../../../shared/components/MfaMethodEnrollFlow/MfaMethodEnrollFlow';
 
 /**
  * Bug fix: unlike MfaSetupModal (only ever shown once StaffAuthGuard has
@@ -59,13 +59,17 @@ export function MfaEnrollPage() {
       subtitle="Scan the QR code, then enter the 6-digit code from your authenticator app."
     >
       {accessToken && alreadyEnrolled === false ? (
-        <TotpEnrollPanel
+        // Only reachable for a mandatory-MFA role with nothing enrolled yet
+        // (StaffLoginForm only ever routes here in that case) - forced to
+        // 'authenticator' for the same reason as MfaSetupModal.
+        <MfaMethodEnrollFlow
           role="staff"
           accessToken={accessToken}
           onEnrolled={() => {
             window.sessionStorage.removeItem('staffMfaPending');
             navigate('/staff', { replace: true });
           }}
+          initialMethod="authenticator"
         />
       ) : null}
     </AuthCard>

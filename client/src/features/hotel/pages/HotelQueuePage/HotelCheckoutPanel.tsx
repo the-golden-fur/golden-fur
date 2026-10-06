@@ -56,6 +56,32 @@ export function HotelCheckoutPanel({
     setResult(checkoutResult.data);
   }
 
+  // Pay at checkout: nothing was collected up front and no extension fee
+  // applies - the stay is billed for the nights actually stayed, and that
+  // bill is now on the cashier's Transactions list.
+  if (result?.payAtCheckout) {
+    const { nights } = result.payAtCheckout;
+
+    return (
+      <>
+        <p className={styles.successBanner} role="status">
+          Stay checked out. Cage released. The bill has been sent to the
+          cashier.
+        </p>
+        <dl className={styles.breakdown}>
+          <div className={styles.breakdownRow}>
+            <dt>Nights stayed</dt>
+            <dd>{nights}</dd>
+          </div>
+          <div className={styles.breakdownTotal}>
+            <dt>To collect at the cashier</dt>
+            <dd>₱{result.remainingBalance}</dd>
+          </div>
+        </dl>
+      </>
+    );
+  }
+
   if (result) {
     return (
       <>

@@ -46,6 +46,7 @@ function queueFromResults(...results: QueryResult[]) {
     for (const method of [
       'select',
       'eq',
+      'is',
       'update',
       'not',
       'order',
@@ -115,6 +116,7 @@ describe('daycareCheckIn.service (#65)', () => {
             branch_id: 'branch-makati',
             service_category: 'Daycare',
             status: 'Pending',
+            hotel_preferences: { feeding: [], medications: [] },
           },
           error: null,
         },
@@ -205,6 +207,7 @@ describe('daycareCheckIn.service (#65)', () => {
             branch_id: 'branch-makati',
             service_category: 'Daycare',
             status: 'In Progress',
+            hotel_preferences: { feeding: [], medications: [] },
           },
           error: null,
         },

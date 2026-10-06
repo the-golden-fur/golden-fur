@@ -4,21 +4,20 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { checkoutBooking, previewCheckout } from '../../api/billing.api';
 import { CreditApplicationPanel } from '../../components/CreditApplicationPanel/CreditApplicationPanel';
 import { PaymentMethodForm } from '../../components/PaymentMethodForm/PaymentMethodForm';
-import { PayMongoServiceFeeNotice } from '../../components/PayMongoServiceFeeNotice/PayMongoServiceFeeNotice';
 import type {
   CheckoutPreview,
   CheckoutResponse,
   PaymentFields,
 } from '../../billing.types';
 import styles from './CashierCheckoutPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const DEFAULT_PAYMENT: PaymentFields = { payment_method: 'Cash' };
 
 /**
  * Issue #86: single checkout screen showing every line item (services,
  * add-ons, auto-applied discounts/promos - AC-1), the customer's available
- * credit (AC-2), and whichever payment method form applies (AC-3), with the
- * PayMongo fee notice (AC-4) rendered inline via PayMongoServiceFeeNotice.
+ * credit (AC-2), and whichever payment method form applies (AC-3).
  * The preview (GET /billing/checkout/:bookingId/preview) and the real
  * checkout (POST /billing/checkout) share the exact same aggregation logic
  * server-side (checkoutAggregation.service.ts's buildCheckoutPreview), so
@@ -107,14 +106,10 @@ export function CashierCheckoutPage() {
     }
 
     setResult(response.data);
-
-    if (response.data.paymongoCheckoutUrl) {
-      window.location.href = response.data.paymongoCheckoutUrl;
-    }
   }
 
   if (!accessToken) {
-    return <p>Loading...</p>;
+    return <LoadingState size="inline" />;
   }
 
   const allLines = preview
@@ -150,7 +145,7 @@ export function CashierCheckoutPage() {
           </div>
         </label>
 
-        {isLoadingPreview ? <p className={styles.copy}>Loading...</p> : null}
+        {isLoadingPreview ? <LoadingState size="inline" /> : null}
         {previewError ? (
           <p className={styles.errorBanner} role="alert">
             {previewError}
@@ -218,11 +213,6 @@ export function CashierCheckoutPage() {
               value={payment}
               onChange={setPayment}
               amountDue={amountDue}
-            />
-
-            <PayMongoServiceFeeNotice
-              paymentMethod={payment.payment_method}
-              accessToken={accessToken}
             />
 
             <p className={styles.amountDue}>

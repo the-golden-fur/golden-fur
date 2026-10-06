@@ -180,6 +180,18 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
         },
         error: null,
       }, // pricing configuration (getServiceById always reads it, Epic B #80)
+      {
+        // CREATE_PAYLOAD starts at "now + 30 days", i.e. at whatever time of
+        // day this test happens to run - an end-of-day cutoff keeps the
+        // check-in cutoff gate from depending on the wall clock here (the
+        // gate itself is covered in availability.service.spec).
+        data: {
+          name: 'Southwoods',
+          timezone: 'Asia/Manila',
+          daycare_checkin_cutoff: '23:59:00',
+        },
+        error: null,
+      }, // assertDaycareStartsBeforeCutoff - branch's Daycare check-in cutoff
       { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
       {
         data: { staff_picker_enabled: false, eligible_staff_roles: [] },
@@ -500,7 +512,6 @@ describe('GET /bookings/:id/details (View details surface)', () => {
             credit_applied_amount: 0,
             payment_reference: null,
             created_at: '2026-07-18T00:00:00Z',
-            webhook_confirmed_at: '2026-07-18T00:05:00Z',
           },
         ],
         error: null,
@@ -569,7 +580,6 @@ describe('GET /bookings/:id/details (View details surface)', () => {
             credit_applied_amount: 0,
             payment_reference: 'ref-1',
             created_at: '2026-07-18T00:00:00Z',
-            webhook_confirmed_at: null,
           },
         ],
         error: null,

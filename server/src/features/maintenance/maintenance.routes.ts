@@ -3,9 +3,12 @@ import multer from 'multer';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
+import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   archivePackageController,
   archivePromoController,
+  archiveServiceController,
+  archiveServiceTypeController,
   createBreedController,
   createPackageController,
   createPetTypeController,
@@ -22,10 +25,18 @@ import {
   getPromoController,
   getServiceController,
   handleServiceImageUploadError,
+  hardDeleteBreedController,
   hardDeletePackageController,
+  hardDeletePetTypeController,
   hardDeletePromoController,
+  hardDeleteServiceController,
+  hardDeleteServiceTypeController,
+  listArchivedBreedsController,
   listArchivedPackagesController,
+  listArchivedPetTypesController,
   listArchivedPromosController,
+  listArchivedServiceTypesController,
+  listArchivedServicesController,
   listBreedsController,
   listPackagesController,
   listPetTypePriceOverridesController,
@@ -34,11 +45,16 @@ import {
   listPromosController,
   listServiceTypesController,
   listServicesController,
+  restoreBreedController,
   restorePackageController,
+  restorePetTypeController,
   restorePromoController,
+  restoreServiceController,
+  restoreServiceTypeController,
   setPackageBranchAvailabilityController,
   setPromoBranchAvailabilityController,
   setServiceBranchAvailabilityController,
+  setServiceBranchPriceController,
   setServiceTypeBranchAvailabilityController,
   updateBreedController,
   updatePackageController,
@@ -61,8 +77,13 @@ import {
 /**
  * Unlike staff routes, maintenance configuration is not branch-scoped for
  * access (an Admin manages both branches' catalog from one panel), so
- * requireBranch is deliberately omitted; branch filtering is a query
- * parameter, and per-branch availability is data, not authorization.
+ * requireBranch is deliberately omitted from most routes; branch filtering
+ * is a query parameter, and per-branch availability is data, not
+ * authorization - EXCEPT the branch-availability toggles and pet type price
+ * overrides below, which need the requester's own branch_id to enforce
+ * "Admins can only touch their own branch", and weight class configuration,
+ * which is Superadmin-only (it has no branch dimension at all - see
+ * updatePetWeightClassConfigurationController).
  */
 const router = Router();
 
@@ -76,6 +97,14 @@ const adminWrite = [
   jwtMiddleware,
   sessionTimeoutMiddleware,
   requireRole([...MAINTENANCE_WRITE_ROLES]),
+];
+
+const adminWriteWithBranch = [...adminWrite, requireBranch];
+
+const superadminWrite = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole(['Superadmin']),
 ];
 
 const serviceImageUpload = multer({
@@ -98,13 +127,42 @@ router.post(
 
 // Services (#40)
 router.get('/maintenance/services', staffRead, listServicesController);
+router.get(
+  '/maintenance/services/archived',
+  adminWrite,
+  listArchivedServicesController
+);
 router.post('/maintenance/services', adminWrite, createServiceController);
 router.get('/maintenance/services/:id', staffRead, getServiceController);
 router.patch('/maintenance/services/:id', adminWrite, updateServiceController);
+// Config-menu consistency change: services can now be archived (soft,
+// reversible) - there was no delete route before.
+router.delete(
+  '/maintenance/services/:id',
+  adminWrite,
+  archiveServiceController
+);
+router.post(
+  '/maintenance/services/:id/restore',
+  adminWrite,
+  restoreServiceController
+);
+router.delete(
+  '/maintenance/services/:id/permanent',
+  adminWrite,
+  hardDeleteServiceController
+);
 router.patch(
   '/maintenance/services/:id/branch-availability',
-  adminWrite,
+  adminWriteWithBranch,
   setServiceBranchAvailabilityController
+);
+// A branch's own price for a service - a cross-branch pricing decision, so
+// Superadmin-only (unlike the availability toggle above).
+router.patch(
+  '/maintenance/services/:id/branch-price',
+  superadminWrite,
+  setServiceBranchPriceController
 );
 
 // Packages (#41)
@@ -119,7 +177,7 @@ router.get('/maintenance/packages/:id', staffRead, getPackageController);
 router.patch('/maintenance/packages/:id', adminWrite, updatePackageController);
 router.patch(
   '/maintenance/packages/:id/branch-availability',
-  adminWrite,
+  adminWriteWithBranch,
   setPackageBranchAvailabilityController
 );
 // Archive is the "delete" a normal admin performs (soft, reversible, still
@@ -152,7 +210,7 @@ router.get('/maintenance/promos/:id', staffRead, getPromoController);
 router.patch('/maintenance/promos/:id', adminWrite, updatePromoController);
 router.patch(
   '/maintenance/promos/:id/branch-availability',
-  adminWrite,
+  adminWriteWithBranch,
   setPromoBranchAvailabilityController
 );
 router.delete('/maintenance/promos/:id', adminWrite, archivePromoController);
@@ -187,7 +245,7 @@ router.get(
 );
 router.patch(
   '/maintenance/pet-weight-class-configuration',
-  adminWrite,
+  superadminWrite,
   updatePetWeightClassConfigurationController
 );
 
@@ -217,18 +275,51 @@ router.put(
 
 // Breeds (Epic A follow-up - previously seed-only, no CRUD anywhere)
 router.get('/maintenance/breeds', staffRead, listBreedsController);
+router.get(
+  '/maintenance/breeds/archived',
+  adminWrite,
+  listArchivedBreedsController
+);
 router.post('/maintenance/breeds', adminWrite, createBreedController);
 router.patch('/maintenance/breeds/:id', adminWrite, updateBreedController);
+// DELETE archives (Config-menu consistency change); permanent delete is
+// its own route once archived.
 router.delete('/maintenance/breeds/:id', adminWrite, deleteBreedController);
+router.post(
+  '/maintenance/breeds/:id/restore',
+  adminWrite,
+  restoreBreedController
+);
+router.delete(
+  '/maintenance/breeds/:id/permanent',
+  adminWrite,
+  hardDeleteBreedController
+);
 
 // Pet Types (Architectural-Change-History: admin CRUD + fixed-price override)
 router.get('/maintenance/pet-types', staffRead, listPetTypesController);
+router.get(
+  '/maintenance/pet-types/archived',
+  adminWrite,
+  listArchivedPetTypesController
+);
 router.post('/maintenance/pet-types', adminWrite, createPetTypeController);
 router.patch('/maintenance/pet-types/:id', adminWrite, updatePetTypeController);
+// DELETE archives (Config-menu consistency change).
 router.delete(
   '/maintenance/pet-types/:id',
   adminWrite,
   deletePetTypeController
+);
+router.post(
+  '/maintenance/pet-types/:id/restore',
+  adminWrite,
+  restorePetTypeController
+);
+router.delete(
+  '/maintenance/pet-types/:id/permanent',
+  adminWrite,
+  hardDeletePetTypeController
 );
 
 router.get(
@@ -238,17 +329,22 @@ router.get(
 );
 router.put(
   '/maintenance/pet-type-price-overrides',
-  adminWrite,
+  adminWriteWithBranch,
   upsertPetTypePriceOverrideController
 );
 router.delete(
   '/maintenance/pet-type-price-overrides/:id',
-  adminWrite,
+  adminWriteWithBranch,
   deletePetTypePriceOverrideController
 );
 
 // Service Types (Custom change)
 router.get('/maintenance/service-types', staffRead, listServiceTypesController);
+router.get(
+  '/maintenance/service-types/archived',
+  adminWrite,
+  listArchivedServiceTypesController
+);
 router.post(
   '/maintenance/service-types',
   adminWrite,
@@ -261,8 +357,25 @@ router.patch(
 );
 router.patch(
   '/maintenance/service-types/:id/branch-availability',
-  adminWrite,
+  adminWriteWithBranch,
   setServiceTypeBranchAvailabilityController
+);
+// Config-menu consistency change: service types can now be archived (soft,
+// reversible) - there was no delete route before.
+router.delete(
+  '/maintenance/service-types/:id',
+  adminWrite,
+  archiveServiceTypeController
+);
+router.post(
+  '/maintenance/service-types/:id/restore',
+  adminWrite,
+  restoreServiceTypeController
+);
+router.delete(
+  '/maintenance/service-types/:id/permanent',
+  adminWrite,
+  hardDeleteServiceTypeController
 );
 
 export default router;

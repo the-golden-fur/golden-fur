@@ -8,14 +8,17 @@ import {
   ClipboardList,
   Coins,
   DoorOpen,
+  GitCompareArrows,
   Heart,
   History,
   ListChecks,
   LogIn,
   PawPrint,
+  Pill,
   Receipt,
   Scale,
   Scissors,
+  ShoppingBag,
   Stethoscope,
   UserCog,
   Users,
@@ -55,6 +58,10 @@ export interface DashboardTileConfig {
   description: string;
   /** Omitted for modules not built yet - the tile renders as "Coming soon". */
   to?: string;
+  /** Narrows a tile within a shared config - e.g. Superadmin and Admin share
+   * the admin config, but some tiles are Superadmin-only. Omitted = every
+   * role using this config sees it. */
+  roles?: StaffRole[];
 }
 
 export interface DashboardSectionConfig {
@@ -95,17 +102,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       {
         label: 'Management',
         tiles: [
-          {
-            title: 'Days Off',
-            description: 'Request a day off, or take the rest of today off.',
-            to: '/staff/days-off',
-          },
-          {
-            title: 'My Schedule',
-            description:
-              'See the rest days and approved leave plotted for you this month.',
-            to: '/staff/my-schedule',
-          },
           {
             title: 'Staff Management',
             description: 'Create, promote, and manage staff accounts.',
@@ -197,6 +193,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Assemble charges, apply discounts, and take payment.',
           },
           {
+            title: 'Miscellaneous Sales',
+            description:
+              'Record and review counter sales unrelated to a booking.',
+            to: '/staff/admin/misc-sales',
+          },
+          {
             title: 'Transactions',
             description:
               'Record a payment against any pending charge; add balance payments.',
@@ -274,6 +276,13 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
           },
+          {
+            title: 'Branch Comparison',
+            description:
+              'Compare revenue and bookings across every branch, side by side.',
+            to: '/staff/reports/branch-comparison',
+            roles: ['Superadmin'],
+          },
         ],
       },
     ],
@@ -284,17 +293,6 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       {
         label: null,
         tiles: [
-          {
-            title: 'Days Off',
-            description: 'Request a day off, or take the rest of today off.',
-            to: '/staff/days-off',
-          },
-          {
-            title: 'My Schedule',
-            description:
-              'See the rest days and approved leave plotted for you this month.',
-            to: '/staff/my-schedule',
-          },
           {
             title: 'Customer Management',
             description: 'Look up customers, pets, and walk-in records.',
@@ -490,8 +488,14 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           {
             title: 'My Catalog',
             description:
-              'Your saved medications and procedures, picked from a dropdown on the consultation form.',
+              'Your saved medications, reusable prescriptions, and consultation form templates, picked from a dropdown on the consultation form.',
             to: '/staff/veterinary/catalog',
+          },
+          {
+            title: 'Prescriptions',
+            description:
+              'Every prescribed medication across every patient, searchable and groupable by medicine type.',
+            to: '/staff/veterinary/prescriptions',
           },
         ],
       },
@@ -517,6 +521,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
           {
             title: 'Checkout & Billing',
             description: 'Assemble charges, apply discounts, and take payment.',
+          },
+          {
+            title: 'Miscellaneous Sales',
+            description:
+              'Record and review counter sales unrelated to a booking.',
+            to: '/staff/admin/misc-sales',
           },
           {
             title: 'Transactions',
@@ -617,7 +627,9 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Consultation Queue': Stethoscope,
   'My Patients': PawPrint,
   'My Catalog': ListChecks,
+  Prescriptions: Pill,
   'Checkout & Billing': Wallet,
+  'Miscellaneous Sales': ShoppingBag,
   Transactions: Receipt,
   'Credit Management': Coins,
   'Credit Review Queue': ClipboardCheck,
@@ -625,6 +637,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Activity Log': History,
   'Branch Reports': BarChart3,
   'Cage Occupancy': DoorOpen,
+  'Branch Comparison': GitCompareArrows,
 };
 
 export interface SidebarReadySection {
@@ -634,18 +647,22 @@ export interface SidebarReadySection {
 }
 
 /** Flattens a StaffDashboardConfig's sections into Sidebar-ready sections:
- * drops the `description` field DashboardTile needs but Sidebar doesn't, and
- * drops tiles with no `to` (a "Coming soon" placeholder isn't a nav target). */
+ * drops the `description` field DashboardTile needs but Sidebar doesn't,
+ * drops tiles with no `to` (a "Coming soon" placeholder isn't a nav target),
+ * and drops tiles whose `roles` doesn't include the viewer's role. */
 export function toSidebarSections(
-  config: StaffDashboardConfig
+  config: StaffDashboardConfig,
+  role?: StaffRole
 ): SidebarReadySection[] {
   return config.sections
     .map((section) => ({
       label: section.label,
       icon: section.label ? ADMIN_SECTION_ICONS[section.label] : undefined,
       items: section.tiles
-        .filter((tile): tile is DashboardTileConfig & { to: string } =>
-          Boolean(tile.to)
+        .filter(
+          (tile): tile is DashboardTileConfig & { to: string } =>
+            Boolean(tile.to) &&
+            (!tile.roles || (role !== undefined && tile.roles.includes(role)))
         )
         .map((tile) => ({
           title: tile.title,

@@ -52,6 +52,7 @@ const MANDATED_DISCOUNT = {
   id: 'discount-sc',
   name: 'Senior Citizen Discount',
   is_mandated: true,
+  mandated_kind: 'senior_citizen',
   discount_type: 'Percentage',
   value: 20,
   scope_type: 'category',
@@ -144,19 +145,21 @@ describe('discounts.service', () => {
   });
 
   describe('updateDiscount', () => {
-    it('AC-3: rejects renaming a mandated discount with 400', async () => {
-      queueFromResults({ data: MANDATED_DISCOUNT, error: null });
+    it('a mandated discount CAN be renamed (checkout gates it by mandated_kind, not by name)', async () => {
+      queueFromResults(
+        { data: MANDATED_DISCOUNT, error: null }, // lookup
+        { data: null, error: null }, // update
+        { data: { ...MANDATED_DISCOUNT, name: 'Golden Years' }, error: null } // reload
+      );
 
-      await expect(
-        updateDiscount({
-          requesterId: 'admin-1',
-          discountId: 'discount-sc',
-          updates: { name: 'Totally Not SC Anymore' },
-        })
-      ).rejects.toMatchObject({
-        statusCode: 400,
-        message: expect.stringContaining('mandated'),
+      const result = await updateDiscount({
+        requesterId: 'admin-1',
+        discountId: 'discount-sc',
+        updates: { name: 'Golden Years' },
       });
+
+      expect(result.name).toBe('Golden Years');
+      expect(result.mandated_kind).toBe('senior_citizen');
     });
 
     it("AC-3: edits a custom discount's value and scope", async () => {
@@ -243,6 +246,8 @@ describe('discounts.service', () => {
         discountId: 'discount-custom',
         branchId: 'branch-southwoods',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-makati',
       });
 
       expect(result.is_available).toBe(false);
@@ -266,6 +271,8 @@ describe('discounts.service', () => {
         discountId: 'discount-custom',
         branchId: 'branch-makati',
         isAvailable: true,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-makati',
       });
 
       expect(builders[3].update).toHaveBeenCalledWith({ is_active: true });
@@ -289,6 +296,8 @@ describe('discounts.service', () => {
         discountId: 'discount-custom',
         branchId: 'branch-makati',
         isAvailable: false,
+        requesterRole: 'Superadmin',
+        requesterBranchId: 'branch-makati',
       });
 
       expect(builders[3].update).toHaveBeenCalledWith({ is_active: false });
@@ -302,8 +311,48 @@ describe('discounts.service', () => {
           discountId: 'missing',
           branchId: 'branch-makati',
           isAvailable: true,
+          requesterRole: 'Superadmin',
+          requesterBranchId: 'branch-makati',
         })
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('rejects an Admin trying to toggle a branch other than their own', async () => {
+      await expect(
+        setDiscountBranchAvailability({
+          discountId: 'discount-custom',
+          branchId: 'branch-southwoods',
+          isAvailable: true,
+          requesterRole: 'Admin',
+          requesterBranchId: 'branch-makati',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('allows an Admin to toggle their own branch', async () => {
+      queueFromResults(
+        { data: { id: 'discount-custom' }, error: null },
+        {
+          data: {
+            discount_id: 'discount-custom',
+            branch_id: 'branch-makati',
+            is_available: true,
+          },
+          error: null,
+        },
+        { data: [{ is_available: true }], error: null },
+        { data: null, error: null }
+      );
+
+      const result = await setDiscountBranchAvailability({
+        discountId: 'discount-custom',
+        branchId: 'branch-makati',
+        isAvailable: true,
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-makati',
+      });
+
+      expect(result.is_available).toBe(true);
     });
   });
 

@@ -8,6 +8,7 @@ import { useSpinCredits } from '../../providers/useSpinCredits';
 import type { PromoWheel } from '../../rewards.types';
 import { SpinWheel } from '../SpinWheel/SpinWheel';
 import styles from './SpinWheelPopup.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Routes where the pop-up never opens on its own: My Rewards already shows
  * every wheel, and MFA verification must not be interrupted. */
@@ -227,7 +228,7 @@ export function SpinWheelPopup() {
             onAnimationComplete={handleAnimationComplete}
           />
         ) : (
-          <p className={styles.muted}>Loading wheel...</p>
+          <LoadingState label="Loading wheel..." />
         )}
 
         {resultText ? (

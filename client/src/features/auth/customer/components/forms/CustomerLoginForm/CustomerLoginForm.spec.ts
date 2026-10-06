@@ -88,6 +88,30 @@ describe('CustomerLoginForm', () => {
     );
   });
 
+  it('regression: re-enables Sign in and shows an error instead of freezing when a downstream step throws (e.g. a network blip inside applySession)', async () => {
+    const applySession = vi.fn().mockRejectedValue(new Error('network blip'));
+    loginMock.mockResolvedValue({
+      data: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 },
+      error: null,
+    });
+
+    renderForm(applySession);
+
+    await userEvent.type(
+      screen.getByLabelText(/email/i),
+      'customer@example.com'
+    );
+    await userEvent.type(screen.getByLabelText(/password/i), 'correct-pw');
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not reach the server. Check your connection and try again.'
+    );
+    expect(
+      screen.getByRole('button', { name: /^sign in$/i })
+    ).not.toBeDisabled();
+  });
+
   it('marks MFA pending after login when the customer has already enrolled', async () => {
     const applySession = vi.fn().mockResolvedValue(undefined);
     loginMock.mockResolvedValue({

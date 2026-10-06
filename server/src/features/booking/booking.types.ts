@@ -179,9 +179,23 @@ export const BOOKING_SOURCES: readonly BookingSource[] = ['Online', 'Walk-in'];
 /** The payment scheme a booking is created under. 'downpayment' (only when the
  * branch down-payment policy is on) charges just the down payment up front and
  * creates a separate 'balance' transaction for the rest; 'full' charges the
- * whole net total as one transaction. */
-export const PAYMENT_SCHEMES = ['downpayment', 'full'] as const;
+ * whole net total as one transaction. 'pay_at_checkout' (a Walk-in Hotel/
+ * Daycare booking, when the branch allows it) charges nothing up front: the
+ * bill is posted at checkout from the time the pet actually stayed - see
+ * payAtCheckoutCharge.service.ts. */
+export const PAYMENT_SCHEMES = [
+  'downpayment',
+  'full',
+  'pay_at_checkout',
+] as const;
 export type PaymentScheme = (typeof PAYMENT_SCHEMES)[number];
+
+/** The only categories billed by time stayed, so the only ones a booking
+ * can be created 'pay_at_checkout' for. */
+export const PAY_AT_CHECKOUT_CATEGORIES: readonly ServiceCategory[] = [
+  'Hotel',
+  'Daycare',
+];
 
 export const PAYMENT_STATUSES: readonly PaymentStatus[] = [
   'Pending',
@@ -209,14 +223,6 @@ export const PAYMENT_METHODS = [
 ] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
-
-/** Collected online, ahead of arrival - drives completeBooking's automatic
- * Completed->Paid fast path (booking-status revision). The rest are
- * pay-at-counter, requiring a manual Mark as Paid action. */
-export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
-  'GCash',
-  'Maya',
-];
 
 export type EnforcementMode = 'Strict' | 'Soft';
 
@@ -331,6 +337,24 @@ export interface HotelBookingPreferences {
   medications: HotelBookingPreferenceMedication[];
 }
 
+/**
+ * Defense in depth behind STAFF_BOOKING_RESTRICTED_FIELD_ROLES
+ * (staff.types.ts): the booking-flow UI already hides Feeding/Medications
+ * for a Receptionist/Groomer caller, but a direct API call could still send
+ * them - strip those two arrays server-side so they can never land on the
+ * booking regardless of what the UI allowed.
+ */
+export function sanitizeHotelPreferencesForStaffRole(
+  preferences: HotelBookingPreferences | null | undefined,
+  staffRole: string | null,
+  restrictedRoles: readonly string[]
+): HotelBookingPreferences | null {
+  if (!preferences) return preferences ?? null;
+  if (!staffRole || !restrictedRoles.includes(staffRole)) return preferences;
+
+  return { ...preferences, feeding: [], medications: [] };
+}
+
 export interface Booking {
   id: string;
   customer_id: string;
@@ -362,6 +386,10 @@ export interface Booking {
    * Snapshotted from the effective policy's downpayment_hold_hours at
    * creation; enforced by applyDownpaymentExpiry (lazy, read-time). */
   downpayment_due_at: string | null;
+  /** Pay at checkout (20261005244): a Walk-in Hotel/Daycare booking created
+   * with no upfront charge. total_price is only an estimate until checkout
+   * posts the real bill (payAtCheckoutCharge.service.ts). */
+  pay_at_checkout: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only) rather than
@@ -439,6 +467,9 @@ export interface BookingGroup {
   downpayment_amount: number | null;
   downpayment_required: boolean;
   downpayment_due_at: string | null;
+  /** Pay at checkout (20261005244): every member is billed at its own
+   * checkout - no shared upfront charge. Mirrored onto each member row. */
+  pay_at_checkout: boolean;
   payment_status: PaymentStatus;
   paid_at: string | null;
   created_at: string;
@@ -505,11 +536,6 @@ export interface PolicyConfiguration {
    * addendum #10). Default 100 = full conversion; lower it to keep part of
    * the payment as a cancellation charge. Applied in cancellation.service.ts. */
   cancellation_credit_conversion_rate: number;
-  /** Master toggle for the customer-facing PayMongo "Pay" button - when
-   * false, the button still renders (disabled, with an explanatory
-   * tooltip) rather than disappearing. See isOnlinePaymentsEnabled in
-   * staffPicker.service.ts. */
-  online_payments_enabled: boolean;
   /** Per-transaction downpayment config, applied against a booking's whole
    * total_price at creation time - see resolveDownpaymentPolicy in
    * staffPicker.service.ts and createBooking in booking.service.ts.
@@ -523,6 +549,12 @@ export interface PolicyConfiguration {
    * unpaid down-payment-required Online booking auto-cancels. NOT NULL,
    * default 24. Snapshotted onto bookings.downpayment_due_at at creation. */
   downpayment_hold_hours: number;
+  /** Pay at checkout (20261005244): whether a Walk-in Hotel/Daycare booking
+   * at this branch may be created with no upfront charge. Default true. */
+  pay_at_checkout_enabled: boolean;
+  /** Minutes past a full hour a pay-at-checkout Daycare stay may run before
+   * that next hour is billed (daycareHourlyCharge). 0-59, default 10. */
+  pay_at_checkout_grace_minutes: number;
   /** How many overlapping Grooming/Veterinary bookings one staff member may be
    * assigned at once (20260908178). 1 = one pet at a time (default). Read by
    * the get_staff_availability RPC (Check 2) and confirmCapacityAfterInsert;
@@ -580,11 +612,12 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_days'
   | 'credit_expiry_fixed_date'
   | 'cancellation_credit_conversion_rate'
-  | 'online_payments_enabled'
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
   | 'downpayment_hold_hours'
+  | 'pay_at_checkout_enabled'
+  | 'pay_at_checkout_grace_minutes'
   | 'max_concurrent_bookings_per_staff'
   | 'booking_group_email_mode'
   | 'care_log_task_email_enabled'
@@ -707,7 +740,6 @@ export interface BookingDetailsTransaction {
   credit_applied_amount: number;
   payment_reference: string | null;
   created_at: string;
-  webhook_confirmed_at: string | null;
 }
 
 /** Effective pricing for the booking - the group's shared values when the

@@ -29,20 +29,16 @@ export const PAYMENT_METHODS = [
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
-  'GCash',
-  'Maya',
-];
-
 /**
  * Payment/transactions rework (§ record-a-payment): the counter methods a
  * cashier can settle a Pending booking_payment transaction with in one
- * step - every manual method except GCash/Maya's portal channel (which
- * only the PayMongo webhook confirms). 'Credit' is settled through the
- * dedicated pay-with-credit path (transactionPayment.service.ts), not here.
+ * step - every manual method. 'Credit' is settled through the dedicated
+ * pay-with-credit path (transactionPayment.service.ts), not here.
  */
 export const COUNTER_PAYMENT_METHODS = [
   'Cash',
+  'GCash',
+  'Maya',
   'Card',
   'Bank Transfer',
   'Grabmart',
@@ -98,14 +94,7 @@ export interface Transaction {
   total_amount: number;
   payment_reference: string | null;
   misc_sale_description: string | null;
-  webhook_confirmed_at: string | null;
   processed_by_staff_id: string | null;
-  /** 'staff' for every pre-existing/cashier-created row (default);
-   * 'customer' only for a booking payment the customer initiated themselves
-   * (customerBookingPayment.service.ts) - lets confirmPaymongoWebhookEvent
-   * recompute the booking's payment_status once one of these confirms,
-   * without touching cashier-checkout behavior. */
-  initiated_by: 'staff' | 'customer';
   /** Which portion of the booking this transaction covers - see
    * PAYMENT_CHOICES. Null on misc sales. */
   payment_choice: PaymentChoice | null;

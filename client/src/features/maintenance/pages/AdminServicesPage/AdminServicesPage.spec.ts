@@ -26,7 +26,9 @@ vi.mock('../../api/maintenance.api', () => ({
   listServices: vi.fn(),
   createService: vi.fn(),
   updateService: vi.fn(),
+  archiveService: vi.fn(),
   setServiceBranchAvailability: vi.fn(),
+  setServiceBranchPrice: vi.fn(),
   getPricingConfiguration: vi.fn(),
 }));
 
@@ -279,6 +281,13 @@ describe('AdminServicesPage', () => {
       },
       error: null,
     });
+    // Superadmin, not the default Admin viewer - a branch-scoped Admin
+    // can't uncheck a branch other than their own (see BranchMultiSelect's
+    // lockedBranchId), which is exactly what this test needs to do.
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
+      error: null,
+    });
 
     renderPage();
     const user = userEvent.setup();
@@ -433,7 +442,7 @@ describe('AdminServicesPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('Custom change (services/packages actions menu): a service row exposes Configure and Branch Availability behind a single "..." menu instead of separate always-visible controls', async () => {
+  it('Custom change (services/packages actions menu): a service row exposes Configure, Rename and Archive (no separate Branch Availability) behind a single "..." menu instead of separate always-visible controls', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -459,8 +468,106 @@ describe('AdminServicesPage', () => {
       screen.getByRole('menuitem', { name: 'Configure' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: 'Branch Availability' })
+      screen.queryByRole('menuitem', { name: 'Branch Availability' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Config-menu consistency: a service row also exposes Rename and Archive (never Deactivate) behind the "..." menu', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Archive' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Deactivate' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Rename opens a small pop-up and saves only the new name', async () => {
+    vi.mocked(maintenanceApi.updateService).mockResolvedValue({
+      data: buildService({ name: 'Deluxe Bath' }),
+      error: null,
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+
+    const input = screen.getByRole('textbox', { name: /new service name/i });
+    await user.clear(input);
+    await user.type(input, 'Deluxe Bath');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(maintenanceApi.updateService).toHaveBeenCalledWith(
+        expect.any(String),
+        'token',
+        { name: 'Deluxe Bath' }
+      )
+    );
+    expect(await screen.findByText('Deluxe Bath')).toBeInTheDocument();
+  });
+
+  it('Archive asks for confirmation, then removes the row from the list', async () => {
+    vi.mocked(maintenanceApi.archiveService).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    expect(maintenanceApi.archiveService).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    await waitFor(() =>
+      expect(maintenanceApi.archiveService).toHaveBeenCalledWith(
+        expect.any(String),
+        'token'
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Bath')).not.toBeInTheDocument()
+    );
+  });
+
+  it('Archive shows the server error (e.g. still used by a package) and keeps the row', async () => {
+    vi.mocked(maintenanceApi.archiveService).mockResolvedValue({
+      data: null,
+      error: 'This service is still used by package "Spa Day".',
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    expect(
+      await screen.findByText(/still used by package/)
+    ).toBeInTheDocument();
+    expect(screen.getByText('Bath')).toBeInTheDocument();
   });
 
   it('Custom change (services/packages actions menu): Configure opens the edit form in a modal instead of pushing the list down', async () => {
@@ -477,16 +584,7 @@ describe('AdminServicesPage', () => {
     expect(within(dialog).getByLabelText('Name')).toHaveValue('Bath');
   });
 
-  it('Custom change (services/packages actions menu): Branch Availability opens a modal listing every branch with its own toggle', async () => {
-    vi.mocked(maintenanceApi.setServiceBranchAvailability).mockResolvedValue({
-      data: {
-        service_id: 'service-1',
-        branch_id: 'branch-southwoods',
-        is_available: false,
-      },
-      error: null,
-    });
-
+  it('Configure carries the per-branch "Available at" selection (there is no separate Branch Availability action)', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -494,25 +592,10 @@ describe('AdminServicesPage', () => {
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Bath' })
     );
-    await user.click(
-      screen.getByRole('menuitem', { name: 'Branch Availability' })
-    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
-    const dialog = screen.getByRole('dialog', {
-      name: 'Branch Availability - Bath',
-    });
-    const toggle = within(dialog).getByRole('switch', { name: 'Southwoods' });
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-
-    await user.click(toggle);
-
-    await waitFor(() => {
-      expect(maintenanceApi.setServiceBranchAvailability).toHaveBeenCalledWith(
-        'service-1',
-        'token',
-        { branch_id: 'branch-southwoods', is_available: false }
-      );
-    });
+    const dialog = screen.getByRole('dialog', { name: 'Edit service' });
+    expect(within(dialog).getByText('Available at')).toBeInTheDocument();
   });
 
   it('Custom change (Daycare fee configuration follow-up): a Daycare service form hides base price and creates without it', async () => {
@@ -643,5 +726,196 @@ describe('AdminServicesPage', () => {
     await user.click(within(popover).getByRole('option', { name: 'Inactive' }));
 
     expect(screen.getByText('Old Service')).toBeInTheDocument();
+  });
+
+  // Custom change (per-branch service price): a Superadmin can give a branch
+  // its own price for a service, e.g. Hotel at PHP 500 a night in Southwoods.
+  describe('branch prices', () => {
+    const HOTEL = buildService({
+      id: 'service-hotel',
+      category: 'Hotel',
+      name: 'Overnight Stay',
+      base_price: 850,
+      duration_minutes: 1440,
+      service_pricing_tiers: [],
+      service_branch_availability: [
+        {
+          service_id: 'service-hotel',
+          branch_id: 'branch-makati',
+          is_available: true,
+          price_override: null,
+        },
+        {
+          service_id: 'service-hotel',
+          branch_id: 'branch-southwoods',
+          is_available: true,
+          price_override: null,
+        },
+      ],
+    });
+
+    function hotelWithSouthwoodsPrice(price: number | null): Service {
+      return {
+        ...HOTEL,
+        service_branch_availability: [
+          HOTEL.service_branch_availability![0],
+          { ...HOTEL.service_branch_availability![1], price_override: price },
+        ],
+      };
+    }
+
+    async function openConfigure(user: ReturnType<typeof userEvent.setup>) {
+      const row = (await screen.findByText('Overnight Stay')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Overnight Stay' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+      return screen.getByRole('dialog', { name: 'Edit service' });
+    }
+
+    beforeEach(() => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Superadmin')],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+        data: [HOTEL],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updateService).mockResolvedValue({
+        data: HOTEL,
+        error: null,
+      });
+      vi.mocked(maintenanceApi.setServiceBranchPrice).mockImplementation(
+        (_serviceId, _token, payload) =>
+          Promise.resolve({
+            data: {
+              service_id: 'service-hotel',
+              branch_id: payload.branch_id,
+              is_available: true,
+              price_override: payload.price_override,
+            },
+            error: null,
+          })
+      );
+    });
+
+    it('lets a Superadmin give one branch its own price, leaving the others on the base price', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      const makatiPrice = within(dialog).getByLabelText('Makati price (PHP)');
+      const southwoodsPrice = within(dialog).getByLabelText(
+        'Southwoods price (PHP)'
+      );
+      expect(makatiPrice).toHaveValue(null);
+      expect(southwoodsPrice).toHaveValue(null);
+
+      await user.type(southwoodsPrice, '500');
+      await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.setServiceBranchPrice).toHaveBeenCalledWith(
+          'service-hotel',
+          'token',
+          { branch_id: 'branch-southwoods', price_override: 500 }
+        )
+      );
+      expect(maintenanceApi.setServiceBranchPrice).toHaveBeenCalledTimes(1);
+
+      // ...and the list then shows it beside the base price.
+      const row = (await screen.findByText('Overnight Stay')).closest(
+        'tr'
+      ) as HTMLElement;
+      expect(
+        await within(row).findByText('Southwoods: PHP 500.00')
+      ).toBeInTheDocument();
+    });
+
+    it('shows an existing branch price and clears it when the box is emptied', async () => {
+      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+        data: [hotelWithSouthwoodsPrice(500)],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updateService).mockResolvedValue({
+        data: hotelWithSouthwoodsPrice(500),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      const southwoodsPrice = within(dialog).getByLabelText(
+        'Southwoods price (PHP)'
+      );
+      expect(southwoodsPrice).toHaveValue(500);
+
+      await user.clear(southwoodsPrice);
+      await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.setServiceBranchPrice).toHaveBeenCalledWith(
+          'service-hotel',
+          'token',
+          { branch_id: 'branch-southwoods', price_override: null }
+        )
+      );
+    });
+
+    it('saves nothing extra when no branch price was changed', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.updateService).toHaveBeenCalled()
+      );
+      expect(maintenanceApi.setServiceBranchPrice).not.toHaveBeenCalled();
+    });
+
+    it('does not offer branch prices to an Admin', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Admin')],
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      expect(
+        within(dialog).queryByLabelText('Southwoods price (PHP)')
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not offer branch prices for Daycare, which is billed by the hour', async () => {
+      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+        data: [
+          {
+            ...HOTEL,
+            category: 'Daycare',
+            first_hour_fee: 100,
+            succeeding_hour_fee: 50,
+            daycare_overnight_fee: null,
+          },
+        ],
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      expect(
+        within(dialog).queryByLabelText('Southwoods price (PHP)')
+      ).not.toBeInTheDocument();
+    });
   });
 });

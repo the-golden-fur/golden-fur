@@ -54,30 +54,41 @@
   gap: var(--space-2);
 }
 
-/* Persistent "services selected so far" recap (SelectedItemsSummary),
-   shown above stepContent on every step after Services - a native
-   <details>, collapsed by default, kept small and separate so it never
-   competes visually with the current step's own content below it. */
-.selectedItemsSummary {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-sm);
+/* Wizard + "Your booking" summary (BookingSummaryPanel). The page is its
+   own size container so the two-column split responds to the space the
+   page actually gets (the portal sidebar eats into the viewport), not the
+   viewport width. Below the breakpoint the panel simply stacks after the
+   form, keeping the current step at the top on phones/tablets. */
+.pageWithSummary {
+  max-width: calc(
+    var(--booking-flow-max-width) + var(--booking-summary-width) +
+      var(--space-4) * 2
+  );
+  container-type: inline-size;
 }
 
-.selectedItemsSummaryTitle {
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  font-weight: var(--weight-medium);
-}
-
-.selectedItemsSummaryList {
-  list-style: none;
+.summaryLayout {
   display: grid;
-  gap: var(--space-0-5);
-  margin: var(--space-1) 0 0;
-  padding: 0;
+  gap: var(--space-4);
+}
+
+.flowColumn {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  min-width: 0;
+}
+
+@container (min-width: 960px) {
+  .summaryLayout {
+    grid-template-columns: minmax(0, 1fr) var(--booking-summary-width);
+    align-items: start;
+  }
+
+  .summaryColumn {
+    position: sticky;
+    top: var(--space-2);
+  }
 }
 
 .navRow {
@@ -139,6 +150,20 @@
 .secondaryButton:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+/* Same size as .secondaryButton, filled gold - for an in-step action that
+   should stand out (e.g. "Add another booking") without competing with the
+   larger .primaryButton nav buttons. */
+.secondaryButtonGold {
+  composes: secondaryButton;
+  border-color: var(--color-accent-gold-primary);
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+}
+
+.secondaryButtonGold:hover:not(:disabled) {
+  background: var(--color-accent-gold-highlight);
 }
 
 .itemSearchInput {

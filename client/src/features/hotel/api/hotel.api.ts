@@ -2,6 +2,7 @@ import type { BookingStatus } from '../../booking/booking.types';
 import type {
   ActivityLogEntry,
   Cage,
+  CageOccupant,
   CageSize,
   CageStatus,
   CageSuggestion,
@@ -116,12 +117,21 @@ export async function getCurrentPrescriptionForPet(
   return { data: result.data?.prescription ?? null, error: result.error };
 }
 
+/** `?branch_id=` for the two cage reads below. Only a Superadmin's choice
+ * is honoured server-side (another branch's id, or 'all' for every branch);
+ * omitted, the server uses the viewer's own branch. */
+function cageBranchQuery(branch?: string): string {
+  return branch ? `?branch_id=${encodeURIComponent(branch)}` : '';
+}
+
 export async function getCageGrid(
-  accessToken: string
+  accessToken: string,
+  branch?: string
 ): Promise<HotelApiResult<Record<CageSize, Cage[]>>> {
-  const response = await fetch(`${API_BASE_URL}/hotel/cages`, {
-    headers: authHeaders(accessToken),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cages${cageBranchQuery(branch)}`,
+    { headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };
@@ -129,6 +139,25 @@ export async function getCageGrid(
 
   const result = await parseBody<{ grid: Record<CageSize, Cage[]> }>(response);
   return { data: result.data?.grid ?? null, error: result.error };
+}
+
+/** Who is in each occupied cage at the viewer's branch, with the expected
+ * checkout time - same branch scoping as getCageGrid above. */
+export async function getCageOccupants(
+  accessToken: string,
+  branch?: string
+): Promise<HotelApiResult<CageOccupant[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cages/occupants${cageBranchQuery(branch)}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ occupants: CageOccupant[] }>(response);
+  return { data: result.data?.occupants ?? null, error: result.error };
 }
 
 export async function setCageMaintenanceStatus(
@@ -179,7 +208,14 @@ export async function createCage(
 
 export async function updateCage(
   cageId: string,
-  updates: { cage_label?: string; size?: CageSize; pet_types?: string[] },
+  updates: {
+    cage_label?: string;
+    size?: CageSize;
+    pet_types?: string[];
+    /** Superadmin-only - moves the cage to a different branch (rejected by
+     * the server with a 403 for any other role). */
+    branch_id?: string;
+  },
   accessToken: string
 ): Promise<HotelApiResult<Cage>> {
   const response = await fetch(`${API_BASE_URL}/hotel/cage/${cageId}`, {
@@ -196,7 +232,9 @@ export async function updateCage(
   return { data: result.data?.cage ?? null, error: result.error };
 }
 
-export async function deleteCage(
+/** Soft: DELETE archives the cage (Config-menu consistency change) - the
+ * permanent delete is hardDeleteCage, once archived. */
+export async function archiveCage(
   cageId: string,
   accessToken: string
 ): Promise<HotelApiResult<true>> {
@@ -204,6 +242,54 @@ export async function deleteCage(
     method: 'DELETE',
     headers: authHeaders(accessToken),
   });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: true, error: null };
+}
+
+export async function listArchivedCages(
+  accessToken: string
+): Promise<HotelApiResult<Cage[]>> {
+  const response = await fetch(`${API_BASE_URL}/hotel/cages/archived`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cages: Cage[] }>(response);
+  return { data: result.data?.cages ?? null, error: result.error };
+}
+
+export async function restoreCage(
+  cageId: string,
+  accessToken: string
+): Promise<HotelApiResult<Cage>> {
+  const response = await fetch(`${API_BASE_URL}/hotel/cage/${cageId}/restore`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cage: Cage }>(response);
+  return { data: result.data?.cage ?? null, error: result.error };
+}
+
+export async function hardDeleteCage(
+  cageId: string,
+  accessToken: string
+): Promise<HotelApiResult<true>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cage/${cageId}/permanent`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

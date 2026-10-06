@@ -6,6 +6,7 @@ import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
+import { assertWithinGroomingHours } from './availability.service.ts';
 import {
   sendBookingConfirmedNotification,
   sendCombinedBookingGroupConfirmedEmail,
@@ -50,6 +51,15 @@ vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
 // isConfirmedAtCreation), so both notification modules are mocked wholesale
 // to keep the sequential Supabase mock queue below to just the calls this
 // spec actually cares about.
+// Per-branch Grooming hours: assertWithinGroomingHours is covered by its own
+// unit tests (availability.service.spec.ts) - mocked here so these tests
+// don't need to queue its extra branches lookup in their sequential
+// Supabase mock results.
+vi.mock('./availability.service.ts', () => ({
+  assertWithinGroomingHours: vi.fn(),
+  assertDaycareStartsBeforeCutoff: vi.fn(),
+}));
+
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
   sendCombinedBookingGroupConfirmedEmail: vi.fn().mockResolvedValue(undefined),
@@ -426,6 +436,47 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     });
   });
 
+  it('per-branch Grooming hours: a Grooming sub-booking outside the configured time rejects the whole group before anything is inserted', async () => {
+    vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+    const rejection = new Error('Grooming is only available ...');
+    (rejection as Error & { statusCode?: number }).statusCode = 422;
+    vi.mocked(assertWithinGroomingHours).mockRejectedValueOnce(rejection);
+
+    queueFromResults(
+      { data: [DEFAULT_POLICY], error: null }, // resolveEffectivePolicy
+      { data: PET, error: null } // sub1 pet ownership
+    );
+
+    await expect(
+      createBookingGroup({
+        requesterId: CUSTOMER_ID,
+        input: {
+          branch_id: 'branch-1',
+          bookings: [
+            {
+              pet_id: PET.id,
+              service_category: 'Grooming',
+              items: [{ service_id: 'service-groom' }],
+              scheduled_start: isoAt(0),
+              scheduled_end: isoAt(hours(1)),
+            },
+          ],
+        } as never,
+      })
+    ).rejects.toMatchObject({ statusCode: 422 });
+
+    expect(assertWithinGroomingHours).toHaveBeenCalledWith(
+      'branch-1',
+      isoAt(0),
+      isoAt(hours(1))
+    );
+    expect(
+      recordedWrites.some(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      )
+    ).toBe(false);
+  });
+
   it('(b) the in-request capacity guard rejects two sub-bookings competing for the same staff + overlapping window', async () => {
     vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
 
@@ -601,6 +652,136 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     });
 
     expect(result.bookings).toHaveLength(2);
+  });
+
+  // Pay at checkout (custom change): an all-Walk-in Hotel/Daycare checkout
+  // can be created with no shared upfront charge - each member is billed at
+  // its own checkout (payAtCheckoutCharge.service.ts).
+  describe('pay at checkout', () => {
+    const walkInDaycare = (start: number, end: number) => ({
+      pet_id: PET.id,
+      service_category: 'Daycare',
+      booking_source: 'Walk-in',
+      items: [{ service_id: 'service-daycare' }],
+      scheduled_start: isoAt(hours(start)),
+      scheduled_end: isoAt(hours(end)),
+    });
+
+    it('flags the group and every member, and creates no group charge', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+
+      queueFromResults(
+        {
+          data: [{ ...DEFAULT_POLICY, pay_at_checkout_enabled: true }],
+          error: null,
+        }, // pay-at-checkout policy check
+        { data: PET, error: null }, // sub1 pet ownership
+        { data: [], error: null }, // sub1 Daycare pre-insert capacity check
+        { data: PET, error: null }, // sub2 pet ownership
+        { data: [], error: null }, // sub2 Daycare pre-insert capacity check
+        { data: groupRow({}), error: null }, // booking_groups insert
+        {
+          data: bookingRow({ id: 'booking-wa1', status: 'In Progress' }),
+          error: null,
+        }, // sub1 insert
+        { data: null, error: null }, // sub1 items insert
+        {
+          data: bookingRow({ id: 'booking-wa2', status: 'In Progress' }),
+          error: null,
+        }, // sub2 insert
+        { data: null, error: null }, // sub2 items insert
+        { data: [{ id: 'booking-wa1' }], error: null }, // post-insert re-check sub1
+        { data: [{ id: 'booking-wa2' }], error: null }, // post-insert re-check sub2
+        { data: [DEFAULT_POLICY], error: null }, // step 11 email-mode policy
+        { data: bookingRow({ id: 'booking-wa1' }), error: null }, // final fetch sub1
+        { data: bookingRow({ id: 'booking-wa2' }), error: null } // final fetch sub2
+      );
+
+      await createBookingGroup({
+        requesterId: 'receptionist-1',
+        input: {
+          customer_id: CUSTOMER_ID,
+          branch_id: 'branch-1',
+          payment_scheme: 'pay_at_checkout',
+          bookings: [walkInDaycare(0, 1), walkInDaycare(2, 3)],
+        } as never,
+      });
+
+      const groupInsert = recordedWrites.find(
+        (write) => write.table === 'booking_groups' && write.method === 'insert'
+      );
+      const bookingInserts = recordedWrites.filter(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+
+      expect(groupInsert?.payload).toMatchObject({
+        pay_at_checkout: true,
+        payment_status: 'Pending',
+      });
+      expect(bookingInserts).toHaveLength(2);
+      for (const insert of bookingInserts) {
+        expect(insert.payload).toMatchObject({ pay_at_checkout: true });
+      }
+      expect(supabase.rpc).not.toHaveBeenCalledWith(
+        'create_initial_booking_group_charge',
+        expect.anything()
+      );
+    });
+
+    it('is refused when the branch has pay at checkout switched off', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults({
+        data: [{ ...DEFAULT_POLICY, pay_at_checkout_enabled: false }],
+        error: null,
+      });
+
+      await expect(
+        createBookingGroup({
+          requesterId: 'receptionist-1',
+          input: {
+            customer_id: CUSTOMER_ID,
+            branch_id: 'branch-1',
+            payment_scheme: 'pay_at_checkout',
+            bookings: [walkInDaycare(0, 1), walkInDaycare(2, 3)],
+          } as never,
+        })
+      ).rejects.toMatchObject({ statusCode: 422 });
+    });
+
+    it('is refused unless every sub-booking is a Walk-in Hotel or Daycare booking', async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+
+      await expect(
+        createBookingGroup({
+          requesterId: 'receptionist-1',
+          input: {
+            customer_id: CUSTOMER_ID,
+            branch_id: 'branch-1',
+            payment_scheme: 'pay_at_checkout',
+            bookings: [
+              walkInDaycare(0, 1),
+              { ...walkInDaycare(2, 3), booking_source: 'Online' },
+            ],
+          } as never,
+        })
+      ).rejects.toMatchObject({ statusCode: 422 });
+
+      await expect(
+        createBookingGroup({
+          requesterId: 'receptionist-1',
+          input: {
+            customer_id: CUSTOMER_ID,
+            branch_id: 'branch-1',
+            payment_scheme: 'pay_at_checkout',
+            bookings: [
+              walkInDaycare(0, 1),
+              { ...walkInDaycare(2, 3), service_category: 'Grooming' },
+            ],
+          } as never,
+        })
+      ).rejects.toMatchObject({ statusCode: 422 });
+    });
   });
 
   it('(b4) two sub-bookings can share one staff member + window when max_concurrent_bookings_per_staff is raised to 2', async () => {

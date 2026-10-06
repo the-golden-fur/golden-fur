@@ -40,7 +40,6 @@ vi.mock('./creditStub.service.ts', () => ({
 vi.mock('./paymentMethod.service.ts', () => ({
   resolvePaymentConfirmation: vi.fn(),
 }));
-vi.mock('./paymongo.service.ts', () => ({ initiatePaymongoPayment: vi.fn() }));
 vi.mock('../../notifications/services/notification.service.ts', () => ({
   createNotification: vi.fn(),
 }));

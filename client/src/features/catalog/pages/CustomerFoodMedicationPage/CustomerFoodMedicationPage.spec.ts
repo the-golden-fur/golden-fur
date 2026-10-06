@@ -140,7 +140,7 @@ describe('CustomerFoodMedicationPage', () => {
     expect(screen.queryByText('Chicken kibble')).not.toBeInTheDocument();
   });
 
-  it('adds a new type from the Add a new type form', async () => {
+  it('adds a new type from the Add new type modal', async () => {
     vi.mocked(catalogApi.listCustomerCatalog).mockResolvedValue({
       data: [],
       error: null,
@@ -153,7 +153,13 @@ describe('CustomerFoodMedicationPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByText('Add a new type');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.click(
+      await screen.findByRole('button', { name: 'Add new type' })
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'Add a new type' })
+    ).toBeInTheDocument();
     await user.type(
       screen.getByPlaceholderText('e.g. Chicken kibble, Amoxicillin'),
       'Salmon oil'
@@ -167,6 +173,7 @@ describe('CustomerFoodMedicationPage', () => {
       )
     );
     expect(await screen.findByText('Salmon oil')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('a Category filter tile narrows the list', async () => {

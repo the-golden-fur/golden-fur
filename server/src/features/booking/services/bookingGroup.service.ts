@@ -9,6 +9,10 @@ import {
   createNotification,
   notifyStaffRoleAtBranch,
 } from '../../notifications/services/notification.service.ts';
+import {
+  PAY_AT_CHECKOUT_CATEGORIES,
+  sanitizeHotelPreferencesForStaffRole,
+} from '../booking.types.ts';
 import type {
   Booking,
   BookingGroup,
@@ -17,6 +21,7 @@ import type {
   PaymentScheme,
   ServiceCategory,
 } from '../booking.types.ts';
+import { STAFF_BOOKING_RESTRICTED_FIELD_ROLES } from '../../staff/staff.types.ts';
 import type { CreateBookingGroupInput } from '../modules/validators/booking.validator.ts';
 import {
   assertVeterinarianTreatedCustomer,
@@ -35,6 +40,10 @@ import {
   verifyCagePreference,
 } from './cagePicker.service.ts';
 import { markCouponsRedeemed } from '../../rewards/services/customerCoupons.service.ts';
+import {
+  assertDaycareStartsBeforeCutoff,
+  assertWithinGroomingHours,
+} from './availability.service.ts';
 import {
   getBookingById,
   isPetAssessed,
@@ -209,6 +218,34 @@ export async function createBookingGroup({
     ? await resolveEffectivePolicy(input.branch_id)
     : null;
 
+  // Pay at checkout (20261005244) - same rule as createBooking, applied to
+  // the whole checkout since it shares one payment decision: every
+  // sub-booking must be a Walk-in Hotel/Daycare booking, and the branch must
+  // offer it. Its own policy read rather than `policy` above, which stays
+  // null for an all-Walk-in group so step 5 never applies a down payment.
+  const payAtCheckout = input.payment_scheme === 'pay_at_checkout';
+
+  if (payAtCheckout) {
+    const everySubBookingQualifies = input.bookings.every(
+      (sub) =>
+        sub.booking_source === 'Walk-in' &&
+        PAY_AT_CHECKOUT_CATEGORIES.includes(sub.service_category)
+    );
+
+    if (!staffRole || !everySubBookingQualifies) {
+      throwWithStatus(
+        422,
+        'Pay at checkout is only available when every booking is a walk-in Hotel or Daycare booking'
+      );
+    }
+
+    const payAtCheckoutPolicy = await resolveEffectivePolicy(input.branch_id);
+
+    if (!payAtCheckoutPolicy.pay_at_checkout_enabled) {
+      throwWithStatus(422, 'Pay at checkout is switched off for this branch');
+    }
+  }
+
   const resolvedSubBookings: ResolvedSubBooking[] = [];
   const claimedStaffWindows = new Map<
     string,
@@ -313,7 +350,9 @@ export async function createBookingGroup({
   // removal) - it used to be exempt, which left an online vet booking with
   // a downpayment due date and no transaction ever created to pay it
   // against.
-  const nothingOwed = combinedNetTotal <= 0;
+  // Never true for a pay-at-checkout group: its totals are only estimates
+  // until each member's checkout posts the real bill.
+  const nothingOwed = !payAtCheckout && combinedNetTotal <= 0;
 
   const holdsSlot = !downpaymentRequired;
   const downpaymentDueAt = holdsSlot
@@ -322,8 +361,9 @@ export async function createBookingGroup({
         Date.now() + downpaymentHoldHours * 60 * 60 * 1000
       ).toISOString();
 
-  const paymentScheme: PaymentScheme =
-    downpaymentRequired && input.payment_scheme === 'downpayment'
+  const paymentScheme: PaymentScheme = payAtCheckout
+    ? 'pay_at_checkout'
+    : downpaymentRequired && input.payment_scheme === 'downpayment'
       ? 'downpayment'
       : 'full';
 
@@ -348,6 +388,7 @@ export async function createBookingGroup({
       downpayment_amount: downpaymentAmount,
       downpayment_required: downpaymentRequired,
       downpayment_due_at: downpaymentDueAt,
+      pay_at_checkout: payAtCheckout,
       payment_status: groupPaymentStatus,
       ...(nothingOwed ? { paid_at: nowIso } : {}),
     })
@@ -430,6 +471,7 @@ export async function createBookingGroup({
         downpayment_amount: null,
         downpayment_required: false,
         downpayment_due_at: null,
+        pay_at_checkout: payAtCheckout,
         payment_status: groupPaymentStatus,
         ...(nothingOwed ? { paid_at: nowIso } : {}),
         payment_method: null,
@@ -551,8 +593,13 @@ export async function createBookingGroup({
   }
 
   // Step 12: ONE initial charge for the whole group (best-effort - a
-  // failure here must not undo the group).
-  if (!nothingOwed && combinedNetTotal > 0) {
+  // failure here must not undo the group). A pay-at-checkout group has
+  // none - each member is billed at its own checkout.
+  if (
+    paymentScheme !== 'pay_at_checkout' &&
+    !nothingOwed &&
+    combinedNetTotal > 0
+  ) {
     try {
       const { error: chargeRpcError } = await supabase.rpc(
         'create_initial_booking_group_charge',
@@ -700,6 +747,21 @@ async function resolveSubBooking({
     throwWithStatus(403, 'Only staff may create a walk-in booking');
   }
 
+  // Per-branch Grooming hours: applies to every booking source, Walk-ins
+  // included - mirrors createBooking.
+  if (subInput.service_category === 'Grooming') {
+    await assertWithinGroomingHours(
+      branchId,
+      subInput.scheduled_start,
+      subInput.scheduled_end
+    );
+  }
+
+  // Daycare check-in cutoff - mirrors createBooking.
+  if (subInput.service_category === 'Daycare') {
+    await assertDaycareStartsBeforeCutoff(branchId, subInput.scheduled_start);
+  }
+
   if (bookingSource === 'Online') {
     if (
       new Date(subInput.scheduled_start).getTime() <
@@ -730,7 +792,6 @@ async function resolveSubBooking({
   } as unknown as Parameters<typeof resolveStaffAssignment>[0]);
 
   const preferredCageId =
-    subInput.service_category === 'Hotel' &&
     subInput.cage_preference?.type === 'specific' &&
     (await isCagePickerEnabled(subInput.service_category))
       ? await verifyCagePreference(
@@ -814,7 +875,11 @@ async function resolveSubBooking({
     staffResolution,
     preferredCageId,
     specialInstructions: subInput.special_instructions ?? null,
-    hotelPreferences: subInput.hotel_preferences ?? null,
+    hotelPreferences: sanitizeHotelPreferencesForStaffRole(
+      subInput.hotel_preferences ?? null,
+      staffRole,
+      STAFF_BOOKING_RESTRICTED_FIELD_ROLES
+    ),
     freePackageAward,
   };
 }

@@ -1,5 +1,6 @@
 import type { Notification } from '../../notifications.types';
 import styles from './NotificationList.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface NotificationListProps {
   notifications: Notification[];
@@ -33,7 +34,7 @@ export function NotificationList({
   onSelect,
 }: NotificationListProps) {
   if (isLoading) {
-    return <p className={styles.copy}>Loading notifications...</p>;
+    return <LoadingState label="Loading notifications..." />;
   }
 
   if (error) {

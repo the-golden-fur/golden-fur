@@ -184,6 +184,34 @@ describe('cancellation.service (#54/#91)', () => {
     ).toBeTruthy();
   });
 
+  it('a customer can cancel their own In Progress ("In service") booking, not just a Pending one', async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: ISSUED_TRANSACTION,
+      error: null,
+    } as never);
+    queueFromResults(
+      { data: { ...HOTEL_BOOKING, status: 'In Progress' }, error: null }, // booking fetch
+      { data: [policyRow()], error: null }, // policy
+      { data: CANCELLED_ROW, error: null }, // booking update
+      { data: LOG_ROW, error: null }, // cancellation_logs insert
+      PAID_TXNS, // confirmedAmountPaid
+      { data: null, error: null } // markCreditIssuedOnLog update
+    );
+
+    await expect(
+      cancelBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {},
+      })
+    ).resolves.toBeDefined();
+
+    const update = recordedWrites.find(
+      (write) => write.table === 'bookings' && write.method === 'update'
+    );
+    expect(update?.payload).toMatchObject({ status: 'Cancelled' });
+  });
+
   it('AC-2 (#91): notice met + a real downpayment issues credit and writes a matching cancellation_logs row', async () => {
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: ISSUED_TRANSACTION,

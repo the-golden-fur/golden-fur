@@ -34,7 +34,9 @@ import { DangerTab } from './tabs/DangerTab';
 import {
   BRANCHES_TILE,
   CONFIG_TILES,
+  FAQS_TILE,
   HIDDEN_CONFIG_TILES,
+  WEIGHT_CLASSES_TILE,
 } from './configTiles.config';
 import styles from './SettingsPage.module.css';
 
@@ -298,7 +300,10 @@ export function SettingsPage({ role }: SettingsPageProps) {
   const isSuperadmin = status?.role === 'Superadmin';
 
   const configTiles = useMemo(
-    () => (isSuperadmin ? [...CONFIG_TILES, BRANCHES_TILE] : CONFIG_TILES),
+    () =>
+      isSuperadmin
+        ? [...CONFIG_TILES, WEIGHT_CLASSES_TILE, BRANCHES_TILE, FAQS_TILE]
+        : CONFIG_TILES,
     [isSuperadmin]
   );
 
@@ -709,6 +714,8 @@ export function SettingsPage({ role }: SettingsPageProps) {
               role={role}
               userId={user.id}
               accessToken={accessToken}
+              status={status}
+              onChanged={() => setRefreshKey((key) => key + 1)}
             />
           ) : null}
           {activeTab === 'security' ? (

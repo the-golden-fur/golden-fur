@@ -52,6 +52,8 @@ export async function listGroomingQueueController(
       requesterBranchId,
       dateFrom,
       dateTo,
+      allDates: req.query.all_dates === 'true',
+      view: req.query.view === 'history' ? 'history' : 'queue',
     });
 
     return res.status(200).json({ sessions });

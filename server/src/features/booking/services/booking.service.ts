@@ -7,6 +7,7 @@ import {
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
+import { servicePriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
@@ -33,6 +34,8 @@ import {
   BOOKING_MARK_PAID_ROLES,
   DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
   OVERRIDABLE_BOOKING_STATUSES,
+  PAY_AT_CHECKOUT_CATEGORIES,
+  sanitizeHotelPreferencesForStaffRole,
   type Booking,
   type BookingGroup,
   type BookingSource,
@@ -40,6 +43,7 @@ import {
   type PaymentStatus,
   type ServiceCategory,
 } from '../booking.types.ts';
+import { STAFF_BOOKING_RESTRICTED_FIELD_ROLES } from '../../staff/staff.types.ts';
 import type { CreateBookingInput } from '../modules/validators/booking.validator.ts';
 import {
   assertVeterinarianTreatedCustomer,
@@ -64,6 +68,11 @@ import {
   isCagePickerEnabled,
   verifyCagePreference,
 } from './cagePicker.service.ts';
+import { daycareHourlyCharge } from '../../daycare/modules/daycareCharge.util.ts';
+import {
+  assertDaycareStartsBeforeCutoff,
+  assertWithinGroomingHours,
+} from './availability.service.ts';
 
 const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
 
@@ -226,6 +235,37 @@ async function resolveBookingItem(
     }
 
     const durationMinutes = service.duration_minutes ?? 60;
+
+    // Daycare is priced by the hours booked - the service's own first-hour
+    // fee, plus its succeeding-hour fee for each further hour of the
+    // scheduled window (the same rule, and the same helper, Daycare checkout
+    // bills the actual stay with). The pet-type fixed-price override doesn't
+    // apply here, same as at checkout. A Daycare service with no fee columns
+    // set keeps the flat base_price below.
+    if (
+      serviceCategory === 'Daycare' &&
+      service.first_hour_fee != null &&
+      service.succeeding_hour_fee != null
+    ) {
+      const bookedMinutes =
+        (new Date(scheduledEnd).getTime() -
+          new Date(scheduledStart).getTime()) /
+        60000;
+
+      return {
+        service_id: service.id,
+        package_id: null,
+        price_at_booking: round2(
+          daycareHourlyCharge(
+            bookedMinutes,
+            Number(service.first_hour_fee),
+            Number(service.succeeding_hour_fee)
+          ).charge
+        ),
+        duration_minutes_at_booking: durationMinutes,
+      };
+    }
+
     const quantity = resolveQuantity(
       serviceCategory,
       scheduledStart,
@@ -233,11 +273,26 @@ async function resolveBookingItem(
       durationMinutes
     );
 
+    // An individual Grooming service is never flattened to a pet type's
+    // fixed price (e.g. the Cat override): it's charged exactly as it is
+    // for any other pet - its own size/coat matrix cell, or base_price. The
+    // fixed price still applies to packages (resolvePackagePrice below) and
+    // to every other category's services.
+    const serviceFixedPrice =
+      serviceCategory === 'Grooming' ? null : fixedPriceOverride;
+
     return {
       service_id: service.id,
       package_id: null,
+      // The booking branch may charge its own price for this service
+      // (servicePriceAtBranch) - it stands in for base_price, so a pet-type
+      // fixed price and the Grooming matrix still take precedence as before.
       price_at_booking: round2(
-        resolveServicePrice(service, pet, fixedPriceOverride) * quantity
+        resolveServicePrice(
+          { ...service, base_price: servicePriceAtBranch(service, branchId) },
+          pet,
+          serviceFixedPrice
+        ) * quantity
       ),
       duration_minutes_at_booking: durationMinutes,
     };
@@ -379,7 +434,12 @@ export async function resolveBookingItems(
   // Fetched once - the pet and branch are constant across every item in this
   // booking, so there's no reason to re-query per item. Threaded down into
   // resolveServicePrice/resolvePackagePrice via resolveBookingItem below.
-  const fixedPriceOverride = await getFixedPrice(pet.pet_type, branchId);
+  // Veterinary skips the pet type's fixed price entirely (services and
+  // packages alike) - a cat is charged the same as a dog.
+  const fixedPriceOverride =
+    serviceCategory === 'Veterinary'
+      ? null
+      : await getFixedPrice(pet.pet_type, branchId);
 
   // Sequential, not Promise.all: each item may 400/403 with a message naming
   // that specific service/package, which reads clearer than an
@@ -896,6 +956,24 @@ export async function createBooking({
     throwWithStatus(403, 'Only staff may create a walk-in booking');
   }
 
+  // Pay at checkout (20261005244): nothing is charged up front - the bill is
+  // posted at checkout from the time the pet actually stayed. Walk-in only
+  // (so staff-only, per the check above) and only for the two categories
+  // billed by time stayed. Rejected outright rather than silently downgraded
+  // to 'full', so staff never believe a booking is unbilled when it isn't.
+  const payAtCheckout = input.payment_scheme === 'pay_at_checkout';
+
+  if (
+    payAtCheckout &&
+    (bookingSource !== 'Walk-in' ||
+      !PAY_AT_CHECKOUT_CATEGORIES.includes(input.service_category))
+  ) {
+    throwWithStatus(
+      422,
+      'Pay at checkout is only available for a walk-in Hotel or Daycare booking'
+    );
+  }
+
   const { data: pet, error: petError } = await supabase
     .from('pets')
     .select('id, customer_id, pet_type, weight_class, coat_type')
@@ -985,6 +1063,25 @@ export async function createBooking({
   // confirmCapacityAfterInsert's own note on why that's fine).
   let staffConcurrency = 1;
 
+  // Per-branch Grooming hours: applies to every booking source, Walk-ins
+  // included - Grooming simply isn't offered outside the configured time.
+  if (input.service_category === 'Grooming') {
+    await assertWithinGroomingHours(
+      input.branch_id,
+      input.scheduled_start,
+      input.scheduled_end
+    );
+  }
+
+  // Daycare check-in cutoff: a session starting at or after it could never
+  // be checked in, whoever books it.
+  if (input.service_category === 'Daycare') {
+    await assertDaycareStartsBeforeCutoff(
+      input.branch_id,
+      input.scheduled_start
+    );
+  }
+
   if (bookingSource === 'Online') {
     // A slot that has already started is never a valid Online booking. The
     // Slot Picker never offers one (past dates come back empty, today filters
@@ -1028,6 +1125,16 @@ export async function createBooking({
     staffConcurrency = policy.max_concurrent_bookings_per_staff;
   }
 
+  // The one policy field a Walk-in reads: whether this branch offers pay at
+  // checkout at all (Superadmin > Config > Branches > Configure).
+  if (payAtCheckout) {
+    const policy = await resolveEffectivePolicy(input.branch_id);
+
+    if (!policy.pay_at_checkout_enabled) {
+      throwWithStatus(422, 'Pay at checkout is switched off for this branch');
+    }
+  }
+
   const status: Booking['status'] =
     bookingSource === 'Walk-in' ? 'In Progress' : 'Pending';
 
@@ -1049,16 +1156,19 @@ export async function createBooking({
   // cashier could never resolve. The professional fee determined during the
   // consultation is still billed separately at checkout, same as before;
   // this only concerns the booking-time charge.
-  const paymentScheme: PaymentScheme =
-    downpaymentRequired && input.payment_scheme === 'downpayment'
+  const paymentScheme: PaymentScheme = payAtCheckout
+    ? 'pay_at_checkout'
+    : downpaymentRequired && input.payment_scheme === 'downpayment'
       ? 'downpayment'
       : 'full';
 
   // A fully-discounted / fully-promo'd booking owes nothing - there is no
   // charge to create and no payment to collect, so it's born Fully Paid
-  // (otherwise it would sit Pending forever: startBooking, add_booking_payment
-  // and payForBooking all refuse a zero-owed booking).
-  const nothingOwed = netTotal <= 0;
+  // (otherwise it would sit Pending forever: startBooking and
+  // add_booking_payment both refuse a zero-owed booking). Never true for a
+  // pay-at-checkout booking: its total is only an estimate until checkout,
+  // which decides for itself whether anything is owed.
+  const nothingOwed = !payAtCheckout && netTotal <= 0;
 
   // Whether this booking reserves its capacity/staff-time slot. A
   // down-payment-required Online booking holds no slot until a payment lands
@@ -1079,7 +1189,8 @@ export async function createBooking({
   // capacity check.
   const staffResolution = await resolveStaffAssignment(input);
 
-  // Cage preference (Hotel only, custom change) - advisory-only, so an
+  // Cage preference (Hotel/Daycare - isCagePickerEnabled rejects every
+  // other category; custom change) - advisory-only, so an
   // invalid/no-longer-available preference silently degrades to null rather
   // than rejecting the booking; check-in's own suggestCage/assignCage flow
   // re-validates and lets the receptionist re-pick regardless.
@@ -1094,7 +1205,6 @@ export async function createBooking({
   // client-side, enforced here too so a direct API call can't bypass it. A
   // staff-created (receptionist) booking passes no size restriction.
   const preferredCageId =
-    input.service_category === 'Hotel' &&
     input.cage_preference?.type === 'specific' &&
     (await isCagePickerEnabled(input.service_category))
       ? await verifyCagePreference(
@@ -1156,6 +1266,7 @@ export async function createBooking({
       downpayment_amount: downpaymentAmount,
       downpayment_required: downpaymentRequired,
       downpayment_due_at: downpaymentDueAt,
+      pay_at_checkout: payAtCheckout,
       payment_status: nothingOwed ? 'Fully Paid' : 'Pending',
       ...(nothingOwed ? { paid_at: new Date().toISOString() } : {}),
       payment_method: null,
@@ -1170,7 +1281,11 @@ export async function createBooking({
       discount_amount: discountAmount,
       promo_amount: promoAmount,
       special_instructions: input.special_instructions ?? null,
-      hotel_preferences: input.hotel_preferences ?? null,
+      hotel_preferences: sanitizeHotelPreferencesForStaffRole(
+        input.hotel_preferences ?? null,
+        staffRole,
+        STAFF_BOOKING_RESTRICTED_FIELD_ROLES
+      ),
       preferred_cage_id: preferredCageId,
     })
     .select('*')
@@ -1288,8 +1403,9 @@ export async function createBooking({
 
   // Emit the initial charge transaction(s) (best-effort - a failure here must
   // not undo the booking; the cashier can add the charge manually). A
-  // fully-discounted booking (nothingOwed) owes nothing.
-  if (!nothingOwed && netTotal > 0) {
+  // fully-discounted booking (nothingOwed) owes nothing, and a
+  // pay-at-checkout booking is billed at checkout instead.
+  if (paymentScheme !== 'pay_at_checkout' && !nothingOwed && netTotal > 0) {
     try {
       const { error: chargeRpcError } = await supabase.rpc(
         'create_initial_booking_charge',
@@ -2001,8 +2117,7 @@ export async function overrideBookingStatus({
  * Recomputes `bookings.payment_status` from the booking's settled
  * `booking_payment` transactions and applies the first-payment side-effects.
  * The `settle_transaction` RPC already does the SQL-side rollup atomically;
- * this is the app-side path for the PayMongo webhook (which flips its own
- * transaction row) and a safety net after a settlement - it also owns the
+ * this is the app-side path called after checkout - it also owns the
  * one-time "the first payment confirms an Online booking" notifications and
  * the down-payment slot-gate capacity re-check.
  */
@@ -2066,10 +2181,10 @@ export async function recomputeBookingPaymentStatus(
  * queue/capacity gating, unaware it's part of a group).
  *
  * A payment module companion (server/src/features/billing/**) calls this
- * from the PayMongo webhook / settlement paths the same way the
- * single-booking path calls recomputeBookingPaymentStatus - this function
- * itself stays inside booking.service.ts (booking-capacity-agent scope),
- * mirroring recomputeBookingPaymentStatus's own placement.
+ * from its settlement paths the same way the single-booking path calls
+ * recomputeBookingPaymentStatus - this function itself stays inside
+ * booking.service.ts (booking-capacity-agent scope), mirroring
+ * recomputeBookingPaymentStatus's own placement.
  *
  * New territory (a "partially-confirmed group"): applyFirstBookingPayment-
  * SideEffects's capacity re-check is inherently PER BOOKING (a down-payment
@@ -2410,16 +2525,17 @@ async function flagSlotConflictsForOthers(winner: Booking): Promise<void> {
 
 /**
  * First-payment side-effects for a booking that just left payment_status
- * 'Pending' (a down payment or a full payment landed). Shared by the PayMongo
- * webhook path (recomputeBookingPaymentStatus) and the counter paths
+ * 'Pending' (a down payment or a full payment landed). Shared by the
+ * checkout rollup path (recomputeBookingPaymentStatus) and the counter paths
  * (recordTransactionPayment / payTransactionWithCredit - the `settle_transaction`
  * RPC does the SQL rollup but none of this).
  *
  * - Re-verifies capacity: a down-payment-required Online booking held no slot
  *   while it sat Unconfirmed. `revertOnCapacityConflict` puts payment_status
- *   back to 'Pending' and throws 409 (webhook path - nothing is settled yet);
- *   the counter path passes false, keeps the payment (the cash is already in
- *   the drawer), and leaves the booking for staff to reschedule.
+ *   back to 'Pending' and throws 409 (checkout rollup path - nothing else has
+ *   settled this booking yet); the counter path passes false, keeps the
+ *   payment (the cash is already in the drawer), and leaves the booking for
+ *   staff to reschedule.
  * - Fires the booking_confirmed / staff_assigned alerts createBooking held
  *   back while the booking was Unconfirmed.
  *

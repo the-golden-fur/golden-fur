@@ -15,6 +15,7 @@ import { BOOKING_MARK_PAID_ROLES } from '../../booking.types';
 import type { CreditReviewQueueItem } from '../../booking.types';
 import { CreditReviewCard } from '../../components/CreditReviewCard/CreditReviewCard';
 import styles from './CreditReviewQueuePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * Manual-cancellation-credit-review custom change: a Manual-mode branch's
@@ -142,7 +143,7 @@ export function CreditReviewQueuePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -169,7 +170,7 @@ export function CreditReviewQueuePage() {
         ) : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading pending reviews...</p>
+          <LoadingState label="Loading pending reviews..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

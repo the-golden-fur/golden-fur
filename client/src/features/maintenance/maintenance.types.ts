@@ -142,6 +142,9 @@ export interface ServiceBranchAvailability {
   service_id: string;
   branch_id: string;
   is_available: boolean;
+  /** This branch's own price for the service, replacing base_price there.
+   * null (or absent) = the branch charges base_price. Superadmin-set. */
+  price_override?: number | null;
 }
 
 export interface Service {
@@ -151,6 +154,8 @@ export interface Service {
   base_price: number;
   duration_minutes: number | null;
   is_active: boolean;
+  /** Set when archived from Settings > Config > Archive (20260928218). */
+  archived_at?: string | null;
   /** Whether a pet with no recorded weight_class/coat_type (never staff-
    * assessed onsite) may book this service - false only for the seeded
    * "Initial Assessment" service. Client interview finding: customers
@@ -180,9 +185,9 @@ export interface Service {
   /** Daycare-only: charge per additional billable hour (rounded up)
    * beyond the first, on this service. NULL falls back to ₱50. */
   succeeding_hour_fee: number | null;
-  /** Daycare-only: charged per night when a pet on this service isn't
-   * picked up before closing, on top of the hourly charge. NULL falls
-   * back to ₱850. */
+  /** Daycare-only fallback: a pet not picked up before closing is charged
+   * the branch's Hotel nightly rate per night; this is used only when the
+   * branch has no active Hotel service. NULL falls back to ₱850. */
   daycare_overnight_fee: number | null;
   /** Custom change (Architectural-Change-History): a curated Lucide icon
    * name (see shared/components/IconPicker/serviceIcons.ts), or null. */
@@ -276,6 +281,10 @@ export interface Branch {
   contact_number: string | null;
   is_vet_branch: boolean;
   operating_hours: OperatingHours;
+  /** The times Grooming is bookable each weekday, same shape as
+   * operating_hours. A day absent from this map means Grooming follows that
+   * day's full operating hours. */
+  grooming_hours: OperatingHours;
   timezone: string;
   is_active: boolean;
   archived_at: string | null;
@@ -289,6 +298,7 @@ export interface UpdateBranchPayload {
   is_vet_branch?: boolean;
   timezone?: string;
   operating_hours?: OperatingHours;
+  grooming_hours?: OperatingHours;
   /** Deactivate/reactivate - a plain field update, same as promos. */
   is_active?: boolean;
 }
@@ -300,6 +310,7 @@ export interface CreateBranchPayload {
   is_vet_branch?: boolean;
   timezone: string;
   operating_hours?: OperatingHours;
+  grooming_hours?: OperatingHours;
 }
 
 /**
@@ -348,6 +359,12 @@ export interface UpdateServicePayload {
 export interface BranchAvailabilityPayload {
   branch_id: string;
   is_available: boolean;
+}
+
+/** null clears the branch's own price, back to the service's base price. */
+export interface BranchPricePayload {
+  branch_id: string;
+  price_override: number | null;
 }
 
 /** Epic B (#83): bundled_price is derived, not accepted as input. Custom
@@ -518,6 +535,8 @@ export interface Breed {
   id: string;
   pet_type: PetType;
   name: string;
+  /** Set when archived from Settings > Config > Archive (20260928218). */
+  archived_at?: string | null;
   created_at: string;
 }
 
@@ -547,6 +566,8 @@ export interface ServiceType {
   key: string;
   name: string;
   is_active: boolean;
+  /** Set when archived from Settings > Config > Archive (20260928218). */
+  archived_at?: string | null;
   staff_picker_enabled: boolean;
   cage_picker_enabled: boolean;
   /** Which staff roles may be offered by the Staff Picker for this type -
@@ -602,6 +623,8 @@ export interface PetTypeRow {
   key: string;
   name: string;
   is_active: boolean;
+  /** Set when archived from Settings > Config > Archive (20260928218). */
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 }

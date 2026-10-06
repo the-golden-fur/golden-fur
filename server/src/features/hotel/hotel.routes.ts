@@ -5,17 +5,21 @@ import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.mi
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   activityLogController,
+  archiveCageController,
   availableCageCountsController,
   cageGridController,
+  cageOccupantsController,
   careLogEntriesController,
   checkInController,
   checkoutController,
   completeCareLogEntryController,
   createCageController,
   currentPrescriptionController,
-  deleteCageController,
+  hardDeleteCageController,
+  listArchivedCagesController,
   listHotelStaysController,
   reopenCareLogEntryController,
+  restoreCageController,
   startCareLogEntryController,
   suggestCageController,
   updateCageController,
@@ -127,6 +131,16 @@ router.get(
   cageGridController
 );
 
+// Same audience as the cage grid above - it only adds who is in each cage.
+router.get(
+  '/hotel/cages/occupants',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole(frontDeskAndAssistants),
+  requireBranch,
+  cageOccupantsController
+);
+
 router.get(
   '/hotel/cages/available',
   jwtMiddleware,
@@ -164,13 +178,42 @@ router.patch(
   updateCageController
 );
 
+// Config-menu consistency change: DELETE archives; Config > Archive lists,
+// restores, and permanently deletes archived cages.
 router.delete(
   '/hotel/cage/:id',
   jwtMiddleware,
   sessionTimeoutMiddleware,
   requireRole([...HOTEL_ADMIN_ROLES]),
   requireBranch,
-  deleteCageController
+  archiveCageController
+);
+
+router.get(
+  '/hotel/cages/archived',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_ADMIN_ROLES]),
+  requireBranch,
+  listArchivedCagesController
+);
+
+router.post(
+  '/hotel/cage/:id/restore',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_ADMIN_ROLES]),
+  requireBranch,
+  restoreCageController
+);
+
+router.delete(
+  '/hotel/cage/:id/permanent',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_ADMIN_ROLES]),
+  requireBranch,
+  hardDeleteCageController
 );
 
 // #79 revision: backs both HotelBookingPicker's "already checked in"

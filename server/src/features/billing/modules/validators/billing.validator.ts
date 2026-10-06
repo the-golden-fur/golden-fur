@@ -1,28 +1,18 @@
 import { z } from 'zod';
-import {
-  BANK_NAMES,
-  ONLINE_PAYMENT_METHODS,
-  PAYMENT_METHODS,
-} from '../../billing.types.ts';
+import { BANK_NAMES, PAYMENT_METHODS } from '../../billing.types.ts';
 
 /**
  * Shared by checkout and misc-sale: bank_name is required (and only valid)
  * when payment_method = 'Bank Transfer'; payment_reference is the free-text
  * field Card/Bank Transfer/Grabmart/Pickaroo record (Issue #83 dev notes -
  * one column, interpreted differently per method in the UI). cash_tendered
- * is required only for Cash, to compute change server-side. online_channel
- * distinguishes GCash/Maya's two confirmation triggers - 'portal' (customer
- * portal, confirmed only by the PayMongo webhook, never by a cashier
- * action) vs 'walk_in_qr' (static QR shown at the counter, still requires
- * cashier confirmation like every manual method) - same channel, different
- * confirmation trigger, per Issue #83 dev notes.
+ * is required only for Cash, to compute change server-side.
  */
 function validatePaymentShape(
   input: {
-    payment_method?: (typeof PAYMENT_METHODS)[number];
+    payment_method?: (typeof MISC_SALE_PAYMENT_METHODS)[number];
     bank_name?: (typeof BANK_NAMES)[number];
     cash_tendered?: number;
-    online_channel?: 'portal' | 'walk_in_qr';
   },
   ctx: z.RefinementCtx
 ) {
@@ -51,35 +41,18 @@ function validatePaymentShape(
       message: "cash_tendered is required when payment_method is 'Cash'",
     });
   }
-
-  const isOnlineMethod = ONLINE_PAYMENT_METHODS.includes(
-    input.payment_method as (typeof ONLINE_PAYMENT_METHODS)[number]
-  );
-
-  if (isOnlineMethod && !input.online_channel) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['online_channel'],
-      message:
-        "online_channel ('portal' or 'walk_in_qr') is required for GCash/Maya",
-    });
-  }
-
-  if (!isOnlineMethod && input.online_channel) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['online_channel'],
-      message: 'online_channel is only valid for GCash/Maya',
-    });
-  }
 }
+
+/** A misc sale can also be paid entirely from the customer's branch credit
+ * ('Credit' is a payment_method enum value - 20260901152). Checkout keeps
+ * PAYMENT_METHODS: its credit only ever tops up another method. */
+const MISC_SALE_PAYMENT_METHODS = [...PAYMENT_METHODS, 'Credit'] as const;
 
 const basePaymentSchema = {
   payment_method: z.enum(PAYMENT_METHODS),
   bank_name: z.enum(BANK_NAMES).optional(),
   payment_reference: z.string().trim().min(1).optional(),
   cash_tendered: z.number().nonnegative().optional(),
-  online_channel: z.enum(['portal', 'walk_in_qr']).optional(),
   credit_to_apply: z.number().nonnegative().default(0),
 };
 
@@ -116,33 +89,50 @@ export const checkoutGroupValidator = z
 export type GroupCheckoutInput = z.infer<typeof checkoutGroupValidator>;
 
 /**
- * Exactly one of (product_catalog_id + quantity) or (description + amount) -
- * the same "hybrid dropdown/freetext" shape CatalogComboBox already uses on
- * the client (#85 dev notes: reuses the same credit-application code path,
- * so also reuses the same catalog-vs-freetext item shape).
+ * One cart line: exactly one of (product_catalog_id + quantity) or
+ * (description + amount) - the same "hybrid dropdown/freetext" shape
+ * CatalogComboBox already uses on the client (#85 dev notes: reuses the
+ * same credit-application code path, so also reuses the same
+ * catalog-vs-freetext item shape).
  */
-function validateMiscSaleItemShape(
-  input: {
-    product_catalog_id?: string;
-    description?: string;
-    amount?: number;
-  },
-  ctx: z.RefinementCtx
-) {
-  const hasCatalog = input.product_catalog_id !== undefined;
-  const hasFreetext =
-    input.description !== undefined && input.amount !== undefined;
+const miscSaleItemSchema = z
+  .object({
+    product_catalog_id: z.uuid().optional(),
+    quantity: z.number().int().positive().default(1),
+    description: z.string().trim().min(1).optional(),
+    amount: z.number().positive().optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    const hasCatalog = input.product_catalog_id !== undefined;
+    const hasFreetext =
+      input.description !== undefined && input.amount !== undefined;
 
-  if (hasCatalog === hasFreetext) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['product_catalog_id'],
-      message:
-        'Provide either product_catalog_id (+ optional quantity) or both description and amount, not both shapes',
-    });
-  }
-}
+    if (hasCatalog === hasFreetext) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['product_catalog_id'],
+        message:
+          'Provide either product_catalog_id (+ optional quantity) or both description and amount, not both shapes',
+      });
+    }
+  });
 
+/** The discounts/promos the cashier ticked on the wizard's Discount/Promo
+ * step (listed from GET /billing/misc-sale/options) - re-validated
+ * server-side in evaluateMiscSaleDiscounts/evaluateMiscSalePromos. */
+const miscSaleSelectionSchema = {
+  discount_ids: z.array(z.uuid()).max(20).default([]),
+  promo_ids: z.array(z.uuid()).max(20).default([]),
+};
+
+/**
+ * Session 115 (Stage C - Cashier misc-sale wizard): a misc sale is now a
+ * real multi-item cart (`items`, at least one line). Discounts/promos are
+ * the ones the cashier picked (discount_ids/promo_ids) from what the admin
+ * configured - see evaluateMiscSaleDiscounts (still Cash-only, per
+ * paymentMethod.service.ts's rule).
+ */
 export const createMiscSaleValidator = z
   .object({
     // transactions.customer_id is NOT NULL even for a miscellaneous sale
@@ -151,17 +141,38 @@ export const createMiscSaleValidator = z
     // an existing customer profile, which is also what credit redemption
     // requires a customer_id to apply against.
     customer_id: z.uuid(),
-    product_catalog_id: z.uuid().optional(),
-    quantity: z.number().int().positive().default(1),
-    description: z.string().trim().min(1).optional(),
-    amount: z.number().positive().optional(),
+    items: z.array(miscSaleItemSchema).min(1, 'Add at least one item'),
+    ...miscSaleSelectionSchema,
     ...basePaymentSchema,
+    payment_method: z.enum(MISC_SALE_PAYMENT_METHODS),
   })
   .strict()
-  .superRefine(validatePaymentShape)
-  .superRefine(validateMiscSaleItemShape);
+  .superRefine(validatePaymentShape);
 
 export type CreateMiscSaleInput = z.infer<typeof createMiscSaleValidator>;
+export type MiscSaleItemInput = z.infer<typeof miscSaleItemSchema>;
+
+/**
+ * Session 115: the wizard's Discount/Promo step live-previews line items as
+ * the cashier ticks discounts/promos, before anything is created - needs
+ * the cart + payment method (discounts are Cash-only) + the picks, nothing
+ * customer/payment-reference-specific.
+ */
+export const previewMiscSaleValidator = z
+  .object({
+    items: z.array(miscSaleItemSchema).min(1, 'Add at least one item'),
+    payment_method: z.enum(MISC_SALE_PAYMENT_METHODS),
+    ...miscSaleSelectionSchema,
+  })
+  .strict();
+
+export type PreviewMiscSaleInput = z.infer<typeof previewMiscSaleValidator>;
+
+/** GET /billing/misc-sale/credit - whose balance the wizard's Payment step
+ * checks before offering the Credit method. */
+export const miscSaleCreditQueryValidator = z.object({
+  customer_id: z.uuid(),
+});
 
 /**
  * Payment/transactions rework: the cashier's "record a payment" action on a
@@ -236,12 +247,16 @@ export const addBookingPaymentValidator = z
 
 export type AddBookingPaymentInput = z.infer<typeof addBookingPaymentValidator>;
 
+/**
+ * Session 115: narrowed to payment-fields-only now that a misc sale is a
+ * multi-item cart - editing "the" description/amount stopped making sense
+ * once a sale can carry more than one transaction_line_items row. Admin/
+ * Superadmin can still correct how a sale was paid; correcting its
+ * items/discounts after the fact isn't supported (delete and re-record it
+ * instead) - flagged as a deliberate scope cut, not an oversight.
+ */
 export const updateMiscSaleValidator = z
   .object({
-    product_catalog_id: z.uuid().optional(),
-    quantity: z.number().int().positive().optional(),
-    description: z.string().trim().min(1).optional(),
-    amount: z.number().positive().optional(),
     payment_method: z.enum(PAYMENT_METHODS).optional(),
     bank_name: z.enum(BANK_NAMES).optional(),
     payment_reference: z.string().trim().min(1).optional(),

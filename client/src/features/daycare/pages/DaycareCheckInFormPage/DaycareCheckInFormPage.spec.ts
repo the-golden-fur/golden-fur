@@ -91,7 +91,7 @@ function buildBooking(overrides: Partial<Booking> = {}): Booking {
   } as unknown as Booking;
 }
 
-function renderPage() {
+function renderPage(initialEntry = '/staff/daycare/queue/check-in/booking-1') {
   const authValue: AuthContextValue = {
     session: null,
     user: { id: 'staff-1', email: 'staff1@example.com' },
@@ -105,7 +105,7 @@ function renderPage() {
   return render(
     createElement(
       MemoryRouter,
-      { initialEntries: ['/staff/daycare/queue/check-in/booking-1'] },
+      { initialEntries: [initialEntry] },
       createElement(
         AuthContext.Provider,
         { value: authValue },
@@ -156,6 +156,57 @@ describe('DaycareCheckInFormPage (Daycare Queue redesign)', () => {
 
     expect(await screen.findByText('Panel for booking-1')).toBeInTheDocument();
     expect(bookingApi.getBooking).toHaveBeenCalledWith('booking-1', 'token');
+  });
+
+  it('lets a Receptionist check a pet in - the front desk checks in its own walk-ins', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Receptionist'),
+      error: null,
+    });
+    vi.mocked(bookingApi.getBooking).mockResolvedValue({
+      data: buildBooking(),
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Panel for booking-1')).toBeInTheDocument();
+    expect(screen.queryByText('Staff profile page')).not.toBeInTheDocument();
+  });
+
+  it('lets a Receptionist check a pet in - the front desk checks in its own walk-ins', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Receptionist'),
+      error: null,
+    });
+    vi.mocked(bookingApi.getBooking).mockResolvedValue({
+      data: buildBooking(),
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Panel for booking-1')).toBeInTheDocument();
+    expect(screen.queryByText('Staff profile page')).not.toBeInTheDocument();
+  });
+
+  it('points back to the Bookings Queue when it was opened from there', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Receptionist'),
+      error: null,
+    });
+    vi.mocked(bookingApi.getBooking).mockResolvedValue({
+      data: buildBooking(),
+      error: null,
+    });
+
+    renderPage('/staff/daycare/queue/check-in/booking-1?from=bookings');
+
+    const backLink = await screen.findByRole('link', {
+      name: /Back to Bookings Queue/,
+    });
+    expect(backLink).toHaveAttribute('href', '/staff/bookings/queue');
+    expect(screen.queryByText(/Back to Daycare Queue/)).not.toBeInTheDocument();
   });
 
   it('shows an error and a back link when the booking cannot be loaded', async () => {

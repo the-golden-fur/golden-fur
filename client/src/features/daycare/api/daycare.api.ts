@@ -1,5 +1,6 @@
 import type {
   CheckInPayload,
+  DaycareCheckoutResult,
   DaycareSession,
   DaycareStatus,
 } from '../daycare.types';
@@ -92,7 +93,7 @@ export async function listDaycareSessions(
 export async function checkOutDaycareSession(
   sessionId: string,
   accessToken: string
-): Promise<DaycareApiResult<DaycareSession>> {
+): Promise<DaycareApiResult<DaycareCheckoutResult>> {
   const response = await fetch(
     `${API_BASE_URL}/daycare/sessions/${sessionId}/checkout`,
     {
@@ -105,6 +106,6 @@ export async function checkOutDaycareSession(
     return { data: null, error: await parseError(response) };
   }
 
-  const result = await parseBody<{ session: DaycareSession }>(response);
+  const result = await parseBody<{ session: DaycareCheckoutResult }>(response);
   return { data: result.data?.session ?? null, error: result.error };
 }

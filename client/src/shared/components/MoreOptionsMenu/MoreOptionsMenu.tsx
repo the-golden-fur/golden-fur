@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Check, MoreVertical } from 'lucide-react';
+import { placeMenuVertically } from './menuPlacement';
 import styles from './MoreOptionsMenu.module.css';
 
 export interface MoreOptionsMenuItem {
@@ -41,7 +42,18 @@ export function MoreOptionsMenu({
   menuAlign = 'right',
 }: MoreOptionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  // Custom change: a row's "..." lives inside a horizontally-scrolling
+  // ancestor on some pages (e.g. DataTable's own `overflow-x: auto`) -
+  // per the CSS overflow spec, setting overflow-x alone still forces
+  // overflow-y to compute to 'auto' too, so the menu's default
+  // `position: absolute` (anchored to .container) gets silently clipped
+  // for any row near that ancestor's bottom edge. Computing a `position:
+  // fixed` anchor from the trigger's own screen position on open escapes
+  // that clipping entirely (fixed positioning isn't affected by an
+  // ancestor's overflow, only page scroll).
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -67,6 +79,7 @@ export function MoreOptionsMenu({
   return (
     <div className={styles.container} ref={containerRef}>
       <button
+        ref={triggerRef}
         type="button"
         className={styles.trigger}
         aria-haspopup="menu"
@@ -74,7 +87,40 @@ export function MoreOptionsMenu({
         aria-label={label}
         onClick={(event) => {
           event.stopPropagation();
-          setIsOpen((prev) => !prev);
+          setIsOpen((prev) => {
+            const next = !prev;
+            if (next) {
+              const rect = triggerRef.current?.getBoundingClientRect();
+              // Below the trigger normally; above it when a row near the
+              // bottom of the screen would otherwise have its menu cut off
+              // by the viewport edge.
+              const vertical = rect
+                ? placeMenuVertically({
+                    anchorTop: rect.top,
+                    anchorBottom: rect.bottom,
+                    itemCount: items.length,
+                    viewportHeight: window.innerHeight,
+                    gap: 4,
+                  })
+                : null;
+              setMenuStyle(
+                rect && vertical
+                  ? menuAlign === 'left'
+                    ? {
+                        position: 'fixed',
+                        ...vertical,
+                        left: rect.left,
+                      }
+                    : {
+                        position: 'fixed',
+                        ...vertical,
+                        right: window.innerWidth - rect.right,
+                      }
+                  : null
+              );
+            }
+            return next;
+          });
         }}
       >
         <MoreVertical size={16} aria-hidden="true" />
@@ -87,6 +133,7 @@ export function MoreOptionsMenu({
               ? `${styles.menu} ${styles.menuAlignLeft}`
               : styles.menu
           }
+          style={menuStyle ?? undefined}
           role="menu"
         >
           {items.map((item) => (

@@ -30,13 +30,23 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
     ],
     error: null,
   }),
+  // Custom change (Superadmin cage branch reassignment): only fetched when
+  // the viewer is Superadmin - defaulted here so those tests don't each
+  // need their own setup.
+  listBranches: vi.fn().mockResolvedValue({
+    data: [
+      { id: 'branch-1', name: 'Makati', is_vet_branch: false },
+      { id: 'branch-2', name: 'Southwoods', is_vet_branch: false },
+    ],
+    error: null,
+  }),
 }));
 
 vi.mock('../../api/hotel.api', () => ({
   getCageGrid: vi.fn(),
   createCage: vi.fn(),
   updateCage: vi.fn(),
-  deleteCage: vi.fn(),
+  archiveCage: vi.fn(),
   setCageMaintenanceStatus: vi.fn(),
 }));
 
@@ -208,7 +218,7 @@ describe('AdminCagesPage', () => {
     expect(hotelApi.createCage).not.toHaveBeenCalled();
   });
 
-  it('custom change: row actions live behind a single "..." menu, and Delete is left out for an Occupied cage instead of shown disabled', async () => {
+  it('custom change: row actions live behind a single "..." menu (Configure / Rename / Archive), and Archive is left out for an Occupied cage instead of shown disabled', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [{ id: 'staff-1', role: 'Superadmin' } as never],
@@ -222,7 +232,7 @@ describe('AdminCagesPage', () => {
       },
       error: null,
     });
-    vi.mocked(hotelApi.deleteCage).mockResolvedValue({
+    vi.mocked(hotelApi.archiveCage).mockResolvedValue({
       data: true,
       error: null,
     });
@@ -233,27 +243,83 @@ describe('AdminCagesPage', () => {
       expect(screen.getByText('Makati-S-01')).toBeInTheDocument()
     );
     expect(
-      screen.queryByRole('button', { name: 'Delete' })
+      screen.queryByRole('button', { name: 'Archive' })
     ).not.toBeInTheDocument();
 
-    // Occupied cage: no Delete item at all (not just disabled).
+    // Occupied cage: no Archive item at all (not just disabled), but the
+    // rest of the consistent Configure / Rename core is still offered.
     await user.click(
       screen.getByRole('button', { name: 'Actions for Makati-M-01' })
     );
     expect(
+      screen.queryByRole('menuitem', { name: 'Archive' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Rename' })
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole('menuitem', { name: 'Delete' })
     ).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
 
-    // Available cage: Delete is offered and works.
+    // Available cage: Archive is offered, asks for confirmation, then works.
     await user.click(
       screen.getByRole('button', { name: 'Actions for Makati-S-01' })
     );
-    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+
+    expect(hotelApi.archiveCage).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
 
     await waitFor(() =>
-      expect(hotelApi.deleteCage).toHaveBeenCalledWith('cage-1', 'token')
+      expect(hotelApi.archiveCage).toHaveBeenCalledWith('cage-1', 'token')
     );
-    expect(screen.queryByText('Makati-S-01')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText('Makati-S-01')).not.toBeInTheDocument()
+    );
+  });
+
+  it('renames a cage from the "..." menu without touching size or pet types', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: { ...emptyGrid(), S: [AVAILABLE_CAGE as never] },
+      error: null,
+    });
+    vi.mocked(hotelApi.updateCage).mockResolvedValue({
+      data: { ...AVAILABLE_CAGE, cage_label: 'Makati-S-77' } as never,
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Makati-S-01')).toBeInTheDocument()
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+
+    const input = screen.getByRole('textbox', { name: /new cage name/i });
+    await user.clear(input);
+    await user.type(input, 'Makati-S-77');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(hotelApi.updateCage).toHaveBeenCalledWith(
+        'cage-1',
+        { cage_label: 'Makati-S-77' },
+        'token'
+      )
+    );
+    expect(await screen.findByText('Makati-S-77')).toBeInTheDocument();
   });
 
   it('toggles Under Maintenance from the "..." menu', async () => {
@@ -294,7 +360,7 @@ describe('AdminCagesPage', () => {
     );
   });
 
-  it('edits a cage label/size from the "..." menu', async () => {
+  it('Configure opens a modal (not an inline row edit) to change label, size and pet types', async () => {
     const user = userEvent.setup();
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [{ id: 'staff-1', role: 'Admin' } as never],
@@ -317,12 +383,21 @@ describe('AdminCagesPage', () => {
     await user.click(
       screen.getByRole('button', { name: 'Actions for Makati-S-01' })
     );
-    await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
-    const labelInput = screen.getByDisplayValue('Makati-S-01');
+    const dialog = screen.getByRole('dialog', { name: 'Configure cage' });
+    // The row itself is not turned into inputs any more.
+    expect(within(dialog).getByLabelText('Cage label')).toHaveValue(
+      'Makati-S-01'
+    );
+    expect(within(dialog).getByLabelText('Size')).toHaveValue('S');
+
+    const labelInput = within(dialog).getByLabelText('Cage label');
     await user.clear(labelInput);
     await user.type(labelInput, 'Makati-S-99');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save changes' })
+    );
 
     await waitFor(() =>
       expect(hotelApi.updateCage).toHaveBeenCalledWith(
@@ -471,9 +546,123 @@ describe('AdminCagesPage', () => {
 
     fireEvent.contextMenu(screen.getByText('Makati-S-01'));
 
-    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('menuitem', { name: 'Mark Under Maintenance' })
     ).toBeInTheDocument();
+  });
+
+  it('Configure keeps the modal open with an error when no pet type is selected', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: { ...emptyGrid(), S: [AVAILABLE_CAGE as never] },
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Makati-S-01')).toBeInTheDocument()
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Configure cage' });
+    for (const box of within(dialog).getAllByRole('checkbox')) {
+      if ((box as HTMLInputElement).checked) await user.click(box);
+    }
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save changes' })
+    );
+
+    expect(
+      await within(dialog).findByText('Select at least one pet type.')
+    ).toBeInTheDocument();
+    expect(hotelApi.updateCage).not.toHaveBeenCalled();
+  });
+
+  it('Custom change (Superadmin cage branch reassignment): a non-Superadmin never sees a Branch field in Configure', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Admin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: { ...emptyGrid(), S: [AVAILABLE_CAGE as never] },
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Makati-S-01')).toBeInTheDocument()
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Configure cage' });
+    expect(within(dialog).queryByLabelText('Branch')).not.toBeInTheDocument();
+  });
+
+  it('Custom change (Superadmin cage branch reassignment): Superadmin can reassign a cage, which then disappears from the current list', async () => {
+    const user = userEvent.setup();
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [{ id: 'staff-1', role: 'Superadmin' } as never],
+      error: null,
+    });
+    vi.mocked(hotelApi.getCageGrid).mockResolvedValue({
+      data: { ...emptyGrid(), S: [AVAILABLE_CAGE as never] },
+      error: null,
+    });
+    vi.mocked(hotelApi.updateCage).mockResolvedValue({
+      data: { ...AVAILABLE_CAGE, branch_id: 'branch-2' } as never,
+      error: null,
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText('Makati-S-01')).toBeInTheDocument()
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Makati-S-01' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Configure cage' });
+    const branchSelect = within(dialog).getByLabelText('Branch');
+    expect(branchSelect).toHaveValue('branch-1');
+
+    await user.selectOptions(branchSelect, 'branch-2');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save changes' })
+    );
+
+    await waitFor(() =>
+      expect(hotelApi.updateCage).toHaveBeenCalledWith(
+        'cage-1',
+        {
+          cage_label: 'Makati-S-01',
+          size: 'S',
+          pet_types: ['Dog', 'Cat'],
+          branch_id: 'branch-2',
+        },
+        'token'
+      )
+    );
+    expect(
+      await screen.findByText('Cage moved to Southwoods.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Makati-S-01')).not.toBeInTheDocument();
   });
 });

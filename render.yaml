@@ -49,18 +49,6 @@ services:
         sync: false
       - key: BREVO_FROM_EMAIL
         sync: false
-      # PayMongo - dormant until the client provisions an account. Leave unset;
-      # online-payment paths stay inactive.
-      - key: PAYMONGO_SECRET_KEY
-        sync: false
-      - key: PAYMONGO_WEBHOOK_SECRET
-        sync: false
-      - key: PAYMONGO_SERVICE_FEE_PERCENT
-        sync: false
-      - key: PAYMONGO_REDIRECT_SUCCESS_URL
-        sync: false
-      - key: PAYMONGO_REDIRECT_FAILED_URL
-        sync: false
       # Optional. Bare number or JSON branch map. Defaults to 15 if unset.
       - key: DAYCARE_SESSION_CAPACITY
         sync: false

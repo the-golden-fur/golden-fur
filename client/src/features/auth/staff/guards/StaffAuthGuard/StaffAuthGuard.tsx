@@ -17,6 +17,7 @@ import type { StaffRole } from '../../../../staff/staff.types';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
+import { getStoredDeviceToken } from '../../../../../shared/auth/api/trustedDevice.api';
 import { IDENTITY_CHANGED_EVENT } from '../../../../../shared/events/identityEvents';
 
 function isStaffRole(role: string | null): role is StaffRole {
@@ -34,7 +35,7 @@ function buildSidebarSections(role: string | null): SidebarSection[] {
   // every role - Home now lives in the Navbar instead, as a persistent icon
   // button (mirrors the Navbar's own Settings icon), matching the customer
   // portal's own Navbar-level Home affordance.
-  return toSidebarSections(STAFF_DASHBOARD_CONFIG[slug]);
+  return toSidebarSections(STAFF_DASHBOARD_CONFIG[slug], role);
 }
 
 const ROLE_TIMEOUT_MS: Record<string, number> = {
@@ -174,12 +175,21 @@ export function StaffAuthGuard() {
     return null;
   }
 
+  // A trusted-device login never produces a real aal2 session (see
+  // trusted_devices' migration comment) - it only proves the login endpoint
+  // already honored a valid device token for this browser. Mandatory roles
+  // never get a trusted-device row issued for them in the first place (the
+  // checkbox is hidden for them - see TotpChallengeForm), so this can only
+  // ever exempt the voluntary-MFA branch below, never requiresMfa(role).
+  const isTrustedDevice = Boolean(getStoredDeviceToken('staff'));
+
   // Mandatory roles always need aal2. Everyone else only needs it once
   // they've actually enrolled (voluntarily, via Settings) - MFA being on
   // must be challenged every login regardless of whether it was forced or
-  // opted into.
+  // opted into, unless this browser already has a trusted device on file.
   const needsAal2 =
-    (requiresMfa(role) || mfaEnrolled === true) && aal !== 'aal2';
+    (requiresMfa(role) && aal !== 'aal2') ||
+    (mfaEnrolled === true && aal !== 'aal2' && !isTrustedDevice);
 
   // Direct/restored sessions (no login-form flag): wait for the enrollment
   // check before deciding. Redirecting to the challenge page before knowing

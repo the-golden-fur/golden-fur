@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { getCageOccupancyReport } from '../../../../reports/api/reports.api';
 import type { CageOccupancyRow } from '../../../../reports/reports.types';
 import styles from './CageOccupancyWidget.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface CageOccupancyWidgetProps {
   branchId: string;
@@ -74,7 +75,7 @@ export function CageOccupancyWidget({
       </div>
 
       {rows === null && !error ? (
-        <p className={styles.copy}>Loading cage occupancy...</p>
+        <LoadingState label="Loading cage occupancy..." size="inline" />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

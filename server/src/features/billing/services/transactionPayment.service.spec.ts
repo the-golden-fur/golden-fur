@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addBookingPayment,
+  addCustomerBalancePayment,
   payTransactionWithCredit,
   recordTransactionPayment,
 } from './transactionPayment.service.ts';
@@ -8,6 +9,7 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
 import {
   applyFirstBookingPaymentSideEffects,
+  getBookingById,
   recomputeBookingGroupPaymentStatus,
 } from '../../booking/services/booking.service.ts';
 
@@ -27,6 +29,7 @@ vi.mock('../../booking/services/booking.service.ts', () => ({
   applyFirstBookingPaymentSideEffects: vi
     .fn()
     .mockResolvedValue({ id: 'booking-1', payment_status: 'Fully Paid' }),
+  getBookingById: vi.fn(),
   recomputeBookingGroupPaymentStatus: vi
     .fn()
     .mockResolvedValue({ id: 'group-1', payment_status: 'Fully Paid' }),
@@ -565,5 +568,80 @@ describe('transactionPayment.service', () => {
       })
     ).rejects.toMatchObject({ statusCode: 403 });
     expect(getAvailableCredit).not.toHaveBeenCalled();
+  });
+
+  describe('addCustomerBalancePayment', () => {
+    const UNPAID_BOOKING = {
+      id: 'booking-1',
+      customer_id: 'customer-1',
+      branch_id: 'branch-1',
+      payment_status: 'Pending',
+      total_price: 1000,
+      discount_amount: 0,
+      promo_amount: 0,
+      downpayment_required: true,
+      downpayment_amount: 500,
+    };
+
+    it('rejects a booking that is not Partially Paid', async () => {
+      vi.mocked(getBookingById).mockResolvedValue(UNPAID_BOOKING as never);
+
+      await expect(
+        addCustomerBalancePayment({
+          requesterId: 'customer-1',
+          bookingId: 'booking-1',
+          amount: 100,
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('surfaces the RPC over-balance error as a friendly 400', async () => {
+      vi.mocked(getBookingById).mockResolvedValue({
+        ...UNPAID_BOOKING,
+        payment_status: 'Partially Paid',
+      } as never);
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: null,
+        error: {
+          message:
+            'add_booking_payment: amount 999 exceeds remaining balance 500',
+        },
+      } as never);
+
+      await expect(
+        addCustomerBalancePayment({
+          requesterId: 'customer-1',
+          bookingId: 'booking-1',
+          amount: 999,
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: expect.stringContaining('more than the balance'),
+      });
+    });
+
+    it('creates the balance charge via the add_booking_payment RPC', async () => {
+      vi.mocked(getBookingById).mockResolvedValue({
+        ...UNPAID_BOOKING,
+        payment_status: 'Partially Paid',
+      } as never);
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: { id: 'txn-balance' },
+        error: null,
+      } as never);
+
+      const txn = await addCustomerBalancePayment({
+        requesterId: 'customer-1',
+        bookingId: 'booking-1',
+        amount: 300,
+      });
+
+      expect(supabase.rpc).toHaveBeenCalledWith('add_booking_payment', {
+        p_booking_id: 'booking-1',
+        p_amount: 300,
+        p_processed_by: null,
+      });
+      expect(txn).toMatchObject({ id: 'txn-balance' });
+    });
   });
 });

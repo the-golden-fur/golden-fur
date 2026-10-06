@@ -24,6 +24,10 @@ interface DataBoardProps<T> {
    * to Manual, since dragging a derived (e.g. Alphabetical) order wouldn't
    * persist anywhere. */
   onReorderColumn?: (dragged: string, target: string) => void;
+  /** Wrap columns onto further rows instead of scrolling sideways - for a
+   * page narrow enough that its columns can't all sit on one row (see
+   * CustomerBookingsPage). Defaults to the single scrolling row. */
+  wrapColumns?: boolean;
 }
 
 /**
@@ -40,6 +44,7 @@ export function DataBoard<T>({
   renderColumnHeader,
   emptyColumnMessage = 'Nothing here.',
   onReorderColumn,
+  wrapColumns = false,
 }: DataBoardProps<T>) {
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -77,7 +82,7 @@ export function DataBoard<T>({
 
   return (
     <div
-      className={styles.board}
+      className={wrapColumns ? styles.boardWrap : styles.board}
       style={{ '--column-count': groups.length } as CSSProperties}
     >
       {groups.map((group) => (

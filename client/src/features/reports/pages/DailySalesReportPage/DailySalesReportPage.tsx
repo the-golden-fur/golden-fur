@@ -7,6 +7,7 @@ import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import { getDailySalesReport } from '../../api/reports.api';
 import type { DailySalesReport } from '../../reports.types';
 import styles from './DailySalesReportPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
 
@@ -101,7 +102,7 @@ export function DailySalesReportPage() {
   ]);
 
   if (isRoleLoading) {
-    return <p>Loading...</p>;
+    return <LoadingState />;
   }
 
   if (!isAllowedViewer || !accessToken) {
@@ -158,7 +159,7 @@ export function DailySalesReportPage() {
       </div>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading report...</p>
+        <LoadingState label="Loading report..." />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

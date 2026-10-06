@@ -14,11 +14,13 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { Modal } from '../../../../shared/components/Modal/Modal';
+import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { useRenameAndArchive } from '../../../../shared/hooks/useRenameAndArchive/useRenameAndArchive';
 import type {
   CreateProductPayload,
   UpdateProductPayload,
@@ -33,6 +35,7 @@ import {
   matchesCatalogQuery,
 } from './catalogBrowserFields';
 import styles from './CatalogAdminPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type ViewMode = 'table' | 'list' | 'board';
 
@@ -293,40 +296,37 @@ export function CatalogAdminPage({
     setMessage(`${itemNoun} updated.`);
   }
 
-  async function handleToggleActive(item: CatalogItem) {
-    setRowError(null);
+  const { requestRename, requestArchive, dialogs } =
+    useRenameAndArchive<CatalogItem>({
+      entityLabel: itemNoun,
+      getName: (item) => item.name,
+      archiveConsequence: 'it will be hidden from sales and this list',
+      onRename: async (item, name) => {
+        const result = await updateItem(item.id, { name }, accessToken);
 
-    const result = await updateItem(
-      item.id,
-      { is_active: !item.is_active },
-      accessToken
-    );
+        if (result.error || !result.data) {
+          return result.error ?? `Could not rename ${itemNoun}.`;
+        }
 
-    if (result.error || !result.data) {
-      setRowError(result.error ?? `Could not update ${itemNoun}.`);
-      return;
-    }
+        setItems((prev) =>
+          prev.map((existing) =>
+            existing.id === item.id ? (result.data as CatalogItem) : existing
+          )
+        );
+        setMessage(`${itemNoun} renamed.`);
+        return null;
+      },
+      onArchive: async (item) => {
+        const result = await archiveItem(item.id, accessToken);
 
-    setItems((prev) =>
-      prev.map((existing) =>
-        existing.id === item.id ? (result.data as CatalogItem) : existing
-      )
-    );
-  }
+        if (result.error) return result.error;
 
-  async function handleArchive(itemId: string) {
-    setRowError(null);
-
-    const result = await archiveItem(itemId, accessToken);
-
-    if (result.error) {
-      setRowError(result.error);
-      return;
-    }
-
-    setItems((prev) => prev.filter((item) => item.id !== itemId));
-    setMessage(`${itemNoun} archived.`);
-  }
+        setItems((prev) => prev.filter((existing) => existing.id !== item.id));
+        setMessage(`${itemNoun} archived. Restore it from the archive.`);
+        return null;
+      },
+      onArchiveError: setRowError,
+    });
 
   function renderItemActions(item: CatalogItem) {
     if (editingId === item.id) {
@@ -350,32 +350,18 @@ export function CatalogAdminPage({
       );
     }
 
+    // Configure (inline name + price edit) / Rename / Archive - the same
+    // core menu every admin Config row has. Deactivate is gone; Archive
+    // deactivates in the same step.
     return (
-      <>
-        <button
-          type="button"
-          className={styles.smallButtonSecondary}
-          onClick={() => startEditing(item)}
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          className={styles.smallButtonSecondary}
-          onClick={() => void handleToggleActive(item)}
-        >
-          {item.is_active ? 'Deactivate' : 'Activate'}
-        </button>
-        {!item.is_active ? (
-          <button
-            type="button"
-            className={styles.smallButtonSecondary}
-            onClick={() => void handleArchive(item.id)}
-          >
-            Archive
-          </button>
-        ) : null}
-      </>
+      <MoreOptionsMenu
+        label={`Actions for ${item.name}`}
+        items={[
+          { label: 'Configure', onSelect: () => startEditing(item) },
+          { label: 'Rename', onSelect: () => requestRename(item) },
+          { label: 'Archive', onSelect: () => requestArchive(item) },
+        ]}
+      />
     );
   }
 
@@ -487,7 +473,7 @@ export function CatalogAdminPage({
         {message ? <p className={styles.successBanner}>{message}</p> : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading {itemNoun} catalog...</p>
+          <LoadingState label={`Loading ${itemNoun} catalog...`} />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}
@@ -659,6 +645,8 @@ export function CatalogAdminPage({
           </button>
         </form>
       </Modal>
+
+      {dialogs}
     </main>
   );
 }

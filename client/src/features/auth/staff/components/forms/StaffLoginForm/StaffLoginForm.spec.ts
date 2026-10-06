@@ -71,6 +71,25 @@ describe('StaffLoginForm', () => {
     );
   });
 
+  it('regression: re-enables Sign in and shows an error instead of freezing when a downstream step throws (e.g. a network blip inside applySession)', async () => {
+    const applySession = vi.fn().mockRejectedValue(new Error('network blip'));
+    loginMock.mockResolvedValue({
+      data: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 },
+      error: null,
+    });
+
+    renderForm(applySession);
+
+    await userEvent.type(screen.getByLabelText(/username or email/i), 'admin');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'correct-pw');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not reach the server. Check your connection and try again.'
+    );
+    expect(screen.getByRole('button', { name: /sign in/i })).not.toBeDisabled();
+  });
+
   it('shows confirmation when forgot password succeeds', async () => {
     forgotPasswordMock.mockResolvedValue({
       data: { message: 'Password reset email sent' },

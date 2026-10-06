@@ -2,6 +2,9 @@ import type {
   CheckoutPreview,
   CheckoutRequest,
   CheckoutResponse,
+  MiscSaleOptions,
+  MiscSalePreview,
+  MiscSalePreviewRequest,
   MiscSaleRequest,
   MiscSaleResponse,
   Transaction,
@@ -46,21 +49,6 @@ function authHeaders(accessToken: string): HeadersInit {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
-export async function getPaymongoFeeRate(
-  accessToken: string
-): Promise<BillingApiResult<number>> {
-  const response = await fetch(`${API_BASE_URL}/billing/paymongo/fee-rate`, {
-    headers: authHeaders(accessToken),
-  });
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ feePercent: number }>(response);
-  return { data: result.data?.feePercent ?? null, error: result.error };
-}
-
 export async function previewCheckout(
   bookingId: string,
   eligibility: { seniorCitizenEligible: boolean; pwdEligible: boolean },
@@ -102,6 +90,63 @@ export async function checkoutBooking(
   }
 
   return parseBody<CheckoutResponse>(response);
+}
+
+/** Session 115: live-previews the wizard's cart (item lines + auto-evaluated
+ * discount/promo lines) as eligibility checkboxes toggle, without creating
+ * anything - mirrors previewCheckout's own preview/create split. */
+export async function previewMiscSale(
+  payload: MiscSalePreviewRequest,
+  accessToken: string
+): Promise<BillingApiResult<MiscSalePreview>> {
+  const response = await fetch(`${API_BASE_URL}/billing/misc-sale/preview`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<MiscSalePreview>(response);
+}
+
+export async function getMiscSaleOptions(
+  accessToken: string
+): Promise<BillingApiResult<MiscSaleOptions>> {
+  const response = await fetch(`${API_BASE_URL}/billing/misc-sale/options`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<MiscSaleOptions>(response);
+}
+
+/** The customer's credit at the cashier's branch - gates the misc-sale
+ * wizard's Credit payment option. */
+export async function getMiscSaleCredit(
+  customerId: string,
+  accessToken: string
+): Promise<BillingApiResult<{ available: number }>> {
+  const response = await fetch(
+    `${API_BASE_URL}/billing/misc-sale/credit?customer_id=${encodeURIComponent(customerId)}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ available: number | string }>(response);
+  // numeric(10,2) may arrive as a string - same caveat as credits.api.ts.
+  return {
+    data: result.data ? { available: Number(result.data.available) } : null,
+    error: result.error,
+  };
 }
 
 export async function createMiscSale(

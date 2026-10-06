@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router';
+import {
+  Link,
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import { getBooking } from '../../../booking/api/booking.api';
 import type { Booking } from '../../../booking/booking.types';
-import { DAYCARE_QUEUE_VIEWER_ROLES } from '../DaycareQueuePage/daycareQueueRoles';
+import { DAYCARE_CHECK_IN_FORM_ROLES } from '../DaycareQueuePage/daycareQueueRoles';
 import { DaycareCheckInPanel } from '../DaycareQueuePage/DaycareCheckInPanel';
 import styles from './DaycareCheckInFormPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * Daycare Queue redesign: the "..." view-details destination from a Pending
@@ -20,11 +27,24 @@ export function DaycareCheckInFormPage() {
   const { bookingId } = useParams<{ bookingId: string }>();
   const { user, accessToken } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [role, setRole] = useState<string | null>(null);
+  // Reached from the front desk's Bookings Queue ("Check In" on a Daycare
+  // row) rather than the Daycare Queue - go back there, not to a queue the
+  // viewer didn't come from. A Receptionist always goes back there: the
+  // Daycare Queue page isn't open to that role.
+  const cameFromBookingsQueue =
+    searchParams.get('from') === 'bookings' || role === 'Receptionist';
+  const backTo = cameFromBookingsQueue
+    ? '/staff/bookings/queue'
+    : '/staff/daycare/queue';
+  const backLabel = cameFromBookingsQueue
+    ? 'Back to Bookings Queue'
+    : 'Back to Daycare Queue';
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
   );
-  const [role, setRole] = useState<string | null>(null);
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [isLoadingBooking, setIsLoadingBooking] = useState(true);
@@ -40,7 +60,7 @@ export function DaycareCheckInFormPage() {
 
       if (result.data) {
         setRoleStatus(
-          DAYCARE_QUEUE_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
+          DAYCARE_CHECK_IN_FORM_ROLES.has(result.data.role) ? 'ok' : 'denied'
         );
         setRole(result.data.role);
       } else {
@@ -92,7 +112,7 @@ export function DaycareCheckInFormPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -109,8 +129,8 @@ export function DaycareCheckInFormPage() {
           <p className={styles.errorBanner} role="alert">
             {loadError ?? 'Booking not found.'}
           </p>
-          <Link className={styles.backLink} to="/staff/daycare/queue">
-            &larr; Back to Daycare Queue
+          <Link className={styles.backLink} to={backTo}>
+            &larr; {backLabel}
           </Link>
         </div>
       </main>
@@ -120,8 +140,8 @@ export function DaycareCheckInFormPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <Link className={styles.backLink} to="/staff/daycare/queue">
-          &larr; Back to Daycare Queue
+        <Link className={styles.backLink} to={backTo}>
+          &larr; {backLabel}
         </Link>
         <h1 className={styles.title}>Booking details</h1>
 
@@ -130,7 +150,13 @@ export function DaycareCheckInFormPage() {
           accessToken={accessToken}
           role={role ?? ''}
           booking={booking}
-          onCheckedIn={() => navigate('/staff/daycare/queue?checkedIn=success')}
+          onCheckedIn={() =>
+            navigate(
+              cameFromBookingsQueue
+                ? '/staff/bookings/queue'
+                : '/staff/daycare/queue?checkedIn=success'
+            )
+          }
         />
       </div>
     </main>

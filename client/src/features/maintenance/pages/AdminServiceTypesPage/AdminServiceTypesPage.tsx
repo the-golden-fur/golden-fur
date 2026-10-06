@@ -4,6 +4,7 @@ import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
+  archiveServiceType,
   createServiceType,
   listBranches,
   listServiceTypes,
@@ -28,13 +29,13 @@ import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import { CardRowWithMenu } from '../../../../shared/components/MoreOptionsMenu/CardRowWithMenu';
 import {
   ViewSwitcher,
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
+import { useRenameAndArchive } from '../../../../shared/hooks/useRenameAndArchive/useRenameAndArchive';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { StaffRoleMultiSelect } from '../../components/StaffRoleMultiSelect/StaffRoleMultiSelect';
 import { IconPicker } from '../../../../shared/components/IconPicker/IconPicker';
@@ -52,6 +53,7 @@ import {
   SERVICE_TYPE_SORT_FIELDS,
 } from './serviceTypeBrowserFields';
 import styles from './AdminServiceTypesPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -118,6 +120,7 @@ export function AdminServiceTypesPage() {
   const { user, accessToken } = useAuth();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
@@ -160,9 +163,6 @@ export function AdminServiceTypesPage() {
   // admin page. is_active stays a real column (still what the booking
   // flow's service-type list ultimately reads) but is no longer settable
   // from this page.
-  const [availabilityServiceTypeId, setAvailabilityServiceTypeId] = useState<
-    string | null
-  >(null);
 
   const [message, setMessage] = useState<string | null>(null);
 
@@ -181,6 +181,7 @@ export function AdminServiceTypesPage() {
       setIsRoleLoading(false);
       const self = result.data?.find((staff) => staff.id === user.id);
       setViewerRole(self?.role ?? null);
+      setViewerBranchId(self?.branch_id ?? null);
     });
 
     return () => {
@@ -190,6 +191,9 @@ export function AdminServiceTypesPage() {
 
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
+  // An Admin is scoped to their own branch's availability; Superadmin can
+  // touch any branch.
+  const lockedBranchId = viewerRole === 'Admin' ? viewerBranchId : null;
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -213,7 +217,7 @@ export function AdminServiceTypesPage() {
 
         setServiceTypes(typesResult.data);
         // Branch names are optional garnish - a failed lookup degrades the
-        // Branch Availability modal's labels, it doesn't block the page.
+        // "Available at" labels in Configure, it doesn't block the page.
         const loadedBranches = branchesResult.data ?? [];
         setBranches(loadedBranches);
         // Seeds the create form's branch multiselect with every branch
@@ -277,48 +281,56 @@ export function AdminServiceTypesPage() {
     setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
   }
 
-  const availabilityServiceType = serviceTypes.find(
-    (serviceType) => serviceType.id === availabilityServiceTypeId
-  );
-
   const replaceServiceType = (updated: ServiceType) => {
     setServiceTypes((prev) =>
       prev.map((type) => (type.id === updated.id ? updated : type))
     );
   };
 
-  const handleBranchAvailabilityToggle = async (
-    serviceType: ServiceType,
-    branchId: string,
-    isAvailable: boolean
-  ) => {
-    if (!accessToken) {
-      return;
-    }
+  const { requestRename, requestArchive, dialogs } =
+    useRenameAndArchive<ServiceType>({
+      entityLabel: 'service type',
+      getName: (serviceType) => serviceType.name,
+      archiveConsequence:
+        'it will be hidden from the booking flow and this list',
+      onRename: async (serviceType, name) => {
+        if (!accessToken) return 'You are signed out.';
 
-    const result = await setServiceTypeBranchAvailability(
-      serviceType.id,
-      accessToken,
-      { branch_id: branchId, is_available: isAvailable }
-    );
+        const result = await updateServiceType(serviceType.id, accessToken, {
+          name,
+        });
 
-    if (result.error || !result.data) {
-      setRowError(result.error ?? 'Could not update branch availability.');
-      return;
-    }
+        if (result.error || !result.data) {
+          return result.error ?? 'Could not rename service type.';
+        }
 
-    const rows = serviceType.service_type_branch_availability ?? [];
-    const hasRow = rows.some((row) => row.branch_id === branchId);
+        replaceServiceType({
+          ...serviceType,
+          ...result.data,
+          service_type_branch_availability:
+            result.data.service_type_branch_availability ??
+            serviceType.service_type_branch_availability,
+        });
+        setMessage('Service type renamed.');
+        return null;
+      },
+      onArchive: async (serviceType) => {
+        if (!accessToken) return 'You are signed out.';
 
-    replaceServiceType({
-      ...serviceType,
-      service_type_branch_availability: hasRow
-        ? rows.map((row) =>
-            row.branch_id === branchId ? { ...row, ...result.data } : row
-          )
-        : [...rows, result.data],
+        const result = await archiveServiceType(serviceType.id, accessToken);
+
+        if (result.error) return result.error;
+
+        setServiceTypes((prev) =>
+          prev.filter((type) => type.id !== serviceType.id)
+        );
+        setMessage(
+          'Service type archived. Restore it from Settings > Config > Archive.'
+        );
+        return null;
+      },
+      onArchiveError: setMessage,
     });
-  };
 
   /**
    * Applies a branch multiselect's final selection to a just-created/-edited
@@ -489,10 +501,8 @@ export function AdminServiceTypesPage() {
   ): MoreOptionsMenuItem[] {
     return [
       { label: 'Configure', onSelect: () => openEditModal(serviceType) },
-      {
-        label: 'Branch Availability',
-        onSelect: () => setAvailabilityServiceTypeId(serviceType.id),
-      },
+      { label: 'Rename', onSelect: () => requestRename(serviceType) },
+      { label: 'Archive', onSelect: () => requestArchive(serviceType) },
     ];
   }
 
@@ -547,10 +557,14 @@ export function AdminServiceTypesPage() {
   // persistent "..." button, matching Cages/Staff/Customer Management.
   // Table view keeps the visible tap-to-open button (renderServiceTypeActions
   // above) - only the dense card grid gets the hold gesture.
-  function renderServiceTypeCard(serviceType: ServiceType) {
+  function renderServiceTypeCard(
+    serviceType: ServiceType,
+    showMenuButton = false
+  ) {
     const Icon = getServiceIcon(serviceType.icon);
     return (
-      <CardContextMenu
+      <CardRowWithMenu
+        showMenuButton={showMenuButton}
         label={`Actions for ${serviceType.name}`}
         items={buildServiceTypeActionItems(serviceType)}
       >
@@ -559,7 +573,7 @@ export function AdminServiceTypesPage() {
           <span className={styles.typeName}>{serviceType.name}</span>
           {renderServiceTypeBadges(serviceType)}
         </div>
-      </CardContextMenu>
+      </CardRowWithMenu>
     );
   }
 
@@ -567,7 +581,7 @@ export function AdminServiceTypesPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -603,7 +617,7 @@ export function AdminServiceTypesPage() {
         {message ? <p className={styles.successBanner}>{message}</p> : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading service types...</p>
+          <LoadingState label="Loading service types..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}
@@ -664,7 +678,9 @@ export function AdminServiceTypesPage() {
               <DataList
                 items={filteredServiceTypes}
                 getRowKey={(serviceType) => serviceType.id}
-                renderItem={renderServiceTypeCard}
+                renderItem={(serviceType) =>
+                  renderServiceTypeCard(serviceType, true)
+                }
                 emptyMessage="No service types match the selected filters."
               />
             ) : (
@@ -768,6 +784,7 @@ export function AdminServiceTypesPage() {
             label="Available at"
             branches={branches}
             selectedBranchIds={createForm.branchIds}
+            lockedBranchId={lockedBranchId}
             onChange={(branchIds) =>
               setCreateForm((prev) => ({ ...prev, branchIds }))
             }
@@ -882,6 +899,7 @@ export function AdminServiceTypesPage() {
               label="Available at"
               branches={branches}
               selectedBranchIds={editForm.branchIds}
+              lockedBranchId={lockedBranchId}
               onChange={(branchIds) =>
                 setEditForm((prev) => ({ ...prev, branchIds }))
               }
@@ -913,28 +931,7 @@ export function AdminServiceTypesPage() {
         ) : null}
       </Modal>
 
-      <BranchAvailabilityModal
-        isOpen={availabilityServiceType !== undefined}
-        itemName={availabilityServiceType?.name ?? ''}
-        rows={branches.map((branch) => ({
-          branchId: branch.id,
-          branchName: branch.name,
-          isAvailable:
-            (
-              availabilityServiceType?.service_type_branch_availability ?? []
-            ).find((row) => row.branch_id === branch.id)?.is_available ?? false,
-        }))}
-        onToggle={(branchId, isAvailable) => {
-          if (availabilityServiceType) {
-            void handleBranchAvailabilityToggle(
-              availabilityServiceType,
-              branchId,
-              isAvailable
-            );
-          }
-        }}
-        onClose={() => setAvailabilityServiceTypeId(null)}
-      />
+      {dialogs}
     </main>
   );
 }

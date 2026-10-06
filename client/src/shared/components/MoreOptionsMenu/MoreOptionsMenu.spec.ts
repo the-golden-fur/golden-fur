@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -71,5 +71,45 @@ describe('MoreOptionsMenu', () => {
     await user.click(screen.getByRole('button', { name: 'More options' }));
 
     expect(onCardClick).not.toHaveBeenCalled();
+  });
+
+  describe('placement near the bottom of the screen', () => {
+    const ITEMS = [
+      { label: 'Configure', onSelect: vi.fn() },
+      { label: 'Rename', onSelect: vi.fn() },
+      { label: 'Archive', onSelect: vi.fn() },
+    ];
+
+    function openMenuWithTriggerAt(top: number) {
+      render(createElement(MoreOptionsMenu, { items: ITEMS }));
+      const trigger = screen.getByRole('button', { name: 'More options' });
+      vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+        top,
+        bottom: top + 28,
+        left: 500,
+        right: 528,
+        width: 28,
+        height: 28,
+        x: 500,
+        y: top,
+        toJSON: () => ({}),
+      });
+      fireEvent.click(trigger);
+      return screen.getByRole('menu');
+    }
+
+    it('opens above the trigger when it would otherwise be cut off', () => {
+      const menu = openMenuWithTriggerAt(window.innerHeight - 30);
+
+      expect(menu.style.top).toBe('auto');
+      expect(menu.style.bottom).toBe('34px');
+    });
+
+    it('opens below the trigger when there is room', () => {
+      const menu = openMenuWithTriggerAt(100);
+
+      expect(menu.style.top).toBe('132px');
+      expect(menu.style.bottom).toBe('auto');
+    });
   });
 });

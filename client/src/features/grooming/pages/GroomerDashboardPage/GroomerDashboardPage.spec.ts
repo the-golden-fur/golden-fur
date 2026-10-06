@@ -234,6 +234,62 @@ describe('GroomerDashboardPage (#68, booking-status revision)', () => {
     ).toBeInTheDocument();
   });
 
+  it('History shows completed services: it asks the server for the history view and renders them read-only', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Groomer'),
+      error: null,
+    });
+    vi.mocked(groomingApi.listGroomingQueue).mockImplementation(
+      async (_token, range) => ({
+        data: {
+          sessions:
+            range?.view === 'history'
+              ? [buildSession('Completed')]
+              : [buildSession('Pending')],
+        },
+        error: null,
+      })
+    );
+
+    const user = userEvent.setup();
+    renderPage();
+
+    // The live queue first: a Pending card with its Start action.
+    expect(
+      await screen.findByRole('button', { name: 'Start' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Grooming Queue' })
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'History' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Grooming History' })
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(groomingApi.listGroomingQueue).toHaveBeenLastCalledWith(
+        'token',
+        expect.objectContaining({ view: 'history' })
+      )
+    );
+    // A finished service has nothing left to advance.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Start' })
+      ).not.toBeInTheDocument()
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Complete' })
+    ).not.toBeInTheDocument();
+
+    // ...and Queue brings the live list back.
+    await user.click(screen.getByRole('button', { name: 'Queue' }));
+    expect(
+      await screen.findByRole('button', { name: 'Start' })
+    ).toBeInTheDocument();
+  });
+
   it('filters the queue by booking status', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Groomer'),

@@ -38,12 +38,6 @@
   font-size: var(--text-sm);
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--space-2);
-}
-
 .field {
   display: grid;
   gap: var(--space-0-5);
@@ -75,6 +69,65 @@
   grid-template-columns: 1fr 1fr 1fr auto;
   gap: var(--space-1);
   align-items: center;
+}
+
+/* #117: the Prescription Builder's Medications rows outgrew .listRow's
+ * fixed 3-column grid once medicine type/frequency/duration were added -
+ * .medicationRowFields wraps freely instead of forcing a column count. */
+.medicationRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.medicationRowFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-1);
+  flex: 1;
+}
+
+/* #117: one filled-in consultation-form Result. */
+.resultCard {
+  display: grid;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+}
+
+.resultCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.resultCardTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Drag handle for reordering added Results (custom change: "support
+   draggable form components once they're added to the current
+   consultation") - grab cursor signals it's the draggable affordance,
+   distinct from the rest of the card. */
+.dragHandle {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  cursor: grab;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.itemName {
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
 }
 
 .readOnlyField {
@@ -143,6 +196,19 @@
 .secondaryButton:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.formActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
 }
 
 .errorBanner {

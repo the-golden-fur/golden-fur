@@ -1,7 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
+  archivePatch,
   assertArchivedBeforeHardDelete,
-  assertInactiveBeforeArchive,
 } from '../../../shared/archive/archiveGuard.ts';
 import { computeChances, rarestTier } from '../modules/rewardChance.ts';
 import type { RewardPool, SpinWheelReward } from '../rewards.types.ts';
@@ -236,11 +236,23 @@ export async function updateRewardPool(
 
 export async function archiveRewardPool(poolId: string): Promise<void> {
   const pool = await getRewardPoolById(poolId);
-  assertInactiveBeforeArchive(pool.is_active, 'This reward pool');
+
+  // Same rule updateRewardPool applies to deactivating a pool: a pool that
+  // still feeds an active spin-wheel promo can't be taken out from under it.
+  const activePromos = (pool.promos ?? []).filter((promo) => promo.is_active);
+
+  if (activePromos.length > 0) {
+    throwWithStatus(
+      409,
+      `This pool is used by active spin-wheel promo(s): ${activePromos
+        .map((promo) => promo.name)
+        .join(', ')}. Deactivate or archive those promos first.`
+    );
+  }
 
   const { error } = await supabase
     .from('reward_pools')
-    .update({ archived_at: new Date().toISOString() })
+    .update(archivePatch())
     .eq('id', poolId);
 
   if (error) throwWithStatus(400, error.message);
@@ -249,7 +261,7 @@ export async function archiveRewardPool(poolId: string): Promise<void> {
 export async function restoreRewardPool(poolId: string): Promise<void> {
   const { error } = await supabase
     .from('reward_pools')
-    .update({ archived_at: null })
+    .update({ archived_at: null, is_active: true })
     .eq('id', poolId);
 
   if (error) translateWriteError(error);

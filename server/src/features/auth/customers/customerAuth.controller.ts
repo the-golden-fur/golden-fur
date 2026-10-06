@@ -5,6 +5,9 @@ import {
   customerSignupValidator,
   customerLoginValidator,
   customerTotpValidator,
+  customerMfaEnrollValidator,
+  customerMfaUnenrollValidator,
+  customerMfaPreferenceValidator,
 } from './modules/validators/customerAuth.validator.ts';
 import {
   mergeOrCreate,
@@ -20,12 +23,25 @@ import {
 import {
   createCustomerAuthUser,
   createCustomerProfile,
-  enrollTotpFactor,
-  getTotpEnrollmentStatus,
-  unenrollAllTotpFactors,
-  findTotpFactorForVerify,
   getCustomerProfileByEmail,
+  getAuthUserEmail,
 } from '../../../shared/auth/api/supabaseAuth.api.ts';
+import {
+  getMfaMethodStatus,
+  enrollMfaMethod,
+  unenrollMfaMethod,
+  challengeAndVerifyMfaMethod,
+  sendMfaEmailMethodCode,
+} from '../../../shared/services/mfaMethods/mfaMethods.service.ts';
+import {
+  getMfaPreference,
+  setMfaPreference,
+} from '../../../shared/services/mfaPreference/mfaPreference.service.ts';
+import {
+  issueTrustedDeviceToken,
+  isTrustedDevice,
+  revokeAllTrustedDevices,
+} from '../../../shared/services/trustedDevice/trustedDevice.service.ts';
 
 function getUserClient(req: Request) {
   const authHeader = req.headers.authorization;
@@ -152,6 +168,12 @@ export async function customerLoginController(req: Request, res: Response) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    // Customers have no mandatory-MFA concept (unlike staff's Admin/
+    // Supervisor/Superadmin), so a trusted device is always eligible here.
+    const mfaBypassed = parsed.data.device_token
+      ? await isTrustedDevice(authData.user.id, parsed.data.device_token)
+      : false;
+
     return res.status(200).json({
       access_token: authData.session.access_token,
       refresh_token: authData.session.refresh_token,
@@ -163,6 +185,7 @@ export async function customerLoginController(req: Request, res: Response) {
       // without a second login. Omitted entirely (not `false`) when active,
       // so the existing client contract for an active login is unchanged.
       ...(profile.is_active ? {} : { account_status: 'deactivated' as const }),
+      ...(mfaBypassed ? { mfa_bypassed: true } : {}),
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -170,16 +193,77 @@ export async function customerLoginController(req: Request, res: Response) {
   }
 }
 
-export async function customerMfaEnrollController(req: Request, res: Response) {
+export async function customerMfaEnrollController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = customerMfaEnrollValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+
   try {
     const userClient = getUserClient(req);
-    const { data, error } = await enrollTotpFactor(userClient);
-
-    if (error) {
-      return res.status(400).json({ error: error.message });
+    const email = await getAuthUserEmail(userId);
+    if (parsed.data.method === 'email' && !email) {
+      return res.status(400).json({ error: 'Could not resolve account email' });
     }
 
-    return res.status(200).json(data);
+    const result = await enrollMfaMethod(
+      userClient,
+      userId,
+      parsed.data.method,
+      email ?? ''
+    );
+
+    return res
+      .status(200)
+      .json(
+        parsed.data.method === 'authenticator'
+          ? { id: result.factorId, totp: result.totp }
+          : { id: result.factorId, sent: true }
+      );
+  } catch (error) {
+    return res
+      .status(400)
+      .json({ error: (error as Error).message ?? 'Failed to enroll' });
+  }
+}
+
+export async function customerMfaEmailRequestCodeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const email = await getAuthUserEmail(userId);
+    if (!email) {
+      return res.status(400).json({ error: 'Could not resolve account email' });
+    }
+
+    const result = await sendMfaEmailMethodCode(userId, email);
+
+    if (result.status === 'not_configured') {
+      return res.status(400).json({ error: 'Email method is not set up' });
+    }
+
+    if (result.status === 'rate_limited') {
+      return res.status(429).json({
+        error: 'Please wait before requesting another code.',
+        retry_after_seconds: result.retryAfterSeconds,
+      });
+    }
+
+    return res.status(200).json({ sent: true });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -189,26 +273,39 @@ export async function customerMfaUnenrollController(
   req: AuthenticatedRequest,
   res: Response
 ) {
-  if (!req.user?.sub) {
+  const userId = req.user?.sub;
+  if (!userId) {
     return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = customerMfaUnenrollValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: parsed.error.issues[0]?.message ?? 'Invalid payload' });
   }
 
   try {
     const userClient = getUserClient(req);
-    const { removed, failed, error } = await unenrollAllTotpFactors(userClient);
+    // Customers have no mandatory-MFA role, so unenrolling their only
+    // method is always allowed - unlike staff's matching controller.
+    const { error } = await unenrollMfaMethod(
+      userClient,
+      userId,
+      parsed.data.method
+    );
 
     if (error) {
-      return res.status(400).json({ error: 'Failed to list factors' });
+      return res
+        .status(400)
+        .json({ error: 'Failed to remove MFA factor', details: error.message });
     }
 
-    if (failed.length > 0 && removed.length === 0) {
-      return res.status(400).json({
-        error: 'Failed to remove MFA factor',
-        details: failed,
-      });
-    }
+    // See staffAuth.controller.ts's matching comment - removing a factor
+    // invalidates any device trusted under the old configuration.
+    await revokeAllTrustedDevices(userId);
 
-    return res.status(200).json({ removed, failed });
+    return res.status(200).json({ removed: true });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -218,19 +315,49 @@ export async function customerMfaStatusController(
   req: AuthenticatedRequest,
   res: Response
 ) {
-  if (!req.user?.sub) {
+  const userId = req.user?.sub;
+  if (!userId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
     const userClient = getUserClient(req);
-    const { data, error } = await getTotpEnrollmentStatus(userClient);
+    const [methods, preferredMethod] = await Promise.all([
+      getMfaMethodStatus(userClient, userId),
+      getMfaPreference(userId),
+    ]);
 
-    if (error || !data) {
-      return res.status(400).json({ error: 'Failed to list factors' });
-    }
+    return res.status(200).json({
+      mfa_enrolled: methods.authenticator || methods.email,
+      methods,
+      preferred_method: preferredMethod,
+    });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
 
-    return res.status(200).json({ mfa_enrolled: data.enrolled });
+export async function customerMfaPreferenceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = customerMfaPreferenceValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: parsed.error.issues[0]?.message ?? 'Invalid payload' });
+  }
+
+  try {
+    await setMfaPreference(userId, parsed.data.preferred_method);
+    return res
+      .status(200)
+      .json({ preferred_method: parsed.data.preferred_method });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -245,7 +372,7 @@ export async function customerMfaVerifyController(
     return res.status(400).json({ error: 'Invalid payload' });
   }
 
-  const { code } = parsed.data;
+  const { code, method, remember_device: rememberDevice } = parsed.data;
 
   try {
     const userId = req.user?.sub;
@@ -259,29 +386,18 @@ export async function customerMfaVerifyController(
     }
 
     const userClient = getUserClient(req);
+    const result = await challengeAndVerifyMfaMethod(
+      userClient,
+      userId,
+      method,
+      code
+    );
 
-    const { data: totpFactor, error: factorsError } =
-      await findTotpFactorForVerify(userClient);
-    if (factorsError) {
-      return res.status(400).json({ error: 'Failed to list factors' });
-    }
-    if (!totpFactor) {
-      return res.status(400).json({ error: 'No TOTP factor found' });
-    }
-
-    const { data: challengeData, error: challengeError } =
-      await userClient.auth.mfa.challenge({ factorId: totpFactor.id });
-    if (challengeError) {
-      return res.status(400).json({ error: challengeError.message });
+    if (!result) {
+      return res.status(400).json({ error: `No ${method} factor found` });
     }
 
-    const { error: verifyError } = await userClient.auth.mfa.verify({
-      factorId: totpFactor.id,
-      challengeId: challengeData.id,
-      code,
-    });
-
-    if (verifyError) {
+    if (result.verifyError) {
       const updatedLockoutStatus = await incrementMfaLockout(userId);
       if (updatedLockoutStatus.locked) {
         return res
@@ -296,14 +412,25 @@ export async function customerMfaVerifyController(
 
     const { data: refreshData, error: refreshError } =
       await userClient.auth.refreshSession();
+
+    // Always eligible for customers (see customerLoginController's matching
+    // comment) - no mandatory-role exclusion needed here.
+    const deviceToken = rememberDevice
+      ? await issueTrustedDeviceToken(userId)
+      : null;
+
     if (refreshError || !refreshData.session) {
-      return res.status(200).json({ success: true });
+      return res.status(200).json({
+        success: true,
+        ...(deviceToken ? { device_token: deviceToken } : {}),
+      });
     }
 
     return res.status(200).json({
       access_token: refreshData.session.access_token,
       refresh_token: refreshData.session.refresh_token,
       expires_in: refreshData.session.expires_in,
+      ...(deviceToken ? { device_token: deviceToken } : {}),
     });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });

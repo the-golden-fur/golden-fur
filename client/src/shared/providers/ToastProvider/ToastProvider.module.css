@@ -1,0 +1,44 @@
+.stack {
+  position: fixed;
+  z-index: 100;
+  bottom: var(--space-3);
+  right: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+  max-width: min(90vw, 22rem);
+}
+
+.success,
+.error {
+  composes: animate-fade-in from global;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-lg);
+}
+
+.success {
+  border: 1px solid var(--color-success-text);
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.error {
+  border: 1px solid var(--color-error-text);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+.dismiss {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-lg);
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}

@@ -121,13 +121,18 @@ export const updateCageValidator = z
     cage_label: z.string().trim().min(1).optional(),
     size: z.enum(['S', 'M', 'L', 'XL']).optional(),
     pet_types: z.array(z.string().min(1)).min(1).optional(),
+    // Superadmin-only reassignment (enforced in updateCageController, not
+    // here - this validator has no notion of the caller's role). An invalid
+    // target surfaces as the existing FK-violation 400 path.
+    branch_id: z.uuid().optional(),
   })
   .strict()
   .refine(
     (input) =>
       input.cage_label !== undefined ||
       input.size !== undefined ||
-      input.pet_types !== undefined,
+      input.pet_types !== undefined ||
+      input.branch_id !== undefined,
     { message: 'At least one field must be provided' }
   );
 

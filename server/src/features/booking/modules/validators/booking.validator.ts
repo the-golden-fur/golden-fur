@@ -428,14 +428,6 @@ export const decideCreditReviewValidator = z
   })
   .strict();
 
-/** Customer self-service Pay button (CustomerBookingsPage). */
-export const payBookingValidator = z
-  .object({
-    payment_method: z.enum(['GCash', 'Maya']),
-    pay_in_full: z.boolean(),
-  })
-  .strict();
-
 /** Customer-chosen partial payment toward a partly-paid booking's balance. */
 export const addBalancePaymentValidator = z
   .object({
@@ -443,13 +435,8 @@ export const addBalancePaymentValidator = z
   })
   .strict();
 
-export const onlinePaymentsStatusQueryValidator = z.object({
-  branch_id: z.uuid(),
-});
-
 /** Custom change: per-transaction downpayment config, read by the customer
- * booking flow the same way onlinePaymentsStatusQueryValidator's endpoint
- * exposes online_payments_enabled. */
+ * booking flow to preview the amount before submitting. */
 export const downpaymentStatusQueryValidator = z.object({
   branch_id: z.uuid(),
 });
@@ -497,7 +484,6 @@ export const updatePolicyValidator = z
     // Advisor addendum #10: percent of the paid amount returned as credit on
     // a qualifying cancellation. NOT NULL in the DB (default 100), 0-100.
     cancellation_credit_conversion_rate: z.number().min(0).max(100).optional(),
-    online_payments_enabled: z.boolean().optional(),
     downpayment_enabled: z.boolean().optional(),
     downpayment_type: z.enum(DOWNPAYMENT_TYPES).nullable().optional(),
     downpayment_amount: z.number().positive().nullable().optional(),
@@ -505,6 +491,10 @@ export const updatePolicyValidator = z
     // unpaid down-payment-required Online booking auto-cancels. NOT NULL in
     // the DB (default 24), so no null here - just a positive integer.
     downpayment_hold_hours: z.number().int().positive().optional(),
+    // Pay at checkout (20261005244). Both NOT NULL in the DB (defaults true /
+    // 10); the grace period is minutes past the hour, CHECK 0-59.
+    pay_at_checkout_enabled: z.boolean().optional(),
+    pay_at_checkout_grace_minutes: z.number().int().min(0).max(59).optional(),
     // Staff concurrency (20260908178): overlapping bookings one staff member
     // may hold. NOT NULL in the DB (default 1, CHECK >= 1).
     max_concurrent_bookings_per_staff: z.number().int().min(1).optional(),
@@ -635,10 +625,15 @@ export const staffPickerQueryValidator = z.object({
  * time-window overlap check - see cagePicker.service.ts.
  *
  * pet_id (Custom change, cage pet-type support): required so the options
- * list can be hard-filtered to the pet's own pet_type. */
+ * list can be hard-filtered to the pet's own pet_type.
+ *
+ * service_category: which service type's cage_picker_enabled toggle to
+ * read. Optional, defaulting to Hotel, so a caller from before Daycare got
+ * the picker keeps working unchanged. */
 export const cagePickerQueryValidator = z.object({
   branch_id: z.uuid(),
   pet_id: z.uuid(),
+  service_category: z.enum(['Hotel', 'Daycare']).default('Hotel'),
 });
 
 /** Custom change (cage pet-type support / customer readonly cage view). */
@@ -741,10 +736,6 @@ export type DecideCreditReviewInput = z.infer<
 >;
 export type CancelBookingInput = z.infer<typeof cancelBookingValidator>;
 export type UpdatePolicyInput = z.infer<typeof updatePolicyValidator>;
-export type PayBookingInput = z.infer<typeof payBookingValidator>;
-export type OnlinePaymentsStatusQueryInput = z.infer<
-  typeof onlinePaymentsStatusQueryValidator
->;
 export type DownpaymentStatusQueryInput = z.infer<
   typeof downpaymentStatusQueryValidator
 >;

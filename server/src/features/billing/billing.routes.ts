@@ -10,13 +10,15 @@ import {
   createMiscSaleController,
   deleteMiscSaleController,
   getMiscSaleController,
+  getMiscSaleCreditController,
   listBookingGroupTransactionsController,
   listBookingTransactionsController,
+  listMiscSaleOptionsController,
   listMiscSalesController,
   payTransactionWithCreditController,
-  paymongoFeeRateController,
   previewCheckoutController,
   previewGroupCheckoutController,
+  previewMiscSaleController,
   recordTransactionPaymentController,
   updateMiscSaleController,
 } from './billing.controller.ts';
@@ -35,16 +37,6 @@ const adminOnly = [
   sessionTimeoutMiddleware,
   requireRole([...BILLING_ADMIN_ROLES]),
 ];
-
-// Issue #83: PayMongo fee rate, surfaced to the frontend for the inline
-// service-fee notice (#86) - staff-only, not customer-facing, since the
-// customer sees PayMongo's own notice at their hosted checkout page.
-router.get(
-  '/billing/paymongo/fee-rate',
-  jwtMiddleware,
-  sessionTimeoutMiddleware,
-  paymongoFeeRateController
-);
 
 // Issue #84
 router.get(
@@ -89,6 +81,38 @@ router.post(
   createMiscSaleController
 );
 
+// Session 115: the wizard's Discount/Promo step live-previews the cart -
+// requireBranch so discount/promo branch-availability matches the
+// cashier's own branch, same as the checkout preview above.
+router.post(
+  '/billing/misc-sale/preview',
+  ...staffAccess,
+  requireBranch,
+  previewMiscSaleController
+);
+
+// The discounts/promos the admin has configured for misc sales at the
+// cashier's branch - listed on the wizard's Discount/Promo step. Registered
+// before '/billing/misc-sale/:id' so "options" isn't read as an id.
+router.get(
+  '/billing/misc-sale/options',
+  ...staffAccess,
+  requireBranch,
+  listMiscSaleOptionsController
+);
+
+// The customer's credit at the cashier's branch, for the wizard's Credit
+// payment option. On the billing router (every BILLING_STAFF_ROLES role)
+// rather than /credits/balances, which is narrower (Cashier/Admin/
+// Superadmin) - anyone who can record a misc sale can already spend credit
+// on one via credit_to_apply.
+router.get(
+  '/billing/misc-sale/credit',
+  ...staffAccess,
+  requireBranch,
+  getMiscSaleCreditController
+);
+
 // §6 (down-payment slot gate): per-booking payment history for the
 // Payments Queue's "View payments" drill-down - staff-only, read-only.
 router.get(
@@ -127,7 +151,17 @@ router.post(
   payTransactionWithCreditController
 );
 
-router.get('/billing/misc-sale', ...staffAccess, listMiscSalesController);
+// Code-review fix (session 115): requireBranch populates req.user.branch_id/
+// role so the controller can force a non-Superadmin viewer to their own
+// branch instead of trusting (or falling back with no filter on) a
+// client-supplied branch_id query param - see listMiscSalesController's own
+// doc comment.
+router.get(
+  '/billing/misc-sale',
+  ...staffAccess,
+  requireBranch,
+  listMiscSalesController
+);
 router.get('/billing/misc-sale/:id', ...staffAccess, getMiscSaleController);
 router.patch('/billing/misc-sale/:id', ...adminOnly, updateMiscSaleController);
 router.delete('/billing/misc-sale/:id', ...adminOnly, deleteMiscSaleController);

@@ -1,11 +1,20 @@
 import { useState } from 'react';
-import { unenrollMfa } from '../../../shared/api/mfa.api';
-import { TotpEnrollPanel } from '../../../shared/components/TotpEnrollPanel/TotpEnrollPanel';
+import { setMfaPreference, unenrollMfa } from '../../../shared/api/mfa.api';
+import { MfaMethodEnrollFlow } from '../../../shared/components/MfaMethodEnrollFlow/MfaMethodEnrollFlow';
+import { Modal } from '../../../shared/components/Modal/Modal';
+import { MANDATORY_MFA_ROLES } from '../../../shared/auth/mandatoryMfaRoles';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
-import type { MfaStatusResponse } from '../../../shared/auth/mfa.types';
+import type {
+  MfaMethod,
+  MfaStatusResponse,
+} from '../../../shared/auth/mfa.types';
 import styles from '../SettingsPage.module.css';
+import { LoadingState } from '../../../shared/components/LoadingState/LoadingState';
 
-const MANDATORY_MFA_ROLES = new Set(['Admin', 'Superadmin']);
+const METHOD_LABEL: Record<MfaMethod, string> = {
+  authenticator: 'Authenticator app',
+  email: 'Email',
+};
 
 interface SecurityTabProps {
   role: ThemeRole;
@@ -19,8 +28,10 @@ interface SecurityTabProps {
 
 /**
  * Settings > Security. Body moved unchanged from the pre-tabs SettingsPage -
- * Admin/Superadmin's enroll UI still comes exclusively from the guard's
- * MfaSetupModal (see the comment below), not from here.
+ * Admin/Supervisor/Superadmin's *first-ever* enroll UI still comes
+ * exclusively from the guard's MfaSetupModal (see the comment below), not
+ * from here; once at least one method is enrolled, this tab is the one place
+ * to add a second method, switch the preferred one, or unbind either.
  */
 export function SecurityTab({
   role,
@@ -28,18 +39,48 @@ export function SecurityTab({
   status,
   onChanged,
 }: SecurityTabProps) {
-  const [isDisabling, setIsDisabling] = useState(false);
+  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
+  const [setupInitialMethod, setSetupInitialMethod] = useState<
+    MfaMethod | undefined
+  >(undefined);
+  const [disablingMethod, setDisablingMethod] = useState<MfaMethod | null>(
+    null
+  );
   const [disableError, setDisableError] = useState<string | null>(null);
+  const [isSavingPreference, setIsSavingPreference] = useState(false);
 
   const isMandatoryRole = Boolean(
     status?.role && MANDATORY_MFA_ROLES.has(status.role)
   );
+  const methods = status?.methods ?? { authenticator: false, email: false };
+  const enrolledCount = Number(methods.authenticator) + Number(methods.email);
+  // Admin-tier roles manage 'email' from Settings > Account instead (see
+  // mfa_email_verifications' migration comment) - this tab only ever shows
+  // the authenticator row for them, so the preference dropdown below also
+  // only makes sense when both rows shown here are actually enrolled.
+  const visibleMethods = isMandatoryRole
+    ? (['authenticator'] as const)
+    : (['authenticator', 'email'] as const);
+  const visibleEnrolledCount = visibleMethods.filter(
+    (method) => methods[method]
+  ).length;
 
-  const handleDisable = async () => {
-    setIsDisabling(true);
+  function openSetupModal(initialMethod?: MfaMethod) {
     setDisableError(null);
-    const result = await unenrollMfa(role, accessToken);
-    setIsDisabling(false);
+    setSetupInitialMethod(initialMethod);
+    setIsSetupModalOpen(true);
+  }
+
+  function handleEnrolled() {
+    setIsSetupModalOpen(false);
+    onChanged();
+  }
+
+  const handleDisable = async (method: MfaMethod) => {
+    setDisablingMethod(method);
+    setDisableError(null);
+    const result = await unenrollMfa(role, accessToken, method);
+    setDisablingMethod(null);
 
     if (result.error) {
       setDisableError(result.error);
@@ -49,14 +90,27 @@ export function SecurityTab({
     onChanged();
   };
 
+  const handlePreferenceChange = async (method: MfaMethod) => {
+    setIsSavingPreference(true);
+    await setMfaPreference(role, accessToken, method);
+    setIsSavingPreference(false);
+    onChanged();
+  };
+
+  // Mirrors the guard's own gate exactly: a mandatory role with nothing
+  // enrolled yet is always behind MfaSetupModal's full-screen popup, which
+  // renders the same MfaMethodEnrollFlow this tab would - showing a second
+  // one here would just race it for no reason.
+  const showsOwnSetupUi = !(isMandatoryRole && enrolledCount === 0);
+
   return (
     <section className={styles.section} aria-labelledby="mfa-section-title">
       <h2 className={styles.sectionTitle} id="mfa-section-title">
         Multi-Factor Authentication
       </h2>
       {status === null ? (
-        <p className={styles.copy}>Loading your MFA status...</p>
-      ) : status.mfa_enrolled ? (
+        <LoadingState label="Loading your MFA status..." />
+      ) : enrolledCount > 0 ? (
         <p className={styles.statusEnabled}>MFA is enabled on your account.</p>
       ) : isMandatoryRole ? (
         <p className={styles.statusRequired}>
@@ -65,38 +119,98 @@ export function SecurityTab({
         </p>
       ) : (
         <p className={styles.copy}>
-          Add an extra layer of security with an authenticator app. This is
-          optional for your role.
+          Add an extra layer of security with an authenticator app or email
+          codes. This is optional for your role.
         </p>
       )}
-      {/*
-        Admin/Superadmin get their enroll UI exclusively from the guard's
-        MfaSetupModal. Rendering a second TotpEnrollPanel here at the same
-        time would race it - both instances enroll independently, and each
-        invalidates whichever QR/key the user just scanned from the other.
-      */}
-      {status && !status.mfa_enrolled && !isMandatoryRole ? (
-        <TotpEnrollPanel
+
+      {status && showsOwnSetupUi ? (
+        <>
+          <ul className={styles.mfaMethodList}>
+            {visibleMethods.map((method) => (
+              <li key={method} className={styles.mfaMethodRow}>
+                <span className={styles.mfaMethodName}>
+                  {METHOD_LABEL[method]}
+                </span>
+                <span className={styles.copy}>
+                  {methods[method] ? 'Enabled' : 'Not set up'}
+                </span>
+                {methods[method] ? (
+                  // A mandatory role's authenticator factor is permanent,
+                  // never removable (see mfaUnenrollController's matching
+                  // server-side guard) - hide the button rather than showing
+                  // one that would just 409.
+                  isMandatoryRole && method === 'authenticator' ? null : (
+                    <button
+                      className={styles.secondaryButton}
+                      type="button"
+                      disabled={disablingMethod === method}
+                      onClick={() => void handleDisable(method)}
+                    >
+                      {disablingMethod === method ? 'Removing...' : 'Remove'}
+                    </button>
+                  )
+                ) : (
+                  <button
+                    className={styles.secondaryButton}
+                    type="button"
+                    onClick={() => openSetupModal(method)}
+                  >
+                    Set up
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          {disableError ? (
+            <p className={styles.statusRequired} role="alert">
+              {disableError}
+            </p>
+          ) : null}
+
+          {enrolledCount === 0 ? (
+            <button
+              className={styles.button}
+              type="button"
+              onClick={() => openSetupModal()}
+            >
+              Set up multi-factor authentication
+            </button>
+          ) : null}
+
+          {visibleEnrolledCount === 2 && status ? (
+            <label className={styles.copy}>
+              Preferred method at login
+              <select
+                value={status.preferred_method}
+                disabled={isSavingPreference}
+                onChange={(event) =>
+                  void handlePreferenceChange(event.target.value as MfaMethod)
+                }
+              >
+                <option value="authenticator">
+                  {METHOD_LABEL.authenticator}
+                </option>
+                <option value="email">{METHOD_LABEL.email}</option>
+              </select>
+            </label>
+          ) : null}
+        </>
+      ) : null}
+
+      <Modal
+        isOpen={isSetupModalOpen}
+        title="Set up multi-factor authentication"
+        onClose={() => setIsSetupModalOpen(false)}
+      >
+        <MfaMethodEnrollFlow
           role={role}
           accessToken={accessToken}
-          onEnrolled={onChanged}
+          initialMethod={setupInitialMethod}
+          onEnrolled={handleEnrolled}
         />
-      ) : null}
-      {status?.mfa_enrolled && !isMandatoryRole ? (
-        <div>
-          <button
-            className={styles.button}
-            type="button"
-            disabled={isDisabling}
-            onClick={() => void handleDisable()}
-          >
-            {isDisabling ? 'Disabling...' : 'Disable MFA'}
-          </button>
-          {disableError ? (
-            <p className={styles.statusRequired}>{disableError}</p>
-          ) : null}
-        </div>
-      ) : null}
+      </Modal>
     </section>
   );
 }

@@ -44,10 +44,9 @@ describe('paymentMethod.service (#83)', () => {
       });
     });
 
-    it('GCash/Maya walk-in QR is confirmed immediately, same as a manual method', () => {
+    it('GCash/Maya are confirmed immediately, same as a manual method', () => {
       const result = resolvePaymentConfirmation({
         paymentMethod: 'GCash',
-        onlineChannel: 'walk_in_qr',
         amountDue: 450,
       });
 
@@ -55,16 +54,6 @@ describe('paymentMethod.service (#83)', () => {
         paymentStatus: 'Fully Paid',
         changeAmount: null,
       });
-    });
-
-    it('GCash/Maya portal stays Pending until the webhook confirms it', () => {
-      const result = resolvePaymentConfirmation({
-        paymentMethod: 'Maya',
-        onlineChannel: 'portal',
-        amountDue: 450,
-      });
-
-      expect(result).toEqual({ paymentStatus: 'Pending', changeAmount: null });
     });
   });
 });

@@ -115,6 +115,9 @@ export interface ServiceBranchAvailability {
   service_id: string;
   branch_id: string;
   is_available: boolean;
+  /** This branch's own price for the service (20261006245), replacing
+   * base_price there - see servicePriceAtBranch. NULL = use base_price. */
+  price_override: number | null;
 }
 
 export interface Service {
@@ -124,6 +127,8 @@ export interface Service {
   base_price: number;
   duration_minutes: number | null;
   is_active: boolean;
+  /** Config-menu consistency change (20260928218). */
+  archived_at: string | null;
   /** Whether a pet with no recorded weight_class/coat_type (never staff-
    * assessed onsite) may book this service - false only for the seeded
    * "Initial Assessment" service. See ...073_m02_pets_assessment_lock.sql. */
@@ -159,9 +164,10 @@ export interface Service {
    * the first, on this service. NULL falls back to the documented ₱50
    * default. */
   succeeding_hour_fee: number | null;
-  /** Daycare-only: charged per night when a pet on this service isn't
-   * picked up before closing, on top of the hourly charge. NULL falls back
-   * to the documented ₱850 default. Moved here from a shared
+  /** Daycare-only fallback: a pet not picked up before closing is charged
+   * the branch's Hotel nightly rate per night (daycareBilling.service.ts);
+   * this is used only when that branch has no active Hotel service. NULL
+   * falls back to the documented ₱850 default. Moved here from a shared
    * policy_configurations column (Custom change: Daycare fee
    * configuration) - "each Daycare-type service can have its own overnight
    * fee." */
@@ -252,6 +258,8 @@ export interface Breed {
   id: string;
   pet_type: PetType;
   name: string;
+  /** Config-menu consistency change (20260928218). */
+  archived_at: string | null;
   created_at: string;
 }
 
@@ -263,6 +271,8 @@ export interface PetTypeRow {
   key: string;
   name: string;
   is_active: boolean;
+  /** Config-menu consistency change (20260928218). */
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -300,6 +310,8 @@ export interface ServiceType {
   key: string;
   name: string;
   is_active: boolean;
+  /** Config-menu consistency change (20260928218). */
+  archived_at: string | null;
   staff_picker_enabled: boolean;
   cage_picker_enabled: boolean;
   /** Which staff roles may be offered by the Staff Picker for this type -

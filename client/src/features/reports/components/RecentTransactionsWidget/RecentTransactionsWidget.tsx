@@ -4,6 +4,7 @@ import { getTransactionHistory } from '../../api/reports.api';
 import type { TransactionRecord } from '../../reports.types';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import styles from './RecentTransactionsWidget.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface RecentTransactionsWidgetProps {
   branches: BranchSummary[];
@@ -81,7 +82,7 @@ export function RecentTransactionsWidget({
       </div>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading transactions...</p>
+        <LoadingState label="Loading transactions..." size="inline" />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

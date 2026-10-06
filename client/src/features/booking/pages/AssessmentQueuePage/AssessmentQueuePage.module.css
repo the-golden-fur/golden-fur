@@ -87,36 +87,9 @@
   box-shadow: var(--shadow-md);
 }
 
-.rowSummary,
-.rowSummaryButton {
+.rowSummary {
   display: grid;
   gap: var(--space-0-5);
-  width: 100%;
-  text-align: left;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  padding: 0;
-}
-
-.rowSummaryButton {
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-
-.rowSummaryButton:hover:not(:disabled) .assessHint {
-  color: var(--color-accent-gold-primary);
-}
-
-.rowSummaryButton:disabled {
-  cursor: progress;
-}
-
-.assessHint {
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
 }
 
 .bookingHeader {
@@ -220,4 +193,23 @@
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
   border-color: var(--color-accent-gold-primary);
+}
+
+/* The row's main action ("Record assessment") - same size as the
+   secondaryButton beside it so the pair lines up, but gold-filled so it
+   reads as the primary action. */
+.recordButton {
+  composes: secondaryButton;
+  border-color: var(--color-accent-gold-primary);
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+}
+
+.recordButton:hover:not(:disabled) {
+  background: var(--color-accent-gold-highlight);
+}
+
+.recordButton:disabled {
+  cursor: progress;
+  opacity: 0.6;
 }

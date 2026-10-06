@@ -23,8 +23,10 @@ import { BookingStatusBadge } from '../../../booking/components/shared/BookingSt
 import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import { listBookings } from '../../../booking/api/booking.api';
 import type { Booking, BookingStatus } from '../../../booking/booking.types';
+import { listDaycareSessions } from '../../api/daycare.api';
 import { DAYCARE_QUEUE_VIEWER_ROLES } from './daycareQueueRoles';
 import styles from './DaycareQueuePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
@@ -38,8 +40,9 @@ const STATUS_OPTIONS: QueueStatusOption[] = [
 
 type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: 'soonest', label: 'Sort: Scheduled time (soonest)' },
+  // Default: the latest service on top.
   { value: 'latest', label: 'Sort: Scheduled time (latest)' },
+  { value: 'soonest', label: 'Sort: Scheduled time (soonest)' },
   { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
   { value: 'owner-name', label: 'Sort: Owner name (A-Z)' },
 ];
@@ -70,11 +73,16 @@ const REFRESH_INTERVAL_MS = 15_000;
  *     instructions before checking in (the same page a Hotel queue row's
  *     "..." menu opens, just reached directly here since there's no other
  *     action competing for the click).
- *   - In Progress (checked in): opens the shared Boarding Checklist
+ *   - In Progress, checked in: opens the shared Boarding Checklist
  *     (/staff/hotel/care-log?petId=...), scoped to just this pet's tasks -
  *     that page also gained the actual "Check out" action (custom change),
  *     since removing this row's own Check Out button meant checkout needed
  *     a new home.
+ *   - In Progress, NOT checked in yet: a walk-in booking is created already
+ *     In Progress, with no Daycare session (and no cage) behind it until it
+ *     goes through the check-in form - so it opens DaycareCheckInFormPage,
+ *     same as a Pending row, instead of an empty checklist. Which of the
+ *     two an In Progress row is comes from the branch's Active sessions.
  *   - Completed/Cancelled/No-show: nothing to do from here - a plain "View
  *     details" link (the generic BookingDetailsPage) is offered instead.
  */
@@ -105,6 +113,12 @@ export function DaycareQueuePage() {
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Booking ids that already have an Active Daycare session, i.e. have been
+  // through the check-in form. Null until that lookup first succeeds (or if
+  // it fails) - an In Progress row is then treated as checked in, the
+  // behavior from before walk-ins were told apart.
+  const [checkedInBookingIds, setCheckedInBookingIds] =
+    useState<Set<string> | null>(null);
 
   const showCheckedInBanner = searchParams.get('checkedIn') === 'success';
 
@@ -195,6 +209,18 @@ export function DaycareQueuePage() {
         serviceCategory: 'Daycare',
         status: statusFilter === 'All' ? undefined : statusFilter,
       }).then(handleQueueResult);
+
+      void listDaycareSessions(token, { status: 'Active' }).then((result) => {
+        if (!isMounted || !result.data) return;
+
+        setCheckedInBookingIds(
+          new Set(
+            result.data
+              .map((session) => session.booking_id)
+              .filter((id): id is string => id !== null)
+          )
+        );
+      });
     }
 
     fetchQueue();
@@ -243,7 +269,7 @@ export function DaycareQueuePage() {
           owners[b.customer_id]?.full_name ?? ''
         ),
     },
-    initialSortKey: 'soonest',
+    initialSortKey: 'latest',
   });
 
   const filterChips = useMemo(() => {
@@ -270,21 +296,31 @@ export function DaycareQueuePage() {
         onClear: () => setSearch(''),
       });
     }
-    if (sortKey !== 'soonest') {
+    if (sortKey !== 'latest') {
       chips.push({
         id: 'sort',
         label:
           SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
           sortKey,
-        onClear: () => setSortKey('soonest'),
+        onClear: () => setSortKey('latest'),
       });
     }
 
     return chips;
   }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
 
+  /** An In Progress booking with no Daycare session yet - a walk-in that
+   * still has to go through the check-in form. */
+  function needsCheckIn(booking: Booking): boolean {
+    return (
+      booking.status === 'In Progress' &&
+      checkedInBookingIds !== null &&
+      !checkedInBookingIds.has(booking.id)
+    );
+  }
+
   function handleRowClick(booking: Booking) {
-    if (booking.status === 'Pending') {
+    if (booking.status === 'Pending' || needsCheckIn(booking)) {
       navigate(`/staff/daycare/queue/check-in/${booking.id}`);
     } else if (booking.status === 'In Progress') {
       navigate(
@@ -310,7 +346,7 @@ export function DaycareQueuePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -352,7 +388,7 @@ export function DaycareQueuePage() {
 
         <ActiveFilterChips chips={filterChips} />
 
-        {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
+        {isLoading ? <LoadingState label="Loading bookings..." /> : null}
 
         {loadError ? (
           <p className={styles.errorBanner} role="alert">
@@ -395,7 +431,12 @@ export function DaycareQueuePage() {
                       Click to finalize the cage and care instructions
                     </span>
                   ) : null}
-                  {booking.status === 'In Progress' ? (
+                  {needsCheckIn(booking) ? (
+                    <span className={styles.actionHint}>
+                      Not checked in yet - click to finalize the cage and care
+                      instructions
+                    </span>
+                  ) : booking.status === 'In Progress' ? (
                     <span className={styles.actionHint}>
                       Click to view this pet&apos;s boarding checklist
                     </span>

@@ -28,8 +28,10 @@ export async function listTransactionHistory(
   // payment_status + the pricing snapshot let the transaction-history pages
   // work out a booking's outstanding balance (for the customer/staff
   // "add a balance payment" action) without a second round trip.
+  // scheduled_start + the pet's name label each booking group on the staff
+  // Transactions page's "Group by: Booking" view.
   const bookingColumns =
-    'pet_id, service_category, payment_status, total_price, discount_amount, promo_amount';
+    'pet_id, service_category, payment_status, total_price, discount_amount, promo_amount, scheduled_start, pets(name)';
   const needsBookingJoin = Boolean(filters.petId || filters.serviceCategory);
   const bookingsSelect = needsBookingJoin
     ? `bookings!inner(${bookingColumns})`

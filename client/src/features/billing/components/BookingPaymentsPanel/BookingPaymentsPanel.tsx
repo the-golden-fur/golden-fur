@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listBookingTransactions } from '../../api/billing.api';
 import type { Transaction } from '../../billing.types';
 import styles from './BookingPaymentsPanel.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 interface BookingPaymentsPanelProps {
   bookingId: string;
@@ -74,7 +75,7 @@ export function BookingPaymentsPanel({
       <p className={styles.paymentsPanelTitle}>Payments for this booking</p>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading payments...</p>
+        <LoadingState label="Loading payments..." />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

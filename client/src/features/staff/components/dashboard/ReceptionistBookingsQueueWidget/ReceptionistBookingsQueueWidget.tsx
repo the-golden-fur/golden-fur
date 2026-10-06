@@ -4,6 +4,7 @@ import { listBookings } from '../../../../booking/api/booking.api';
 import type { Booking } from '../../../../booking/booking.types';
 import { deriveBookingConfirmationState } from '../../../../booking/bookingConfirmation';
 import styles from './ReceptionistBookingsQueueWidget.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface ReceptionistBookingsQueueWidgetProps {
   branchId: string;
@@ -97,7 +98,7 @@ export function ReceptionistBookingsQueueWidget({
       </div>
 
       {isLoading ? (
-        <p className={styles.copy}>Loading today's bookings...</p>
+        <LoadingState label="Loading today's bookings..." size="inline" />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}

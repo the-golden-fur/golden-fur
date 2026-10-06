@@ -9,6 +9,10 @@ import type { RescheduleBookingInput } from '../modules/validators/booking.valid
 import { assertVeterinaryBranchEligibility } from './veterinaryEligibility.service.ts';
 import { checkCapacity } from './capacity.service.ts';
 import {
+  assertDaycareStartsBeforeCutoff,
+  assertWithinGroomingHours,
+} from './availability.service.ts';
+import {
   assertMeetsNoticeLeadTime,
   listAvailableStaff,
   pickRandomAvailableStaff,
@@ -157,6 +161,24 @@ export async function rescheduleBooking({
   // evaluateNoticePeriod already resolved - no extra query.
   assertMeetsNoticeLeadTime(notice.policy, input.scheduled_start, 'Reschedule');
 
+  // Per-branch Grooming hours: the NEW slot must sit inside the target
+  // branch's Grooming time too, mirroring createBooking.
+  if (booking.service_category === 'Grooming') {
+    await assertWithinGroomingHours(
+      targetBranchId,
+      input.scheduled_start,
+      input.scheduled_end
+    );
+  }
+
+  // Daycare check-in cutoff: the NEW start must be checkable-in too.
+  if (booking.service_category === 'Daycare') {
+    await assertDaycareStartsBeforeCutoff(
+      targetBranchId,
+      input.scheduled_start
+    );
+  }
+
   if (notice.enforced && !notice.met) {
     if (notice.policy.notice_enforcement_mode === 'Strict') {
       // AC-2: Strict blocks outright, naming the required notice period.
@@ -256,7 +278,6 @@ export async function rescheduleBooking({
     // silently-degrades-to-null-or-unchanged shape as createBooking's own
     // cage handling (booking.service.ts).
     if (
-      booking.service_category === 'Hotel' &&
       input.cage_preference &&
       (await isCagePickerEnabled(booking.service_category))
     ) {

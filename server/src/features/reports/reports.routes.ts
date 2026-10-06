@@ -5,6 +5,7 @@ import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.mi
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   analyticsSummaryController,
+  branchComparisonController,
   cageOccupancyReportController,
   customerTransactionHistoryController,
   dailySalesReportController,
@@ -12,6 +13,7 @@ import {
 } from './reports.controller.ts';
 import {
   ANALYTICS_READ_ROLES,
+  BRANCH_COMPARISON_READ_ROLES,
   CAGE_OCCUPANCY_READ_ROLES,
   REPORTS_READ_ROLES,
   TRANSACTION_HISTORY_READ_ROLES,
@@ -82,5 +84,19 @@ router.get(
   customerTransactionHistoryController
 );
 router.get('/reports/analytics', analyticsRead, analyticsSummaryController);
+
+// Custom change (Branch Comparison page): Superadmin-only, every branch at
+// once - no requireBranch, since it never scopes to the caller's branch.
+const branchComparisonRead = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...BRANCH_COMPARISON_READ_ROLES]),
+];
+
+router.get(
+  '/reports/branch-comparison',
+  branchComparisonRead,
+  branchComparisonController
+);
 
 export default router;

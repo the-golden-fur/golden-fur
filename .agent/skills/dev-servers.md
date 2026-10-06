@@ -16,32 +16,41 @@ having started a second, colliding copy of one that was already up.
   in dev. Every `ECONNREFUSED`/`http proxy error` in the Vite log means the
   server isn't reachable on 3000 at that moment — not a client bug.
 - Both `npm run dev` scripts have a **`predev`** that runs
-  `node scripts/free-ports.mjs` first, killing any stale listener on the
-  port it's about to bind (the fix for recurring `EADDRINUSE :::3000` and
-  the silent Vite-on-5174 → CORS mess). CORS also allows any `localhost:*`
-  origin outside production, so a 5174 fallback still works. `free-ports.mjs`
-  used to miss a Vite dev server bound to the IPv6 loopback (`[::1]:5173`,
-  common whenever `localhost` resolves to `::1` first) on Windows, since its
-  `netstat -ano -p TCP` call silently excludes IPv6 listeners — fixed by
-  dropping the `-p TCP` filter (the existing LISTENING-line check already
-  excludes UDP rows on its own, so nothing else needed to change).
-- A `Stop` hook (`.claude/settings.json`, documented in `AGENTS.md`'s
-  "Auto-run wiring") runs `.claude/hooks/free-dev-ports.sh` (a standalone
-  bash script, not `free-ports.mjs` - kept separate so the Stop hook has no
-  Node dependency, though it carries the same Windows IPv6 fix) every time
-  Claude finishes responding, as a backstop specifically for
-  **agent-started** servers: if you background `npm run dev` for live
-  verification, stop relying on remembering to kill it yourself - this
-  hook frees both ports once your turn ends regardless. It does not fire
-  mid-turn, so it never interrupts a dev server you're actively still
-  using within the same response. If a dev server crashes with
-  `EADDRINUSE` _mid-turn_ (the Stop hook hasn't fired yet), a leftover
-  background task from earlier in the same turn is almost always why -
-  stop it with `TaskStop`, then re-check the port: killing only the
-  top-level `npm run dev` task can leave orphaned `tsx watch`/`vite`
-  children still bound to the port (same caveat as the "if asked to
-  stop/kill" section below), so confirm with `Get-NetTCPConnection`
-  and force-kill any PID still listed before telling the user it's clear.
+  `node scripts/free-ports.mjs` first. If the port it's about to bind is
+  free, or held by a stale/zombie listener (bound but not actually
+  answering requests), it frees it (the fix for recurring
+  `EADDRINUSE :::3000` and the silent Vite-on-5174 → CORS mess). CORS also
+  allows any `localhost:*` origin outside production, so a 5174 fallback
+  still works. But if the port is held by something that IS actively
+  answering HTTP requests right now, `free-ports.mjs` leaves it alone and
+  fails `predev` with a clear message instead of killing it - that
+  listener is somebody's real, wanted dev server (yours from an earlier
+  session, or the person's own), not a leftover, and killing it silently
+  is the bug, not the fix (see the removed `free-dev-ports` `Stop` hook
+  below). `free-ports.mjs` used to miss a Vite dev server bound to the
+  IPv6 loopback (`[::1]:5173`, common whenever `localhost` resolves to
+  `::1` first) on Windows, since its `netstat -ano -p TCP` call silently
+  excludes IPv6 listeners — fixed by dropping the `-p TCP` filter (the
+  existing LISTENING-line check already excludes UDP rows on its own, so
+  nothing else needed to change).
+- There used to be a `Stop` hook that force-killed anything on 3000/5173
+  after every Claude turn, meant as a backstop for a background `npm run
+dev` an agent forgot to stop. It was removed 2026-09-27: it couldn't
+  tell that background server apart from the person's own long-running
+  one in the same repo, so a person running dev servers themselves while
+  also using Claude Code for unrelated work in the same project had both
+  killed after every single response. If you background `npm run dev` for
+  live verification, **stop it yourself** (`TaskStop`, or kill the PID)
+  once you're done rather than counting on anything else to clean it up -
+  the hardened `predev` check above is a safety net for a stale leftover,
+  not a substitute for stopping what you started. If a dev server crashes
+  with `EADDRINUSE` _mid-turn_, a leftover background task from earlier in
+  the same turn is almost always why - stop it with `TaskStop`, then
+  re-check the port: killing only the top-level `npm run dev` task can
+  leave orphaned `tsx watch`/`vite` children still bound to the port (same
+  caveat as the "if asked to stop/kill" section below), so confirm with
+  `Get-NetTCPConnection` and force-kill any PID still listed before
+  telling the user it's clear.
 - Root `npm run dev` (via `concurrently`) or the VS Code task **"🚀 Dev:
   Start All"** starts both together. The VS Code tasks **"💻 Client: Dev"**
   and **"🖥️ Server: Dev"** each start only one half — if a user's terminal
@@ -73,12 +82,15 @@ Get-NetTCPConnection -LocalPort 3000,5173 -State Listen -ErrorAction SilentlyCon
 
 ## `EADDRINUSE`, or a stale server won't die
 
-`npm run <dev>`'s `predev` handles this automatically now. To do it by
-hand: **`npm run free-ports`** (root) frees both 3000 and 5173;
-`node scripts/free-ports.mjs 3000` frees just one. It kills only the
-process **LISTENING** on that exact port — `TIME_WAIT` sockets (the
-`[::1]:3000 ... TIME_WAIT` lines) are not processes and clear on their
-own; leave them. Then re-run the dev script.
+`npm run <dev>`'s `predev` handles a genuinely stale listener
+automatically now. To do it by hand: **`npm run free-ports`** (root)
+checks both 3000 and 5173; `node scripts/free-ports.mjs 3000` checks just
+one. It kills only the process **LISTENING** on that exact port —
+`TIME_WAIT` sockets (the `[::1]:3000 ... TIME_WAIT` lines) are not
+processes and clear on their own; leave them. If the port is actually
+answering requests, it leaves it running and exits non-zero instead of
+killing it — pass `--force` (`node scripts/free-ports.mjs 3000 --force`)
+if you're certain you want it killed anyway. Then re-run the dev script.
 
 ## A proxy error right at startup is not necessarily a bug
 

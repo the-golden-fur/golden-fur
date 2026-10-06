@@ -7,6 +7,7 @@ import {
   createCustomerAuthUser,
   createCustomerProfile,
   getCustomerProfileByEmail,
+  getAuthUserEmail,
   enrollTotpFactor,
   getTotpEnrollmentStatus,
   unenrollAllTotpFactors,
@@ -21,6 +22,7 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
       signInWithPassword: vi.fn(),
       admin: {
         createUser: vi.fn(),
+        getUserById: vi.fn(),
       },
     },
   },
@@ -207,6 +209,29 @@ describe('supabaseAuth.api', () => {
     });
   });
 
+  describe('getAuthUserEmail', () => {
+    it('resolves the email from Supabase Auth directly, not staff/customer profiles', async () => {
+      vi.mocked(supabase.auth.admin.getUserById).mockResolvedValue({
+        data: { user: { email: 'someone@example.com' } },
+        error: null,
+      } as any);
+
+      const email = await getAuthUserEmail('user-1');
+
+      expect(supabase.auth.admin.getUserById).toHaveBeenCalledWith('user-1');
+      expect(email).toBe('someone@example.com');
+    });
+
+    it('returns null when the lookup errors or has no email', async () => {
+      vi.mocked(supabase.auth.admin.getUserById).mockResolvedValue({
+        data: { user: null },
+        error: new Error('not found'),
+      } as any);
+
+      expect(await getAuthUserEmail('missing-user')).toBeNull();
+    });
+  });
+
   describe('enrollTotpFactor', () => {
     function mockUserClient() {
       return {
@@ -238,6 +263,22 @@ describe('supabaseAuth.api', () => {
         issuer: 'Golden Fur',
       });
       expect(data).toEqual({ id: 'new-factor', type: 'totp' });
+    });
+
+    it('passes friendlyName through when given, so two methods can coexist as distinct factors', async () => {
+      const userClient = mockUserClient();
+      userClient.auth.mfa.listFactors.mockResolvedValue({
+        data: { all: [] },
+        error: null,
+      });
+
+      await enrollTotpFactor(userClient, 'email');
+
+      expect(userClient.auth.mfa.enroll).toHaveBeenCalledWith({
+        factorType: 'totp',
+        issuer: 'Golden Fur',
+        friendlyName: 'email',
+      });
     });
 
     it('unenrolls prior unverified factors before enrolling a new one', async () => {

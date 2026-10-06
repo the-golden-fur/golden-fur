@@ -8,6 +8,7 @@ import type { AuthContextValue } from '../../../../../shared/auth/providers/Auth
 import * as mfaApi from '../../../../../shared/api/mfa.api';
 import * as staffApi from '../../../../staff/api/staff.api';
 import type { StaffProfile } from '../../../../staff/staff.types';
+import { ToastProvider } from '../../../../../shared/providers/ToastProvider/ToastProvider';
 import { StaffAuthGuard } from './StaffAuthGuard';
 
 vi.mock('../../../../../shared/api/mfa.api', () => ({
@@ -77,24 +78,28 @@ function renderGuard(authValue: AuthContextValue, initialPath = '/staff') {
         AuthContext.Provider,
         { value: authValue },
         createElement(
-          Routes,
+          ToastProvider,
           null,
           createElement(
-            Route,
-            { element: createElement(StaffAuthGuard) },
+            Routes,
+            null,
+            createElement(
+              Route,
+              { element: createElement(StaffAuthGuard) },
+              createElement(Route, {
+                path: '/staff',
+                element: createElement('div', null, 'Protected staff area'),
+              })
+            ),
             createElement(Route, {
-              path: '/staff',
-              element: createElement('div', null, 'Protected staff area'),
+              path: '/staff/login',
+              element: createElement('div', null, 'Login page'),
+            }),
+            createElement(Route, {
+              path: '/staff/mfa/verify',
+              element: createElement('div', null, 'MFA challenge'),
             })
-          ),
-          createElement(Route, {
-            path: '/staff/login',
-            element: createElement('div', null, 'Login page'),
-          }),
-          createElement(Route, {
-            path: '/staff/mfa/verify',
-            element: createElement('div', null, 'MFA challenge'),
-          })
+          )
         )
       )
     )

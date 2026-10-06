@@ -1,32 +1,45 @@
-import type { Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import multer from 'multer';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import {
   getConsultation,
   listConsultationQueue,
   listPetConsultationHistory,
+  listPrescriptions,
   listVeterinarianPatients,
   updateConsultation,
 } from './services/consultation.service.ts';
+import {
+  createConsultationFormTemplate,
+  deleteConsultationFormTemplate,
+  listConsultationFormTemplates,
+  updateConsultationFormTemplate,
+} from './services/consultationFormTemplate.service.ts';
 import { getCurrentPrescription } from './services/currentPrescription.service.ts';
 import { linkFollowUpBooking } from './services/followUp.service.ts';
 import { upsertPetHealthConditions } from './services/petHealthConditions.service.ts';
 import {
   createMedicationCatalogItem,
-  createProcedureCatalogItem,
   deleteMedicationCatalogItem,
-  deleteProcedureCatalogItem,
   listMedicationCatalog,
-  listProcedureCatalog,
   updateMedicationCatalogItem,
-  updateProcedureCatalogItem,
 } from './services/vetCatalog.service.ts';
+import { uploadMedicationImage } from './services/vetMedicationImageUpload.service.ts';
 import {
+  createPrescriptionTemplate,
+  deletePrescriptionTemplate,
+  listPrescriptionTemplates,
+  updatePrescriptionTemplate,
+} from './services/vetPrescriptionTemplate.service.ts';
+import {
+  createConsultationFormTemplateValidator,
   createMedicationCatalogItemValidator,
-  createProcedureCatalogItemValidator,
+  createPrescriptionTemplateValidator,
   linkFollowUpValidator,
+  updateConsultationFormTemplateValidator,
   updateConsultationValidator,
   updateMedicationCatalogItemValidator,
-  updateProcedureCatalogItemValidator,
+  updatePrescriptionTemplateValidator,
   upsertHealthConditionsValidator,
 } from './modules/validators/veterinary.validator.ts';
 
@@ -62,7 +75,11 @@ export async function listConsultationQueueController(
   const dateTo = queryDate(req, 'date_to');
 
   try {
-    const consultations = await listConsultationQueue({ dateFrom, dateTo });
+    const consultations = await listConsultationQueue({
+      dateFrom,
+      dateTo,
+      allDates: req.query.all_dates === 'true',
+    });
     return res.status(200).json({ consultations });
   } catch (error) {
     return sendServiceError(res, error);
@@ -298,7 +315,74 @@ export async function deleteMedicationCatalogItemController(
   }
 }
 
-export async function listProcedureCatalogController(
+// ---------------------------------------------------------------------------
+// Medication image upload (mirrors maintenance.controller.ts's own
+// service/service-type/package image upload)
+// ---------------------------------------------------------------------------
+
+/** Mirrors maintenance.controller.ts's handleServiceImageUploadError -
+ * translates a multer failure (e.g. the 5MB limit) into the same JSON error
+ * shape every other veterinary endpoint returns, instead of Express's
+ * default HTML error page. */
+export function handleMedicationImageUploadError(
+  err: unknown,
+  _req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File too large' });
+    }
+
+    return res.status(400).json({ error: err.message });
+  }
+
+  if (err) {
+    return res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : 'Upload failed' });
+  }
+
+  return next();
+}
+
+export async function uploadMedicationImageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const file = req.file as
+    | {
+        buffer: Buffer;
+        mimetype: string;
+        originalname: string;
+        size: number;
+      }
+    | undefined;
+
+  if (!file) {
+    return res.status(400).json({ error: 'No file provided' });
+  }
+
+  try {
+    const imageUrl = await uploadMedicationImage({ file });
+    return res.status(201).json({ image_url: imageUrl });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// #117: procedure-catalog controllers removed alongside the rest of the
+// personal procedure catalog - replaced by the consultation-form-template
+// controllers below.
+
+export async function listConsultationFormTemplatesController(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -306,21 +390,21 @@ export async function listProcedureCatalogController(
   if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const procedures = await listProcedureCatalog(requesterId);
-    return res.status(200).json({ procedures });
+    const templates = await listConsultationFormTemplates(requesterId);
+    return res.status(200).json({ templates });
   } catch (error) {
     return sendServiceError(res, error);
   }
 }
 
-export async function createProcedureCatalogItemController(
+export async function createConsultationFormTemplateController(
   req: AuthenticatedRequest,
   res: Response
 ) {
   const requesterId = req.user?.sub;
   if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
 
-  const parsed = createProcedureCatalogItemValidator.safeParse(req.body);
+  const parsed = createConsultationFormTemplateValidator.safeParse(req.body);
   if (!parsed.success) {
     return res
       .status(400)
@@ -328,24 +412,24 @@ export async function createProcedureCatalogItemController(
   }
 
   try {
-    const procedure = await createProcedureCatalogItem(
+    const template = await createConsultationFormTemplate(
       requesterId,
       parsed.data
     );
-    return res.status(201).json({ procedure });
+    return res.status(201).json({ template });
   } catch (error) {
     return sendServiceError(res, error);
   }
 }
 
-export async function updateProcedureCatalogItemController(
+export async function updateConsultationFormTemplateController(
   req: AuthenticatedRequest,
   res: Response
 ) {
   const requesterId = req.user?.sub;
   if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
 
-  const parsed = updateProcedureCatalogItemValidator.safeParse(req.body);
+  const parsed = updateConsultationFormTemplateValidator.safeParse(req.body);
   if (!parsed.success) {
     return res
       .status(400)
@@ -353,18 +437,18 @@ export async function updateProcedureCatalogItemController(
   }
 
   try {
-    const procedure = await updateProcedureCatalogItem(
+    const template = await updateConsultationFormTemplate(
       requesterId,
       paramId(req, 'id'),
       parsed.data
     );
-    return res.status(200).json({ procedure });
+    return res.status(200).json({ template });
   } catch (error) {
     return sendServiceError(res, error);
   }
 }
 
-export async function deleteProcedureCatalogItemController(
+export async function deleteConsultationFormTemplateController(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -372,7 +456,101 @@ export async function deleteProcedureCatalogItemController(
   if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    await deleteProcedureCatalogItem(requesterId, paramId(req, 'id'));
+    await deleteConsultationFormTemplate(requesterId, paramId(req, 'id'));
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listPrescriptionsController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const consultations = await listPrescriptions();
+    return res.status(200).json({ consultations });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// Custom change: the standalone Consultation Results list page (and its
+// listConsultationResultsController) was removed - results are reached
+// from a "Results" row option on the Consultation Queue instead.
+
+export async function listPrescriptionTemplatesController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const templates = await listPrescriptionTemplates(requesterId);
+    return res.status(200).json({ templates });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function createPrescriptionTemplateController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const parsed = createPrescriptionTemplateValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const template = await createPrescriptionTemplate(requesterId, parsed.data);
+    return res.status(201).json({ template });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updatePrescriptionTemplateController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const parsed = updatePrescriptionTemplateValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const template = await updatePrescriptionTemplate(
+      requesterId,
+      paramId(req, 'id'),
+      parsed.data
+    );
+    return res.status(200).json({ template });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function deletePrescriptionTemplateController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  if (!requesterId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    await deletePrescriptionTemplate(requesterId, paramId(req, 'id'));
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

@@ -13,7 +13,6 @@ import {
 import { createBookingGroup } from './services/bookingGroup.service.ts';
 import {
   getStaffPickerOptions,
-  isOnlinePaymentsEnabled,
   listPolicyConfigurations,
   resolveBookingLeadDays,
   resolveDownpaymentPolicy,
@@ -38,10 +37,7 @@ import {
 } from './services/availability.service.ts';
 import { getBookingCatalog } from './services/catalog.service.ts';
 import { getBookingDetails } from './services/bookingDetails.service.ts';
-import {
-  addCustomerBalancePayment,
-  payForBooking,
-} from '../billing/services/customerBookingPayment.service.ts';
+import { addCustomerBalancePayment } from '../billing/services/transactionPayment.service.ts';
 import {
   availabilityQueryValidator,
   cageAssignmentStatusQueryValidator,
@@ -54,11 +50,9 @@ import {
   downpaymentStatusQueryValidator,
   extendHotelStayValidator,
   listBookingsQueryValidator,
-  onlinePaymentsStatusQueryValidator,
   overrideBookingStatusValidator,
   partsOfDayQueryValidator,
   addBalancePaymentValidator,
-  payBookingValidator,
   petBookingConflictsQueryValidator,
   rescheduleBookingValidator,
   staffPickerQueryValidator,
@@ -272,6 +266,7 @@ export async function availabilityController(
       resolveOperatingWindow({
         branchId: parsed.data.branch_id,
         date: parsed.data.date,
+        serviceCategory: parsed.data.service_category,
       }),
       intent === 'reschedule'
         ? resolveNoticeLeadDays(parsed.data.branch_id)
@@ -404,7 +399,7 @@ export async function cagePickerOptionsController(
   try {
     const result = await getCagePickerOptions(
       parsed.data.branch_id,
-      'Hotel',
+      parsed.data.service_category,
       parsed.data.pet_id
     );
 
@@ -544,39 +539,6 @@ export async function extendHotelStayController(
   }
 }
 
-/** Customer self-service Pay button (CustomerBookingsPage). */
-export async function payBookingController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const requesterId = req.user?.sub;
-
-  if (!requesterId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const parsed = payBookingValidator.safeParse(req.body ?? {});
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
-  }
-
-  try {
-    const result = await payForBooking({
-      requesterId,
-      bookingId: paramId(req, 'id'),
-      paymentMethod: parsed.data.payment_method,
-      payInFull: parsed.data.pay_in_full,
-    });
-
-    return res.status(200).json(result);
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
 /** Customer-chosen partial balance payment (CustomerTransactionHistoryPage) -
  * creates a fresh Pending 'balance' charge the customer then settles. */
 export async function addBalancePaymentController(
@@ -610,37 +572,8 @@ export async function addBalancePaymentController(
   }
 }
 
-/** Whether the customer-facing Pay button should be enabled for a branch -
- * see isOnlinePaymentsEnabled's own doc comment. */
-export async function onlinePaymentsStatusController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const requesterId = req.user?.sub;
-
-  if (!requesterId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const parsed = onlinePaymentsStatusQueryValidator.safeParse(req.query);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid query', details: parsed.error.issues });
-  }
-
-  try {
-    const enabled = await isOnlinePaymentsEnabled(parsed.data.branch_id);
-    return res.status(200).json({ online_payments_enabled: enabled });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
 /** Custom change: per-transaction downpayment config for a branch, read by
- * the customer booking flow to preview the amount before submitting - same
- * shape/gating as onlinePaymentsStatusController above. */
+ * the customer booking flow to preview the amount before submitting. */
 export async function downpaymentStatusController(
   req: AuthenticatedRequest,
   res: Response

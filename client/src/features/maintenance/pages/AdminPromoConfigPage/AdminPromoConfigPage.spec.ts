@@ -210,6 +210,20 @@ function renderPage() {
   );
 }
 
+/** The page has two browsers now - the promo list, then Promo Cap
+ * Configuration - each with its own Filter / Sort / view buttons. The promo
+ * list's controls come first in the DOM. */
+function promoControl(name: string) {
+  return screen.getAllByRole('button', { name })[0];
+}
+
+/** Promo Cap Configuration's own section, for scoping its controls. */
+function capSection() {
+  return within(
+    screen.getByRole('region', { name: 'Promo Cap Configuration' })
+  );
+}
+
 describe('AdminPromoConfigPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -255,16 +269,22 @@ describe('AdminPromoConfigPage', () => {
     expect(maintenanceApi.listPromos).not.toHaveBeenCalled();
   });
 
-  it('renders each promo as a card, not a table row', async () => {
+  it('Gallery view renders each promo as a card, not a table row', async () => {
     renderPage();
+    const user = userEvent.setup();
 
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Gallery' }));
     expect(screen.getByText('15% off')).toBeInTheDocument();
     expect(screen.getByText('2026-08-01 to 2026-08-31')).toBeInTheDocument();
     // "Active" also appears in the default "Status: Active" filter pill now
     // - at least one match (the card's own badge) is the right bar.
     expect(screen.getAllByText('Active').length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    // The only table left is Promo Cap Configuration's own (default view).
+    expect(screen.getAllByRole('table')).toHaveLength(1);
+    expect(
+      within(screen.getByRole('table')).queryByText('Summer Sale')
+    ).not.toBeInTheDocument();
   });
 
   it('the promo cap configuration is embedded on this page (no longer a separate subpage) and lists only real branches, not a "both branches" default card', async () => {
@@ -296,7 +316,7 @@ describe('AdminPromoConfigPage', () => {
 
     const row = (
       await screen.findByText('Makati', { selector: 'span' })
-    ).closest('li') as HTMLElement;
+    ).closest('tr') as HTMLElement;
     await user.click(
       within(row).getByRole('button', { name: 'Actions for Makati' })
     );
@@ -320,7 +340,7 @@ describe('AdminPromoConfigPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('a Cap type filter narrows the branch list to a specific cap type', async () => {
+  it('a Cap type filter tile narrows the branch list to a specific cap type', async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -331,7 +351,17 @@ describe('AdminPromoConfigPage', () => {
       screen.getByText('Southwoods', { selector: 'span' })
     ).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Cap type'), 'flat');
+    const caps = capSection();
+    await user.click(caps.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Cap type' }));
+    // Cap type defaults to Percentage; pick Flat (Makati's saved cap).
+    await user.click(
+      caps.getByRole('button', { name: /Cap type: Percentage/ })
+    );
+    const popover = screen.getByRole('dialog', {
+      name: 'Edit Cap type filter',
+    });
+    await user.click(within(popover).getByRole('option', { name: 'Flat' }));
 
     expect(
       screen.getByText('Makati', { selector: 'span' })
@@ -339,6 +369,60 @@ describe('AdminPromoConfigPage', () => {
     expect(
       screen.queryByText('Southwoods', { selector: 'span' })
     ).not.toBeInTheDocument();
+  });
+
+  it('Promo Cap Configuration has search, Filter, Sort, and Table / List / Board views', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Makati', { selector: 'span' });
+    const caps = capSection();
+
+    expect(caps.getByPlaceholderText('Search branches...')).toBeInTheDocument();
+    expect(caps.getByRole('button', { name: 'Filter' })).toBeInTheDocument();
+    expect(caps.getByRole('button', { name: 'Sort' })).toBeInTheDocument();
+    for (const view of ['Table', 'List', 'Board']) {
+      expect(caps.getByRole('button', { name: view })).toBeInTheDocument();
+    }
+
+    // Search narrows by branch name.
+    await user.type(caps.getByPlaceholderText('Search branches...'), 'south');
+    expect(
+      screen.queryByText('Makati', { selector: 'span' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Southwoods', { selector: 'span' })
+    ).toBeInTheDocument();
+  });
+
+  it('Promo Cap Configuration: List rows have a visible "..." and right-click; Board groups by cap type', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Makati', { selector: 'span' });
+    const caps = capSection();
+
+    await caps.getByRole('button', { name: 'List' }).click();
+    // List: persistent "..." button...
+    expect(
+      await caps.findByRole('button', { name: 'Actions for Makati' })
+    ).toBeInTheDocument();
+    // ...and right-click opens the same menu.
+    fireEvent.contextMenu(caps.getByText('Makati', { selector: 'span' }));
+    expect(
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    await user.click(caps.getByRole('button', { name: 'Board' }));
+    // Board: no persistent "..." - grouped by cap type instead.
+    expect(
+      caps.queryByRole('button', { name: 'Actions for Makati' })
+    ).not.toBeInTheDocument();
+    expect(caps.getByRole('heading', { name: /Flat/ })).toBeInTheDocument();
+    expect(
+      caps.getByRole('heading', { name: /No cap saved/ })
+    ).toBeInTheDocument();
   });
 
   it('a Branch filter tile narrows the list without navigating', async () => {
@@ -368,7 +452,7 @@ describe('AdminPromoConfigPage', () => {
 
     // Branch defaults to the first branch (Makati) - open the tile's
     // popover and pick Southwoods instead.
-    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(promoControl('Filter'));
     await user.click(screen.getByRole('menuitem', { name: 'Branch' }));
     await user.click(screen.getByRole('button', { name: /Branch: Makati/ }));
     const popover = screen.getByRole('dialog', { name: 'Edit Branch filter' });
@@ -422,7 +506,7 @@ describe('AdminPromoConfigPage', () => {
 
     // Timing defaults to the first option (Upcoming) - open the tile's
     // popover and pick Ended instead.
-    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(promoControl('Filter'));
     await user.click(screen.getByRole('menuitem', { name: 'Timing' }));
     await user.click(screen.getByRole('button', { name: /Timing: Upcoming/ }));
     const popover = screen.getByRole('dialog', { name: 'Edit Timing filter' });
@@ -452,6 +536,13 @@ describe('AdminPromoConfigPage', () => {
   it('creates a date-bounded promo with no condition_note field in the payload', async () => {
     vi.mocked(maintenanceApi.createPromo).mockResolvedValue({
       data: buildPromo({ id: 'promo-new', name: 'Fall Deal' }),
+      error: null,
+    });
+    // Superadmin, not the default Admin viewer - a branch-scoped Admin can't
+    // check a branch other than their own (see BranchMultiSelect's
+    // lockedBranchId), which is exactly what this test needs to do.
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
       error: null,
     });
 
@@ -509,7 +600,10 @@ describe('AdminPromoConfigPage', () => {
     renderPage();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Actions for Summer Sale' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
     const valueInput = screen.getByLabelText(/Discount value/);
     await user.clear(valueInput);
@@ -527,54 +621,45 @@ describe('AdminPromoConfigPage', () => {
     expect(await screen.findByText('25% off')).toBeInTheDocument();
   });
 
-  it('Gallery is the default view, and Table/List are available alongside it', async () => {
+  it('Table is the default view, and Gallery/List are available alongside it', async () => {
     renderPage();
     const user = userEvent.setup();
 
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    // Default = Table: the promo appears in a table (Promo Cap Configuration
+    // has its own table too, so there are two).
+    expect(screen.getAllByRole('table')).toHaveLength(2);
+    const promoTable = screen.getAllByRole('table')[0];
+    expect(within(promoTable).getByText('Summer Sale')).toBeInTheDocument();
+    expect(within(promoTable).getByText('15% off')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Table' }));
-    expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(
-      within(screen.getByRole('table')).getByText('Summer Sale')
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole('table')).getByText('15% off')
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'List' }));
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    await user.click(promoControl('List'));
+    expect(screen.getAllByRole('table')).toHaveLength(1);
     expect(screen.getByText('Summer Sale').closest('ul')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Gallery' }));
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('table')).toHaveLength(1);
     expect(screen.getByText('Summer Sale')).toBeInTheDocument();
   });
 
-  it('Table view: the status toggle and "..." actions work the same as Gallery', async () => {
-    vi.mocked(maintenanceApi.updatePromo).mockResolvedValue({
-      data: buildPromo({ is_active: false }),
-      error: null,
-    });
-
+  it('Table view: the "..." menu offers Configure, Rename and Archive - no enable/disable switch', async () => {
     renderPage();
     const user = userEvent.setup();
 
     await screen.findByText('Summer Sale');
-    await user.click(screen.getByRole('button', { name: 'Table' }));
+
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
 
     await user.click(
-      screen.getByRole('switch', { name: 'Disable Summer Sale' })
+      screen.getByRole('button', { name: 'Actions for Summer Sale' })
     );
 
-    await waitFor(() => {
-      expect(maintenanceApi.updatePromo).toHaveBeenCalledWith(
-        'promo-1',
-        'token',
-        { is_active: false }
-      );
-    });
+    for (const name of ['Configure', 'Rename', 'Archive']) {
+      expect(screen.getByRole('menuitem', { name })).toBeInTheDocument();
+    }
+    expect(
+      screen.queryByRole('menuitem', { name: 'Branch Availability' })
+    ).not.toBeInTheDocument();
   });
 
   it('List view: name, timing, value, window, and status all show', async () => {
@@ -582,7 +667,7 @@ describe('AdminPromoConfigPage', () => {
     const user = userEvent.setup();
 
     await screen.findByText('Summer Sale');
-    await user.click(screen.getByRole('button', { name: 'List' }));
+    await user.click(promoControl('List'));
 
     const list = screen.getByText('Summer Sale').closest('ul') as HTMLElement;
     expect(within(list).getByText('Summer Sale')).toBeInTheDocument();
@@ -592,66 +677,60 @@ describe('AdminPromoConfigPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('tap-to-hold: List view has no persistent "..." button - right-click/long-press opens the same menu instead', async () => {
+  it('List view has a visible "..." button AND right-click/long-press opens the same menu', async () => {
     renderPage();
     const user = userEvent.setup();
 
     await screen.findByText('Summer Sale');
-    await user.click(screen.getByRole('button', { name: 'List' }));
+    await user.click(promoControl('List'));
 
     const list = await screen
       .findByText('Summer Sale')
       .then((el) => el.closest('ul') as HTMLElement);
 
+    // Persistent "..." button...
+    await user.click(
+      within(list).getByRole('button', { name: 'Actions for Summer Sale' })
+    );
     expect(
-      within(list).queryByRole('button', { name: 'Actions for Summer Sale' })
-    ).not.toBeInTheDocument();
+      screen.getByRole('menuitem', { name: 'Configure' })
+    ).toBeInTheDocument();
+    await user.keyboard('{Escape}');
 
+    // ...and right-click opens the same menu.
     fireEvent.contextMenu(within(list).getByText('Summer Sale'));
     expect(
-      screen.getByRole('menuitem', { name: 'Branch Availability' })
+      screen.getByRole('menuitem', { name: 'Configure' })
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Branch Availability' })
+    ).not.toBeInTheDocument();
   });
 
-  it('the status toggle activates/deactivates a promo without a full page reload', async () => {
-    vi.mocked(maintenanceApi.updatePromo).mockResolvedValue({
-      data: buildPromo({ is_active: false }),
-      error: null,
-    });
-
+  it('has no enable/disable switch in any view - Archive is the only way to switch a promo off', async () => {
     renderPage();
     const user = userEvent.setup();
 
+    await screen.findByText('Summer Sale');
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+
+    for (const view of ['List', 'Gallery', 'Table']) {
+      await user.click(promoControl(view));
+      expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    }
+  });
+
+  it('Configure carries the per-branch "Available at" selection (there is no separate Branch Availability action)', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await screen.findByText('Summer Sale');
     await user.click(
-      await screen.findByRole('switch', { name: 'Disable Summer Sale' })
+      screen.getByRole('button', { name: 'Actions for Summer Sale' })
     );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
 
-    await waitFor(() => {
-      expect(maintenanceApi.updatePromo).toHaveBeenCalledWith(
-        'promo-1',
-        'token',
-        { is_active: false }
-      );
-    });
-
-    // Default status filter is "Active only" (a pre-added Status tile), so
-    // the card disappears...
-    await waitFor(() => {
-      expect(screen.queryByText('Summer Sale')).not.toBeInTheDocument();
-    });
-
-    // ...and switching the tile to Inactive shows it again with the
-    // Inactive badge.
-    await user.click(screen.getByRole('button', { name: /Status: Active/ }));
-    const popover = screen.getByRole('dialog', { name: 'Edit Status filter' });
-    await user.click(within(popover).getByRole('option', { name: 'Inactive' }));
-
-    expect(screen.getByText('Summer Sale')).toBeInTheDocument();
-    // "Inactive" now also appears in the "Status: Inactive" pill - at least
-    // one match (the card's own badge) is the right bar.
-    expect(
-      screen.getAllByText('Inactive', { selector: 'span' }).length
-    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Available at')).toBeInTheDocument();
   });
 
   describe('Coupon spin wheel promo type (session 114)', () => {

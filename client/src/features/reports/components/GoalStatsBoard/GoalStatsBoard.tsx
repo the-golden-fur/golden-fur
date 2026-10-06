@@ -5,6 +5,7 @@ import { getTransactionHistory } from '../../api/reports.api';
 import type { TransactionRecord } from '../../reports.types';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import styles from './GoalStatsBoard.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Goal for a metric = last month's actual + this much. A single knob -
  * there's no goals table, this is a growth target, not a configured plan. */
@@ -184,7 +185,7 @@ export function GoalStatsBoard({ accessToken }: GoalStatsBoardProps) {
   if (!model) {
     return (
       <section className={styles.board}>
-        <p className={styles.copy}>Loading goal statistics...</p>
+        <LoadingState label="Loading goal statistics..." />
       </section>
     );
   }

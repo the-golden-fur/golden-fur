@@ -8,16 +8,20 @@ import {
   startCareLogEntry,
 } from './services/careLogCompletion.service.ts';
 import {
+  archiveCage,
   createCage,
-  deleteCage,
   getAvailableCageCountsBySize,
   getCageGrid,
+  hardDeleteCage,
+  listArchivedCages,
+  restoreCage,
   setCageMaintenanceStatus,
   updateCage,
 } from './services/cageStatus.service.ts';
 import { checkOutHotelStay } from './services/checkout.service.ts';
 import { listHotelStays } from './services/hotelStay.service.ts';
 import { suggestCage } from './services/cageAssignment.service.ts';
+import { listCageOccupants } from './services/cageOccupants.service.ts';
 import { getCurrentPrescription } from '../veterinary/services/currentPrescription.service.ts';
 import { listActivityLog } from './services/activityLog.service.ts';
 import {
@@ -250,19 +254,78 @@ export async function activityLogController(
   }
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Which branch's cages a read covers. Everyone is kept to their own branch,
+ * except a Superadmin - who isn't tied to one - and may ask for another
+ * branch (`?branch_id=<id>`) or all of them (`?branch_id=all`, resolved to
+ * null). With no query a Superadmin gets their own branch too, so every
+ * existing caller is unchanged. Read-only: check-in/check-out stay
+ * branch-bound.
+ */
+function resolveCageReadBranch(
+  req: AuthenticatedRequest
+): { branchId: string | null } | { error: string } {
+  const ownBranchId = req.user!.branch_id!;
+  const requested = req.query?.branch_id;
+
+  if (req.user?.role !== 'Superadmin' || typeof requested !== 'string') {
+    return { branchId: ownBranchId };
+  }
+
+  if (requested === 'all') return { branchId: null };
+
+  if (!UUID_PATTERN.test(requested)) {
+    return { error: 'branch_id must be a branch id or "all"' };
+  }
+
+  return { branchId: requested };
+}
+
 export async function cageGridController(
   req: AuthenticatedRequest,
   res: Response
 ) {
-  const branchId = req.user?.branch_id;
-
-  if (!branchId) {
+  if (!req.user?.branch_id) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const scope = resolveCageReadBranch(req);
+
+  if ('error' in scope) {
+    return res.status(400).json({ error: scope.error });
+  }
+
   try {
-    const grid = await getCageGrid(branchId);
+    const grid = await getCageGrid(scope.branchId);
     return res.status(200).json({ grid });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Who is in each occupied cage at the requester's branch (or, for a
+ * Superadmin, the branch(es) asked for - see resolveCageReadBranch), with
+ * the expected checkout time - for the Cage Occupancy page's countdown. */
+export async function cageOccupantsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  if (!req.user?.branch_id) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const scope = resolveCageReadBranch(req);
+
+  if ('error' in scope) {
+    return res.status(400).json({ error: scope.error });
+  }
+
+  try {
+    const occupants = await listCageOccupants(scope.branchId);
+    return res.status(200).json({ occupants });
   } catch (error) {
     return sendServiceError(res, error);
   }
@@ -368,6 +431,16 @@ export async function updateCageController(
       .json({ error: 'Invalid payload', details: parsed.error.issues });
   }
 
+  // Only Superadmin may reassign a cage to a different branch - everyone
+  // else keeps managing only their own branch's inventory. req.user.role is
+  // freshly resolved by the requireRole([...HOTEL_ADMIN_ROLES]) middleware
+  // already on this route, not a client-supplied claim.
+  if (parsed.data.branch_id !== undefined && req.user?.role !== 'Superadmin') {
+    return res.status(403).json({
+      error: 'Only Superadmin can reassign a cage to a different branch.',
+    });
+  }
+
   try {
     const cage = await updateCage({
       cageId: paramId(req, 'id'),
@@ -375,6 +448,7 @@ export async function updateCageController(
       cageLabel: parsed.data.cage_label,
       size: parsed.data.size,
       petTypes: parsed.data.pet_types,
+      newBranchId: parsed.data.branch_id,
     });
 
     return res.status(200).json({ cage });
@@ -383,7 +457,9 @@ export async function updateCageController(
   }
 }
 
-export async function deleteCageController(
+/** DELETE /hotel/cage/:id archives the cage (Config-menu consistency change) -
+ * the permanent delete lives at DELETE /hotel/cage/:id/permanent. */
+export async function archiveCageController(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -394,7 +470,61 @@ export async function deleteCageController(
   }
 
   try {
-    await deleteCage({ cageId: paramId(req, 'id'), branchId });
+    await archiveCage({ cageId: paramId(req, 'id'), branchId });
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function restoreCageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const cage = await restoreCage({ cageId: paramId(req, 'id'), branchId });
+    return res.status(200).json({ cage });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function listArchivedCagesController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const cages = await listArchivedCages(branchId);
+    return res.status(200).json({ cages });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function hardDeleteCageController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await hardDeleteCage({ cageId: paramId(req, 'id'), branchId });
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

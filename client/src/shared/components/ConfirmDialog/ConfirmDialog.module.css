@@ -1,7 +1,11 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  /* Above Modal/ComposeModal/MfaSetupModal (60) - a confirmation can be
+     raised from inside one of those (e.g. "Discard unsaved changes?" over
+     the Configure branch modal) and must sit on top of it. Still below
+     toasts (100). */
+  z-index: 70;
   display: grid;
   place-items: center;
   padding: var(--space-2);

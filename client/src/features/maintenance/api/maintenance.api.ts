@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../../../shared/auth/api/auth.api';
 import type {
   BranchAvailabilityPayload,
+  BranchPricePayload,
   BranchSummary,
   Breed,
   CreateBreedPayload,
@@ -66,6 +67,42 @@ async function parseBody<T>(
   return { data: body, error: null };
 }
 
+/** Body-less write (archive / restore / permanent delete) - all three answer
+ * 204 with nothing to parse. */
+async function bodylessRequest(
+  path: string,
+  method: 'POST' | 'DELETE',
+  accessToken: string
+): Promise<MaintenanceApiResult<null>> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+async function listArchivedRequest<T>(
+  path: string,
+  key: string,
+  accessToken: string
+): Promise<MaintenanceApiResult<T[]>> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<Record<string, T[]>>(response);
+  return { data: result.data?.[key] ?? null, error: result.error };
+}
+
 function authHeaders(accessToken: string): HeadersInit {
   return { Authorization: `Bearer ${accessToken}` };
 }
@@ -92,6 +129,7 @@ export async function listBranches(): Promise<
   const { data, error } = await supabase
     .from('branches')
     .select('id, name, is_vet_branch')
+    .is('archived_at', null)
     .order('name');
 
   if (error) {
@@ -230,6 +268,32 @@ export async function setServiceBranchAvailability(
   return { data: result.data?.availability ?? null, error: result.error };
 }
 
+/** Sets (or, with null, clears) one branch's own price for a service.
+ * Superadmin-only server-side. */
+export async function setServiceBranchPrice(
+  serviceId: string,
+  accessToken: string,
+  payload: BranchPricePayload
+): Promise<MaintenanceApiResult<ServiceBranchAvailability>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/services/${serviceId}/branch-price`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ availability: ServiceBranchAvailability }>(
+    response
+  );
+  return { data: result.data?.availability ?? null, error: result.error };
+}
+
 export interface ListPackagesFilters {
   branchId?: string;
   includeInactive?: boolean;
@@ -302,9 +366,6 @@ export async function updatePackage(
   return { data: result.data?.package ?? null, error: result.error };
 }
 
-/** Soft: moves the package to the archive. Server still requires
- * is_active === false first (see packages.service.ts's archivePackage
- * guard). */
 export async function setPackageBranchAvailability(
   packageId: string,
   accessToken: string,
@@ -329,6 +390,8 @@ export async function setPackageBranchAvailability(
   return { data: result.data?.availability ?? null, error: result.error };
 }
 
+/** Soft: moves the package to the archive (and deactivates it in the same
+ * step - Deactivate is no longer a separate action). */
 export async function archivePackage(
   packageId: string,
   accessToken: string
@@ -799,23 +862,17 @@ export async function updateBreedAdmin(
   return { data: result.data?.breed ?? null, error: result.error };
 }
 
-export async function deleteBreedAdmin(
+/** Soft: DELETE archives the breed (Config-menu consistency change); the
+ * permanent delete is hardDeleteBreedAdmin, once archived. */
+export async function archiveBreedAdmin(
   breedId: string,
   accessToken: string
 ): Promise<MaintenanceApiResult<null>> {
-  const response = await fetch(
-    `${API_BASE_URL}/maintenance/breeds/${breedId}`,
-    {
-      method: 'DELETE',
-      headers: authHeaders(accessToken),
-    }
+  return bodylessRequest(
+    `/maintenance/breeds/${breedId}`,
+    'DELETE',
+    accessToken
   );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  return { data: null, error: null };
 }
 
 /** Custom change: Service Types admin CRUD. */
@@ -957,23 +1014,17 @@ export async function updatePetType(
   return { data: result.data?.pet_type ?? null, error: result.error };
 }
 
-export async function deletePetType(
+/** Soft: DELETE archives the pet type (Config-menu consistency change); the
+ * permanent delete is hardDeletePetType, once archived. */
+export async function archivePetType(
   petTypeId: string,
   accessToken: string
 ): Promise<MaintenanceApiResult<null>> {
-  const response = await fetch(
-    `${API_BASE_URL}/maintenance/pet-types/${petTypeId}`,
-    {
-      method: 'DELETE',
-      headers: authHeaders(accessToken),
-    }
+  return bodylessRequest(
+    `/maintenance/pet-types/${petTypeId}`,
+    'DELETE',
+    accessToken
   );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  return { data: null, error: null };
 }
 
 export async function listPetTypePriceOverrides(
@@ -1042,4 +1093,125 @@ export async function deletePetTypePriceOverride(
   }
 
   return { data: null, error: null };
+}
+
+// ---------------------------------------------------------------------------
+// Archive / restore / permanent delete (Config-menu consistency change).
+// DELETE on the entity itself archives; permanent delete is only allowed
+// once archived (server: assertArchivedBeforeHardDelete).
+// ---------------------------------------------------------------------------
+
+export function listArchivedBreedsAdmin(accessToken: string) {
+  return listArchivedRequest<Breed>(
+    '/maintenance/breeds/archived',
+    'breeds',
+    accessToken
+  );
+}
+
+export function restoreBreedAdmin(breedId: string, accessToken: string) {
+  return bodylessRequest(
+    `/maintenance/breeds/${breedId}/restore`,
+    'POST',
+    accessToken
+  );
+}
+
+export function hardDeleteBreedAdmin(breedId: string, accessToken: string) {
+  return bodylessRequest(
+    `/maintenance/breeds/${breedId}/permanent`,
+    'DELETE',
+    accessToken
+  );
+}
+
+export function listArchivedPetTypes(accessToken: string) {
+  return listArchivedRequest<PetTypeRow>(
+    '/maintenance/pet-types/archived',
+    'pet_types',
+    accessToken
+  );
+}
+
+export function restorePetType(petTypeId: string, accessToken: string) {
+  return bodylessRequest(
+    `/maintenance/pet-types/${petTypeId}/restore`,
+    'POST',
+    accessToken
+  );
+}
+
+export function hardDeletePetType(petTypeId: string, accessToken: string) {
+  return bodylessRequest(
+    `/maintenance/pet-types/${petTypeId}/permanent`,
+    'DELETE',
+    accessToken
+  );
+}
+
+export function listArchivedServices(accessToken: string) {
+  return listArchivedRequest<Service>(
+    '/maintenance/services/archived',
+    'services',
+    accessToken
+  );
+}
+
+export function archiveService(serviceId: string, accessToken: string) {
+  return bodylessRequest(
+    `/maintenance/services/${serviceId}`,
+    'DELETE',
+    accessToken
+  );
+}
+
+export function restoreService(serviceId: string, accessToken: string) {
+  return bodylessRequest(
+    `/maintenance/services/${serviceId}/restore`,
+    'POST',
+    accessToken
+  );
+}
+
+export function hardDeleteService(serviceId: string, accessToken: string) {
+  return bodylessRequest(
+    `/maintenance/services/${serviceId}/permanent`,
+    'DELETE',
+    accessToken
+  );
+}
+
+export function listArchivedServiceTypes(accessToken: string) {
+  return listArchivedRequest<ServiceType>(
+    '/maintenance/service-types/archived',
+    'service_types',
+    accessToken
+  );
+}
+
+export function archiveServiceType(serviceTypeId: string, accessToken: string) {
+  return bodylessRequest(
+    `/maintenance/service-types/${serviceTypeId}`,
+    'DELETE',
+    accessToken
+  );
+}
+
+export function restoreServiceType(serviceTypeId: string, accessToken: string) {
+  return bodylessRequest(
+    `/maintenance/service-types/${serviceTypeId}/restore`,
+    'POST',
+    accessToken
+  );
+}
+
+export function hardDeleteServiceType(
+  serviceTypeId: string,
+  accessToken: string
+) {
+  return bodylessRequest(
+    `/maintenance/service-types/${serviceTypeId}/permanent`,
+    'DELETE',
+    accessToken
+  );
 }

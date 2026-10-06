@@ -59,6 +59,7 @@ import {
   deriveBookingConfirmationState,
 } from '../../bookingConfirmation';
 import styles from './AssessmentQueuePage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 // Everyone except Cashier - mirrors the viewerRole !== 'Cashier' gate this
 // queue used when it was folded into ReceptionistBookingsQueuePage, just as
@@ -551,7 +552,7 @@ export function AssessmentQueuePage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -609,7 +610,7 @@ export function AssessmentQueuePage() {
 
         <ActiveFilterChips chips={filterChips} />
 
-        {isLoading ? <p className={styles.copy}>Loading bookings...</p> : null}
+        {isLoading ? <LoadingState label="Loading bookings..." /> : null}
 
         {loadError ? (
           <p className={styles.errorBanner} role="alert">
@@ -633,8 +634,8 @@ export function AssessmentQueuePage() {
                   booking.status
                 );
               // Admins/Superadmins drive status with the override dropdown
-              // below; everyone else records the assessment by clicking the
-              // row, which also completes the booking.
+              // below; everyone else records the assessment with the "Record
+              // assessment" button, which also completes the booking.
               const assessable = !isStatusOverrideRole && isAssessable(booking);
               const isAdvancing = advancingBookingId === booking.id;
 
@@ -657,30 +658,12 @@ export function AssessmentQueuePage() {
                     {pets[booking.pet_id]?.name ?? 'Unknown pet'} - Owner{' '}
                     {owners[booking.customer_id]?.full_name ?? 'Unknown owner'}
                   </span>
-                  {assessable ? (
-                    <span className={styles.assessHint}>
-                      {isAdvancing
-                        ? 'Saving assessment...'
-                        : 'Click to record the assessment and complete this booking'}
-                    </span>
-                  ) : null}
                 </>
               );
 
               return (
                 <li key={booking.id} className={styles.bookingRow}>
-                  {assessable ? (
-                    <button
-                      type="button"
-                      className={styles.rowSummaryButton}
-                      disabled={isAdvancing}
-                      onClick={() => openAssessment(booking)}
-                    >
-                      {summary}
-                    </button>
-                  ) : (
-                    <div className={styles.rowSummary}>{summary}</div>
-                  )}
+                  <div className={styles.rowSummary}>{summary}</div>
 
                   {confirmationState === 'Unconfirmed' ? (
                     <p className={styles.unconfirmedHint}>
@@ -692,6 +675,18 @@ export function AssessmentQueuePage() {
                   ) : null}
 
                   <div className={styles.bookingControls}>
+                    {assessable ? (
+                      <button
+                        type="button"
+                        className={styles.recordButton}
+                        disabled={isAdvancing}
+                        onClick={() => openAssessment(booking)}
+                      >
+                        {isAdvancing
+                          ? 'Saving assessment...'
+                          : 'Record assessment'}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className={styles.secondaryButton}

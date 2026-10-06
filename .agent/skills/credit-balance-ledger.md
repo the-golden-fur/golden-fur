@@ -21,7 +21,7 @@ period wasn't met, the payment is forfeited without credit issuance. A
 cancellation log is written either way.
 
 - **Amount paid** is the sum of the booking's `booking_payment`
-  `transactions` rows that a cashier or the PayMongo webhook has settled —
+  `transactions` rows that a cashier has settled —
   every settled row is `payment_status = 'Fully Paid'`, an uncollected
   charge stays `'Pending'` — read in `cancellation.service.ts` via
   `confirmedAmountPaid()`. **Not** `bookings.payment_status` (the

@@ -3,7 +3,11 @@ import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentSt
 import type { PaymentStatus } from '../../../booking/booking.types';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import type { TransactionRecord } from '../../reports.types';
-import { paymentChoiceLabel, transactionTypeLabel } from './transactionDisplay';
+import {
+  paymentChoiceLabel,
+  paymentTone,
+  transactionTypeLabel,
+} from './transactionDisplay';
 import styles from './TransactionBoard.module.css';
 
 interface TransactionBoardProps {
@@ -19,6 +23,12 @@ interface TransactionBoardProps {
    * on every card is noise there - hide it. Defaults to shown (staff). */
   showCustomer?: boolean;
 }
+
+const CARD_TONE_CLASS = {
+  due: styles.cardDue,
+  partial: styles.cardPartial,
+  paid: styles.cardPaid,
+} as const;
 
 const COLUMNS: Array<{ status: PaymentStatus; className: string }> = [
   { status: 'Pending', className: styles.columnPending },
@@ -117,7 +127,11 @@ function TransactionCard({
   };
 
   return (
-    <div className={styles.card}>
+    <div
+      className={`${styles.card} ${
+        CARD_TONE_CLASS[paymentTone(transaction.payment_status)]
+      }`}
+    >
       <div
         className={onActivate ? styles.cardBodyClickable : styles.cardBody}
         role={onActivate ? 'button' : undefined}

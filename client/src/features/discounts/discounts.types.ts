@@ -7,7 +7,13 @@
 
 export type DiscountValueType = 'Percentage' | 'Flat';
 
-export type DiscountScopeType = 'service' | 'package' | 'category';
+/** 'misc_sale' (session 115): applies to any miscellaneous sale, no further
+ * sub-scoping - mirrors the server's own DiscountScopeType. */
+export type DiscountScopeType =
+  | 'service'
+  | 'package'
+  | 'category'
+  | 'misc_sale';
 
 export type DiscountCategory =
   | 'Grooming'
@@ -37,11 +43,13 @@ export interface Discount {
   id: string;
   name: string;
   /**
-   * True only for the seeded Senior Citizen / PWD rows (#44). Their name and
-   * this flag are immutable via the API (#43 AC-3) - the UI mirrors that by
-   * making the name field read-only when is_mandated is true.
+   * True only for the seeded Senior Citizen / PWD rows (#44). This flag is
+   * immutable via the API (#43 AC-3). Their name is editable like any other
+   * discount's - checkout identifies them by mandated_kind, not by name.
    */
   is_mandated: boolean;
+  /** Stable identity of a mandated discount (20260928220); null if custom. */
+  mandated_kind?: 'senior_citizen' | 'pwd' | null;
   discount_type: DiscountValueType;
   value: number;
   scope_type: DiscountScopeType;

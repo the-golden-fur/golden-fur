@@ -58,6 +58,7 @@ import {
   matchesCustomerQuery,
 } from './customerBrowserFields';
 import styles from './CustomerManagementPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * Deliberately the exact same role list as the customer_profiles/pets staff
@@ -436,7 +437,7 @@ export function CustomerManagementPage() {
     }
 
     if (activePanel?.action === 'viewPets') {
-      if (isPetsLoading) return <p className={styles.copy}>Loading pets...</p>;
+      if (isPetsLoading) return <LoadingState label="Loading pets..." />;
       if (petsLoadError) {
         return (
           <p className={styles.errorBanner} role="alert">
@@ -520,7 +521,7 @@ export function CustomerManagementPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -559,7 +560,7 @@ export function CustomerManagementPage() {
         {message ? <p className={styles.successBanner}>{message}</p> : null}
 
         {isLoading ? (
-          <p className={styles.copy}>Loading customers...</p>
+          <LoadingState label="Loading customers..." />
         ) : loadError ? (
           <p className={styles.errorBanner} role="alert">
             {loadError}

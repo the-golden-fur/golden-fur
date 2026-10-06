@@ -33,7 +33,12 @@ vi.mock('../../api/veterinary.api', () => ({
   getPetConsultationHistory: vi.fn(),
   upsertPetHealthConditions: vi.fn(),
   listMedicationCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
-  listProcedureCatalog: vi.fn().mockResolvedValue({ data: [], error: null }),
+  listPrescriptionTemplates: vi
+    .fn()
+    .mockResolvedValue({ data: [], error: null }),
+  listConsultationFormTemplates: vi
+    .fn()
+    .mockResolvedValue({ data: [], error: null }),
 }));
 
 function buildViewerProfile(role: StaffProfile['role']): StaffProfile {
@@ -74,6 +79,7 @@ function buildConsultation(
     respiratory_rate: null,
     diagnosis: null,
     medications: null,
+    form_responses: null,
     reason_for_visit: 'Annual checkup',
     follow_up_date: null,
     follow_up_booking_id: null,
@@ -312,21 +318,35 @@ describe('VeterinaryConsolePage (#70)', () => {
 
     renderPage();
 
-    await userEvent.click(await screen.findByText('Whiskers'));
+    // A plain row click no longer opens anything - only the row's "..."
+    // menu's "View Details" action does.
+    await screen.findByText('Whiskers');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Options for Whiskers' })
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'View Details' })
+    );
 
-    const startButtons = await screen.findAllByRole('button', {
-      name: /^start consultation$/i,
+    const detailsDialog = await screen.findByRole('dialog', {
+      name: 'Consultation Details',
     });
-    // Both the row's quick-start button and the detail panel's trigger are
-    // visible at this point - the panel's is the last one in document order
-    // (queue renders before the detail pane).
-    await userEvent.click(startButtons[startButtons.length - 1]);
+    await userEvent.click(
+      within(detailsDialog).getByRole('button', {
+        name: /^start consultation$/i,
+      })
+    );
 
-    const dialog = await screen.findByRole('dialog');
+    // The confirm modal nests on top of the still-open Details modal.
+    const confirmDialog = await screen.findByRole('dialog', {
+      name: 'Start Consultation',
+    });
     expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
 
     await userEvent.click(
-      within(dialog).getByRole('button', { name: /start consultation/i })
+      within(confirmDialog).getByRole('button', {
+        name: /start consultation/i,
+      })
     );
 
     await waitFor(() =>
@@ -357,9 +377,19 @@ describe('VeterinaryConsolePage (#70)', () => {
 
     renderPage();
 
-    await userEvent.click(await screen.findByText('Whiskers'));
+    await screen.findByText('Whiskers');
     await userEvent.click(
-      await screen.findByRole('button', { name: /complete consultation/i })
+      screen.getByRole('button', { name: 'Options for Whiskers' })
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'View Details' })
+    );
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Consultation Details',
+    });
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /complete consultation/i })
     );
 
     await waitFor(() =>
@@ -371,7 +401,91 @@ describe('VeterinaryConsolePage (#70)', () => {
     );
   });
 
-  it('View Details shows a read-only vet-only snapshot (vitals/diagnosis/medications), not the booking-side receipt', async () => {
+  it('an In Progress row has a Complete button that finishes the consultation with just the professional fee', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: { consultations: [buildConsultation({}, 'In Progress')] },
+      error: null,
+    });
+    stubPetAndOwner();
+    vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+      data: buildConsultation({}, 'Completed'),
+      error: null,
+    });
+
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /^complete$/i })
+    );
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Complete Consultation',
+    });
+    expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
+
+    await userEvent.type(
+      within(dialog).getByLabelText(/professional fee/i),
+      '500'
+    );
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /^complete$/i })
+    );
+
+    await waitFor(() =>
+      expect(veterinaryApi.updateConsultation).toHaveBeenCalledWith(
+        'consultation-1',
+        'token',
+        { status: 'Completed', professional_fee: 500 }
+      )
+    );
+    // Saved medications/results are left alone - not overwritten with [].
+    const payload = vi.mocked(veterinaryApi.updateConsultation).mock
+      .calls[0][2];
+    expect(payload.medications).toBeUndefined();
+    expect(payload.form_responses).toBeUndefined();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Complete Consultation' })
+      ).not.toBeInTheDocument()
+    );
+    expect(
+      screen.getByText('Completed', { selector: 'span' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^complete$/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows no Complete button on Pending rows or to a view-only role', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Admin'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: {
+        consultations: [
+          buildConsultation({ id: 'c-pending' }, 'Pending'),
+          buildConsultation({ id: 'c-ongoing' }, 'In Progress'),
+        ],
+      },
+      error: null,
+    });
+    stubPetAndOwner();
+
+    renderPage();
+
+    await screen.findAllByText('Whiskers');
+    expect(
+      screen.queryByRole('button', { name: /^complete$/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('View Details opens the same panel (Prescription + Results as sections, no separate modals) read-only once Completed', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Veterinarian'),
       error: null,
@@ -381,13 +495,23 @@ describe('VeterinaryConsolePage (#70)', () => {
         consultations: [
           buildConsultation(
             {
-              temperature: 38.5,
-              weight: 12,
-              heart_rate: 90,
-              respiratory_rate: 20,
-              diagnosis: 'Ear infection',
               medications: [
                 { name: 'Amoxicillin', dose: '250mg', notes: 'Twice daily' },
+              ],
+              form_responses: [
+                {
+                  template_id: 'tmpl-1',
+                  template_name: 'Dental Check',
+                  filled_at: '2026-07-19T02:00:00.000Z',
+                  fields: [
+                    {
+                      field_id: 'f1',
+                      label: 'Tartar level',
+                      type: 'text',
+                      value: 'Mild',
+                    },
+                  ],
+                },
               ],
             },
             'Completed'
@@ -400,10 +524,12 @@ describe('VeterinaryConsolePage (#70)', () => {
 
     renderPage();
 
-    // shared-toolbar-and-tap-to-hold: List view's card has no persistent
-    // "..." button (see CardContextMenu) - right-click (desktop) or a
-    // long-press (touch) opens the same menu instead.
-    fireEvent.contextMenu(await screen.findByText('Whiskers'));
+    // List view's row options are a visible "..." button, same as Table -
+    // only Board (a crowded card grid) uses right-click/long-press instead.
+    await screen.findByText('Whiskers');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Options for Whiskers' })
+    );
     await userEvent.click(
       screen.getByRole('menuitem', { name: 'View Details' })
     );
@@ -411,16 +537,19 @@ describe('VeterinaryConsolePage (#70)', () => {
     const dialog = await screen.findByRole('dialog', {
       name: 'Consultation Details',
     });
-    expect(within(dialog).getByText('38.5')).toBeInTheDocument();
-    expect(within(dialog).getByText('Ear infection')).toBeInTheDocument();
-    expect(
-      within(dialog).getByText('Amoxicillin — 250mg (Twice daily)')
-    ).toBeInTheDocument();
 
-    // Read-only - no editable form controls in this view, unlike selecting
-    // the row (which opens ConsultationDetailPanel's input-based form).
-    expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole('spinbutton')).not.toBeInTheDocument();
+    // Prescription section - the medication's name is a read-only label,
+    // dose/type/frequency/duration/amount are the editable (here, disabled)
+    // inputs.
+    expect(within(dialog).getByText('Amoxicillin')).toBeInTheDocument();
+    // Results section, in the same dialog - no separate "Results" modal.
+    expect(within(dialog).getByText('Dental Check')).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue('Mild')).toBeInTheDocument();
+
+    // Read-only once Completed - every input in the panel is disabled.
+    for (const input of within(dialog).getAllByRole('textbox')) {
+      expect(input).toBeDisabled();
+    }
   });
 
   it('shared-toolbar-and-tap-to-hold: adding a Status filter tile narrows the queue to just that status', async () => {
@@ -484,6 +613,33 @@ describe('VeterinaryConsolePage (#70)', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Options for Whiskers' })
     );
+    expect(
+      screen.getByRole('menuitem', { name: 'View Details' })
+    ).toBeInTheDocument();
+  });
+
+  it('shared-toolbar-and-tap-to-hold: switches to Board view, where row actions have no persistent button - right-click/long-press opens the same menu instead', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Veterinarian'),
+      error: null,
+    });
+    vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+      data: { consultations: [buildConsultation({}, 'Completed')] },
+      error: null,
+    });
+    stubPetAndOwner();
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Whiskers');
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+
+    expect(
+      screen.queryByRole('button', { name: 'Options for Whiskers' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Whiskers'));
     expect(
       screen.getByRole('menuitem', { name: 'View Details' })
     ).toBeInTheDocument();

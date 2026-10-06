@@ -36,7 +36,7 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
-import { BranchAvailabilityModal } from '../../../maintenance/components/BranchAvailabilityModal/BranchAvailabilityModal';
+import { useRenameAndArchive } from '../../../../shared/hooks/useRenameAndArchive/useRenameAndArchive';
 import { BranchMultiSelect } from '../../../maintenance/components/BranchMultiSelect/BranchMultiSelect';
 import {
   archiveDiscount,
@@ -61,6 +61,7 @@ import {
   matchesDiscountQuery,
 } from './discountBrowserFields';
 import styles from './AdminDiscountManagementPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as DISCOUNT_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -94,6 +95,7 @@ export function AdminDiscountManagementPage() {
   const { user, accessToken } = useAuth();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [discounts, setDiscounts] = useState<Discount[]>([]);
@@ -115,7 +117,6 @@ export function AdminDiscountManagementPage() {
   const [editingDiscountId, setEditingDiscountId] = useState<string | null>(
     null
   );
-  const [editingIsMandated, setEditingIsMandated] = useState(false);
   const [formBranchIds, setFormBranchIds] = useState<string[]>([]);
   const [formName, setFormName] = useState('');
   const [formDiscountType, setFormDiscountType] =
@@ -129,9 +130,6 @@ export function AdminDiscountManagementPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [availabilityDiscountId, setAvailabilityDiscountId] = useState<
-    string | null
-  >(null);
 
   // Viewer role via the requester's own row in GET /staff, same as the other
   // admin pages.
@@ -150,6 +148,7 @@ export function AdminDiscountManagementPage() {
       setIsRoleLoading(false);
       const self = result.data?.find((staff) => staff.id === user.id);
       setViewerRole(self?.role ?? null);
+      setViewerBranchId(self?.branch_id ?? null);
     });
 
     return () => {
@@ -159,6 +158,9 @@ export function AdminDiscountManagementPage() {
 
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
+  // An Admin is scoped to their own branch's availability; Superadmin can
+  // touch any branch.
+  const lockedBranchId = viewerRole === 'Admin' ? viewerBranchId : null;
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -263,10 +265,6 @@ export function AdminDiscountManagementPage() {
     );
   }, [packages, formBranchIds]);
 
-  const availabilityDiscount = discounts.find(
-    (discount) => discount.id === availabilityDiscountId
-  );
-
   const replaceDiscount = (updated: Discount) => {
     setDiscounts((prev) =>
       prev.map((discount) => (discount.id === updated.id ? updated : discount))
@@ -281,7 +279,6 @@ export function AdminDiscountManagementPage() {
 
   const openCreateForm = () => {
     setEditingDiscountId(null);
-    setEditingIsMandated(false);
     setFormBranchIds([]);
     setFormName('');
     setFormDiscountType('Percentage');
@@ -294,7 +291,6 @@ export function AdminDiscountManagementPage() {
 
   const openEditForm = (discount: Discount) => {
     setEditingDiscountId(discount.id);
-    setEditingIsMandated(discount.is_mandated);
     setFormBranchIds(availableBranchIds(discount));
     setFormName(discount.name);
     setFormDiscountType(discount.discount_type);
@@ -310,60 +306,45 @@ export function AdminDiscountManagementPage() {
   const closeForm = () => {
     setIsFormOpen(false);
     setEditingDiscountId(null);
-    setEditingIsMandated(false);
     setFormError(null);
   };
 
-  const handleBranchToggle = async (
-    discount: Discount,
-    branchId: string,
-    isAvailable: boolean
-  ) => {
-    if (!accessToken) {
-      return;
-    }
+  const { requestRename, requestArchive, dialogs } =
+    useRenameAndArchive<Discount>({
+      entityLabel: 'discount',
+      getName: (discount) => discount.name,
+      archiveConsequence:
+        'it will stop applying at checkout and booking, and be hidden from this list',
+      onRename: async (discount, name) => {
+        if (!accessToken) return 'You are signed out.';
 
-    const result = await setDiscountBranchAvailability(
-      discount.id,
-      accessToken,
-      { branch_id: branchId, is_available: isAvailable }
-    );
+        const result = await updateDiscount(discount.id, accessToken, {
+          name,
+        });
 
-    if (result.error || !result.data) {
-      setMessage(result.error ?? 'Could not update branch availability.');
-      return;
-    }
+        if (result.error || !result.data) {
+          return result.error ?? 'Could not rename the discount.';
+        }
 
-    const rows = discount.discount_branch_availability ?? [];
-    const hasRow = rows.some((row) => row.branch_id === branchId);
-    const nextRows = hasRow
-      ? rows.map((row) =>
-          row.branch_id === branchId ? { ...row, ...result.data } : row
-        )
-      : [...rows, result.data];
+        replaceDiscount(result.data);
+        setMessage('Discount renamed.');
+        return null;
+      },
+      onArchive: async (discount) => {
+        if (!accessToken) return 'You are signed out.';
 
-    replaceDiscount({
-      ...discount,
-      discount_branch_availability: nextRows,
-      is_active: deriveIsActive(nextRows),
+        const result = await archiveDiscount(discount.id, accessToken);
+
+        if (result.error) return result.error;
+
+        setDiscounts((prev) => prev.filter((item) => item.id !== discount.id));
+        setMessage(
+          'Discount archived. Restore it from Settings > Config > Archive.'
+        );
+        return null;
+      },
+      onArchiveError: setMessage,
     });
-  };
-
-  const handleArchive = async (discount: Discount) => {
-    if (!accessToken) {
-      return;
-    }
-
-    const result = await archiveDiscount(discount.id, accessToken);
-
-    if (result.error) {
-      setMessage(result.error);
-      return;
-    }
-
-    setDiscounts((prev) => prev.filter((item) => item.id !== discount.id));
-    setMessage('Discount archived.');
-  };
 
   /**
    * Applies the edit form's branch multiselect to a just-updated discount by
@@ -473,11 +454,13 @@ export function AdminDiscountManagementPage() {
         ? { scope_service_id: formScopeServiceId }
         : formScopeType === 'package'
           ? { scope_package_id: formScopePackageId }
-          : {
-              scope_category: formScopeCategory as NonNullable<
-                Discount['scope_category']
-              >,
-            };
+          : formScopeType === 'category'
+            ? {
+                scope_category: formScopeCategory as NonNullable<
+                  Discount['scope_category']
+                >,
+              }
+            : {};
 
     if (editingDiscountId === null) {
       const result = await createDiscount(accessToken, {
@@ -502,11 +485,10 @@ export function AdminDiscountManagementPage() {
       return;
     }
 
-    // A mandated discount's name is immutable (#43 AC-3) - omit it entirely
-    // rather than resubmit the unchanged value, since the field is read-only
-    // in this form anyway.
+    // A mandated discount's name is editable like any other's - checkout
+    // identifies Senior Citizen / PWD by mandated_kind, not by name.
     const result = await updateDiscount(editingDiscountId, accessToken, {
-      ...(editingIsMandated ? {} : { name: formName.trim() }),
+      name: formName.trim(),
       discount_type: formDiscountType,
       value,
       scope_type: formScopeType,
@@ -543,6 +525,10 @@ export function AdminDiscountManagementPage() {
       }`;
     }
 
+    if (discount.scope_type === 'misc_sale') {
+      return 'Any miscellaneous sale';
+    }
+
     return `Category: ${discount.scope_category ?? 'Unknown'}`;
   };
 
@@ -562,7 +548,7 @@ export function AdminDiscountManagementPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -576,7 +562,7 @@ export function AdminDiscountManagementPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading discounts...</p>
+          <LoadingState label="Loading discounts..." />
         </div>
       </main>
     );
@@ -599,7 +585,9 @@ export function AdminDiscountManagementPage() {
       ? 'Service'
       : discount.scope_type === 'package'
         ? 'Package'
-        : 'Category';
+        : discount.scope_type === 'misc_sale'
+          ? 'Misc Sale'
+          : 'Category';
   }
 
   function valueLabel(discount: Discount): string {
@@ -609,20 +597,14 @@ export function AdminDiscountManagementPage() {
   }
 
   function buildDiscountActionItems(discount: Discount): MoreOptionsMenuItem[] {
+    // Configure / Rename / Archive. Per-branch availability lives inside the
+    // Configure form ("Available at"), so it has no menu item of its own.
+    // Mandated (Senior Citizen / PWD) rows too: checkout identifies them by
+    // mandated_kind, so their display name is free to change.
     return [
       { label: 'Configure', onSelect: () => openEditForm(discount) },
-      {
-        label: 'Branch Availability',
-        onSelect: () => setAvailabilityDiscountId(discount.id),
-      },
-      ...(!discount.is_active && !discount.is_mandated
-        ? [
-            {
-              label: 'Archive',
-              onSelect: () => void handleArchive(discount),
-            },
-          ]
-        : []),
+      { label: 'Rename', onSelect: () => requestRename(discount) },
+      { label: 'Archive', onSelect: () => requestArchive(discount) },
     ];
   }
 
@@ -638,8 +620,8 @@ export function AdminDiscountManagementPage() {
   }
 
   // Custom change (unify active/available): deliberately no Active/Inactive
-  // column - Branch Availability (the "..." menu) is the only control, and
-  // is_active is purely derived from it, not directly settable. Showing a
+  // column - the "Available at" branches in Configure are the only control,
+  // and is_active is purely derived from them, not directly settable. Showing a
   // status badge here would wrongly imply a direct toggle exists.
   const columns: DataTableColumn<Discount>[] = [
     {
@@ -730,8 +712,8 @@ export function AdminDiscountManagementPage() {
         </div>
         <p className={styles.copy}>
           A discount is active wherever it&apos;s available - use a row&apos;s
-          &quot;...&quot; menu &gt; Branch Availability to turn it on or off per
-          branch.
+          &quot;...&quot; menu &gt; Configure and its &quot;Available at&quot;
+          branches to turn it on or off per branch.
         </p>
 
         <div className={styles.toolbar}>
@@ -789,7 +771,6 @@ export function AdminDiscountManagementPage() {
                   type="text"
                   value={formName}
                   onChange={(event) => setFormName(event.target.value)}
-                  disabled={editingIsMandated}
                   required
                 />
               </label>
@@ -842,6 +823,7 @@ export function AdminDiscountManagementPage() {
                   <option value="service">Service</option>
                   <option value="package">Package</option>
                   <option value="category">Category</option>
+                  <option value="misc_sale">Miscellaneous Sale</option>
                 </select>
               </label>
 
@@ -904,6 +886,7 @@ export function AdminDiscountManagementPage() {
                 label="Available at"
                 branches={branches}
                 selectedBranchIds={formBranchIds}
+                lockedBranchId={lockedBranchId}
                 onChange={setFormBranchIds}
               />
 
@@ -962,28 +945,7 @@ export function AdminDiscountManagementPage() {
         )}
       </div>
 
-      <BranchAvailabilityModal
-        isOpen={availabilityDiscount !== undefined}
-        itemName={availabilityDiscount?.name ?? ''}
-        rows={branches.map((branch) => ({
-          branchId: branch.id,
-          branchName: branch.name,
-          isAvailable:
-            (availabilityDiscount?.discount_branch_availability ?? []).find(
-              (row) => row.branch_id === branch.id
-            )?.is_available ?? false,
-        }))}
-        onToggle={(branchId, isAvailable) => {
-          if (availabilityDiscount) {
-            void handleBranchToggle(
-              availabilityDiscount,
-              branchId,
-              isAvailable
-            );
-          }
-        }}
-        onClose={() => setAvailabilityDiscountId(null)}
-      />
+      {dialogs}
     </main>
   );
 }

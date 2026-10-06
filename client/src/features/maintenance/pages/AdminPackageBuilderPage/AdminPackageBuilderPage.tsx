@@ -41,7 +41,7 @@ import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
-import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
+import { CardRowWithMenu } from '../../../../shared/components/MoreOptionsMenu/CardRowWithMenu';
 import {
   SearchSortBar,
   type SortOption,
@@ -51,8 +51,8 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { useRenameAndArchive } from '../../../../shared/hooks/useRenameAndArchive/useRenameAndArchive';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
-import { BranchAvailabilityModal } from '../../components/BranchAvailabilityModal/BranchAvailabilityModal';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
 import { IconPicker } from '../../../../shared/components/IconPicker/IconPicker';
 import { getServiceIcon } from '../../../../shared/components/IconPicker/serviceIcons';
@@ -77,6 +77,7 @@ import {
   PACKAGE_SORT_FIELDS,
 } from './packageBrowserFields';
 import styles from './AdminPackageBuilderPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
@@ -115,6 +116,7 @@ export function AdminPackageBuilderPage() {
   const { user, accessToken } = useAuth();
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
 
   const [packages, setPackages] = useState<Package[]>([]);
@@ -153,9 +155,6 @@ export function AdminPackageBuilderPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [availabilityPackageId, setAvailabilityPackageId] = useState<
-    string | null
-  >(null);
 
   // The service picker's own type filter - narrows which services are
   // offered as pickable options without touching selectedServiceIds (an
@@ -183,6 +182,7 @@ export function AdminPackageBuilderPage() {
       setIsRoleLoading(false);
       const self = result.data?.find((staff) => staff.id === user.id);
       setViewerRole(self?.role ?? null);
+      setViewerBranchId(self?.branch_id ?? null);
     });
 
     return () => {
@@ -192,6 +192,9 @@ export function AdminPackageBuilderPage() {
 
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
+  // An Admin is scoped to their own branch's availability; Superadmin can
+  // touch any branch.
+  const lockedBranchId = viewerRole === 'Admin' ? viewerBranchId : null;
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -450,10 +453,6 @@ export function AdminPackageBuilderPage() {
     discountPercentInput,
   ]);
 
-  const availabilityPackage = packages.find(
-    (pkg) => pkg.id === availabilityPackageId
-  );
-
   const replacePackage = (updated: Package) => {
     setPackages((prev) =>
       prev.map((pkg) => (pkg.id === updated.id ? updated : pkg))
@@ -602,21 +601,39 @@ export function AdminPackageBuilderPage() {
     return null;
   }
 
-  const handleArchive = async (pkg: Package) => {
-    if (!accessToken) {
-      return;
-    }
+  const { requestRename, requestArchive, dialogs } =
+    useRenameAndArchive<Package>({
+      entityLabel: 'package',
+      getName: (pkg) => pkg.name,
+      archiveConsequence: 'it will be hidden from booking and promos',
+      onRename: async (pkg, name) => {
+        if (!accessToken) return 'You are signed out.';
 
-    const result = await archivePackage(pkg.id, accessToken);
+        const result = await updatePackage(pkg.id, accessToken, { name });
 
-    if (result.error) {
-      setMessage(result.error);
-      return;
-    }
+        if (result.error || !result.data) {
+          return result.error ?? 'Could not rename package.';
+        }
 
-    setPackages((prev) => prev.filter((item) => item.id !== pkg.id));
-    setMessage('Package archived.');
-  };
+        replacePackage(result.data);
+        setMessage('Package renamed.');
+        return null;
+      },
+      onArchive: async (pkg) => {
+        if (!accessToken) return 'You are signed out.';
+
+        const result = await archivePackage(pkg.id, accessToken);
+
+        if (result.error) return result.error;
+
+        setPackages((prev) => prev.filter((item) => item.id !== pkg.id));
+        setMessage(
+          'Package archived. Restore it from Settings > Config > Archive.'
+        );
+        return null;
+      },
+      onArchiveError: setMessage,
+    });
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -705,13 +722,8 @@ export function AdminPackageBuilderPage() {
   function buildPackageActionItems(pkg: Package): MoreOptionsMenuItem[] {
     return [
       { label: 'Configure', onSelect: () => openEditForm(pkg) },
-      {
-        label: 'Branch Availability',
-        onSelect: () => setAvailabilityPackageId(pkg.id),
-      },
-      ...(!pkg.is_active
-        ? [{ label: 'Archive', onSelect: () => void handleArchive(pkg) }]
-        : []),
+      { label: 'Rename', onSelect: () => requestRename(pkg) },
+      { label: 'Archive', onSelect: () => requestArchive(pkg) },
     ];
   }
 
@@ -779,10 +791,11 @@ export function AdminPackageBuilderPage() {
   // persistent "..." button, matching Cages/Staff/Customer Management.
   // Table view keeps the visible tap-to-open button (renderPackageActions
   // above) - only the dense card grid gets the hold gesture.
-  function renderPackageCard(pkg: Package) {
+  function renderPackageCard(pkg: Package, showMenuButton = false) {
     const Icon = getServiceIcon(pkg.icon);
     return (
-      <CardContextMenu
+      <CardRowWithMenu
+        showMenuButton={showMenuButton}
         label={`Actions for ${pkg.name}`}
         items={buildPackageActionItems(pkg)}
       >
@@ -794,7 +807,7 @@ export function AdminPackageBuilderPage() {
             PHP {pkg.bundled_price.toFixed(2)}
           </span>
         </div>
-      </CardContextMenu>
+      </CardRowWithMenu>
     );
   }
 
@@ -814,7 +827,7 @@ export function AdminPackageBuilderPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -828,7 +841,7 @@ export function AdminPackageBuilderPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading packages...</p>
+          <LoadingState label="Loading packages..." />
         </div>
       </main>
     );
@@ -945,6 +958,7 @@ export function AdminPackageBuilderPage() {
                   label="Available at"
                   branches={branches}
                   selectedBranchIds={selectedBranchIds}
+                  lockedBranchId={lockedBranchId}
                   onChange={setSelectedBranchIds}
                 />
               </div>
@@ -1105,7 +1119,9 @@ export function AdminPackageBuilderPage() {
             items={filteredPackages}
             getRowKey={(pkg) => pkg.id}
             renderItem={(pkg) => (
-              <div className={styles.rowContent}>{renderPackageCard(pkg)}</div>
+              <div className={styles.rowContent}>
+                {renderPackageCard(pkg, true)}
+              </div>
             )}
             emptyMessage="No packages match the selected filters."
           />
@@ -1121,54 +1137,7 @@ export function AdminPackageBuilderPage() {
         )}
       </div>
 
-      <BranchAvailabilityModal
-        isOpen={availabilityPackage !== undefined}
-        itemName={availabilityPackage?.name ?? ''}
-        rows={branches.map((branch) => ({
-          branchId: branch.id,
-          branchName: branch.name,
-          isAvailable:
-            (availabilityPackage?.package_branch_availability ?? []).find(
-              (row) => row.branch_id === branch.id
-            )?.is_available ?? false,
-        }))}
-        onToggle={(branchId, isAvailable) => {
-          if (!accessToken || !availabilityPackage) {
-            return;
-          }
-
-          void setPackageBranchAvailability(
-            availabilityPackage.id,
-            accessToken,
-            {
-              branch_id: branchId,
-              is_available: isAvailable,
-            }
-          ).then((result) => {
-            if (result.error || !result.data || !availabilityPackage) {
-              setMessage(
-                result.error ?? 'Could not update branch availability.'
-              );
-              return;
-            }
-
-            const rows = availabilityPackage.package_branch_availability ?? [];
-            const hasRow = rows.some((row) => row.branch_id === branchId);
-            const nextRows = hasRow
-              ? rows.map((row) =>
-                  row.branch_id === branchId ? { ...row, ...result.data } : row
-                )
-              : [...rows, result.data];
-
-            replacePackage({
-              ...availabilityPackage,
-              package_branch_availability: nextRows,
-              is_active: deriveIsActive(nextRows),
-            });
-          });
-        }}
-        onClose={() => setAvailabilityPackageId(null)}
-      />
+      {dialogs}
     </main>
   );
 }

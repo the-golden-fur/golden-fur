@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listMedicalNotes } from '../../../api/customer.api';
 import type { PetMedicalNote } from '../../../customer.types';
 import styles from './MedicalNoteList.module.css';
+import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface MedicalNoteListProps {
   petId: string;
@@ -42,7 +43,7 @@ export function MedicalNoteList({ petId, accessToken }: MedicalNoteListProps) {
   }, [petId, accessToken]);
 
   if (isLoading) {
-    return <p className={styles.copy}>Loading medical notes...</p>;
+    return <LoadingState label="Loading medical notes..." />;
   }
 
   if (error) {

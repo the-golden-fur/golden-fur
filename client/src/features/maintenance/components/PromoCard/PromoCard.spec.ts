@@ -32,9 +32,8 @@ describe('PromoCard', () => {
     render(
       createElement(PromoCard, {
         promo: { ...PROMO, start_date: '2020-01-01', end_date: '2020-01-31' },
-        onToggle: vi.fn(),
-        onEdit: vi.fn(),
-        onManageBranches: vi.fn(),
+        onConfigure: vi.fn(),
+        onRename: vi.fn(),
         onArchive: vi.fn(),
       })
     );
@@ -55,9 +54,8 @@ describe('PromoCard', () => {
           end_date: null,
           condition_note: 'First booking of the month',
         },
-        onToggle: vi.fn(),
-        onEdit: vi.fn(),
-        onManageBranches: vi.fn(),
+        onConfigure: vi.fn(),
+        onRename: vi.fn(),
         onArchive: vi.fn(),
       })
     );
@@ -66,64 +64,76 @@ describe('PromoCard', () => {
     expect(screen.getByText('Active now')).toBeInTheDocument();
   });
 
-  it('calls onToggle when the switch is clicked', async () => {
-    const onToggle = vi.fn();
+  it('calls onConfigure when Configure is clicked', async () => {
+    const onConfigure = vi.fn();
     const user = userEvent.setup();
 
     render(
       createElement(PromoCard, {
         promo: PROMO,
-        onToggle,
-        onEdit: vi.fn(),
-        onManageBranches: vi.fn(),
+        onConfigure,
+        onRename: vi.fn(),
         onArchive: vi.fn(),
       })
     );
 
-    await user.click(
-      screen.getByRole('switch', { name: 'Disable Summer Sale' })
-    );
+    await user.click(screen.getByRole('button', { name: 'Configure' }));
 
-    expect(onToggle).toHaveBeenCalledWith(false);
+    expect(onConfigure).toHaveBeenCalled();
   });
 
-  it('calls onEdit when Edit is clicked', async () => {
-    const onEdit = vi.fn();
+  it('calls onRename when Rename is clicked', async () => {
+    const onRename = vi.fn();
     const user = userEvent.setup();
 
     render(
       createElement(PromoCard, {
         promo: PROMO,
-        onToggle: vi.fn(),
-        onEdit,
-        onManageBranches: vi.fn(),
+        onConfigure: vi.fn(),
+        onRename,
         onArchive: vi.fn(),
       })
     );
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.click(screen.getByRole('button', { name: 'Rename' }));
 
-    expect(onEdit).toHaveBeenCalled();
+    expect(onRename).toHaveBeenCalled();
   });
 
-  it('calls onManageBranches when Branch Availability is clicked', async () => {
-    const onManageBranches = vi.fn();
+  it('offers Archive even while the promo is active (Deactivate is no longer a prerequisite)', async () => {
+    const onArchive = vi.fn();
     const user = userEvent.setup();
 
     render(
       createElement(PromoCard, {
+        promo: { ...PROMO, is_active: true },
+        onConfigure: vi.fn(),
+        onRename: vi.fn(),
+        onArchive,
+      })
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    expect(onArchive).toHaveBeenCalled();
+  });
+
+  it('has no enable/disable switch and no Branch Availability button - Configure/Rename/Archive only', () => {
+    render(
+      createElement(PromoCard, {
         promo: PROMO,
-        onToggle: vi.fn(),
-        onEdit: vi.fn(),
-        onManageBranches,
+        onConfigure: vi.fn(),
+        onRename: vi.fn(),
         onArchive: vi.fn(),
       })
     );
 
-    await user.click(
-      screen.getByRole('button', { name: 'Branch Availability' })
-    );
-
-    expect(onManageBranches).toHaveBeenCalled();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Branch Availability' })
+    ).not.toBeInTheDocument();
+    for (const name of ['Configure', 'Rename', 'Archive']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
   });
 });

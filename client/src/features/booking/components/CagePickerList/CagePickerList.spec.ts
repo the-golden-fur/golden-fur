@@ -42,6 +42,7 @@ describe('CagePickerList', () => {
         accessToken: 'token',
         branchId: 'branch-1',
         petId: 'pet-1',
+        serviceCategory: 'Hotel',
         selected: null,
         onSelect,
         recommendedSize: 'S',
@@ -61,6 +62,30 @@ describe('CagePickerList', () => {
     });
   });
 
+  it("asks for the given service category's cages (Daycare holds a cage too)", async () => {
+    mockOptions();
+
+    render(
+      createElement(CagePickerList, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        petId: 'pet-1',
+        serviceCategory: 'Daycare',
+        selected: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
+
+    expect(bookingApi.getCagePickerOptions).toHaveBeenCalledWith(
+      'token',
+      'branch-1',
+      'pet-1',
+      'Daycare'
+    );
+  });
+
   it('Custom change (cage size booking restriction): a mismatched-size cage is disabled, not clickable, when restrictToPetSize is on', async () => {
     mockOptions();
     const onSelect = vi.fn();
@@ -70,6 +95,7 @@ describe('CagePickerList', () => {
         accessToken: 'token',
         branchId: 'branch-1',
         petId: 'pet-1',
+        serviceCategory: 'Hotel',
         selected: null,
         onSelect,
         recommendedSize: 'S',
@@ -102,6 +128,7 @@ describe('CagePickerList', () => {
         accessToken: 'token',
         branchId: 'branch-1',
         petId: 'pet-1',
+        serviceCategory: 'Hotel',
         selected: { type: 'specific', cage_id: 'cage-m' },
         onSelect,
         recommendedSize: 'S',
@@ -142,6 +169,7 @@ describe('CagePickerList', () => {
         accessToken: 'token',
         branchId: 'branch-1',
         petId: 'pet-1',
+        serviceCategory: 'Hotel',
         selected: null,
         onSelect,
       })

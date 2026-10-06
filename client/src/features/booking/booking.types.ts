@@ -132,12 +132,16 @@ export const BOOKING_SOURCES: readonly BookingSource[] = ['Online', 'Walk-in'];
  * Review step. 'downpayment' sizes the initial charge to the down payment (a
  * separate 'balance' charge is created alongside it); 'full' charges the whole
  * net total in one transaction. Only offered when the branch down-payment
- * policy is on. No shared const on the server - it re-declares the union. */
-export type PaymentScheme = 'downpayment' | 'full';
+ * policy is on. 'pay_at_checkout' charges nothing up front - the bill is
+ * posted at checkout from the time the pet actually stayed; staff-only, for
+ * a walk-in Hotel/Daycare booking (see paymentChoice.ts). No shared const on
+ * the server - it re-declares the union. */
+export type PaymentScheme = 'downpayment' | 'full' | 'pay_at_checkout';
 
 export const PAYMENT_SCHEMES: readonly PaymentScheme[] = [
   'downpayment',
   'full',
+  'pay_at_checkout',
 ];
 
 /** Mirrors the server's DOWNPAYMENT_EXPIRED_CANCELLATION_REASON - the
@@ -209,13 +213,6 @@ export const PAYMENT_METHODS = [
 ] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
-
-/** Payment methods collected online, ahead of arrival - the rest are
- * pay-at-counter (#58 dev notes). */
-export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
-  'GCash',
-  'Maya',
-];
 
 export type EnforcementMode = 'Strict' | 'Soft';
 
@@ -396,6 +393,10 @@ export interface Booking {
    * NULL for walk-ins, already-paid bookings, and bookings with no
    * down-payment requirement. */
   downpayment_due_at: string | null;
+  /** Pay at checkout: a walk-in Hotel/Daycare booking created with no
+   * upfront charge. total_price is only an estimate until checkout posts
+   * the real bill for the time the pet actually stayed. */
+  pay_at_checkout?: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only for the discount)
@@ -455,6 +456,9 @@ export interface BookingGroup {
   downpayment_amount: number | null;
   downpayment_required: boolean;
   downpayment_due_at: string | null;
+  /** Pay at checkout: every booking in the group is billed at its own
+   * checkout - there is no shared upfront charge. */
+  pay_at_checkout?: boolean;
   payment_status: PaymentStatus;
   paid_at: string | null;
   created_at: string;
@@ -572,7 +576,6 @@ export interface BookingDetailsTransaction {
   credit_applied_amount: number;
   payment_reference: string | null;
   created_at: string;
-  webhook_confirmed_at: string | null;
 }
 
 export interface BookingDetailsPricing {
@@ -633,10 +636,6 @@ export interface PolicyConfiguration {
   /** Percent (0-100) of what the customer paid that is returned as account
    * credit on a qualifying cancellation. Default 100 (full). */
   cancellation_credit_conversion_rate: number;
-  /** Master toggle for the customer-facing PayMongo Pay button - when
-   * false, the button still renders (disabled, with an explanatory
-   * tooltip) rather than disappearing. */
-  online_payments_enabled: boolean;
   /** Per-transaction downpayment config, applied against a booking's whole
    * total_price at creation time - see createBooking server-side.
    * Supersedes the old per-catalog-item Service/Package.
@@ -649,6 +648,12 @@ export interface PolicyConfiguration {
    * down-payment-required Online booking auto-cancels and its (unheld)
    * slot is released. NOT NULL, default 24. */
   downpayment_hold_hours: number;
+  /** Pay at checkout: whether staff may create a walk-in Hotel/Daycare
+   * booking at this branch with no upfront charge. Default true. */
+  pay_at_checkout_enabled: boolean;
+  /** Minutes past a full hour a pay-at-checkout Daycare stay may run before
+   * that next hour is billed. 0-59, default 10; 0 turns the grace off. */
+  pay_at_checkout_grace_minutes: number;
   /** How many overlapping Grooming/Veterinary bookings one staff member may be
    * assigned at once. 1 = one pet at a time (default). */
   max_concurrent_bookings_per_staff: number;
@@ -693,11 +698,12 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_days'
   | 'credit_expiry_fixed_date'
   | 'cancellation_credit_conversion_rate'
-  | 'online_payments_enabled'
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
   | 'downpayment_hold_hours'
+  | 'pay_at_checkout_enabled'
+  | 'pay_at_checkout_grace_minutes'
   | 'max_concurrent_bookings_per_staff'
   | 'booking_group_email_mode'
   | 'care_log_task_email_enabled'
@@ -723,11 +729,12 @@ export interface UpdatePolicyPayload {
   credit_expiry_days?: number;
   credit_expiry_fixed_date?: string | null;
   cancellation_credit_conversion_rate?: number;
-  online_payments_enabled?: boolean;
   downpayment_enabled?: boolean;
   downpayment_type?: DownpaymentType | null;
   downpayment_amount?: number | null;
   downpayment_hold_hours?: number;
+  pay_at_checkout_enabled?: boolean;
+  pay_at_checkout_grace_minutes?: number;
   max_concurrent_bookings_per_staff?: number;
   booking_group_email_mode?: 'combined' | 'per_booking';
   care_log_task_email_enabled?: boolean;
@@ -857,16 +864,6 @@ export interface ExtendHotelStayResult {
   /** The charge just added for the extra nights - shown to staff as
    * confirmation before they close the panel. */
   added_amount: number;
-}
-
-/** Customer self-service Pay button (CustomerBookingsPage). */
-export interface PayForBookingPayload {
-  payment_method: 'GCash' | 'Maya';
-  pay_in_full: boolean;
-}
-
-export interface PayForBookingResult {
-  checkoutUrl: string;
 }
 
 /** Custom change: duplicate-booking prevention - a pet's earliest

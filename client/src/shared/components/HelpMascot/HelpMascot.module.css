@@ -94,8 +94,19 @@
     background-color 180ms ease;
   overflow: visible; /* allow dog to pop out */
   position: relative;
+  /* Above .menu: its invisible 280px hover area sits over the circle and
+     takes pointer events while the widget is hovered, which would swallow
+     every press meant for the mascot itself. */
+  z-index: 1;
   padding: 0;
   isolation: isolate;
+}
+
+/* The hand image stands in for the mouse pointer while over the mascot. */
+@media (hover: hover) and (pointer: fine) {
+  .trigger {
+    cursor: none;
+  }
 }
 
 /* Hover movement hook for mascot circle */
@@ -155,6 +166,171 @@
   display: grid;
 }
 
+/* =========================================================
+   PETTING - hand that follows the mouse over the mascot
+   EDIT GUIDE:
+   - Hand size: `.hand` width/height (and font-size for the emoji stand-in)
+   - Where the hand sits relative to the pointer: `.hand` transform
+   ========================================================= */
+.hand {
+  position: fixed; /* left/top are set from the mouse position in JS */
+  left: 0;
+  top: 0;
+  z-index: 1450; /* above the mascot (1400), below the FAQ modal (1500) */
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  font-size: 2.4rem;
+  line-height: 1;
+  /* Centre the hand on the pointer. */
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.hand.handVisible {
+  opacity: 1;
+}
+
+.handImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* =========================================================
+   SOUND BUBBLES ("Woof!") - one pops out per press; the text is the
+   mascot's own pet.sound in mascots.ts
+   EDIT GUIDE:
+   - How long a bubble lives: `.woof` animation duration
+   - Look of the bubble: `.woof` background/border/font-size
+   - Direction and distance are picked at random in HelpMascot.tsx
+     (createWoof) and arrive here as the --woof-* variables.
+   ========================================================= */
+.woof {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3; /* above the mascot image */
+  white-space: nowrap;
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.98);
+  color: var(--color-text-primary);
+  border: 1.5px solid rgba(201, 151, 26, 0.9);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.2;
+  box-shadow: 0 6px 14px rgba(68, 44, 16, 0.18);
+  pointer-events: none;
+  opacity: 0;
+  animation: mascot-woof 900ms ease-out forwards;
+}
+
+/* Starts small on the circle's edge, pops, drifts outward, then fades. */
+@keyframes mascot-woof {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%)
+      translate(var(--woof-from-x), var(--woof-from-y)) rotate(0deg) scale(0.4);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -50%)
+      translate(var(--woof-from-x), var(--woof-from-y)) rotate(var(--woof-tilt))
+      scale(1.12);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%)
+      translate(var(--woof-to-x), var(--woof-to-y)) rotate(var(--woof-tilt))
+      scale(1);
+  }
+}
+
+/* Reduced motion: the bubble still appears where it would have ended up and
+   fades, but nothing travels or scales. */
+@media (prefers-reduced-motion: reduce) {
+  .woof {
+    animation-name: mascot-woof-still;
+  }
+}
+
+@keyframes mascot-woof-still {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%)
+      translate(var(--woof-to-x), var(--woof-to-y));
+  }
+  20%,
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -50%)
+      translate(var(--woof-to-x), var(--woof-to-y));
+  }
+}
+
+/* Stand-in for a mascot with no petting GIF (pet.gif: null in mascots.ts). */
+.trigger.petBounce .image {
+  animation: mascot-pet-bounce 450ms ease-in-out 2;
+}
+
+@keyframes mascot-pet-bounce {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(-14px) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-6px) scale(1.08, 0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger.petBounce .image {
+    animation: none;
+  }
+}
+
+/* =========================================================
+   HIDE / SHOW - the visitor can put the mascot away
+   EDIT GUIDE:
+   - "Hide me" is the last bubble of the hover menu: `.link:nth-child(5)`
+   - Paw button shown while hidden: `.showButton` size/colors
+   ========================================================= */
+.showButton {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(201, 151, 26, 0.6);
+  border-radius: 50%;
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.96);
+  color: var(--color-accent-gold-primary);
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(68, 44, 16, 0.18);
+  opacity: 0.75;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.showButton:hover,
+.showButton:focus-visible {
+  opacity: 1;
+  transform: translateY(-2px);
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(201, 151, 26, 0.38),
+    0 6px 14px rgba(68, 44, 16, 0.18);
+}
+
 /* Hidden by default; shown when hovering or keyboard focusing widget area */
 .menu {
   position: absolute;
@@ -201,15 +377,23 @@
     opacity 180ms ease;
 }
 
-/* Radial positions around the mascot circle */
+/* Radial positions around the mascot circle - five bubbles down its left
+   side: FAQs, the two page links, "Change pet", then "Hide me". The top one
+   stays below the tip bubble and the bottom one clear of the screen edge. */
 .link:nth-child(1) {
-  transform: translate(-50%, -50%) translate(-128px, -66px);
+  transform: translate(-50%, -50%) translate(-116px, -80px);
 }
 .link:nth-child(2) {
-  transform: translate(-50%, -50%) translate(-146px, 0);
+  transform: translate(-50%, -50%) translate(-140px, -46px);
 }
 .link:nth-child(3) {
-  transform: translate(-50%, -50%) translate(-128px, 66px);
+  transform: translate(-50%, -50%) translate(-148px, -12px);
+}
+.link:nth-child(4) {
+  transform: translate(-50%, -50%) translate(-140px, 22px);
+}
+.link:nth-child(5) {
+  transform: translate(-50%, -50%) translate(-122px, 56px);
 }
 
 .mascot:hover .link,
@@ -280,15 +464,23 @@
   }
 
   .link:nth-child(1) {
-    transform: translate(-50%, -50%) translate(-96px, -48px);
+    transform: translate(-50%, -50%) translate(-86px, -66px);
   }
 
   .link:nth-child(2) {
-    transform: translate(-50%, -50%) translate(-110px, 0);
+    transform: translate(-50%, -50%) translate(-104px, -39px);
   }
 
   .link:nth-child(3) {
-    transform: translate(-50%, -50%) translate(-96px, 48px);
+    transform: translate(-50%, -50%) translate(-110px, -12px);
+  }
+
+  .link:nth-child(4) {
+    transform: translate(-50%, -50%) translate(-106px, 15px);
+  }
+
+  .link:nth-child(5) {
+    transform: translate(-50%, -50%) translate(-94px, 42px);
   }
 
   .link {
@@ -326,6 +518,86 @@
   color: var(--color-text-primary);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+}
+
+/* =========================================================
+   PET PICKER - small popup in the middle of the screen, opened from the
+   hover menu's "Change pet" bubble. Shares the FAQ modal's backdrop, header
+   and close button.
+   EDIT GUIDE:
+   - Popup width: `.petPicker` width
+   - Thumbnail size: `.petOptionImage` width/height
+   ========================================================= */
+.petPicker {
+  width: min(100%, 20rem);
+  max-height: min(70vh, 26rem);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.petList {
+  list-style: none;
+  margin: 0;
+  padding: 14px 18px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px;
+}
+
+.petOption {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 10px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 10px 8px;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.petOption:hover,
+.petOption:focus-visible {
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+}
+
+.petOption:focus-visible {
+  box-shadow: 0 0 0 2px rgba(201, 151, 26, 0.38);
+}
+
+/* The pet currently shown. */
+.petOption[aria-pressed='true'] {
+  border-color: var(--color-accent-gold-primary);
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-primary);
+}
+
+.petOptionImage {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.petPickerNote {
+  margin: 0;
+  padding: 0 18px 16px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
 }
 
 .faqHeader {

@@ -121,7 +121,12 @@ describe('SpinWheelPopup (session 114)', () => {
     expect(
       screen.getByRole('dialog', { name: "You've earned a spin!" })
     ).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('You have 2 spins');
+    // The wheel's own LoadingState is a second role="status" while it loads.
+    expect(
+      screen
+        .getAllByRole('status')
+        .some((el) => el.textContent?.includes('You have 2 spins'))
+    ).toBe(true);
     expect(await screen.findByTestId('wheel')).toBeInTheDocument();
   });
 

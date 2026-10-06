@@ -7,6 +7,7 @@ import type { Booking } from '../../../booking/booking.types';
 import { HOTEL_QUEUE_VIEWER_ROLES } from '../HotelQueuePage/hotelQueueRoles';
 import { HotelCheckInPanel } from '../HotelQueuePage/HotelCheckInPanel';
 import styles from './HotelCheckInFormPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /**
  * Custom change: the queue's "Check in" button now checks the pet in on the
@@ -96,7 +97,7 @@ export function HotelCheckInFormPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );

@@ -4,6 +4,7 @@ import { getDailySalesReport } from './services/dailySalesReport.service.ts';
 import { getCageOccupancyReport } from './services/cageOccupancy.service.ts';
 import { listTransactionHistory } from './services/transactionHistory.service.ts';
 import { getAnalyticsSummary } from './services/analytics.service.ts';
+import { getBranchComparison } from './services/branchComparison.service.ts';
 
 function sendServiceError(res: Response, error: unknown) {
   const statusCode =
@@ -168,6 +169,28 @@ export async function analyticsSummaryController(
     });
 
     return res.status(200).json({ summary });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function branchComparisonController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+
+  if (!requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const branches = await getBranchComparison({
+      requesterRole,
+      timeFilter: queryParam(req, 'time_filter') ?? 'today',
+    });
+
+    return res.status(200).json({ branches });
   } catch (error) {
     return sendServiceError(res, error);
   }

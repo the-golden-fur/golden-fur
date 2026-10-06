@@ -10,10 +10,7 @@ import type {
 import { ViewSwitcher } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { getMyTransactionHistory } from '../../api/reports.api';
 import { payTransactionWithCredit } from '../../../billing/api/billing.api';
-import {
-  addBalancePaymentForBooking,
-  payForBooking,
-} from '../../../booking/api/booking.api';
+import { addBalancePaymentForBooking } from '../../../booking/api/booking.api';
 import { BookingDetailsModal } from '../../../booking/components/BookingDetailsModal/BookingDetailsModal';
 import type { TransactionRecord } from '../../reports.types';
 import {
@@ -34,20 +31,31 @@ import {
 import {
   paymentChoiceLabel,
   paymentStatusLabel,
+  paymentTone,
   transactionTypeLabel,
 } from '../../components/TransactionHistoryTable/transactionDisplay';
+import {
+  GROUP_BY_OPTIONS,
+  groupTransactions,
+  type TransactionGroupBy,
+} from '../../components/TransactionHistoryTable/transactionGrouping';
+import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
+import type { PaymentStatus } from '../../../booking/booking.types';
 import styles from '../../components/TransactionHistoryTable/TransactionHistoryTable.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 type ViewMode = 'table' | 'board';
 
-/** Modes a customer can pay a Pending transaction with. */
-type PayMode = 'credit' | 'GCash' | 'Maya';
+const ROW_TONE_CLASS = {
+  due: styles.rowDue,
+  partial: styles.rowPartial,
+  paid: styles.rowPaid,
+} as const;
 
-const PAY_MODES: Array<{ value: PayMode; label: string }> = [
-  { value: 'credit', label: 'Account credit' },
-  { value: 'GCash', label: 'GCash' },
-  { value: 'Maya', label: 'Maya' },
-];
+// Every row is the viewer's own, so grouping by customer is meaningless here.
+const CUSTOMER_GROUP_BY_OPTIONS = GROUP_BY_OPTIONS.filter(
+  (option) => option.value !== 'customer'
+);
 
 function isPayable(t: TransactionRecord): boolean {
   return (
@@ -61,9 +69,9 @@ function isPayable(t: TransactionRecord): boolean {
  * Custom change (P-1 roadmap item: transaction history visibility) - the
  * customer-facing counterpart to TransactionHistoryTable.tsx, reusing its
  * styles and (post-remaster) its Notion-style FilterSortBar + Board view.
- * "Pay" on a Pending booking_payment row opens a modal to choose account
- * credit / GCash / Maya. Credit settles immediately; GCash/Maya redirect to
- * PayMongo.
+ * "Pay" on a Pending booking_payment row opens a modal to pay from account
+ * credit - the customer's only self-service payment option; anything credit
+ * doesn't cover is left as a balance to settle at the counter.
  */
 export function CustomerTransactionHistoryPage() {
   const { accessToken } = useAuth();
@@ -72,6 +80,9 @@ export function CustomerTransactionHistoryPage() {
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>('table');
+  // Same default as the staff Transactions page: each down payment / balance
+  // sits under the booking it pays for.
+  const [groupBy, setGroupBy] = useState<TransactionGroupBy>('booking');
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -82,9 +93,7 @@ export function CustomerTransactionHistoryPage() {
   const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null);
 
   const [payTarget, setPayTarget] = useState<TransactionRecord | null>(null);
-  const [payMode, setPayMode] = useState<PayMode>('credit');
-  // "Amount paid" - editable only when paying with account credit (that path
-  // spawns a remaining-balance transaction). GCash/Maya always pay in full.
+  // "Amount paid" - a smaller amount spawns a remaining-balance transaction.
   const [payAmount, setPayAmount] = useState('');
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -141,73 +150,41 @@ export function CustomerTransactionHistoryPage() {
 
   const openPay = (t: TransactionRecord) => {
     setPayTarget(t);
-    setPayMode('credit');
     setPayAmount(String(t.total_amount));
     setPayError(null);
-  };
-
-  const selectPayMode = (mode: PayMode) => {
-    setPayMode(mode);
-    // GCash/Maya always pay the whole transaction - snap the field back so a
-    // stale partial amount can't carry over.
-    if (mode !== 'credit' && payTarget) {
-      setPayAmount(String(payTarget.total_amount));
-    }
   };
 
   const confirmPay = async () => {
     if (!accessToken || !payTarget) return;
 
     const paying = Number(payAmount);
-    if (payMode === 'credit') {
-      if (!Number.isFinite(paying) || paying <= 0) {
-        setPayError('Enter an amount greater than zero.');
-        return;
-      }
-      if (paying > payTarget.total_amount + 0.001) {
-        setPayError('Amount paid cannot exceed the transaction total.');
-        return;
-      }
+    if (!Number.isFinite(paying) || paying <= 0) {
+      setPayError('Enter an amount greater than zero.');
+      return;
+    }
+    if (paying > payTarget.total_amount + 0.001) {
+      setPayError('Amount paid cannot exceed the transaction total.');
+      return;
     }
 
     setPaySubmitting(true);
     setPayError(null);
 
-    if (payMode === 'credit') {
-      const partialAmount =
-        paying < payTarget.total_amount ? paying : undefined;
-      const result = await payTransactionWithCredit(
-        payTarget.id,
-        accessToken,
-        partialAmount
-      );
-      setPaySubmitting(false);
-      if (result.error) {
-        setPayError(result.error);
-        return;
-      }
-      setPayTarget(null);
-      setReloadKey((k) => k + 1);
-      // Credit was just spent - refresh the navbar pill.
-      notifyCreditBalanceChanged();
-      return;
-    }
-
-    // GCash / Maya - settle the booking's outstanding charge via PayMongo.
-    const result = await payForBooking(
-      payTarget.booking_id as string,
+    const partialAmount = paying < payTarget.total_amount ? paying : undefined;
+    const result = await payTransactionWithCredit(
+      payTarget.id,
       accessToken,
-      {
-        payment_method: payMode,
-        pay_in_full: payTarget.payment_choice !== 'downpayment',
-      }
+      partialAmount
     );
     setPaySubmitting(false);
-    if (result.error || !result.data) {
-      setPayError(result.error ?? 'Could not start this payment.');
+    if (result.error) {
+      setPayError(result.error);
       return;
     }
-    window.location.href = result.data.checkoutUrl;
+    setPayTarget(null);
+    setReloadKey((k) => k + 1);
+    // Credit was just spent - refresh the navbar pill.
+    notifyCreditBalanceChanged();
   };
 
   useEffect(() => {
@@ -288,6 +265,11 @@ export function CustomerTransactionHistoryPage() {
     return [...list].sort(COMPARATORS[sortKey]);
   }, [transactions, statusFilter, search, sortKey]);
 
+  const groups = useMemo(
+    () => groupTransactions(rows, groupBy, { showCustomer: false }),
+    [rows, groupBy]
+  );
+
   const payable = payableBalances(transactions);
 
   if (!accessToken) {
@@ -326,6 +308,24 @@ export function CustomerTransactionHistoryPage() {
           value={view}
           onChange={setView}
         />
+        {view === 'table' ? (
+          <label className={styles.groupByField}>
+            <span className={styles.groupByLabel}>Group by</span>
+            <select
+              className={styles.control}
+              value={groupBy}
+              onChange={(event) =>
+                setGroupBy(event.target.value as TransactionGroupBy)
+              }
+            >
+              {CUSTOMER_GROUP_BY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </FilterSortBar>
 
       {payable.length > 0 ? (
@@ -345,7 +345,7 @@ export function CustomerTransactionHistoryPage() {
       ) : null}
 
       {isLoading ? (
-        <p className={styles.copy}>Loading transactions...</p>
+        <LoadingState label="Loading transactions..." />
       ) : error ? (
         <p className={styles.errorBanner} role="alert">
           {error}
@@ -387,69 +387,109 @@ export function CustomerTransactionHistoryPage() {
               <th />
             </tr>
           </thead>
-          <tbody>
-            {rows.map((transaction) => {
-              const bookingId = transaction.booking_id;
-              const openDetails = () => {
-                if (bookingId) setDetailsBookingId(bookingId);
-              };
-              return (
-                <tr
-                  key={transaction.id}
-                  className={bookingId ? styles.clickableRow : undefined}
-                  role={bookingId ? 'button' : undefined}
-                  tabIndex={bookingId ? 0 : undefined}
-                  aria-label={
-                    bookingId
-                      ? `View booking details for this ${
-                          transaction.bookings?.service_category ?? ''
-                        } transaction`.replace(/\s+/g, ' ')
-                      : undefined
-                  }
-                  onClick={bookingId ? openDetails : undefined}
-                  onKeyDown={
-                    bookingId
-                      ? (event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            openDetails();
-                          }
-                        }
-                      : undefined
-                  }
-                >
-                  <td>
-                    {new Date(transaction.created_at).toLocaleDateString()}
-                  </td>
-                  <td>{transactionTypeLabel(transaction)}</td>
-                  <td>{transaction.bookings?.service_category ?? '-'}</td>
-                  <td>{paymentChoiceLabel(transaction)}</td>
-                  <td>
-                    {transaction.payment_status === 'Pending'
-                      ? '—'
-                      : transaction.payment_method}
-                  </td>
-                  <td>{paymentStatusLabel(transaction.payment_status)}</td>
-                  <td>PHP {transaction.total_amount.toFixed(2)}</td>
-                  <td>
-                    {isPayable(transaction) ? (
-                      <button
-                        type="button"
-                        className={styles.payButton}
-                        onClick={(event) => {
-                          // Don't also open the details popup underneath.
-                          event.stopPropagation();
-                          openPay(transaction);
-                        }}
-                      >
-                        Pay
-                      </button>
-                    ) : null}
-                  </td>
+          {groups.map((group) => (
+            <tbody key={group.key}>
+              {group.title ? (
+                <tr className={styles.groupRow}>
+                  <th scope="colgroup" colSpan={8}>
+                    <div className={styles.groupHeader}>
+                      <div className={styles.groupHeading}>
+                        <span className={styles.groupTitle}>{group.title}</span>
+                        {group.meta ? (
+                          <span className={styles.groupMeta}>{group.meta}</span>
+                        ) : null}
+                      </div>
+                      <div className={styles.groupSummary}>
+                        <span className={styles.groupMeta}>
+                          {group.items.length}{' '}
+                          {group.items.length === 1
+                            ? 'transaction'
+                            : 'transactions'}
+                        </span>
+                        {group.netTotal !== null ? (
+                          <span className={styles.groupMeta}>
+                            Booking total {formatCurrency(group.netTotal)}
+                          </span>
+                        ) : null}
+                        {group.bookingStatus ? (
+                          <PaymentStatusBadge
+                            status={group.bookingStatus as PaymentStatus}
+                            context="billing"
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  </th>
                 </tr>
-              );
-            })}
-          </tbody>
+              ) : null}
+              {group.items.map((transaction) => {
+                const bookingId = transaction.booking_id;
+                const openDetails = () => {
+                  if (bookingId) setDetailsBookingId(bookingId);
+                };
+                return (
+                  <tr
+                    key={transaction.id}
+                    className={[
+                      ROW_TONE_CLASS[paymentTone(transaction.payment_status)],
+                      bookingId ? styles.clickableRow : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    role={bookingId ? 'button' : undefined}
+                    tabIndex={bookingId ? 0 : undefined}
+                    aria-label={
+                      bookingId
+                        ? `View booking details for this ${
+                            transaction.bookings?.service_category ?? ''
+                          } transaction`.replace(/\s+/g, ' ')
+                        : undefined
+                    }
+                    onClick={bookingId ? openDetails : undefined}
+                    onKeyDown={
+                      bookingId
+                        ? (event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              openDetails();
+                            }
+                          }
+                        : undefined
+                    }
+                  >
+                    <td>
+                      {new Date(transaction.created_at).toLocaleDateString()}
+                    </td>
+                    <td>{transactionTypeLabel(transaction)}</td>
+                    <td>{transaction.bookings?.service_category ?? '-'}</td>
+                    <td>{paymentChoiceLabel(transaction)}</td>
+                    <td>
+                      {transaction.payment_status === 'Pending'
+                        ? '—'
+                        : transaction.payment_method}
+                    </td>
+                    <td>{paymentStatusLabel(transaction.payment_status)}</td>
+                    <td>PHP {transaction.total_amount.toFixed(2)}</td>
+                    <td>
+                      {isPayable(transaction) ? (
+                        <button
+                          type="button"
+                          className={styles.payButton}
+                          onClick={(event) => {
+                            // Don't also open the details popup underneath.
+                            event.stopPropagation();
+                            openPay(transaction);
+                          }}
+                        >
+                          Pay
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          ))}
         </table>
       )}
 
@@ -465,21 +505,6 @@ export function CustomerTransactionHistoryPage() {
               Pay PHP {payTarget.total_amount.toFixed(2)}
             </h2>
 
-            <fieldset className={styles.modeGroup}>
-              <legend>How would you like to pay?</legend>
-              {PAY_MODES.map((mode) => (
-                <label key={mode.value} className={styles.modeOption}>
-                  <input
-                    type="radio"
-                    name="pay-mode"
-                    checked={payMode === mode.value}
-                    onChange={() => selectPayMode(mode.value)}
-                  />
-                  {mode.label}
-                </label>
-              ))}
-            </fieldset>
-
             <label className={styles.field}>
               Amount paid (PHP)
               <input
@@ -489,17 +514,11 @@ export function CustomerTransactionHistoryPage() {
                 max={payTarget.total_amount}
                 step="0.01"
                 value={payAmount}
-                disabled={payMode !== 'credit'}
                 onChange={(event) => setPayAmount(event.target.value)}
               />
             </label>
-            {payMode !== 'credit' ? (
-              <p className={styles.copy}>
-                GCash and Maya must pay the full amount. Use account credit to
-                pay part of this transaction.
-              </p>
-            ) : Number(payAmount) > 0 &&
-              Number(payAmount) < payTarget.total_amount ? (
+            {Number(payAmount) > 0 &&
+            Number(payAmount) < payTarget.total_amount ? (
               <p className={styles.copy}>
                 Whatever your available credit does not cover will be left as a
                 balance payment you can settle later.
@@ -526,11 +545,7 @@ export function CustomerTransactionHistoryPage() {
                 disabled={paySubmitting}
                 onClick={() => void confirmPay()}
               >
-                {paySubmitting
-                  ? 'Processing...'
-                  : payMode === 'credit'
-                    ? 'Pay with credit'
-                    : 'Continue to payment'}
+                {paySubmitting ? 'Processing...' : 'Pay with credit'}
               </button>
             </div>
           </section>

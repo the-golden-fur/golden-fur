@@ -4,6 +4,7 @@ import {
   checkOutHotelStay,
   completeCareLogEntry,
   getCageGrid,
+  getCageOccupants,
   setCageMaintenanceStatus,
 } from './hotel.api';
 
@@ -99,6 +100,36 @@ describe('hotel.api', () => {
     const result = await getCageGrid('token');
 
     expect(result.data).toEqual({ S: [], M: [], L: [], XL: [] });
+  });
+
+  it('getCageGrid and getCageOccupants ask for their own branch unless told otherwise', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ grid: {}, occupants: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getCageGrid('token');
+    await getCageOccupants('token');
+
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/hotel\/cages$/);
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/hotel\/cages\/occupants$/);
+  });
+
+  it('getCageGrid and getCageOccupants pass a Superadmin branch choice through', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ grid: {}, occupants: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getCageGrid('token', 'all');
+    await getCageOccupants('token', 'branch-2');
+
+    expect(fetchMock.mock.calls[0][0]).toMatch(
+      /\/hotel\/cages\?branch_id=all$/
+    );
+    expect(fetchMock.mock.calls[1][0]).toMatch(
+      /\/hotel\/cages\/occupants\?branch_id=branch-2$/
+    );
   });
 
   it('setCageMaintenanceStatus PATCHes the cage status endpoint', async () => {

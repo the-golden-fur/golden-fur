@@ -4,13 +4,12 @@ import {
   Calculator,
   DoorOpen,
   Gift,
+  MessageCircleQuestion,
   Package,
   PawPrint,
   Percent,
-  Receipt,
   Scale,
   ScrollText,
-  ShoppingBag,
   type LucideIcon,
 } from 'lucide-react';
 import { AdminServicesAndPackagesPage } from '../../features/maintenance/pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
@@ -19,11 +18,10 @@ import { WeightClassConfigurationPage } from '../../features/maintenance/pages/W
 import { AdminPromosAndRewardsPage } from '../../features/maintenance/pages/AdminPromosAndRewardsPage/AdminPromosAndRewardsPage';
 import { AdminPetsPage } from '../../features/maintenance/pages/AdminPetsPage/AdminPetsPage';
 import { BranchesPage } from '../../features/maintenance/pages/BranchesPage/BranchesPage';
-import { ProductCatalogPage } from '../../features/catalog/pages/ProductCatalogPage/ProductCatalogPage';
 import { AdminDiscountManagementPage } from '../../features/discounts/pages/AdminDiscountManagementPage/AdminDiscountManagementPage';
-import { MiscSaleManagementPage } from '../../features/billing/pages/MiscSaleManagementPage/MiscSaleManagementPage';
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
+import { FaqConfigurationPage } from '../../features/faq/pages/FaqConfigurationPage/FaqConfigurationPage';
 
 export interface ConfigTileConfig {
   title: string;
@@ -81,14 +79,6 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: PricingConfigurationPage,
   },
   {
-    title: 'Weight Classes',
-    description:
-      'Set the kg cut-offs that derive a pet’s S/M/L/XL weight class from its assessed weight.',
-    to: '/staff/admin/maintenance/weight-classes',
-    icon: Scale,
-    Component: WeightClassConfigurationPage,
-  },
-  {
     title: 'Promos & Rewards',
     description:
       'Configure promotions (including coupon spin wheels and their trigger conditions), spin-wheel rewards, and reward pools.',
@@ -105,26 +95,11 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: AdminPetsPage,
   },
   {
-    title: 'Product Catalog',
-    description:
-      'Manage hotel-suppliable food/medication and other sellable products, by category.',
-    to: '/staff/admin/product-catalog',
-    icon: ShoppingBag,
-    Component: ProductCatalogPage,
-  },
-  {
     title: 'Discounts',
     description: 'Manage standing discounts, incl. Senior Citizen/PWD.',
     to: '/staff/admin/discounts',
     icon: Percent,
     Component: AdminDiscountManagementPage,
-  },
-  {
-    title: 'Miscellaneous Sales',
-    description: 'Review, edit, or remove recorded miscellaneous sales.',
-    to: '/staff/admin/misc-sales',
-    icon: Receipt,
-    Component: MiscSaleManagementPage,
   },
   {
     title: 'Cages',
@@ -134,6 +109,41 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
     Component: AdminCagesPage,
   },
 ];
+
+/**
+ * Superadmin-only, appended conditionally to `CONFIG_TILES` (see
+ * SettingsPage.tsx) rather than living in the array itself - same shape as
+ * BRANCHES_TILE below. Weight class cut-offs are global (affect every
+ * branch's Grooming pricing and Hotel/Daycare cage sizing at once), so an
+ * Admin - scoped to their own branch everywhere else in Config - has no
+ * access to this tile at all, not even read-only. WeightClassConfigurationPage
+ * itself also enforces this (ALLOWED_VIEWER_ROLES), so direct navigation to
+ * its route doesn't bypass this.
+ */
+export const WEIGHT_CLASSES_TILE: ConfigTileConfig = {
+  title: 'Weight Classes',
+  description:
+    'Set the kg cut-offs that derive a pet’s S/M/L/XL weight class from its assessed weight.',
+  to: '/staff/admin/maintenance/weight-classes',
+  icon: Scale,
+  Component: WeightClassConfigurationPage,
+};
+
+/**
+ * Superadmin-only, appended conditionally to `CONFIG_TILES` (see
+ * SettingsPage.tsx), same shape as WEIGHT_CLASSES_TILE above: the help
+ * mascot's FAQs are one list shown to every visitor at every branch, so a
+ * branch-scoped Admin has no access. FaqConfigurationPage enforces this too
+ * (ALLOWED_VIEWER_ROLES), as do the server's /maintenance/faqs routes.
+ */
+export const FAQS_TILE: ConfigTileConfig = {
+  title: 'Mascot FAQs',
+  description:
+    'Set the questions and answers behind the help mascot’s FAQs button.',
+  to: '/staff/admin/maintenance/faqs',
+  icon: MessageCircleQuestion,
+  Component: FaqConfigurationPage,
+};
 
 /**
  * Renamed from "System Configuration" (session 87) - now a full Notion-style
@@ -154,8 +164,9 @@ export const BRANCHES_TILE: ConfigTileConfig = {
 
 /**
  * No longer a listed Config tile (folded into Branches, session 87) - kept
- * resolvable, not listed, so a Branches row's "Configure" action can still
- * navigate to it and have SettingsPage render it inline. Deliberately NOT
+ * resolvable, not listed, so an old Policies link still lands on it inside
+ * Settings. A Branches row's "Configure" now opens a modal (branch details +
+ * these policies, embedded) instead of navigating here. Deliberately NOT
  * added to CONFIG_TILES (would reappear in the sidebar/ConfigTab grid) -
  * see HIDDEN_CONFIG_TILES and SettingsPage.tsx's activeConfigTile lookup.
  * The standalone /staff/admin/maintenance/policies route (unscoped, for

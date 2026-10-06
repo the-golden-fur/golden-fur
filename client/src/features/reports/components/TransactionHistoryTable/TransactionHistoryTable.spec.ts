@@ -287,7 +287,11 @@ describe('TransactionHistoryTable', () => {
 
     renderTable();
 
-    expect(await screen.findByText('Grace Hopper')).toBeInTheDocument();
+    // A cell, not just any text - the default Booking grouping repeats the
+    // customer name in that booking's group header too.
+    expect(
+      await screen.findByRole('cell', { name: 'Grace Hopper' })
+    ).toBeInTheDocument();
     const dashRow = screen
       .getAllByText('—')
       .map((el) => el.closest('tr'))
@@ -406,5 +410,89 @@ describe('TransactionHistoryTable', () => {
     );
     await userEvent.click(await screen.findByText('View booking'));
     expect(await screen.findByText('Booking details')).toBeInTheDocument();
+  });
+  it('groups rows by booking by default, with a header naming the service, pet, and booking status', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          id: 'a',
+          booking_id: 'booking-1',
+          payment_choice: 'downpayment',
+          bookings: {
+            pet_id: 'pet-1',
+            service_category: 'Grooming',
+            payment_status: 'Partially Paid',
+            total_price: 1000,
+            discount_amount: 0,
+            promo_amount: 0,
+            scheduled_start: '2026-09-28T02:00:00.000Z',
+            pets: { name: 'Buddy' },
+          },
+        }),
+        buildTransaction({
+          id: 'b',
+          booking_id: 'booking-2',
+          bookings: {
+            pet_id: 'pet-2',
+            service_category: 'Hotel',
+            payment_status: 'Fully Paid',
+            total_price: 2000,
+            discount_amount: 0,
+            promo_amount: 0,
+            pets: { name: 'Mochi' },
+          },
+        }),
+        buildTransaction({
+          id: 'c',
+          booking_id: null,
+          transaction_type: 'miscellaneous_sale',
+          misc_sale_description: 'Shampoo',
+          bookings: null,
+        }),
+      ],
+      error: null,
+    });
+
+    renderTable();
+
+    expect(await screen.findByText('Grooming · Buddy')).toBeInTheDocument();
+    expect(screen.getByText('Hotel · Mochi')).toBeInTheDocument();
+    expect(screen.getByText('Miscellaneous sales')).toBeInTheDocument();
+    expect(screen.getByText('Booking total ₱1,000.00')).toBeInTheDocument();
+    expect(screen.getByText('Partially Paid')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Group by' })).toHaveValue(
+      'booking'
+    );
+  });
+
+  it('drops the group headers when Group by is set to None', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          id: 'a',
+          bookings: {
+            pet_id: 'pet-1',
+            service_category: 'Grooming',
+            payment_status: 'Fully Paid',
+            total_price: 500,
+            discount_amount: 0,
+            promo_amount: 0,
+            pets: { name: 'Buddy' },
+          },
+        }),
+      ],
+      error: null,
+    });
+
+    renderTable();
+    await screen.findByText('Grooming · Buddy');
+
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Group by' }),
+      'none'
+    );
+
+    expect(screen.queryByText('Grooming · Buddy')).not.toBeInTheDocument();
+    expect(screen.getByText('PHP 500.00')).toBeInTheDocument();
   });
 });

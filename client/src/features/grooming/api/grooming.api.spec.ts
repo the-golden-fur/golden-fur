@@ -65,6 +65,34 @@ describe('grooming.api (booking-status revision)', () => {
     );
   });
 
+  it('listGroomingQueue says all_dates=true for the "All dates" filter, which has no bounds to send', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ sessions: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listGroomingQueue('token', { allDates: true });
+
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(
+      /\/grooming\/queue\?all_dates=true$/
+    );
+  });
+
+  it('listGroomingQueue asks for view=history when the History view is wanted', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ sessions: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listGroomingQueue('token', { view: 'history' });
+
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(
+      /\/grooming\/queue\?view=history$/
+    );
+  });
+
   it('listGroomingQueue returns an error instead of throwing on a non-ok response', async () => {
     vi.stubGlobal(
       'fetch',

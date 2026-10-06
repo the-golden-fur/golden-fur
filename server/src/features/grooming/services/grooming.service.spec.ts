@@ -253,31 +253,94 @@ describe('grooming.service (#64, booking-status revision)', () => {
       ).not.toHaveProperty('status');
     });
 
-    it('queries bookings with status = In Progress only - walk-in booking flow change, Pending no longer shows here until checked in', async () => {
+    it("includes a paid Pending booking - the groomer sees what's booked with them before the customer arrives", async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              assigned_staff_id: GROOMER_ID,
+              status: 'Pending',
+              payment_status: 'Fully Paid',
+            },
+          ],
+          error: null,
+        }, // bookings
+        { data: [], error: null }, // existing sessions
+        { data: null, error: null }, // insert
+        {
+          data: [
+            {
+              ...sessionRow(),
+              booking: bookingRow({
+                scheduled_start: '2026-07-19T02:00:00.000Z',
+              }),
+            },
+          ],
+          error: null,
+        } // sessions select
+      );
+
+      const result = await listGroomingQueue({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      });
+
+      expect(result).toHaveLength(1);
+      // ...and gets its session row like any other queue entry.
+      expect(
+        recordedWrites.some(
+          (write) =>
+            write.table === 'grooming_sessions' && write.method === 'insert'
+        )
+      ).toBe(true);
+    });
+
+    it('leaves out a Pending booking that has not been paid for - not a secured appointment yet', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-1',
+            assigned_staff_id: GROOMER_ID,
+            status: 'Pending',
+            payment_status: 'Pending',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listGroomingQueue({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      });
+
+      expect(result).toEqual([]);
+      // No session row is created for it either.
+      expect(recordedWrites).toHaveLength(0);
+    });
+
+    it('asks for Pending and In Progress bookings, still scoped to the requesting groomer', async () => {
+      const inSpy = vi.fn();
       const eqSpy = vi.fn();
 
       vi.mocked(supabase.from).mockImplementation(((table: string) => {
         const builder: Record<string, unknown> = {};
 
-        for (const method of ['select', 'gte', 'lt', 'or', 'in']) {
+        for (const method of ['select', 'gte', 'lt', 'or']) {
           builder[method] = vi.fn(() => builder);
         }
 
+        builder.in = vi.fn((column: string, values: unknown) => {
+          if (table === 'bookings') inSpy(column, values);
+          return builder;
+        });
         builder.eq = vi.fn((column: string, value: unknown) => {
           if (table === 'bookings') eqSpy(column, value);
           return builder;
         });
 
-        for (const method of ['insert', 'update']) {
-          builder[method] = vi.fn((payload?: unknown) => {
-            recordedWrites.push({ table, method, payload });
-            return builder;
-          });
-        }
-
-        builder.maybeSingle = vi.fn(() =>
-          Promise.resolve({ data: null, error: null })
-        );
         builder.then = (resolve: (_result: QueryResult) => void) =>
           resolve({ data: [], error: null });
 
@@ -290,7 +353,156 @@ describe('grooming.service (#64, booking-status revision)', () => {
         requesterBranchId: 'branch-1',
       });
 
-      expect(eqSpy).toHaveBeenCalledWith('status', 'In Progress');
+      expect(inSpy).toHaveBeenCalledWith('status', ['Pending', 'In Progress']);
+      expect(eqSpy).toHaveBeenCalledWith('assigned_staff_id', GROOMER_ID);
+    });
+
+    describe('history view', () => {
+      it('lists Completed bookings, newest completion first, without the unpaid-downpayment filter', async () => {
+        const inSpy = vi.fn();
+        const orSpy = vi.fn();
+        const results: QueryResult[] = [
+          {
+            data: [
+              {
+                id: 'booking-1',
+                assigned_staff_id: GROOMER_ID,
+                status: 'Completed',
+                payment_status: 'Pending',
+              },
+              {
+                id: 'booking-2',
+                assigned_staff_id: GROOMER_ID,
+                status: 'Completed',
+                payment_status: 'Fully Paid',
+              },
+            ],
+            error: null,
+          }, // bookings
+          {
+            data: [{ booking_id: 'booking-1' }, { booking_id: 'booking-2' }],
+            error: null,
+          }, // existing sessions - nothing to create
+          {
+            data: [
+              {
+                ...sessionRow({ id: 'session-1', booking_id: 'booking-1' }),
+                booking: { completed_at: '2026-07-19T03:00:00.000Z' },
+              },
+              {
+                ...sessionRow({ id: 'session-2', booking_id: 'booking-2' }),
+                booking: { completed_at: '2026-07-19T09:00:00.000Z' },
+              },
+            ],
+            error: null,
+          }, // sessions select
+        ];
+
+        vi.mocked(supabase.from).mockImplementation(((table: string) => {
+          const result = results.shift() ?? { data: null, error: null };
+          const builder: Record<string, unknown> = {};
+
+          for (const method of ['select', 'eq', 'gte', 'lt']) {
+            builder[method] = vi.fn(() => builder);
+          }
+          builder.in = vi.fn((column: string, values: unknown) => {
+            if (table === 'bookings') inSpy(column, values);
+            return builder;
+          });
+          builder.or = vi.fn((filter: string) => {
+            orSpy(filter);
+            return builder;
+          });
+          builder.then = (resolve: (_result: QueryResult) => void) =>
+            resolve(result);
+
+          return builder;
+        }) as never);
+
+        const result = await listGroomingQueue({
+          requesterId: GROOMER_ID,
+          requesterRole: 'Groomer',
+          requesterBranchId: 'branch-1',
+          view: 'history',
+        });
+
+        expect(inSpy).toHaveBeenCalledWith('status', ['Completed']);
+        expect(orSpy).not.toHaveBeenCalled();
+        // The unpaid Completed booking is still part of the record.
+        expect(result.map((session) => session.id)).toEqual([
+          'session-2',
+          'session-1',
+        ]);
+      });
+    });
+
+    describe('date range', () => {
+      function captureDateBounds() {
+        const bounds: Record<string, unknown> = {};
+
+        vi.mocked(supabase.from).mockImplementation((() => {
+          const builder: Record<string, unknown> = {};
+
+          for (const method of ['select', 'eq', 'in', 'or']) {
+            builder[method] = vi.fn(() => builder);
+          }
+          builder.gte = vi.fn((_column: string, value: unknown) => {
+            bounds.from = value;
+            return builder;
+          });
+          builder.lt = vi.fn((_column: string, value: unknown) => {
+            bounds.to = value;
+            return builder;
+          });
+          builder.then = (resolve: (_result: QueryResult) => void) =>
+            resolve({ data: [], error: null });
+
+          return builder;
+        }) as never);
+
+        return bounds;
+      }
+
+      const REQUESTER = {
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      };
+
+      it('"All dates" covers every date, upcoming ones included - not just today', async () => {
+        const bounds = captureDateBounds();
+
+        await listGroomingQueue({ ...REQUESTER, allDates: true });
+
+        expect(bounds.from).toBe('1970-01-01T00:00:00.000Z');
+        expect(bounds.to).toBe('9999-12-31T00:00:00.000Z');
+      });
+
+      it('still defaults to today when no range is asked for at all', async () => {
+        const bounds = captureDateBounds();
+
+        await listGroomingQueue(REQUESTER);
+
+        const dayMs = 24 * 60 * 60 * 1000;
+        expect(
+          new Date(bounds.to as string).getTime() -
+            new Date(bounds.from as string).getTime()
+        ).toBe(dayMs);
+      });
+
+      it('an explicit range wins over allDates', async () => {
+        const bounds = captureDateBounds();
+
+        await listGroomingQueue({
+          ...REQUESTER,
+          dateFrom: '2026-10-02',
+          dateTo: '2026-10-02',
+          allDates: true,
+        });
+
+        expect(bounds.from).toBe('2026-10-02T00:00:00.000Z');
+        expect(bounds.to).toBe('2026-10-03T00:00:00.000Z');
+      });
     });
 
     it('sorts by queue_position when set, otherwise scheduled_start', async () => {

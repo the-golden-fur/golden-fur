@@ -4,6 +4,11 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
   staffAuthValidator,
   totpValidator,
+  mfaEnrollValidator,
+  mfaUnenrollValidator,
+  mfaPreferenceValidator,
+  mfaEmailVerificationStartValidator,
+  mfaEmailVerificationConfirmValidator,
 } from './modules/validators/staffAuth.validator.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
 import { parseAllowedOrigins } from '../../../shared/config/cors/cors.config.ts';
@@ -16,12 +21,32 @@ import {
 import {
   resolveStaffLoginIdentifier,
   signInWithPassword,
-  enrollTotpFactor,
-  getTotpEnrollmentStatus,
-  unenrollAllTotpFactors,
-  findTotpFactorForVerify,
   getStaffRole,
+  getAuthUserEmail,
 } from '../../../shared/auth/api/supabaseAuth.api.ts';
+import {
+  getMfaMethodStatus,
+  enrollMfaMethod,
+  unenrollMfaMethod,
+  challengeAndVerifyMfaMethod,
+  sendMfaEmailMethodCode,
+} from '../../../shared/services/mfaMethods/mfaMethods.service.ts';
+import {
+  getMfaPreference,
+  setMfaPreference,
+} from '../../../shared/services/mfaPreference/mfaPreference.service.ts';
+import {
+  issueTrustedDeviceToken,
+  isTrustedDevice,
+  revokeAllTrustedDevices,
+} from '../../../shared/services/trustedDevice/trustedDevice.service.ts';
+import {
+  getMfaEmailVerification,
+  startMfaEmailVerification,
+  confirmMfaEmailVerification,
+  unbindMfaEmail,
+} from '../../../shared/services/mfaEmailVerification/mfaEmailVerification.service.ts';
+import { MANDATORY_MFA_ROLES } from '../../../shared/auth/mandatoryMfaRoles.ts';
 import { createNotification } from '../../notifications/services/notification.service.ts';
 
 function getUserClient(req: Request) {
@@ -84,10 +109,26 @@ export async function staffLoginController(req: Request, res: Response) {
       console.error('Failed to clear temp credential on login:', error);
     }
 
+    // "Remember this device" can only ever skip re-showing the challenge
+    // screen, never the server-side aal2 gate (requireMfa.middleware.ts) -
+    // that gate can only be satisfied by a real Supabase MFA verify, which a
+    // trusted-device token deliberately bypasses. Mandatory-MFA roles must
+    // always freshly verify, so a device token is never even checked for
+    // them - honoring one would leave the client thinking it's done while
+    // every MFA-gated route still 403s.
+    let mfaBypassed = false;
+    if (parsed.data.device_token && !MANDATORY_MFA_ROLES.has(staffRole.role)) {
+      mfaBypassed = await isTrustedDevice(
+        authData.user.id,
+        parsed.data.device_token
+      );
+    }
+
     return res.status(200).json({
       access_token: authData.session.access_token,
       refresh_token: authData.session.refresh_token,
       expires_in: authData.session.expires_in,
+      ...(mfaBypassed ? { mfa_bypassed: true } : {}),
     });
   } catch (error) {
     console.error('Staff login error:', error);
@@ -99,13 +140,101 @@ export async function mfaEnrollController(
   req: AuthenticatedRequest,
   res: Response
 ) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = mfaEnrollValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+
   try {
     const userClient = getUserClient(req);
-    const { data, error } = await enrollTotpFactor(userClient);
-    if (error) {
-      return res.status(400).json({ error: error.message });
+    const accountEmail = await getAuthUserEmail(userId);
+
+    let toEmail = accountEmail;
+    if (parsed.data.method === 'email') {
+      const { data: roleData } = await getStaffRole(userId);
+      if (roleData?.role && MANDATORY_MFA_ROLES.has(roleData.role)) {
+        // Admin-tier roles must prove ownership of the email their codes go
+        // to before it can become an active MFA method - see
+        // mfa_email_verifications' migration comment. Everyone else keeps
+        // enrolling 'email' straight from their account email, unchanged.
+        const verification = await getMfaEmailVerification(userId);
+        if (!verification?.verified) {
+          return res.status(403).json({
+            error:
+              'Verify your email in Settings > Account before turning on email as a login method.',
+          });
+        }
+        toEmail = verification.email;
+      }
     }
-    return res.status(200).json(data);
+
+    if (parsed.data.method === 'email' && !toEmail) {
+      return res.status(400).json({ error: 'Could not resolve account email' });
+    }
+
+    const result = await enrollMfaMethod(
+      userClient,
+      userId,
+      parsed.data.method,
+      toEmail ?? ''
+    );
+
+    return res
+      .status(200)
+      .json(
+        parsed.data.method === 'authenticator'
+          ? { id: result.factorId, totp: result.totp }
+          : { id: result.factorId, sent: true }
+      );
+  } catch (error) {
+    return res
+      .status(400)
+      .json({ error: (error as Error).message ?? 'Failed to enroll' });
+  }
+}
+
+export async function mfaEmailRequestCodeController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    let toEmail = await getAuthUserEmail(userId);
+    const { data: roleData } = await getStaffRole(userId);
+    if (roleData?.role && MANDATORY_MFA_ROLES.has(roleData.role)) {
+      const verification = await getMfaEmailVerification(userId);
+      if (verification?.verified) {
+        toEmail = verification.email;
+      }
+    }
+
+    if (!toEmail) {
+      return res.status(400).json({ error: 'Could not resolve account email' });
+    }
+
+    const result = await sendMfaEmailMethodCode(userId, toEmail);
+
+    if (result.status === 'not_configured') {
+      return res.status(400).json({ error: 'Email method is not set up' });
+    }
+
+    if (result.status === 'rate_limited') {
+      return res.status(429).json({
+        error: 'Please wait before requesting another code.',
+        retry_after_seconds: result.retryAfterSeconds,
+      });
+    }
+
+    return res.status(200).json({ sent: true });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -115,26 +244,71 @@ export async function mfaUnenrollController(
   req: AuthenticatedRequest,
   res: Response
 ) {
-  if (!req.user?.sub) {
+  const userId = req.user?.sub;
+  if (!userId) {
     return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = mfaUnenrollValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: parsed.error.issues[0]?.message ?? 'Invalid payload' });
   }
 
   try {
     const userClient = getUserClient(req);
-    const { removed, failed, error } = await unenrollAllTotpFactors(userClient);
+    const { data: roleData } = await getStaffRole(userId);
+    const staffRole = roleData?.role;
+
+    if (staffRole && MANDATORY_MFA_ROLES.has(staffRole)) {
+      // The authenticator-app factor is permanent for a mandatory-MFA role,
+      // never just "not the last method" - unlike 'email' (a real TOTP
+      // factor whose secret the server itself holds, encrypted, to compute
+      // and send the code), the server never learns an authenticator
+      // factor's secret at all. That asymmetry means a compromised
+      // MFA_EMAIL_SECRET_KEY alone could otherwise leave the highest-
+      // privilege roles' MFA entirely forgeable server-side if they were
+      // ever allowed to drop down to email-only - see mfa_factor_methods'
+      // migration comment. Enrollment already forces this role's first
+      // factor to be 'authenticator' (MfaSetupModal/MfaEnrollPage), so this
+      // is enforcement of an invariant that should already hold, not a
+      // first-time gate.
+      if (parsed.data.method === 'authenticator') {
+        return res.status(409).json({
+          error:
+            'Your role requires an authenticator app and it cannot be removed. You can still add or remove email as an additional method.',
+        });
+      }
+
+      const status = await getMfaMethodStatus(userClient, userId);
+      if (!status.authenticator) {
+        return res.status(409).json({
+          error:
+            'Your role requires MFA - set up an authenticator app before removing this method.',
+        });
+      }
+    }
+
+    const { error } = await unenrollMfaMethod(
+      userClient,
+      userId,
+      parsed.data.method
+    );
 
     if (error) {
-      return res.status(400).json({ error: 'Failed to list factors' });
+      return res
+        .status(400)
+        .json({ error: 'Failed to remove MFA factor', details: error.message });
     }
 
-    if (failed.length > 0 && removed.length === 0) {
-      return res.status(400).json({
-        error: 'Failed to remove MFA factor',
-        details: failed,
-      });
-    }
+    // Removing a factor changes what "this account is verified" means -
+    // a device trusted under the old configuration has no business staying
+    // trusted (e.g. resetting a compromised factor should also kick out any
+    // device an attacker had separately gotten trusted).
+    await revokeAllTrustedDevices(userId);
 
-    return res.status(200).json({ removed, failed });
+    return res.status(200).json({ removed: true });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -151,20 +325,171 @@ export async function mfaStatusController(
 
   try {
     const userClient = getUserClient(req);
-    const [{ data: statusData, error: statusError }, { data: roleData }] =
-      await Promise.all([
-        getTotpEnrollmentStatus(userClient),
-        getStaffRole(userId),
-      ]);
+    const [methods, { data: roleData }, preferredMethod] = await Promise.all([
+      getMfaMethodStatus(userClient, userId),
+      getStaffRole(userId),
+      getMfaPreference(userId),
+    ]);
 
-    if (statusError || !statusData) {
-      return res.status(400).json({ error: 'Failed to list factors' });
+    let emailVerification: { email: string; verified: boolean } | null = null;
+    if (roleData?.role && MANDATORY_MFA_ROLES.has(roleData.role)) {
+      emailVerification = await getMfaEmailVerification(userId);
     }
 
     return res.status(200).json({
       role: roleData?.role ?? null,
-      mfa_enrolled: statusData.enrolled,
+      // Kept alongside `methods` for every existing caller that only ever
+      // checked a single boolean (StaffLoginForm's redirect decision, etc.) -
+      // true whenever at least one method is enrolled.
+      mfa_enrolled: methods.authenticator || methods.email,
+      methods,
+      preferred_method: preferredMethod,
+      // Admin-tier only - null for every other role, since only they have
+      // the bind/unbind/change-email concept at all (see
+      // mfa_email_verifications' migration comment).
+      email_verification: emailVerification,
     });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function mfaEmailVerificationStartController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = mfaEmailVerificationStartValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: parsed.error.issues[0]?.message ?? 'Invalid payload' });
+  }
+
+  try {
+    const { data: roleData } = await getStaffRole(userId);
+    if (!roleData?.role || !MANDATORY_MFA_ROLES.has(roleData.role)) {
+      return res.status(403).json({ error: 'Not available for your role' });
+    }
+
+    let email = parsed.data.email;
+    if (!email) {
+      const existing = await getMfaEmailVerification(userId);
+      email = existing?.email ?? (await getAuthUserEmail(userId)) ?? undefined;
+    }
+
+    if (!email) {
+      return res.status(400).json({ error: 'Could not resolve an email' });
+    }
+
+    const result = await startMfaEmailVerification(userId, email);
+
+    if (result.status === 'rate_limited') {
+      return res.status(429).json({
+        error: 'Please wait before requesting another code.',
+        retry_after_seconds: result.retryAfterSeconds,
+      });
+    }
+
+    return res.status(200).json({ sent: true, email });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function mfaEmailVerificationConfirmController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = mfaEmailVerificationConfirmValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: parsed.error.issues[0]?.message ?? 'Invalid payload' });
+  }
+
+  try {
+    const { data: roleData } = await getStaffRole(userId);
+    if (!roleData?.role || !MANDATORY_MFA_ROLES.has(roleData.role)) {
+      return res.status(403).json({ error: 'Not available for your role' });
+    }
+
+    const result = await confirmMfaEmailVerification(userId, parsed.data.code);
+
+    if (result.status === 'no_pending_code') {
+      return res
+        .status(400)
+        .json({ error: 'Request a code before confirming.' });
+    }
+    if (result.status === 'expired') {
+      return res
+        .status(400)
+        .json({ error: 'That code has expired - request a new one.' });
+    }
+    if (result.status === 'invalid_code') {
+      return res.status(401).json({ error: 'Invalid code' });
+    }
+
+    return res.status(200).json({ verified: true });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function mfaEmailVerificationUnbindController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const { data: roleData } = await getStaffRole(userId);
+    if (!roleData?.role || !MANDATORY_MFA_ROLES.has(roleData.role)) {
+      return res.status(403).json({ error: 'Not available for your role' });
+    }
+
+    const userClient = getUserClient(req);
+    await unbindMfaEmail(userClient, userId);
+
+    return res.status(200).json({ unbound: true });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function mfaPreferenceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user?.sub;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = mfaPreferenceValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: parsed.error.issues[0]?.message ?? 'Invalid payload' });
+  }
+
+  try {
+    await setMfaPreference(userId, parsed.data.preferred_method);
+    return res
+      .status(200)
+      .json({ preferred_method: parsed.data.preferred_method });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -179,7 +504,7 @@ export async function mfaVerifyController(
     return res.status(400).json({ error: 'Invalid payload' });
   }
 
-  const { code } = parsed.data;
+  const { code, method, remember_device: rememberDevice } = parsed.data;
 
   try {
     const userId = req.user?.sub;
@@ -193,29 +518,18 @@ export async function mfaVerifyController(
     }
 
     const userClient = getUserClient(req);
+    const result = await challengeAndVerifyMfaMethod(
+      userClient,
+      userId,
+      method,
+      code
+    );
 
-    const { data: totpFactor, error: factorsError } =
-      await findTotpFactorForVerify(userClient);
-    if (factorsError) {
-      return res.status(400).json({ error: 'Failed to list factors' });
-    }
-    if (!totpFactor) {
-      return res.status(400).json({ error: 'No TOTP factor found' });
-    }
-
-    const { data: challengeData, error: challengeError } =
-      await userClient.auth.mfa.challenge({ factorId: totpFactor.id });
-    if (challengeError) {
-      return res.status(400).json({ error: challengeError.message });
+    if (!result) {
+      return res.status(400).json({ error: `No ${method} factor found` });
     }
 
-    const { error: verifyError } = await userClient.auth.mfa.verify({
-      factorId: totpFactor.id,
-      challengeId: challengeData.id,
-      code,
-    });
-
-    if (verifyError) {
+    if (result.verifyError) {
       const updatedLockoutStatus = await incrementMfaLockout(userId);
       if (updatedLockoutStatus.locked) {
         return res
@@ -228,16 +542,56 @@ export async function mfaVerifyController(
 
     await resetMfaLockout(userId);
 
+    // Fires exactly once per account: mandatory roles are hard-blocked
+    // behind MfaSetupModal until their first authenticator verify succeeds
+    // (StaffAuthGuard), so "no mfa_email_verifications row yet" is exactly
+    // equivalent to "this is that first successful login + TOTP setup" -
+    // no extra bookkeeping needed to tell enrollment-confirm apart from a
+    // routine later login. Best-effort: a failed send must never fail the
+    // login/verify response itself.
+    if (method === 'authenticator') {
+      try {
+        const { data: roleData } = await getStaffRole(userId);
+        if (roleData?.role && MANDATORY_MFA_ROLES.has(roleData.role)) {
+          const existing = await getMfaEmailVerification(userId);
+          if (!existing) {
+            const accountEmail = await getAuthUserEmail(userId);
+            if (accountEmail) {
+              await startMfaEmailVerification(userId, accountEmail);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to start MFA email verification:', error);
+      }
+    }
+
     const { data: refreshData, error: refreshError } =
       await userClient.auth.refreshSession();
+
+    // Mandatory-MFA roles are excluded even if the checkbox was somehow
+    // ticked - see staffLoginController's matching comment on why a trusted
+    // device can never substitute for their real aal2 requirement.
+    let deviceToken: string | null = null;
+    if (rememberDevice) {
+      const { data: roleData } = await getStaffRole(userId);
+      if (roleData?.role && !MANDATORY_MFA_ROLES.has(roleData.role)) {
+        deviceToken = await issueTrustedDeviceToken(userId);
+      }
+    }
+
     if (refreshError || !refreshData.session) {
-      return res.status(200).json({ success: true });
+      return res.status(200).json({
+        success: true,
+        ...(deviceToken ? { device_token: deviceToken } : {}),
+      });
     }
 
     return res.status(200).json({
       access_token: refreshData.session.access_token,
       refresh_token: refreshData.session.refresh_token,
       expires_in: refreshData.session.expires_in,
+      ...(deviceToken ? { device_token: deviceToken } : {}),
     });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });

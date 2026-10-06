@@ -3,6 +3,9 @@ import {
   getConsultation,
   listConsultationQueue,
   listPetConsultationHistory,
+  listPetConsultationResultsForRequester,
+  listPetPrescriptionsForRequester,
+  listPrescriptions,
   listVeterinarianPatients,
   updateConsultation,
 } from './consultation.service.ts';
@@ -150,6 +153,117 @@ describe('consultation.service (#66)', () => {
       expect(
         (insert?.payload as Array<Record<string, unknown>>)[0]
       ).not.toHaveProperty('status');
+    });
+
+    it("includes a paid Pending booking and gives it a consultation row - the vet sees what's booked before the customer arrives", async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              pet_id: 'pet-1',
+              branch_id: MAKATI.id,
+              assigned_staff_id: VET_ID,
+              special_instructions: null,
+              status: 'Pending',
+              payment_status: 'Fully Paid',
+            },
+          ],
+          error: null,
+        }, // bookings
+        { data: [], error: null }, // existing consultations
+        { data: MAKATI, error: null }, // branch eligibility
+        { data: null, error: null }, // insert
+        {
+          data: [
+            {
+              ...consultationRow(),
+              booking: { scheduled_start: '2026-07-19T02:00:00.000Z' },
+            },
+          ],
+          error: null,
+        } // consultations select
+      );
+
+      const result = await listConsultationQueue();
+
+      expect(result).toHaveLength(1);
+      expect(
+        recordedWrites.some(
+          (write) =>
+            write.table === 'consultations' && write.method === 'insert'
+        )
+      ).toBe(true);
+    });
+
+    it('leaves out a Pending booking that has not been paid for - not a secured appointment yet', async () => {
+      queueFromResults({
+        data: [
+          {
+            id: 'booking-1',
+            pet_id: 'pet-1',
+            branch_id: MAKATI.id,
+            assigned_staff_id: VET_ID,
+            special_instructions: null,
+            status: 'Pending',
+            payment_status: 'Pending',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await listConsultationQueue();
+
+      expect(result).toEqual([]);
+      expect(recordedWrites).toHaveLength(0);
+    });
+
+    describe('date range', () => {
+      function captureDateBounds() {
+        const bounds: Record<string, unknown> = {};
+
+        vi.mocked(supabase.from).mockImplementation((() => {
+          const builder: Record<string, unknown> = {};
+
+          for (const method of ['select', 'eq', 'in', 'or']) {
+            builder[method] = vi.fn(() => builder);
+          }
+          builder.gte = vi.fn((_column: string, value: unknown) => {
+            bounds.from = value;
+            return builder;
+          });
+          builder.lt = vi.fn((_column: string, value: unknown) => {
+            bounds.to = value;
+            return builder;
+          });
+          builder.then = (resolve: (_result: QueryResult) => void) =>
+            resolve({ data: [], error: null });
+
+          return builder;
+        }) as never);
+
+        return bounds;
+      }
+
+      it('"All dates" covers every date, upcoming ones included - not just today', async () => {
+        const bounds = captureDateBounds();
+
+        await listConsultationQueue({ allDates: true });
+
+        expect(bounds.from).toBe('1970-01-01T00:00:00.000Z');
+        expect(bounds.to).toBe('9999-12-31T00:00:00.000Z');
+      });
+
+      it('still defaults to today when no range is asked for at all', async () => {
+        const bounds = captureDateBounds();
+
+        await listConsultationQueue();
+
+        expect(
+          new Date(bounds.to as string).getTime() -
+            new Date(bounds.from as string).getTime()
+        ).toBe(24 * 60 * 60 * 1000);
+      });
     });
 
     it('AC-5: rejects auto-vivifying a consultation against a non-Makati booking', async () => {
@@ -354,7 +468,7 @@ describe('consultation.service (#66)', () => {
       });
     });
 
-    it('AC-2: marking Completed delegates to completeBooking, writes a line item for the professional fee/each medication/each procedure, and returns the post-transition booking status', async () => {
+    it('AC-2: marking Completed delegates to completeBooking, writes a line item for the professional fee/each medication, and returns the post-transition booking status', async () => {
       queueFromResults(
         {
           data: consultationRow({ bookingStatus: 'In Progress' }),
@@ -383,9 +497,6 @@ describe('consultation.service (#66)', () => {
           status: 'Completed',
           professional_fee: 500,
           medications: [{ name: 'Amoxicillin', dose: '50mg', amount: 150 }],
-          procedures: [
-            { procedure_type: 'Dental', description: 'Cleaning', amount: 800 },
-          ],
         },
       });
 
@@ -397,7 +508,6 @@ describe('consultation.service (#66)', () => {
       expect(lineItemsInsert?.payload).toMatchObject([
         { item_type: 'professional_fee', amount: 500 },
         { item_type: 'medication', description: 'Amoxicillin', amount: 150 },
-        { item_type: 'procedure', procedure_type: 'Dental', amount: 800 },
       ]);
     });
 
@@ -442,6 +552,129 @@ describe('consultation.service (#66)', () => {
         pet_id: 'pet-1',
         vaccine_name: 'Rabies',
       });
+    });
+  });
+});
+
+describe('#117 prescription/consultation-results reads', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    recordedWrites.length = 0;
+  });
+
+  describe('listPrescriptions', () => {
+    it('only returns finished consultations that prescribed at least one medication', async () => {
+      queueFromResults({
+        data: [
+          consultationRow({
+            id: 'consultation-with-meds',
+            bookingStatus: 'Completed',
+            medications: [{ name: 'Amoxicillin', dose: '50mg' }],
+          }),
+          consultationRow({
+            id: 'consultation-without-meds',
+            bookingStatus: 'Completed',
+            medications: [],
+          }),
+        ],
+        error: null,
+      });
+
+      const result = await listPrescriptions();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('consultation-with-meds');
+    });
+  });
+
+  // listConsultationResults removed - the standalone Consultation Results
+  // list page was replaced by a "Results" row option on the Consultation
+  // Queue, which reads a row's own form_responses directly (no new server
+  // read needed).
+
+  describe('listPetPrescriptionsForRequester', () => {
+    it("returns the owning customer's own pet's prescriptions, trimmed", async () => {
+      queueFromResults(
+        { data: { customer_id: 'customer-1' }, error: null }, // getPetOwnerId
+        {
+          data: [
+            consultationRow({
+              bookingStatus: 'Completed',
+              medications: [{ name: 'Amoxicillin', dose: '50mg' }],
+            }),
+          ],
+          error: null,
+        } // listPetConsultationHistory
+      );
+
+      const result = await listPetPrescriptionsForRequester({
+        requesterId: 'customer-1',
+        petId: 'pet-1',
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        consultation_id: 'consultation-1',
+        medications: [{ name: 'Amoxicillin', dose: '50mg' }],
+      });
+    });
+
+    it('rejects a non-owner with no staff role as a 403', async () => {
+      queueFromResults(
+        { data: { customer_id: 'customer-1' }, error: null }, // getPetOwnerId
+        { data: { role: null }, error: null } // getStaffRoleOrNull
+      );
+
+      await expect(
+        listPetPrescriptionsForRequester({
+          requesterId: 'someone-else',
+          petId: 'pet-1',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('rejects when the pet does not exist as a 404', async () => {
+      queueFromResults({ data: null, error: null }); // getPetOwnerId
+
+      await expect(
+        listPetPrescriptionsForRequester({
+          requesterId: 'customer-1',
+          petId: 'missing-pet',
+        })
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe('listPetConsultationResultsForRequester', () => {
+    it('lets any staff role read a pet it does not own', async () => {
+      queueFromResults(
+        { data: { customer_id: 'customer-1' }, error: null }, // getPetOwnerId
+        { data: { role: 'Receptionist' }, error: null }, // getStaffRoleOrNull
+        {
+          data: [
+            consultationRow({
+              bookingStatus: 'Completed',
+              form_responses: [
+                {
+                  template_id: 'tmpl-1',
+                  template_name: 'Dental Check',
+                  filled_at: '2026-07-19T02:00:00.000Z',
+                  fields: [],
+                },
+              ],
+            }),
+          ],
+          error: null,
+        } // listPetConsultationHistory
+      );
+
+      const result = await listPetConsultationResultsForRequester({
+        requesterId: 'receptionist-1',
+        petId: 'pet-1',
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].form_responses[0].template_name).toBe('Dental Check');
     });
   });
 });

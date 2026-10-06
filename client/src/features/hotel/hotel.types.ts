@@ -47,6 +47,8 @@ export interface Cage {
    * values this cage supports (e.g. ['Dog', 'Cat']) - a cage can support
    * more than one, unlike size. Always non-empty. */
   pet_types: string[];
+  /** Set when archived from Settings > Config > Archive (20260928218). */
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -198,6 +200,47 @@ export interface CheckInResult {
   careLogEntries: CareLogEntry[];
 }
 
+/** Who is in an occupied cage and when they're expected to leave (GET
+ * /hotel/cages/occupants) - mirrors the server's CageOccupant. */
+export interface CageOccupant {
+  /** The Active stay (Hotel) / session (Daycare) behind this occupant - what
+   * a check-out acts on. */
+  stay_id: string;
+  cage_id: string;
+  pet_name: string | null;
+  owner_name: string | null;
+  service: 'Hotel' | 'Daycare';
+  booking_id: string | null;
+  since: string | null;
+  /** The booking's own scheduled end (Hotel nights / Daycare hours as
+   * booked); null when there is no booking behind the stay. */
+  expected_checkout_at: string | null;
+  /** The flat fee a Daycare pet is charged for each hour past
+   * expected_checkout_at, and how late it may be before that starts. Both
+   * null for Hotel, which has no hourly overdue fee. */
+  overdue_fee_per_hour: number | null;
+  overdue_grace_minutes: number | null;
+  /** How the stay is being paid for: 'pay_at_checkout' for a booking billed
+   * at checkout, otherwise the booking's own payment status. Null (or absent)
+   * when there is no booking behind the stay. */
+  payment?: CageOccupantPayment | null;
+}
+
+export type CageOccupantPayment =
+  | 'pay_at_checkout'
+  | 'paid'
+  | 'partially_paid'
+  | 'unpaid';
+
+/** What a cage card says about how its occupant's stay is being paid for. */
+export const CAGE_OCCUPANT_PAYMENT_LABEL: Record<CageOccupantPayment, string> =
+  {
+    pay_at_checkout: 'Pay at checkout',
+    paid: 'Paid',
+    partially_paid: 'Partially paid',
+    unpaid: 'Unpaid',
+  };
+
 export interface CageSuggestion {
   suggestedSize: CageSize;
   availableCages: Cage[];
@@ -214,6 +257,9 @@ export interface CheckoutResult {
   downpaymentAmount: number;
   extensionFee: number | null;
   remainingBalance: number;
+  /** Set only for a pay-at-checkout booking: the nights it was billed for.
+   * remainingBalance is then the bill just sent to the cashier. */
+  payAtCheckout?: { nights: number };
 }
 
 export interface HotelStayWithCage extends HotelStay {

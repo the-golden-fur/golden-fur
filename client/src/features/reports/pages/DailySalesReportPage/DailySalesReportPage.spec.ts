@@ -138,10 +138,16 @@ describe('DailySalesReportPage', () => {
 
     expect(await screen.findByText('Makati')).toBeInTheDocument();
     expect(screen.queryByLabelText('Branch')).not.toBeInTheDocument();
-    expect(reportsApi.getDailySalesReport).toHaveBeenCalledWith(
-      expect.any(String),
-      'branch-makati',
-      'token'
+    // The report-fetch effect only waits on listStaff (viewerBranchId), while
+    // 'Makati' rendering also waits on the separate listBranches promise -
+    // don't assume the former has already committed just because the latter
+    // has painted; wait for it explicitly instead of asserting immediately.
+    await waitFor(() =>
+      expect(reportsApi.getDailySalesReport).toHaveBeenCalledWith(
+        expect.any(String),
+        'branch-makati',
+        'token'
+      )
     );
   });
 
@@ -163,10 +169,12 @@ describe('DailySalesReportPage', () => {
     renderPage();
 
     const branchSelect = await screen.findByLabelText('Branch');
-    expect(reportsApi.getDailySalesReport).toHaveBeenCalledWith(
-      expect.any(String),
-      null,
-      'token'
+    await waitFor(() =>
+      expect(reportsApi.getDailySalesReport).toHaveBeenCalledWith(
+        expect.any(String),
+        null,
+        'token'
+      )
     );
 
     await user.selectOptions(branchSelect, 'branch-southwoods');

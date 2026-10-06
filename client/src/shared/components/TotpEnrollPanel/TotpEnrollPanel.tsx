@@ -16,12 +16,17 @@ interface TotpEnrollPanelProps {
   role: ThemeRole;
   accessToken: string;
   onEnrolled: () => void;
+  /** Fires alongside the existing inline error banner - lets a parent (e.g.
+   * MfaMethodEnrollFlow) also surface a toast, per the "toast on success/fail"
+   * requirement, without this panel needing to know what a toast is. */
+  onError?: (message: string) => void;
 }
 
 export function TotpEnrollPanel({
   role,
   accessToken,
   onEnrolled,
+  onError,
 }: TotpEnrollPanelProps) {
   const { applySession } = useAuth();
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -38,16 +43,18 @@ export function TotpEnrollPanel({
 
   const startEnroll = useCallback(async () => {
     setError(null);
-    const result = await enrollMfa(role, accessToken);
+    const result = await enrollMfa(role, accessToken, 'authenticator');
 
     if (result.error || !result.data) {
-      setError(result.error ?? 'Unable to start MFA enrollment.');
+      const message = result.error ?? 'Unable to start MFA enrollment.';
+      setError(message);
+      onError?.(message);
       return;
     }
 
     setQrCode(result.data.totp?.qr_code ?? result.data.qr_code ?? null);
     setSecret(result.data.totp?.secret ?? null);
-  }, [role, accessToken]);
+  }, [role, accessToken, onError]);
 
   useEffect(() => {
     if (hasStartedEnrollRef.current) {
@@ -69,29 +76,48 @@ export function TotpEnrollPanel({
     }
 
     setIsSubmitting(true);
-    const result = await verifyMfa(role, parsed.data.code, accessToken);
-    setIsSubmitting(false);
 
-    if (result.error) {
-      setError(result.error);
-      return;
+    // Load-bearing, not defensive boilerplate - see StaffLoginForm's
+    // identical comment: without it, a thrown exception (a network failure
+    // inside applySession, say) skips setIsSubmitting(false) entirely,
+    // leaving "Confirm MFA" silently stuck disabled forever.
+    try {
+      const result = await verifyMfa(role, parsed.data.code, accessToken, {
+        method: 'authenticator',
+      });
+
+      if (result.error) {
+        setError(result.error);
+        onError?.(result.error);
+        return;
+      }
+
+      if (result.data?.access_token && result.data.refresh_token) {
+        await applySession(result.data.access_token, result.data.refresh_token);
+      }
+
+      onEnrolled();
+    } catch {
+      const message =
+        'Could not reach the server. Check your connection and try again.';
+      setError(message);
+      onError?.(message);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (result.data?.access_token && result.data.refresh_token) {
-      await applySession(result.data.access_token, result.data.refresh_token);
-    }
-
-    onEnrolled();
   };
 
   const handleReset = async () => {
     setIsResetting(true);
-    await unenrollMfa(role, accessToken);
-    setIsResetting(false);
-    setQrCode(null);
-    setSecret(null);
-    setCode('');
-    await startEnroll();
+    try {
+      await unenrollMfa(role, accessToken, 'authenticator');
+      setQrCode(null);
+      setSecret(null);
+      setCode('');
+      await startEnroll();
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   return (

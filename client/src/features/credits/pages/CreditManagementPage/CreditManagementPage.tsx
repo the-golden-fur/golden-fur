@@ -11,6 +11,7 @@ import type { CreditBalance, CreditTransaction } from '../../credits.types';
 import { CreditBalanceCard } from '../../components/CreditBalanceCard/CreditBalanceCard';
 import { CreditHistoryTable } from '../../components/CreditHistoryTable/CreditHistoryTable';
 import styles from './CreditManagementPage.module.css';
+import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
 /** Cashier/Admin/Superadmin (#95 AC-3) - matches CREDIT_STAFF_ROLES
  * server-side. */
@@ -144,7 +145,7 @@ export function CreditManagementPage() {
     return (
       <main className={styles.page}>
         <div className={styles.content}>
-          <p className={styles.copy}>Loading...</p>
+          <LoadingState />
         </div>
       </main>
     );
@@ -188,7 +189,7 @@ export function CreditManagementPage() {
             ) : null}
 
             {isLoadingBalances ? (
-              <p className={styles.copy}>Loading balances...</p>
+              <LoadingState label="Loading balances..." />
             ) : balances.length === 0 ? (
               <p className={styles.copy}>
                 This customer has no credit balance at any branch.
@@ -215,7 +216,10 @@ export function CreditManagementPage() {
                     </button>
                     {expandedBranchId === balance.branch_id ? (
                       isLoadingHistory ? (
-                        <p className={styles.copy}>Loading history...</p>
+                        <LoadingState
+                          label="Loading history..."
+                          size="inline"
+                        />
                       ) : (
                         <CreditHistoryTable history={history} />
                       )
