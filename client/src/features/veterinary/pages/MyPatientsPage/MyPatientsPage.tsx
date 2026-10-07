@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router';
+import {
+  LayoutGrid,
+  List as ListIcon,
+  Table as TableIcon,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import {
@@ -13,6 +19,14 @@ import type {
   PetTypeRow,
 } from '../../../customers/customer.types';
 import { DataList } from '../../../../shared/components/DataList/DataList';
+import {
+  DataTable,
+  type DataTableColumn,
+} from '../../../../shared/components/DataTable/DataTable';
+import {
+  ViewSwitcher,
+  type ViewSwitcherOption,
+} from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { FilterSortBar } from '../../../../shared/components/FilterSortBar/FilterSortBar';
 import type {
   FilterTile,
@@ -27,11 +41,13 @@ import {
 } from '../../api/veterinary.api';
 import type { Consultation } from '../../veterinary.types';
 import { PetHistoryTab } from '../../components/PetHistoryTab/PetHistoryTab';
+import { PetPrescriptionsPanel } from '../../components/PetPrescriptionsPanel/PetPrescriptionsPanel';
 import {
   applyPatientFilters,
   buildPatientFilterFields,
   derivePatientSortKey,
   matchesPatientQuery,
+  type PatientRow,
   PATIENT_COMPARATORS,
   PATIENT_SORT_FIELDS,
 } from './myPatientsBrowserFields';
@@ -43,6 +59,18 @@ import { LoadingState } from '../../../../shared/components/LoadingState/Loading
  * owns the data can see it, matching the server's own requester-scoped
  * query (listVeterinarianPatients always filters by the caller's id). */
 const ALLOWED_VIEWER_ROLES = new Set(['Veterinarian']);
+
+// Same Table / List switcher the other staff list pages have, plus a Grid of
+// patient cards (there is no status to group a Board by here).
+type ViewMode = 'table' | 'list' | 'grid';
+const VIEW_OPTIONS: ViewSwitcherOption<ViewMode>[] = [
+  { value: 'table', label: 'Table', icon: TableIcon },
+  { value: 'list', label: 'List', icon: ListIcon },
+  { value: 'grid', label: 'Grid', icon: LayoutGrid },
+];
+
+/** What the detail panel is showing for the selected patient. */
+type PanelTab = 'history' | 'prescriptions';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
@@ -78,6 +106,9 @@ export function MyPatientsPage() {
   const [isPetHistoryLoading, setIsPetHistoryLoading] = useState(false);
   const [petHistoryError, setPetHistoryError] = useState<string | null>(null);
   const detailPanelRef = useRef<HTMLDivElement>(null);
+  // Which of the selected patient's two views the detail panel shows.
+  const [panelTab, setPanelTab] = useState<PanelTab>('history');
+  const [view, setView] = useState<ViewMode>('list');
 
   // Closes the pet history panel on an outside click or Escape, mirroring
   // MoreOptionsMenu's own dismiss pattern - otherwise the only way back to
@@ -252,13 +283,23 @@ export function MyPatientsPage() {
     petId: string;
   }): MoreOptionsMenuItem[] {
     return [
-      { label: 'View History', onSelect: () => selectPatient(row.petId) },
+      {
+        label: 'View History',
+        onSelect: () => selectPatient(row.petId, 'history'),
+      },
+      {
+        label: 'View Prescription',
+        onSelect: () => selectPatient(row.petId, 'prescriptions'),
+      },
     ];
   }
 
   const selectedRow = rows.find((row) => row.petId === selectedPetId);
 
-  function selectPatient(petId: string) {
+  /** Opens the detail panel on one patient, on the asked-for tab. The
+   * history is loaded either way, so switching tabs afterwards is instant. */
+  function selectPatient(petId: string, tab: PanelTab) {
+    setPanelTab(tab);
     setSelectedPetId(petId);
     setPetHistory([]);
     setPetHistoryError(null);
@@ -276,6 +317,60 @@ export function MyPatientsPage() {
 
       setPetHistory(result.data);
     });
+  }
+
+  const EMPTY_MESSAGE =
+    'No patients match these filters. Patients appear here after you complete a consultation for them.';
+
+  const columns: DataTableColumn<PatientRow>[] = [
+    { id: 'pet', header: 'Pet', render: (row) => row.petName },
+    { id: 'owner', header: 'Owner', render: (row) => row.ownerName },
+    {
+      id: 'last-visit',
+      header: 'Last visit',
+      render: (row) => formatDate(row.lastVisitAt),
+    },
+  ];
+
+  /** Name, owner and last visit - the List row and the Grid card. */
+  function renderPatientSummary(row: PatientRow) {
+    return (
+      <div
+        className={
+          row.petId === selectedPetId ? styles.cardActive : styles.card
+        }
+      >
+        <span className={styles.rowPetName}>{row.petName}</span>
+        <span className={styles.rowMeta}>{row.ownerName}</span>
+        <span className={styles.rowMeta}>
+          Last visit: {formatDate(row.lastVisitAt)}
+        </span>
+      </div>
+    );
+  }
+
+  /** The two per-patient buttons - the same in every view. */
+  function renderPatientActions(row: PatientRow) {
+    return (
+      <div className={styles.rowActions}>
+        <button
+          type="button"
+          className={styles.historyButton}
+          aria-label={`View history for ${row.petName}`}
+          onClick={() => selectPatient(row.petId, 'history')}
+        >
+          View history
+        </button>
+        <button
+          type="button"
+          className={styles.historyButton}
+          aria-label={`View prescription for ${row.petName}`}
+          onClick={() => selectPatient(row.petId, 'prescriptions')}
+        >
+          View prescription
+        </button>
+      </div>
+    );
   }
 
   if (!user?.id || !accessToken) {
@@ -323,7 +418,14 @@ export function MyPatientsPage() {
               searchValue={search}
               onSearchChange={setSearch}
               searchPlaceholder="Search by pet or owner..."
-            />
+            >
+              <ViewSwitcher
+                options={VIEW_OPTIONS}
+                value={view}
+                onChange={setView}
+                ariaLabel="Patient list view"
+              />
+            </FilterSortBar>
           </div>
         </div>
 
@@ -334,62 +436,120 @@ export function MyPatientsPage() {
             {loadError}
           </p>
         ) : (
-          <div className={styles.layout}>
+          <div className={selectedRow ? styles.layoutWithPanel : styles.layout}>
             <div className={styles.queue}>
-              <DataList
-                items={visibleRows}
-                getRowKey={(row) => row.petId}
-                emptyMessage="No patients match these filters. Patients appear here after you complete a consultation for them."
-                renderItem={(row) => (
-                  <CardContextMenu
-                    label={`Actions for ${row.petName}`}
-                    items={buildPatientActionItems(row)}
-                  >
-                    <div className={styles.rowContent}>
-                      <div
-                        className={
-                          row.petId === selectedPetId
-                            ? styles.cardActive
-                            : styles.card
-                        }
-                      >
-                        <span className={styles.rowPetName}>{row.petName}</span>
-                        <span className={styles.rowMeta}>{row.ownerName}</span>
-                        <span className={styles.rowMeta}>
-                          Last visit: {formatDate(row.lastVisitAt)}
-                        </span>
+              {view === 'table' ? (
+                <DataTable
+                  columns={columns}
+                  rows={visibleRows}
+                  getRowKey={(row) => row.petId}
+                  renderRowActions={renderPatientActions}
+                  emptyMessage={EMPTY_MESSAGE}
+                />
+              ) : view === 'list' ? (
+                <DataList
+                  items={visibleRows}
+                  getRowKey={(row) => row.petId}
+                  emptyMessage={EMPTY_MESSAGE}
+                  renderItem={(row) => (
+                    <CardContextMenu
+                      label={`Actions for ${row.petName}`}
+                      items={buildPatientActionItems(row)}
+                    >
+                      <div className={styles.rowContent}>
+                        {renderPatientSummary(row)}
+                        {renderPatientActions(row)}
                       </div>
-                      <button
-                        type="button"
-                        className={styles.historyButton}
-                        aria-label={`View history for ${row.petName}`}
-                        onClick={() => selectPatient(row.petId)}
+                    </CardContextMenu>
+                  )}
+                />
+              ) : visibleRows.length === 0 ? (
+                <p className={styles.copy}>{EMPTY_MESSAGE}</p>
+              ) : (
+                <ul className={styles.grid}>
+                  {visibleRows.map((row) => (
+                    <li key={row.petId} className={styles.gridCard}>
+                      <CardContextMenu
+                        label={`Actions for ${row.petName}`}
+                        items={buildPatientActionItems(row)}
                       >
-                        View history
-                      </button>
-                    </div>
-                  </CardContextMenu>
-                )}
-              />
+                        <div className={styles.gridCardBody}>
+                          {renderPatientSummary(row)}
+                          {renderPatientActions(row)}
+                        </div>
+                      </CardContextMenu>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
-            <div className={styles.detail}>
-              {selectedRow && (
-                <div className={styles.panel} ref={detailPanelRef}>
+            {selectedRow ? (
+              <section
+                className={styles.panel}
+                ref={detailPanelRef}
+                aria-label={`${selectedRow.petName} details`}
+              >
+                <div className={styles.panelHeader}>
                   <div className={styles.header}>
                     <h2 className={styles.petName}>{selectedRow.petName}</h2>
                     <span className={styles.subtitle}>
                       Owner: {selectedRow.ownerName}
                     </span>
                   </div>
+                  <button
+                    type="button"
+                    className={styles.closeButton}
+                    aria-label="Close panel"
+                    onClick={() => setSelectedPetId(null)}
+                  >
+                    <X size={18} aria-hidden="true" />
+                  </button>
+                </div>
+
+                <div className={styles.tabs} role="tablist">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={panelTab === 'history'}
+                    className={
+                      panelTab === 'history' ? styles.tabActive : styles.tab
+                    }
+                    onClick={() => setPanelTab('history')}
+                  >
+                    History
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={panelTab === 'prescriptions'}
+                    className={
+                      panelTab === 'prescriptions'
+                        ? styles.tabActive
+                        : styles.tab
+                    }
+                    onClick={() => setPanelTab('prescriptions')}
+                  >
+                    Prescriptions
+                  </button>
+                </div>
+
+                {panelTab === 'history' ? (
                   <PetHistoryTab
                     consultations={petHistory}
                     isLoading={isPetHistoryLoading}
                     error={petHistoryError}
                   />
-                </div>
-              )}
-            </div>
+                ) : (
+                  <PetPrescriptionsPanel
+                    key={selectedRow.petId}
+                    petId={selectedRow.petId}
+                    petName={selectedRow.petName}
+                    accessToken={accessToken}
+                  />
+                )}
+              </section>
+            ) : null}
           </div>
         )}
       </div>

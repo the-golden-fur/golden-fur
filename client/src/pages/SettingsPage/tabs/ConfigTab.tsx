@@ -16,6 +16,8 @@ import {
 import {
   BRANCHES_TILE,
   CONFIG_TILES,
+  FAQS_TILE,
+  WEIGHT_CLASSES_TILE,
   type ConfigTileConfig,
 } from '../configTiles.config';
 import styles from '../SettingsPage.module.css';
@@ -89,7 +91,15 @@ export function ConfigTab({ isSuperadmin, onSelectTile }: ConfigTabProps) {
       superadminOnly: false,
     }));
     return isSuperadmin
-      ? [...tiles, { ...BRANCHES_TILE, superadminOnly: true }]
+      ? [
+          ...tiles,
+          // Same Superadmin-only tiles, same order, as SettingsPage.tsx's
+          // sidebar list - keep the two in step.
+          ...[WEIGHT_CLASSES_TILE, BRANCHES_TILE, FAQS_TILE].map((tile) => ({
+            ...tile,
+            superadminOnly: true,
+          })),
+        ]
       : tiles;
   }, [isSuperadmin]);
 

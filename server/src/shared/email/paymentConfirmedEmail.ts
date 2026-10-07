@@ -4,6 +4,9 @@ export interface PaymentConfirmedEmailParams {
   to: string;
   amount: number;
   paymentMethod: string;
+  /** One extra line on what is still owed ("Remaining balance: ..." /
+   * "...now fully paid."), when the sender knows it. */
+  balanceNote?: string | null;
 }
 
 /**
@@ -15,11 +18,13 @@ export async function sendPaymentConfirmedEmail({
   to,
   amount,
   paymentMethod,
+  balanceNote,
 }: PaymentConfirmedEmailParams): Promise<void> {
   const subject = 'Golden Fur - Payment confirmed';
 
   const html = `
     <p>We've received your payment of ₱${amount.toFixed(2)} via ${paymentMethod}.</p>
+    ${balanceNote ? `<p>${balanceNote}</p>` : ''}
     <p>Thank you for choosing Golden Fur!</p>
   `.trim();
 

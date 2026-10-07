@@ -27,6 +27,7 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   MoreOptionsMenu,
@@ -188,6 +189,10 @@ export function AdminServicesPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [form, setForm] = useState<ServiceFormState>(EMPTY_FORM);
+  // The form as it was when the modal opened - what `form` is compared
+  // against to tell whether there are unsaved edits (see requestCloseForm).
+  const [initialForm, setInitialForm] = useState<ServiceFormState>(EMPTY_FORM);
+  const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -352,24 +357,50 @@ export function AdminServicesPage() {
     });
 
   const openCreateForm = () => {
+    const blankForm = {
+      ...EMPTY_FORM,
+      branchIds: branches.map((branch) => branch.id),
+    };
+
     setEditingServiceId(null);
-    setForm({ ...EMPTY_FORM, branchIds: branches.map((branch) => branch.id) });
+    setForm(blankForm);
+    setInitialForm(blankForm);
     setFormError(null);
     setIsFormOpen(true);
   };
 
   const openEditForm = (service: Service) => {
+    const serviceForm = formStateFromService(service);
+
     setEditingServiceId(service.id);
-    setForm(formStateFromService(service));
+    setForm(serviceForm);
+    setInitialForm(serviceForm);
     setFormError(null);
     setIsFormOpen(true);
   };
 
   const closeForm = () => {
     setIsFormOpen(false);
+    setIsConfirmingDiscard(false);
     setEditingServiceId(null);
     setForm(EMPTY_FORM);
+    setInitialForm(EMPTY_FORM);
     setFormError(null);
+  };
+
+  // Closing by Cancel, the X, Escape or a click outside (never by a
+  // successful save, which calls closeForm directly) asks "Discard unsaved
+  // changes?" first when the form was edited, so a stray click can't silently
+  // throw the edits away. Same pattern as BranchConfigureModal.
+  const isFormDirty = JSON.stringify(form) !== JSON.stringify(initialForm);
+
+  const requestCloseForm = () => {
+    if (isFormDirty) {
+      setIsConfirmingDiscard(true);
+      return;
+    }
+
+    closeForm();
   };
 
   /**
@@ -896,7 +927,7 @@ export function AdminServicesPage() {
         <Modal
           isOpen={isFormOpen}
           title={editingServiceId === null ? 'Create service' : 'Edit service'}
-          onClose={closeForm}
+          onClose={requestCloseForm}
         >
           {isFormOpen ? (
             <form className={styles.form} onSubmit={handleSubmit}>
@@ -1222,7 +1253,7 @@ export function AdminServicesPage() {
                 <button
                   type="button"
                   className={styles.secondaryButton}
-                  onClick={closeForm}
+                  onClick={requestCloseForm}
                 >
                   Cancel
                 </button>
@@ -1265,6 +1296,16 @@ export function AdminServicesPage() {
       </div>
 
       {dialogs}
+      <ConfirmDialog
+        isOpen={isConfirmingDiscard}
+        title="Discard unsaved changes?"
+        body="You have changes to this service that haven't been saved. Closing now will lose them."
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        tone="danger"
+        onConfirm={closeForm}
+        onCancel={() => setIsConfirmingDiscard(false)}
+      />
     </main>
   );
 }

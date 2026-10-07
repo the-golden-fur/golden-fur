@@ -277,7 +277,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     vi.mocked(getFixedPrice).mockResolvedValue(null);
   });
 
-  it('(a) a 2-booking group with different pets/categories computes combined discount/promo/downpayment against the combined total', async () => {
+  it('(a) a 2-booking group with different pets/categories computes its promo and downpayment against the combined total', async () => {
     vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
     vi.mocked(getServiceById).mockImplementation(
       async (serviceId: string) =>
@@ -362,7 +362,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       input: {
         customer_id: CUSTOMER_ID,
         branch_id: 'branch-1',
-        discount_id: 'discount-1',
+        // One reduction per booking - a promo here, so no discount with it.
         promo_ids: ['promo-1'],
         bookings: [
           {
@@ -388,15 +388,15 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     const groupInsert = recordedWrites.find(
       (write) => write.table === 'booking_groups' && write.method === 'insert'
     );
-    // 450 combined - 50 flat discount - 45 (10% of 450) promo = 355 net.
+    // 450 combined - 45 (10% of 450) promo = 405 net.
     expect(groupInsert?.payload).toMatchObject({
-      selected_discount_id: 'discount-1',
+      selected_discount_id: null,
       // Multiselect (session 86): no longer written - see
       // booking_promo_selections assertion below.
       selected_promo_id: null,
-      discount_amount: 50,
+      discount_amount: 0,
       promo_amount: 45,
-      net_total: 355,
+      net_total: 405,
       downpayment_required: true,
       downpayment_amount: 100, // flat 100, capped by (min against) the net total
     });
@@ -1143,7 +1143,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     expect(sendCombinedBookingGroupConfirmedEmail).not.toHaveBeenCalled();
   });
 
-  it('(e) a fully-discounted group is born Fully Paid on every sub-booking and the group row', async () => {
+  it('(e) a discount that would make the whole group free is refused - the customer always pays at least half', async () => {
     vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
     vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
     vi.mocked(getDiscountById).mockResolvedValue({
@@ -1170,116 +1170,43 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       { data: PET, error: null }, // sub1 pet ownership
       { data: [], error: null }, // sub1 Daycare pre-insert capacity check
       { data: PET_B, error: null }, // sub2 pet ownership
-      { data: [], error: null }, // sub2 Daycare pre-insert capacity check
-      { data: groupRow({}), error: null }, // booking_groups insert
-      {
-        data: bookingRow({
-          id: 'booking-e1',
-          service_category: 'Daycare',
-          total_price: 100,
-        }),
-        error: null,
-      }, // sub1 insert
-      { data: null, error: null }, // sub1 items insert
-      {
-        data: bookingRow({
-          id: 'booking-e2',
-          pet_id: PET_B.id,
-          service_category: 'Daycare',
-          total_price: 100,
-        }),
-        error: null,
-      }, // sub2 insert
-      { data: null, error: null }, // sub2 items insert
-      {
-        data: [
-          {
-            id: 'booking-e1',
-            pet_id: PET.id,
-            created_at: '2026-01-01T00:00:00Z',
-          },
-        ],
-        error: null,
-      }, // confirmCapacityAfterInsert sub1
-      {
-        data: [
-          {
-            id: 'booking-e1',
-            pet_id: PET.id,
-            created_at: '2026-01-01T00:00:00Z',
-          },
-          {
-            id: 'booking-e2',
-            pet_id: PET_B.id,
-            created_at: '2026-01-01T00:00:01Z',
-          },
-        ],
-        error: null,
-      }, // confirmCapacityAfterInsert sub2
-      {
-        data: bookingRow({
-          id: 'booking-e1',
-          service_category: 'Daycare',
-          payment_status: 'Fully Paid',
-        }),
-        error: null,
-      }, // final fetch sub1
-      {
-        data: bookingRow({
-          id: 'booking-e2',
-          service_category: 'Daycare',
-          payment_status: 'Fully Paid',
-        }),
-        error: null,
-      } // final fetch sub2
+      { data: [], error: null } // sub2 Daycare pre-insert capacity check
     );
 
-    await createBookingGroup({
-      requesterId: 'cashier-1',
-      input: {
-        customer_id: CUSTOMER_ID,
-        branch_id: 'branch-1',
-        discount_id: 'discount-full',
-        bookings: [
-          {
-            pet_id: PET.id,
-            service_category: 'Daycare',
-            items: [{ service_id: 'service-daycare' }],
-            scheduled_start: isoAt(0),
-            scheduled_end: isoAt(hours(1)),
-          },
-          {
-            pet_id: PET_B.id,
-            service_category: 'Daycare',
-            items: [{ service_id: 'service-daycare' }],
-            scheduled_start: isoAt(0),
-            scheduled_end: isoAt(hours(1)),
-          },
-        ],
-      } as never,
+    await expect(
+      createBookingGroup({
+        requesterId: 'cashier-1',
+        input: {
+          customer_id: CUSTOMER_ID,
+          branch_id: 'branch-1',
+          discount_id: 'discount-full',
+          bookings: [
+            {
+              pet_id: PET.id,
+              service_category: 'Daycare',
+              items: [{ service_id: 'service-daycare' }],
+              scheduled_start: isoAt(0),
+              scheduled_end: isoAt(hours(1)),
+            },
+            {
+              pet_id: PET_B.id,
+              service_category: 'Daycare',
+              items: [{ service_id: 'service-daycare' }],
+              scheduled_start: isoAt(0),
+              scheduled_end: isoAt(hours(1)),
+            },
+          ],
+        } as never,
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringContaining('at most 50% of the price'),
     });
 
-    const groupInsert = recordedWrites.find(
-      (write) => write.table === 'booking_groups' && write.method === 'insert'
-    );
-    expect(groupInsert?.payload).toMatchObject({
-      net_total: 0,
-      payment_status: 'Fully Paid',
-    });
-    expect((groupInsert?.payload as { paid_at?: string }).paid_at).toBeTruthy();
-
-    const bookingInserts = recordedWrites.filter(
-      (write) => write.table === 'bookings' && write.method === 'insert'
-    );
-    expect(bookingInserts).toHaveLength(2);
-    for (const write of bookingInserts) {
-      expect(write.payload).toMatchObject({ payment_status: 'Fully Paid' });
-      expect((write.payload as { paid_at?: string }).paid_at).toBeTruthy();
-    }
-
-    expect(supabase.rpc).not.toHaveBeenCalledWith(
-      'create_initial_booking_group_charge',
-      expect.anything()
-    );
+    expect(
+      recordedWrites.some(
+        (write) => write.table === 'booking_groups' && write.method === 'insert'
+      )
+    ).toBe(false);
   });
 });

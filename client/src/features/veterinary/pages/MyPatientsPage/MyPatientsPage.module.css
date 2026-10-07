@@ -60,11 +60,23 @@
   gap: var(--space-3);
 }
 
+/* The patient list takes the full width until a patient is opened; the
+   detail panel then sits beside it. */
 .layout {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 2fr;
   gap: var(--space-3);
   align-items: start;
+}
+
+.layoutWithPanel {
+  composes: layout;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+}
+
+@media (max-width: 960px) {
+  .layoutWithPanel {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .queue {
@@ -136,10 +148,6 @@
   font-size: var(--text-sm);
 }
 
-.detail {
-  min-width: 0;
-}
-
 .panel {
   display: grid;
   gap: var(--space-3);
@@ -165,4 +173,95 @@
 .subtitle {
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* Grid view: patient cards, as many per row as fit. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gridCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-2);
+}
+
+.gridCardBody {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.closeButton {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: var(--space-1);
+  transition: border-color 0.15s ease;
+}
+
+.closeButton:hover {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.closeButton:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+/* History / Prescriptions - the selected one carries the gold underline. */
+.tabs {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tab {
+  margin-bottom: -1px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-0-5);
+}
+
+.tab:hover {
+  color: var(--color-text-primary);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.tabActive {
+  composes: tab;
+  border-bottom-color: var(--color-accent-gold-primary);
+  color: var(--color-text-primary);
 }

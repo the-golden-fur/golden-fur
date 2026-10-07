@@ -36,6 +36,10 @@ export const NOTIFICATION_EVENT_TYPES = [
    * fires once when a booked Daycare pet is still checked in past its booked
    * end time - see daycareOverdue.job.ts. */
   'daycare_overdue',
+  /** Custom change (vet-priced visits, migration 20261007251): fires when a
+   * veterinarian's save puts a charge on the customer's booking, or changes
+   * or removes one - see vetChargeNotifications.service.ts. */
+  'vet_charge_posted',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];

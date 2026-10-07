@@ -103,7 +103,9 @@ export function PrescriptionList({
             {entry.medications.map((medication, index) => (
               <li key={index} className={styles.medication}>
                 <span className={styles.medicationName}>
-                  {medication.name} — {medication.dose}
+                  {medication.name}
+                  {medication.strength ? ` ${medication.strength}` : ''} —{' '}
+                  {medication.dose}
                 </span>
                 {medication.medicine_type ? (
                   <span className={styles.badge}>
@@ -113,6 +115,9 @@ export function PrescriptionList({
                 {medication.quantity != null ? (
                   <span className={styles.badge}>
                     Qty {medication.quantity}
+                    {medication.quantity_unit
+                      ? ` ${medication.quantity_unit}`
+                      : ''}
                   </span>
                 ) : null}
                 {medication.frequency ? (
@@ -120,6 +125,16 @@ export function PrescriptionList({
                 ) : null}
                 {medication.duration ? (
                   <span className={styles.badge}>{medication.duration}</span>
+                ) : null}
+                {medication.refills ? (
+                  <span className={styles.badge}>
+                    Refills {medication.refills}
+                  </span>
+                ) : null}
+                {medication.notes ? (
+                  <span className={styles.medicationName}>
+                    {medication.notes}
+                  </span>
                 ) : null}
               </li>
             ))}

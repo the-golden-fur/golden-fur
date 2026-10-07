@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
@@ -24,6 +30,7 @@ vi.mock('../../../customers/api/customer.api', () => ({
   getCustomerProfile: vi.fn(),
   getPet: vi.fn(),
   listPetTypes: vi.fn(),
+  listPetPrescriptions: vi.fn(),
 }));
 
 vi.mock('../../api/veterinary.api', () => ({
@@ -373,6 +380,192 @@ describe('MyPatientsPage', () => {
     fireEvent.contextMenu(screen.getByText('Buddy'));
     expect(
       screen.getByRole('menuitem', { name: 'View History' })
+    ).toBeInTheDocument();
+  });
+
+  describe('View prescription', () => {
+    const ONE_PATIENT = [
+      {
+        pet_id: 'pet-1',
+        customer_id: 'cust-1',
+        last_visit_at: '2026-01-05T00:00:00.000Z',
+      },
+    ];
+
+    async function openPrescriptions() {
+      stubDefaults(
+        ONE_PATIENT,
+        { 'pet-1': buildPet({ name: 'Buddy' }) },
+        { 'cust-1': buildCustomer({ full_name: 'Jane Dela Cruz' }) }
+      );
+      const user = userEvent.setup();
+
+      renderPage();
+
+      await screen.findByText('Buddy');
+      await user.click(
+        screen.getByRole('button', { name: 'View prescription for Buddy' })
+      );
+
+      return {
+        user,
+        panel: await screen.findByRole('region', { name: 'Buddy details' }),
+      };
+    }
+
+    it('opens the side panel on its Prescriptions tab, shows the medicine details and prints the sheet', async () => {
+      vi.mocked(customerApi.listPetPrescriptions).mockResolvedValue({
+        data: [
+          {
+            consultation_id: 'consultation-1',
+            date: '2026-01-05T02:00:00.000Z',
+            veterinarian_name: 'Dr. Reyes',
+            branch_name: 'Golden Fur Makati',
+            branch_address: '123 Ayala Ave, Makati',
+            pet_name: 'Buddy',
+            owner_name: 'Jane Dela Cruz',
+            medications: [
+              {
+                name: 'Amoxicillin',
+                dose: '50mg',
+                medicine_type: 'Oral',
+                strength: '250 mg',
+                notes: 'After meals',
+                quantity_unit: 'capsules',
+                refills: 1,
+                frequency: 'Twice daily',
+                duration: '7 days',
+                quantity: 14,
+              },
+            ],
+          },
+        ],
+        error: null,
+      });
+      const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+
+      const { user, panel: dialog } = await openPrescriptions();
+
+      // A panel beside the list, not a pop-up.
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(
+        within(dialog).getByRole('tab', { name: 'Prescriptions' })
+      ).toHaveAttribute('aria-selected', 'true');
+
+      expect(customerApi.listPetPrescriptions).toHaveBeenCalledWith(
+        'pet-1',
+        'token'
+      );
+      const row = await within(dialog).findByRole('row', {
+        name: /Amoxicillin/,
+      });
+      for (const detail of [
+        '250 mg',
+        'Oral',
+        '14 capsules',
+        '50mg',
+        'After meals',
+        'Twice daily',
+        '7 days',
+      ]) {
+        expect(within(row).getByText(detail)).toBeInTheDocument();
+      }
+      expect(
+        within(dialog).getByText(/Prescribed by Dr. Reyes/)
+      ).toBeInTheDocument();
+
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Print prescription' })
+      );
+
+      expect(print).toHaveBeenCalledTimes(1);
+      // The letterheaded sheet is what gets printed.
+      expect(
+        screen.getByRole('document', { name: 'Prescription' })
+      ).toBeInTheDocument();
+
+      print.mockRestore();
+    });
+
+    it('is offered even for a patient with no prescription, and says so', async () => {
+      vi.mocked(customerApi.listPetPrescriptions).mockResolvedValue({
+        data: [],
+        error: null,
+      });
+
+      const { panel: dialog } = await openPrescriptions();
+
+      expect(
+        await within(dialog).findByText(
+          'No prescription has been written for Buddy yet.'
+        )
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).queryByRole('button', { name: 'Print prescription' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('History and Prescriptions are tabs of the same panel, which the X closes', async () => {
+      vi.mocked(customerApi.listPetPrescriptions).mockResolvedValue({
+        data: [],
+        error: null,
+      });
+      vi.mocked(vetApi.getPetConsultationHistory).mockResolvedValue({
+        data: [],
+        error: null,
+      });
+
+      const { user, panel } = await openPrescriptions();
+
+      await user.click(within(panel).getByRole('tab', { name: 'History' }));
+      expect(
+        within(panel).getByRole('tab', { name: 'History' })
+      ).toHaveAttribute('aria-selected', 'true');
+      expect(
+        within(panel).queryByText(
+          'No prescription has been written for Buddy yet.'
+        )
+      ).not.toBeInTheDocument();
+
+      await user.click(
+        within(panel).getByRole('button', { name: 'Close panel' })
+      );
+      expect(
+        screen.queryByRole('region', { name: 'Buddy details' })
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('switches between List, Table and Grid views, each with the same patient actions', async () => {
+    stubDefaults(
+      [
+        {
+          pet_id: 'pet-1',
+          customer_id: 'cust-1',
+          last_visit_at: '2026-01-05T00:00:00.000Z',
+        },
+      ],
+      { 'pet-1': buildPet({ name: 'Buddy' }) },
+      { 'cust-1': buildCustomer({ full_name: 'Jane Dela Cruz' }) }
+    );
+    const user = userEvent.setup();
+
+    renderPage();
+    await screen.findByText('Buddy');
+
+    await user.click(screen.getByRole('button', { name: 'Table' }));
+    expect(
+      screen.getByRole('columnheader', { name: 'Last visit' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'View prescription for Buddy' })
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Grid' }));
+    expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
+    expect(screen.getByText('Buddy')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'View history for Buddy' })
     ).toBeInTheDocument();
   });
 });

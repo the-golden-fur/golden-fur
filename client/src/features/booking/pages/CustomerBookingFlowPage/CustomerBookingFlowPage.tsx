@@ -83,6 +83,10 @@ import { getMyCoupons } from '../../../rewards/api/rewards.api';
 import type { CustomerCoupon } from '../../../rewards/rewards.types';
 import { isPromoCurrentlyEligible } from '../../../../shared/utils/promoEligibility';
 import { applyPromoCap } from '../../utils/applyPromoCap';
+import {
+  REDUCTION_LIMIT_MESSAGE,
+  exceedsReductionLimit,
+} from '../../utils/minPayableShare';
 import { PromoCouponMultiSelect } from '../../components/PromoCouponMultiSelect/PromoCouponMultiSelect';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import {
@@ -1244,9 +1248,21 @@ export function CustomerBookingFlowPage() {
       setSelectedSlot(draft.selectedSlot);
       setHotelNights(draft.hotelNights);
       setDaycareHours(draft.daycareHours ?? 1);
-      setSelectedPromoIds(draft.selectedPromoIds ?? []);
-      setSelectedCouponIds(draft.selectedCouponIds ?? []);
-      setSelectedDiscountId(draft.selectedDiscountId);
+      // One reduction per booking: a draft saved while several could be
+      // picked keeps only the first (promo, then coupon, then discount), so
+      // it isn't restored into a selection the server would refuse.
+      const draftPromoIds = (draft.selectedPromoIds ?? []).slice(0, 1);
+      const draftCouponIds =
+        draftPromoIds.length > 0
+          ? []
+          : (draft.selectedCouponIds ?? []).slice(0, 1);
+      setSelectedPromoIds(draftPromoIds);
+      setSelectedCouponIds(draftCouponIds);
+      setSelectedDiscountId(
+        draftPromoIds.length + draftCouponIds.length > 0
+          ? ''
+          : draft.selectedDiscountId
+      );
       setPaymentChoice(draft.paymentChoice);
       setSpecialInstructions(draft.specialInstructions);
       setHotelFeeding(draft.hotelFeeding);
@@ -1943,6 +1959,42 @@ export function CustomerBookingFlowPage() {
     groupSubtotal - discountAmount - promoDiscount
   );
 
+  // One reduction per booking - a discount, OR a promo, OR a coupon (the
+  // server refuses more than one, see resolveDiscountAndPromos). Picking one
+  // therefore replaces whatever was picked before; picking the selected
+  // promo/coupon again clears it.
+  function selectOnlyPromo(promoId: string) {
+    setSelectedPromoIds((prev) => (prev.includes(promoId) ? [] : [promoId]));
+    setSelectedCouponIds([]);
+    setSelectedDiscountId('');
+  }
+
+  function selectOnlyCoupon(couponId: string) {
+    setSelectedCouponIds((prev) => (prev.includes(couponId) ? [] : [couponId]));
+    setSelectedPromoIds([]);
+    setSelectedDiscountId('');
+  }
+
+  function selectOnlyDiscount(discountId: string) {
+    setSelectedDiscountId(discountId);
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
+  }
+
+  // What the Review step calls the chosen promo/coupon.
+  const selectedReductionName =
+    applicablePromos.find((promo) => promo.id === selectedPromoIds[0])?.name ??
+    (selectedCouponIds.length > 0 ? 'Coupon' : 'Promo');
+
+  // No booking is made free by its reductions: the server refuses a
+  // discount + promos + coupons selection that takes off more than the
+  // allowed share (resolveDiscountAndPromos) - said here first, and Confirm
+  // is held back, so the customer isn't surprised at submit.
+  const reductionOverLimit = exceedsReductionLimit(
+    groupSubtotal,
+    discountAmount + promoDiscount
+  );
+
   // True if ANY booking in the list requires payment (a mixed group still
   // shows/collects a shared charge even though a Veterinary entry's own
   // share is excluded server-side - see createBookingGroup's
@@ -1991,7 +2043,14 @@ export function CustomerBookingFlowPage() {
     enabled: downpaymentStatus?.pay_at_checkout_enabled ?? false,
     bookings: bookingsList,
   });
-  const showPaymentChoice = downpaymentRequired || payAtCheckoutAvailable;
+  // An Initial Assessment has no payment scheme to choose - it's the pet's
+  // onsite first check, not a slot held by a down payment. Only when EVERY
+  // booking in the list is one: a mixed group still needs the decision.
+  const isAssessmentOnly =
+    bookingsList.length > 0 &&
+    bookingsList.every((entry) => entry.category === 'Assessment');
+  const showPaymentChoice =
+    !isAssessmentOnly && (downpaymentRequired || payAtCheckoutAvailable);
   const effectivePaymentChoice = resolvePaymentChoice(paymentChoice, {
     downpaymentRequired,
     payAtCheckoutAvailable,
@@ -4315,32 +4374,24 @@ export function CustomerBookingFlowPage() {
         return (
           <div>
             <p className={styles.copy}>
-              Select any promos or coupons to apply - the total below already
-              respects the combined-discount limit.
+              Choose one promo or coupon - only one can be used per booking.
             </p>
             <PromoCouponMultiSelect
               promos={applicablePromos}
               coupons={applicableCoupons}
               selectedPromoIds={selectedPromoIds}
               selectedCouponIds={selectedCouponIds}
-              onTogglePromo={(promoId) =>
-                setSelectedPromoIds((prev) =>
-                  prev.includes(promoId)
-                    ? prev.filter((id) => id !== promoId)
-                    : [...prev, promoId]
-                )
-              }
-              onToggleCoupon={(couponId) =>
-                setSelectedCouponIds((prev) =>
-                  prev.includes(couponId)
-                    ? prev.filter((id) => id !== couponId)
-                    : [...prev, couponId]
-                )
-              }
+              onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
+              onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
               cap={promoCap}
               cappedTotal={promoDiscount}
               groupSubtotal={groupSubtotal}
             />
+            {reductionOverLimit ? (
+              <p className={styles.errorBanner} role="alert">
+                {REDUCTION_LIMIT_MESSAGE}
+              </p>
+            ) : null}
           </div>
         );
 
@@ -4430,6 +4481,11 @@ export function CustomerBookingFlowPage() {
                 in, and the bill for the actual stay goes to the cashier at
                 checkout.
               </p>
+            ) : isAssessmentOnly ? (
+              <p className={styles.copy}>
+                No payment is collected in this step. Any charge is settled
+                afterwards at the counter.
+              </p>
             ) : requiresPayment ? (
               <p className={styles.copy}>
                 No payment is collected in this step - you are only choosing the
@@ -4503,7 +4559,7 @@ export function CustomerBookingFlowPage() {
                       type="radio"
                       name="discount"
                       checked={selectedDiscountId === discount.id}
-                      onChange={() => setSelectedDiscountId(discount.id)}
+                      onChange={() => selectOnlyDiscount(discount.id)}
                     />
                     {discount.name} (
                     {discount.discount_type === 'Percentage'
@@ -4523,7 +4579,7 @@ export function CustomerBookingFlowPage() {
               <p className={styles.copy}>
                 {selectedPromoIds.length + selectedCouponIds.length === 0
                   ? 'None selected.'
-                  : `${selectedPromoIds.length + selectedCouponIds.length} selected, -PHP ${promoDiscount.toFixed(2)}.`}
+                  : `${selectedReductionName}, -PHP ${promoDiscount.toFixed(2)}.`}
               </p>
               <button
                 type="button"
@@ -4536,6 +4592,12 @@ export function CustomerBookingFlowPage() {
               </button>
             </div>
 
+            {reductionOverLimit ? (
+              <p className={styles.errorBanner} role="alert">
+                {REDUCTION_LIMIT_MESSAGE}
+              </p>
+            ) : null}
+
             {submitError ? (
               <p className={styles.errorBanner} role="alert">
                 {submitError}
@@ -4545,7 +4607,9 @@ export function CustomerBookingFlowPage() {
             <button
               type="button"
               className={styles.primaryButton}
-              disabled={!isCurrentStepValid || isSubmitting}
+              disabled={
+                !isCurrentStepValid || isSubmitting || reductionOverLimit
+              }
               onClick={() => void handleSubmit()}
             >
               {isSubmitting ? 'Confirming...' : 'Confirm booking'}

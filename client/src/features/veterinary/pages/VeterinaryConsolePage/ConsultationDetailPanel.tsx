@@ -25,6 +25,13 @@ import {
   type VetPrescriptionTemplate,
 } from '../../veterinary.types';
 import { FormTemplatePicker } from './FormTemplatePicker';
+import { PrescriptionEditor } from './PrescriptionEditor';
+import {
+  findMissingDosage,
+  includePendingMedicine,
+  seedMedications,
+  withValidQuantities,
+} from './prescriptionMedications';
 import styles from './ConsultationDetailPanel.module.css';
 
 export interface ConsultationDetailPanelProps {
@@ -95,31 +102,6 @@ function buildEmptyResponse(
   };
 }
 
-/** The saved prescription as editable rows - also what Cancel restores. */
-function seedMedications(consultation: Consultation): MedicationInput[] {
-  return (consultation.medications ?? []).map((medication) => ({
-    name: medication.name,
-    dose: medication.dose,
-    notes: medication.notes ?? '',
-    medicine_type: medication.medicine_type ?? '',
-    frequency: medication.frequency ?? '',
-    duration: medication.duration ?? '',
-    quantity: medication.quantity ?? 1,
-    medication_catalog_id: medication.medication_catalog_id ?? null,
-  }));
-}
-
-/** A cleared Quantity box is "not typed yet", not zero - it goes out as 1,
- * and anything typed is kept to a whole number of at least 1. */
-function withValidQuantities(
-  medications: MedicationInput[]
-): MedicationInput[] {
-  return medications.map((medication) => ({
-    ...medication,
-    quantity: Math.max(1, Math.round(medication.quantity ?? 1) || 1),
-  }));
-}
-
 function asMedicationList(
   value: ConsultationFormResponse['fields'][number]['value']
 ): ConsultationMedication[] {
@@ -175,12 +157,16 @@ export function ConsultationDetailPanel({
   const [soldAtPharmacy, setSoldAtPharmacy] = useState(
     consultation.sold_at_pharmacy ?? false
   );
-  const [newMedicineName, setNewMedicineName] = useState('');
   const [isEditingRecord, setIsEditingRecord] = useState(false);
   const [printing, setPrinting] = useState<PetPrescriptionHistoryEntry | null>(
     null
   );
   const [printError, setPrintError] = useState<string | null>(null);
+  // The name typed into the Prescription add box but not added yet.
+  const [pendingMedicineName, setPendingMedicineName] = useState('');
+  const [prescriptionProblem, setPrescriptionProblem] = useState<string | null>(
+    null
+  );
   const [formResponses, setFormResponses] = useState<
     ConsultationFormResponse[]
   >(() => consultation.form_responses ?? []);
@@ -226,47 +212,6 @@ export function ConsultationDetailPanel({
       isMounted = false;
     };
   }, [accessToken, canWrite]);
-
-  /** The Prescription section's medicine box is free text: the vet types
-   * any medicine name (the shared medicine list is offered as suggestions).
-   * A name that is on the list - whatever case it was typed in - becomes
-   * that list entry, picking up its spelling, type and price; anything else
-   * is still prescribed, it just has no price and so can't be sold here. */
-  function addMedicine() {
-    const name = newMedicineName.trim();
-    if (!name) return;
-
-    const item = medicationCatalog.find(
-      (entry) => entry.name.toLowerCase() === name.toLowerCase()
-    );
-
-    setMedications((prev) => [
-      ...prev,
-      {
-        name: item?.name ?? name,
-        dose: '',
-        notes: '',
-        medicine_type: item?.default_medicine_type ?? '',
-        frequency: '',
-        duration: '',
-        quantity: 1,
-        medication_catalog_id: item?.id ?? null,
-      },
-    ]);
-    setNewMedicineName('');
-  }
-
-  function updateMedication(index: number, patch: Partial<MedicationInput>) {
-    setMedications((prev) =>
-      prev.map((medication, i) =>
-        i === index ? { ...medication, ...patch } : medication
-      )
-    );
-  }
-
-  function removeMedication(index: number) {
-    setMedications((prev) => prev.filter((_, i) => i !== index));
-  }
 
   function addResponseFromTemplate(templateId: string) {
     const template = formTemplates.find((entry) => entry.id === templateId);
@@ -423,10 +368,38 @@ export function ConsultationDetailPanel({
       !formResponses.some((response) => response.template_id === template.id)
   );
 
+  /** The prescription as it should be saved, or null when it isn't ready -
+   * a name typed into the add box but never added becomes a row (rather than
+   * being lost), and a row with no dosage holds the save. */
+  function readyPrescription(): MedicationInput[] | null {
+    const all = includePendingMedicine(
+      medications,
+      pendingMedicineName,
+      medicationCatalog
+    );
+
+    if (all.length !== medications.length) {
+      setMedications(all);
+      setPendingMedicineName('');
+    }
+
+    const missingDosage = findMissingDosage(all);
+    if (missingDosage) {
+      setPrescriptionProblem(`Enter a dosage for ${missingDosage.name}.`);
+      return null;
+    }
+
+    setPrescriptionProblem(null);
+    return withValidQuantities(all);
+  }
+
   function handleComplete() {
+    const readyMedications = readyPrescription();
+    if (!readyMedications) return;
+
     onComplete({
       diagnosis,
-      medications: withValidQuantities(medications),
+      medications: readyMedications,
       soldAtPharmacy,
       formResponses,
       vaccination:
@@ -437,9 +410,12 @@ export function ConsultationDetailPanel({
   }
 
   async function handleSaveRecord() {
+    const readyMedications = readyPrescription();
+    if (!readyMedications) return;
+
     const saved = await onSaveRecord({
       diagnosis,
-      medications: withValidQuantities(medications),
+      medications: readyMedications,
       soldAtPharmacy,
     });
 
@@ -450,6 +426,8 @@ export function ConsultationDetailPanel({
     setDiagnosis(consultation.diagnosis ?? '');
     setMedications(seedMedications(consultation));
     setSoldAtPharmacy(consultation.sold_at_pharmacy ?? false);
+    setPendingMedicineName('');
+    setPrescriptionProblem(null);
     setIsEditingRecord(false);
   }
 
@@ -490,23 +468,12 @@ export function ConsultationDetailPanel({
     consultation.medication_transaction != null &&
     consultation.medication_transaction.payment_status !== 'Pending';
   const hasSavedPrescription = (consultation.medications ?? []).length > 0;
-
-  function listPriceOf(medication: MedicationInput): number | null {
-    const item = medicationCatalog.find(
-      (entry) => entry.id === medication.medication_catalog_id
-    );
-    return item?.default_price ?? null;
-  }
-
-  // Shown for the vet's information only - the server prices the sale
-  // itself from the medicine list when it writes the transaction.
-  const showsPrices = soldAtPharmacy && canWrite;
-  const unpricedMedicines = medications.filter(
-    (medication) => listPriceOf(medication) === null
+  // What the vet listed in the "Services done" pop-up when completing.
+  const servicesDone = (consultation.line_items ?? []).filter(
+    (item) => item.item_type === 'procedure'
   );
-  const medicineTotal = medications.reduce(
-    (sum, medication) =>
-      sum + (listPriceOf(medication) ?? 0) * (medication.quantity ?? 1),
+  const servicesDoneTotal = servicesDone.reduce(
+    (sum, service) => sum + Number(service.amount),
     0
   );
 
@@ -557,197 +524,31 @@ export function ConsultationDetailPanel({
               />
             </label>
 
-            <div className={styles.listSection}>
-              <span className={styles.fieldLabel}>Prescription</span>
-              {medications.map((medication, index) => (
-                <div key={index} className={styles.medicationRow}>
-                  <div className={styles.medicationRowFields}>
-                    <span className={styles.readOnlyField}>
-                      {medication.name}
-                    </span>
-                    <input
-                      className={styles.input}
-                      type="number"
-                      min={1}
-                      step={1}
-                      placeholder="Quantity"
-                      aria-label={`Quantity of ${medication.name}`}
-                      value={medication.quantity ?? ''}
-                      disabled={!recordEditable}
-                      onChange={(event) =>
-                        updateMedication(index, {
-                          quantity:
-                            event.target.value === ''
-                              ? undefined
-                              : Number(event.target.value),
-                        })
-                      }
-                    />
-                    <input
-                      className={styles.input}
-                      placeholder="Dose"
-                      value={medication.dose}
-                      disabled={!recordEditable}
-                      onChange={(event) =>
-                        updateMedication(index, { dose: event.target.value })
-                      }
-                    />
-                    <input
-                      className={styles.input}
-                      list="medicine-type-options"
-                      placeholder="Medicine type"
-                      value={medication.medicine_type ?? ''}
-                      disabled={!recordEditable}
-                      onChange={(event) =>
-                        updateMedication(index, {
-                          medicine_type: event.target.value,
-                        })
-                      }
-                    />
-                    <input
-                      className={styles.input}
-                      list="frequency-options"
-                      placeholder="Frequency"
-                      value={medication.frequency ?? ''}
-                      disabled={!recordEditable}
-                      onChange={(event) =>
-                        updateMedication(index, {
-                          frequency: event.target.value,
-                        })
-                      }
-                    />
-                    <input
-                      className={styles.input}
-                      placeholder="Duration"
-                      value={medication.duration ?? ''}
-                      disabled={!recordEditable}
-                      onChange={(event) =>
-                        updateMedication(index, {
-                          duration: event.target.value,
-                        })
-                      }
-                    />
-                    {showsPrices ? (
-                      <span className={styles.readOnlyField}>
-                        {listPriceOf(medication) !== null
-                          ? `${formatCurrency(listPriceOf(medication) ?? 0)} each`
-                          : 'No price set'}
-                      </span>
-                    ) : null}
-                  </div>
-                  {recordEditable ? (
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => removeMedication(index)}
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
+            <PrescriptionEditor
+              medications={medications}
+              onMedicationsChange={setMedications}
+              soldAtPharmacy={soldAtPharmacy}
+              onSoldAtPharmacyChange={setSoldAtPharmacy}
+              medicationCatalog={medicationCatalog}
+              pendingName={pendingMedicineName}
+              onPendingNameChange={setPendingMedicineName}
+              editable={recordEditable}
+              canWrite={canWrite}
+              medicinePaid={medicinePaid}
+              showPaidNote={isEditingRecord && medicinePaid}
+            />
+            {/* The Results section's own prescription fields below still
+                suggest from these two lists. */}
+            <datalist id="medicine-type-options">
+              {MEDICINE_TYPE_OPTIONS.map((option) => (
+                <option key={option} value={option} />
               ))}
-              <datalist id="medicine-type-options">
-                {MEDICINE_TYPE_OPTIONS.map((option) => (
-                  <option key={option} value={option} />
-                ))}
-              </datalist>
-              <datalist id="frequency-options">
-                {FREQUENCY_OPTIONS.map((option) => (
-                  <option key={option} value={option} />
-                ))}
-              </datalist>
-              {recordEditable ? (
-                <div className={styles.addMedicineRow}>
-                  <input
-                    className={styles.input}
-                    list="medicine-name-options"
-                    aria-label="Medicine name"
-                    placeholder="Type a medicine name"
-                    value={newMedicineName}
-                    onChange={(event) => setNewMedicineName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        addMedicine();
-                      }
-                    }}
-                  />
-                  <datalist id="medicine-name-options">
-                    {medicationCatalog.map((item) => (
-                      <option key={item.id} value={item.name} />
-                    ))}
-                  </datalist>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    disabled={newMedicineName.trim() === ''}
-                    onClick={addMedicine}
-                  >
-                    Add medicine
-                  </button>
-                </div>
-              ) : null}
-
-              {medications.length > 0 ? (
-                <fieldset className={styles.pharmacyChoice}>
-                  <legend className={styles.fieldLabel}>
-                    Where will the medicine be bought?
-                  </legend>
-                  <label className={styles.checkboxLabel}>
-                    <input
-                      type="radio"
-                      name={`pharmacy-${consultation.id}`}
-                      checked={!soldAtPharmacy}
-                      disabled={!recordEditable || medicinePaid}
-                      onChange={() => setSoldAtPharmacy(false)}
-                    />
-                    Buying from another pharmacy
-                  </label>
-                  <label className={styles.checkboxLabel}>
-                    <input
-                      type="radio"
-                      name={`pharmacy-${consultation.id}`}
-                      checked={soldAtPharmacy}
-                      disabled={!recordEditable || medicinePaid}
-                      onChange={() => setSoldAtPharmacy(true)}
-                    />
-                    Buying from our pharmacy
-                  </label>
-                  {soldAtPharmacy ? (
-                    <p className={styles.reason}>
-                      {showsPrices
-                        ? `Medicine total: ${formatCurrency(medicineTotal)}. `
-                        : ''}
-                      Billed to the customer as its own transaction, which the
-                      cashier collects.
-                    </p>
-                  ) : (
-                    <p className={styles.reason}>
-                      Nothing is charged for the medicine. The prescription can
-                      be printed for the customer.
-                    </p>
-                  )}
-                  {showsPrices &&
-                  recordEditable &&
-                  !medicinePaid &&
-                  unpricedMedicines.length > 0 ? (
-                    <p className={styles.errorBanner} role="status">
-                      Set a price in My Catalog before selling:{' '}
-                      {unpricedMedicines
-                        .map((medication) => medication.name)
-                        .join(', ')}
-                      .
-                    </p>
-                  ) : null}
-                  {isEditingRecord && medicinePaid ? (
-                    <p className={styles.reason}>
-                      The medicine for this visit has already been paid. Changes
-                      here update the medical record only, not the bill.
-                    </p>
-                  ) : null}
-                </fieldset>
-              ) : null}
-            </div>
+            </datalist>
+            <datalist id="frequency-options">
+              {FREQUENCY_OPTIONS.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
 
             <div className={styles.listSection}>
               <span className={styles.fieldLabel}>Results</span>
@@ -1037,6 +838,38 @@ export function ConsultationDetailPanel({
                 />
               </div>
             </div>
+
+            {isCompleted ? (
+              <div className={styles.listSection}>
+                <span className={styles.fieldLabel}>Services done</span>
+                {servicesDone.length > 0 ? (
+                  <>
+                    <ul className={styles.servicesDoneList}>
+                      {servicesDone.map((service, index) => (
+                        <li key={index} className={styles.servicesDoneRow}>
+                          <span>{service.description}</span>
+                          <span>{formatCurrency(Number(service.amount))}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className={styles.servicesDoneTotal}>
+                      <span>Total</span>
+                      <span>{formatCurrency(servicesDoneTotal)}</span>
+                    </p>
+                  </>
+                ) : (
+                  <p className={styles.reason}>
+                    No extra services were listed for this visit.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            {prescriptionProblem ? (
+              <p className={styles.errorBanner} role="alert">
+                {prescriptionProblem}
+              </p>
+            ) : null}
 
             {saveError ? (
               <p className={styles.errorBanner} role="alert">

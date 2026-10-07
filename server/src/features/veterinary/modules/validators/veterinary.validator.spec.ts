@@ -50,6 +50,32 @@ describe('updateConsultationValidator (pharmacy prescriptions)', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a strength, a quantity unit, instructions and refills', () => {
+    const result = updateConsultationValidator.safeParse({
+      medications: [
+        {
+          name: 'Amoxicillin',
+          dose: '10 mg/kg',
+          strength: '250 mg',
+          quantity: 14,
+          quantity_unit: 'capsules',
+          notes: 'Give with food',
+          refills: 0,
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a negative number of refills', () => {
+    const result = updateConsultationValidator.safeParse({
+      medications: [{ name: 'Amoxicillin', dose: '50mg', refills: -1 }],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('accepts the services done at the visit, each with its price', () => {
     const result = updateConsultationValidator.safeParse({
       status: 'Completed',

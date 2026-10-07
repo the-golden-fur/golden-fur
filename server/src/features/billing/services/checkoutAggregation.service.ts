@@ -17,8 +17,7 @@ import {
   recomputeBookingGroupPaymentStatus,
   recomputeBookingPaymentStatus,
 } from '../../booking/services/booking.service.ts';
-import { createNotification } from '../../notifications/services/notification.service.ts';
-import { sendPaymentConfirmedEmail } from '../../../shared/email/paymentConfirmedEmail.ts';
+import { sendPaymentConfirmedNotification } from './paymentNotifications.service.ts';
 import type {
   CheckoutInput,
   GroupCheckoutInput,
@@ -754,34 +753,4 @@ export async function checkoutBookingGroup(
     lineItems: (lineItems ?? []) as TransactionLineItem[],
     changeAmount,
   };
-}
-
-async function sendPaymentConfirmedNotification(
-  transaction: Transaction
-): Promise<void> {
-  try {
-    const { data: customer } = await supabase
-      .from('customer_profiles')
-      .select('account_email')
-      .eq('id', transaction.customer_id)
-      .maybeSingle();
-
-    await createNotification({
-      recipientCustomerId: transaction.customer_id,
-      eventType: 'payment_confirmed',
-      title: 'Payment confirmed',
-      message: `We've received your payment of ₱${Number(transaction.total_amount).toFixed(2)} via ${transaction.payment_method}.`,
-      relatedBookingId: transaction.booking_id ?? null,
-      sendEmail: customer?.account_email
-        ? () =>
-            sendPaymentConfirmedEmail({
-              to: customer.account_email,
-              amount: Number(transaction.total_amount),
-              paymentMethod: transaction.payment_method,
-            })
-        : undefined,
-    });
-  } catch (error) {
-    console.error('Failed to send payment_confirmed notification:', error);
-  }
 }
