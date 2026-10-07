@@ -8,9 +8,11 @@ import {
   createConsultationFormTemplateController,
   createMedicationCatalogItemController,
   createPrescriptionTemplateController,
+  createServiceCatalogItemController,
   deleteConsultationFormTemplateController,
   deleteMedicationCatalogItemController,
   deletePrescriptionTemplateController,
+  deleteServiceCatalogItemController,
   getConsultationController,
   getCurrentPrescriptionController,
   getPetConsultationHistoryController,
@@ -22,10 +24,12 @@ import {
   listMyPatientsController,
   listPrescriptionsController,
   listPrescriptionTemplatesController,
+  listServiceCatalogController,
   updateConsultationController,
   updateConsultationFormTemplateController,
   updateMedicationCatalogItemController,
   updatePrescriptionTemplateController,
+  updateServiceCatalogItemController,
   uploadMedicationImageController,
   upsertHealthConditionsController,
 } from './veterinary.controller.ts';
@@ -202,6 +206,31 @@ router.delete(
   '/veterinary/prescription-templates/:id',
   vetWrite,
   deletePrescriptionTemplateController
+);
+
+// Vet-priced visits: the clinic's shared list of veterinary services and
+// their usual prices, suggested from when a vet lists what was done at a
+// visit. Veterinarian-only (vetWrite), reads included - same as the
+// medication catalog above.
+router.get(
+  '/veterinary/service-catalog',
+  vetWrite,
+  listServiceCatalogController
+);
+router.post(
+  '/veterinary/service-catalog',
+  vetWrite,
+  createServiceCatalogItemController
+);
+router.patch(
+  '/veterinary/service-catalog/:id',
+  vetWrite,
+  updateServiceCatalogItemController
+);
+router.delete(
+  '/veterinary/service-catalog/:id',
+  vetWrite,
+  deleteServiceCatalogItemController
 );
 
 export default router;

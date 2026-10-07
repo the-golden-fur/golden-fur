@@ -7,7 +7,7 @@ export const CUSTOMER_MANAGER_ROLES: readonly string[] = [
 
 export type CommunicationChannel = 'Call' | 'Text' | 'Viber' | 'Messenger';
 
-export type AuthProvider = 'email' | 'google' | 'facebook';
+export type AuthProvider = 'email' | 'google';
 
 export interface CustomerProfile {
   id: string;
@@ -18,7 +18,6 @@ export interface CustomerProfile {
   preferred_communication_channel: CommunicationChannel | null;
   account_email: string;
   primary_auth_provider: AuthProvider;
-  facebook_id: string | null;
   profile_photo_url: string | null;
   is_active: boolean;
   archived_at: string | null;

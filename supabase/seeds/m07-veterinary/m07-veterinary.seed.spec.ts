@@ -5,7 +5,9 @@ import {
   seedConsultationFormTemplates,
   seedPrescriptionTemplates,
   seedVetMedicationCatalog,
+  seedVetServiceCatalog,
   VET_MEDICATION_SEEDS,
+  VET_SERVICE_SEEDS,
 } from './m07-veterinary.seed.ts';
 
 const VET_ID = 'vet-1';
@@ -26,6 +28,11 @@ function createMockSupabase() {
       veterinarian_id: string;
       name: string;
       is_default: boolean;
+    }>,
+    vetServices: [] as Array<{
+      name: string;
+      default_price: number;
+      created_by: string | null;
     }>,
   };
 
@@ -116,6 +123,28 @@ function createMockSupabase() {
         };
       }
 
+      if (table === 'vet_service_catalog') {
+        return {
+          select: () => ({
+            eq: (_c1: string, name: string) => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: state.vetServices.find((r) => r.name === name) ?? null,
+                  error: null,
+                }),
+            }),
+          }),
+          insert: (row: {
+            name: string;
+            default_price: number;
+            created_by: string | null;
+          }) => {
+            state.vetServices.push(row);
+            return Promise.resolve({ error: null });
+          },
+        };
+      }
+
       throw new Error(`unexpected table: ${table}`);
     }),
     state,
@@ -189,6 +218,28 @@ describe('m07-veterinary seed', () => {
       expect(supabase.state.consultationFormTemplates.length).toBe(
         CONSULTATION_FORM_TEMPLATE_SEEDS.length
       );
+    });
+  });
+
+  describe('seedVetServiceCatalog', () => {
+    it('creates the shared starter service list, every entry with a price', async () => {
+      await seedVetServiceCatalog(supabase as never, VET_ID);
+
+      expect(supabase.state.vetServices.map((row) => row.name)).toEqual(
+        VET_SERVICE_SEEDS.map((seed) => seed.name)
+      );
+      for (const row of supabase.state.vetServices) {
+        expect(row.default_price).toBeGreaterThanOrEqual(0);
+        expect(row.created_by).toBe(VET_ID);
+      }
+    });
+
+    it('is one clinic-wide list: idempotent by name, whoever seeds it', async () => {
+      await seedVetServiceCatalog(supabase as never, VET_ID);
+      await seedVetServiceCatalog(supabase as never, 'vet-2');
+      await seedVetServiceCatalog(supabase as never, null);
+
+      expect(supabase.state.vetServices.length).toBe(VET_SERVICE_SEEDS.length);
     });
   });
 });

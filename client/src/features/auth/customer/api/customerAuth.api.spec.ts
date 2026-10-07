@@ -93,7 +93,7 @@ describe('customerAuth.api', () => {
 
   it('still establishes the session from the fragment tokens when the sessionStorage marker was lost in the redirect', async () => {
     // Regression test: observed in manual testing that this marker does not
-    // reliably survive the redirect through Facebook and back (browser
+    // reliably survive the redirect through the provider and back (browser
     // privacy protections can clear it), even though Supabase's own
     // redirect Location header carried valid tokens the whole time. The
     // fragment's tokens, not this marker, must be what gates success.
@@ -118,7 +118,7 @@ describe('customerAuth.api', () => {
   });
 
   it('surfaces the provider-level error from the URL fragment before establishing a session', async () => {
-    window.sessionStorage.setItem('oauthProvider', 'facebook');
+    window.sessionStorage.setItem('oauthProvider', 'google');
     window.location.hash =
       '#error=server_error&error_description=Error+getting+user+email+from+external+provider';
 
@@ -133,7 +133,7 @@ describe('customerAuth.api', () => {
   });
 
   it('returns an error when the fragment carries no tokens and no error', async () => {
-    window.sessionStorage.setItem('oauthProvider', 'facebook');
+    window.sessionStorage.setItem('oauthProvider', 'google');
 
     const result = await handleOAuthCallback();
 
@@ -144,7 +144,7 @@ describe('customerAuth.api', () => {
   });
 
   it('surfaces the real error when setSession rejects the tokens', async () => {
-    window.sessionStorage.setItem('oauthProvider', 'facebook');
+    window.sessionStorage.setItem('oauthProvider', 'google');
     window.location.hash = '#access_token=access&refresh_token=refresh';
     setSessionMock.mockResolvedValue({
       data: { session: null },
@@ -159,7 +159,7 @@ describe('customerAuth.api', () => {
   });
 
   it('returns the backend error when the callback request fails', async () => {
-    window.sessionStorage.setItem('oauthProvider', 'facebook');
+    window.sessionStorage.setItem('oauthProvider', 'google');
     window.location.hash = '#access_token=access&refresh_token=refresh';
     setSessionMock.mockResolvedValue({
       data: { session: { access_token: 'access', refresh_token: 'refresh' } },

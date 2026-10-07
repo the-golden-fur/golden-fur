@@ -15,14 +15,28 @@ import type {
   PetPrescriptionHistoryEntry,
 } from '../../customers/pets/pet.types.ts';
 import type { UpdateConsultationInput } from '../modules/validators/veterinary.validator.ts';
-import type { Consultation, VeterinarianPatient } from '../veterinary.types.ts';
+import type {
+  Consultation,
+  ConsultationMedication,
+  VeterinarianPatient,
+} from '../veterinary.types.ts';
+import {
+  applyPharmacyCharge,
+  planPharmacyCharge,
+  type PharmacyChargePlan,
+} from './pharmacyCharge.service.ts';
+import { postServicesDoneCharge } from './serviceCharge.service.ts';
 
 // consultations has TWO foreign keys to bookings (booking_id and
 // follow_up_booking_id - see ...040_m07_create_veterinary_schema.sql), so
 // the embed must name which one via `!booking_id` - an unqualified
 // `bookings(*)` is ambiguous to PostgREST and 400s ("more than one
 // relationship was found for 'consultations' and 'bookings'").
-const CONSULTATION_SELECT = '*, booking:bookings!booking_id(*)';
+// medication_transaction (pharmacy prescriptions) is the visit's medicine
+// sale, when there is one - only its payment_status, so the console can tell
+// a vet whether an edit will still change the bill.
+const CONSULTATION_SELECT =
+  '*, booking:bookings!booking_id(*), medication_transaction:transactions!medication_transaction_id(payment_status)';
 
 /** The bookings a vet can act on: 'In Progress', plus 'Pending' ones that
  * have been paid for (the paid check is in listConsultationQueue itself).
@@ -126,7 +140,8 @@ interface ListConsultationQueueParams {
  * codebase; see grooming.service.ts's own dev note on why). Any
  * Veterinarian may see and open any row - no per-vet scoping, matching the
  * explicit "no per-pet assigned-vet restriction" carve-out - so unlike
- * listGroomingQueue, this never filters by requester. Also returns the
+ * listGroomingQueue, this never filters by requester. (Writing is a
+ * different matter - see updateConsultation.) Also returns the
  * day's Completed visits (read-only, see LIST_BOOKING_STATUSES) so the
  * console isn't limited to only-actionable rows.
  */
@@ -329,14 +344,215 @@ interface UpdateConsultationParams {
   input: UpdateConsultationInput;
 }
 
+const HANDLED_BY_ANOTHER_VET =
+  'This consultation is being handled by another veterinarian';
+
 /**
- * Issue #66: any Veterinarian may update any consultation (route + here both
- * gate on role only, no ownership check - matching the explicit
- * "no per-pet assigned-vet restriction" carve-out). On status -> Completed:
- * writes consultation_line_items (professional fee + one row per medication/
- * procedure - AC-2) and, if a vaccination was administered, writes through
- * to pet_vaccination_records immediately (AC-3), reusing the existing #33
- * service rather than duplicating the insert.
+ * Whoever takes a consultation owns it (20261006248): returns true when
+ * this call just claimed it for the requester, false when they already
+ * owned it, and throws a 403 when another vet does.
+ *
+ * The claim is a single conditional update (`accepted_by is null`), so two
+ * vets acting at the same moment can't both win - the slower one's update
+ * matches no row and gets the same 403. veterinarian_id follows the claim so
+ * "My Patients" lists the vet who actually did the visit;
+ * bookings.assigned_staff_id is left alone, so slot capacity is unaffected.
+ */
+async function claimConsultation(
+  consultation: Consultation,
+  requesterId: string
+): Promise<boolean> {
+  if (consultation.accepted_by) {
+    if (consultation.accepted_by !== requesterId) {
+      throwWithStatus(403, HANDLED_BY_ANOTHER_VET);
+    }
+
+    return false;
+  }
+
+  const { data, error } = await supabase
+    .from('consultations')
+    .update({ accepted_by: requesterId, veterinarian_id: requesterId })
+    .eq('id', consultation.id)
+    .is('accepted_by', null)
+    .select('id')
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(403, HANDLED_BY_ANOTHER_VET);
+
+  return true;
+}
+
+/** Undoes a claim made by this same request when the Start/Complete it was
+ * for then failed (e.g. starting an unpaid booking) - otherwise the vet
+ * would be left owning a consultation they never actually took. */
+async function releaseConsultationClaim(
+  consultation: Consultation,
+  requesterId: string
+): Promise<void> {
+  await supabase
+    .from('consultations')
+    .update({
+      accepted_by: null,
+      veterinarian_id: consultation.veterinarian_id,
+    })
+    .eq('id', consultation.id)
+    .eq('accepted_by', requesterId);
+}
+
+/**
+ * consultations.medications stores {name, dose, notes, medicine_type,
+ * frequency, duration} (#63 migration comment, widened #117) plus, for
+ * pharmacy prescriptions, quantity and the medicine-list entry it came from.
+ * A price is never stored here - a sale's unit price is read from the
+ * medicine list when the medicine transaction is written.
+ */
+function toStoredMedications(
+  medications: NonNullable<UpdateConsultationInput['medications']>
+): ConsultationMedication[] {
+  return medications.map(
+    ({
+      name,
+      dose,
+      notes,
+      medicine_type,
+      frequency,
+      duration,
+      quantity,
+      medication_catalog_id,
+    }) => ({
+      name,
+      dose,
+      notes: notes ?? null,
+      medicine_type: medicine_type ?? null,
+      frequency: frequency ?? null,
+      duration: duration ?? null,
+      quantity: quantity ?? 1,
+      medication_catalog_id: medication_catalog_id ?? null,
+    })
+  );
+}
+
+/** Writes the visit's medicine transaction, then re-reads the consultation
+ * when that changed anything - the row returned by the update that ran just
+ * before doesn't know its new medication_transaction_id or booking total. */
+async function applyPharmacyPlan(
+  consultation: Consultation,
+  plan: PharmacyChargePlan,
+  requesterId: string
+): Promise<Consultation> {
+  await applyPharmacyCharge({ consultation, plan, requesterId });
+
+  const changedTheBill =
+    !plan.locked && (plan.existing !== null || plan.lines.length > 0);
+
+  return changedTheBill ? getConsultation(consultation.id) : consultation;
+}
+
+const FINISHED_EDITABLE_FIELDS: ReadonlyArray<keyof UpdateConsultationInput> = [
+  'diagnosis',
+  'medications',
+  'sold_at_pharmacy',
+];
+
+/**
+ * Pharmacy prescriptions: a finished consultation is no longer frozen
+ * outright - the vet who handled it may still correct its diagnosis and
+ * prescription (and where the customer is buying the medicine). Everything
+ * else stays final: status, professional fee, vitals, form results and the
+ * vaccination all 409 exactly as before.
+ *
+ * accepted_by is who handled it; visits finished before that column existed
+ * (20261006248) have it null, so they fall back to veterinarian_id.
+ *
+ * The medicine transaction follows the edit while it is still unpaid, and is
+ * left alone once paid - see pharmacyCharge.service.ts.
+ */
+async function updateFinishedConsultation({
+  requesterId,
+  consultation,
+  input,
+}: {
+  requesterId: string;
+  consultation: Consultation;
+  input: UpdateConsultationInput;
+}): Promise<Consultation> {
+  const touchesAFinalField = (
+    Object.keys(input) as Array<keyof UpdateConsultationInput>
+  ).some(
+    (key) => input[key] !== undefined && !FINISHED_EDITABLE_FIELDS.includes(key)
+  );
+
+  if (touchesAFinalField) {
+    throwWithStatus(
+      409,
+      'This consultation is already finalized - only its diagnosis and prescription can still be changed'
+    );
+  }
+
+  const handledBy = consultation.accepted_by ?? consultation.veterinarian_id;
+  if (handledBy !== requesterId) {
+    throwWithStatus(403, HANDLED_BY_ANOTHER_VET);
+  }
+
+  const medications =
+    input.medications !== undefined
+      ? toStoredMedications(input.medications)
+      : (consultation.medications ?? []);
+  const soldAtPharmacy =
+    input.sold_at_pharmacy ?? consultation.sold_at_pharmacy ?? false;
+
+  // Before any write, so a medicine that can't be priced saves nothing.
+  const plan = await planPharmacyCharge({
+    consultation,
+    medications,
+    soldAtPharmacy,
+  });
+
+  const update: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    sold_at_pharmacy: soldAtPharmacy,
+  };
+  if (input.diagnosis !== undefined) update.diagnosis = input.diagnosis;
+  if (input.medications !== undefined) update.medications = medications;
+
+  const { data: updated, error: updateError } = await supabase
+    .from('consultations')
+    .update(update)
+    .eq('id', consultation.id)
+    .select(CONSULTATION_SELECT)
+    .maybeSingle();
+
+  if (updateError || !updated) {
+    throwWithStatus(
+      400,
+      updateError?.message ?? 'Failed to update consultation'
+    );
+  }
+
+  return applyPharmacyPlan(updated as Consultation, plan, requesterId);
+}
+
+/**
+ * Issue #66, revised: the route still gates on role only (any Veterinarian),
+ * but a consultation now belongs to the vet who takes it - the one who
+ * presses Start, or the first to save/complete one that was already In
+ * Progress (a receptionist check-in or a walk-in). From then on only that
+ * vet may edit or complete it; see claimConsultation. A still-Pending,
+ * unclaimed consultation stays editable by any vet until someone starts it.
+ * On status -> Completed:
+ * writes the professional fee, when one was given, to
+ * consultation_line_items (AC-2) and, if a
+ * vaccination was administered, writes through to pet_vaccination_records
+ * immediately (AC-3), reusing the existing #33 service rather than
+ * duplicating the insert. Prescribed medicines are NOT line items any more:
+ * when the customer buys them from this branch's pharmacy they're billed as
+ * their own transaction (pharmacyCharge.service.ts), and otherwise not at
+ * all. Vet-priced visits: the services the vet lists as done
+ * (`services_done`) are recorded and billed as their own transaction too
+ * (serviceCharge.service.ts). A finished consultation is handed to
+ * updateFinishedConsultation.
  *
  * Booking-status revision: consultations.status/completed_at no longer
  * exist - a status transition here delegates entirely to
@@ -355,13 +571,48 @@ export async function updateConsultation({
   const bookingStatus = consultation.booking?.status;
 
   if (bookingStatus && FINISHED_BOOKING_STATUSES.includes(bookingStatus)) {
-    throwWithStatus(409, 'This consultation is already finalized');
+    return updateFinishedConsultation({ requesterId, consultation, input });
   }
 
-  if (input.status === 'Ongoing') {
-    await startBooking({ bookingId: consultation.booking_id });
-  } else if (input.status === 'Completed') {
-    await completeBooking({ bookingId: consultation.booking_id });
+  const takesOwnership =
+    bookingStatus === 'In Progress' || input.status !== undefined;
+  let claimedNow = false;
+
+  if (takesOwnership) {
+    claimedNow = await claimConsultation(consultation, requesterId);
+  } else if (
+    consultation.accepted_by &&
+    consultation.accepted_by !== requesterId
+  ) {
+    throwWithStatus(403, HANDLED_BY_ANOTHER_VET);
+  }
+
+  let pharmacyPlan: PharmacyChargePlan | null = null;
+  // Only a completion bills anything - services listed on any other save
+  // are ignored.
+  const servicesDone =
+    input.status === 'Completed' ? (input.services_done ?? []) : [];
+
+  try {
+    if (input.status === 'Ongoing') {
+      await startBooking({ bookingId: consultation.booking_id });
+    } else if (input.status === 'Completed') {
+      // Planned before the booking is completed, so a medicine that can't be
+      // priced stops the whole save rather than failing a finished visit.
+      pharmacyPlan = await planPharmacyCharge({
+        consultation,
+        medications:
+          input.medications !== undefined
+            ? toStoredMedications(input.medications)
+            : (consultation.medications ?? []),
+        soldAtPharmacy:
+          input.sold_at_pharmacy ?? consultation.sold_at_pharmacy ?? false,
+      });
+      await completeBooking({ bookingId: consultation.booking_id });
+    }
+  } catch (error) {
+    if (claimedNow) await releaseConsultationClaim(consultation, requesterId);
+    throw error;
   }
 
   if (input.status === 'Completed') {
@@ -371,26 +622,46 @@ export async function updateConsultation({
     // #117: procedure line items removed - the Procedures section of the
     // consultation form (and its input.procedures field) no longer exist;
     // see 20260929230_custom_drop_vet_procedure_catalog.sql's header note.
-    const lineItems: Record<string, unknown>[] = [
-      {
-        consultation_id: consultationId,
-        item_type: 'professional_fee',
-        description: 'Professional Fee',
-        amount: input.professional_fee,
-      },
-      ...(input.medications ?? []).map((medication) => ({
-        consultation_id: consultationId,
-        item_type: 'medication',
-        description: medication.name,
-        amount: medication.amount,
-      })),
-    ];
+    // Pharmacy prescriptions: medication line items removed too - medicines
+    // are billed by applyPharmacyCharge below, and a row here as well would
+    // bill them a second time at checkout.
+    // The Consultation Details form no longer asks for a professional fee,
+    // so a visit completed from it has no fee row at all (rather than a
+    // "Professional Fee: 0" line on the bill) - only a completion that
+    // actually names a fee writes one.
+    if (input.professional_fee !== undefined) {
+      const { error: lineItemsError } = await supabase
+        .from('consultation_line_items')
+        .insert([
+          {
+            consultation_id: consultationId,
+            item_type: 'professional_fee',
+            description: 'Professional Fee',
+            amount: input.professional_fee,
+          },
+        ]);
 
-    const { error: lineItemsError } = await supabase
-      .from('consultation_line_items')
-      .insert(lineItems);
+      if (lineItemsError) throwWithStatus(400, lineItemsError.message);
+    }
 
-    if (lineItemsError) throwWithStatus(400, lineItemsError.message);
+    // Vet-priced visits: what the vet says was done, and what each item
+    // costs. Kept here as the visit's own record ('procedure' rows - also
+    // what checkout would itemize); the money side is
+    // postServicesDoneCharge, after the consultation row is saved below.
+    if (servicesDone.length > 0) {
+      const { error: servicesError } = await supabase
+        .from('consultation_line_items')
+        .insert(
+          servicesDone.map((service) => ({
+            consultation_id: consultationId,
+            item_type: 'procedure',
+            description: service.name,
+            amount: service.amount,
+          }))
+        );
+
+      if (servicesError) throwWithStatus(400, servicesError.message);
+    }
 
     if (input.vaccination) {
       await createVaccinationRecord({
@@ -418,20 +689,10 @@ export async function updateConsultation({
     update.reason_for_visit = input.reason_for_visit;
   }
   if (input.medications !== undefined) {
-    // consultations.medications stores {name, dose, notes, medicine_type,
-    // frequency, duration} (#63 migration comment, widened #117) - amount is
-    // a billing-time-only input, stripped before persisting to the clinical
-    // record.
-    update.medications = input.medications.map(
-      ({ name, dose, notes, medicine_type, frequency, duration }) => ({
-        name,
-        dose,
-        notes: notes ?? null,
-        medicine_type: medicine_type ?? null,
-        frequency: frequency ?? null,
-        duration: duration ?? null,
-      })
-    );
+    update.medications = toStoredMedications(input.medications);
+  }
+  if (input.sold_at_pharmacy !== undefined) {
+    update.sold_at_pharmacy = input.sold_at_pharmacy;
   }
   if (input.form_responses !== undefined) {
     // #117: no stripping needed - updateConsultationValidator's .strict()
@@ -456,7 +717,23 @@ export async function updateConsultation({
     );
   }
 
-  return updated as Consultation;
+  let saved = updated as Consultation;
+
+  if (pharmacyPlan) {
+    saved = await applyPharmacyPlan(saved, pharmacyPlan, requesterId);
+  }
+
+  if (servicesDone.length > 0) {
+    await postServicesDoneCharge({
+      consultation: saved,
+      lines: servicesDone,
+      requesterId,
+    });
+    // The booking total (and what is owed) just changed.
+    saved = await getConsultation(consultationId);
+  }
+
+  return saved;
 }
 
 // -----------------------------------------------------------------------
@@ -505,14 +782,21 @@ export async function listPrescriptions(): Promise<Consultation[]> {
 // types' own header notes in pet.types.ts.
 // -----------------------------------------------------------------------
 
-async function getPetOwnerId(petId: string): Promise<string | null> {
+interface PetOwnership {
+  customer_id: string;
+  name: string | null;
+}
+
+async function getPetOwnership(petId: string): Promise<PetOwnership | null> {
   const { data } = await supabase
     .from('pets')
-    .select('customer_id')
+    .select('customer_id, name')
     .eq('id', petId)
     .maybeSingle();
 
-  return data?.customer_id ?? null;
+  if (!data?.customer_id) return null;
+
+  return { customer_id: data.customer_id, name: data.name ?? null };
 }
 
 interface PetClinicalHistoryParams {
@@ -528,45 +812,115 @@ interface PetClinicalHistoryParams {
 async function assertCanReadPetClinicalHistory(
   requesterId: string,
   petId: string
-) {
-  const ownerId = await getPetOwnerId(petId);
+): Promise<PetOwnership> {
+  const pet = await getPetOwnership(petId);
 
-  if (!ownerId) {
+  if (!pet) {
     throwWithStatus(404, 'Pet not found');
   }
 
-  if (ownerId === requesterId) return;
+  if (pet.customer_id === requesterId) return pet;
 
   const role = await getStaffRoleOrNull(requesterId);
   if (!role) throwWithStatus(403, 'Forbidden');
+
+  return pet;
+}
+
+/** id -> row, for the handful of ids a pet's own history touches. Skips the
+ * query entirely when there's nothing to look up. */
+async function lookupById<Row extends { id: string }>(
+  table: string,
+  columns: string,
+  ids: string[]
+): Promise<Map<string, Row>> {
+  const uniqueIds = Array.from(new Set(ids));
+  if (uniqueIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from(table)
+    .select(columns)
+    .in('id', uniqueIds);
+
+  if (error) throwWithStatus(400, error.message);
+
+  return new Map(
+    ((data ?? []) as unknown as Row[]).map((row) => [row.id, row])
+  );
 }
 
 /**
  * #117: a customer's own pet's prescription history - every finished
  * consultation that prescribed at least one medication. Reuses
  * listPetConsultationHistory rather than a new query, then filters/trims.
+ * Pharmacy prescriptions: also names the vet, the branch, the pet and its
+ * owner, and each medicine's quantity - what a printed prescription needs
+ * when the customer takes it to another pharmacy. Deliberately no prices, and no
+ * medication_catalog_id (an internal pointer).
  */
 export async function listPetPrescriptionsForRequester({
   requesterId,
   petId,
 }: PetClinicalHistoryParams): Promise<PetPrescriptionHistoryEntry[]> {
-  await assertCanReadPetClinicalHistory(requesterId, petId);
+  const pet = await assertCanReadPetClinicalHistory(requesterId, petId);
 
   const consultations = await listPetConsultationHistory(petId);
 
-  return consultations
-    .filter(
-      (consultation) =>
-        consultation.booking &&
-        FINISHED_BOOKING_STATUSES.includes(consultation.booking.status) &&
-        consultation.medications &&
-        consultation.medications.length > 0
+  const prescribed = consultations.filter(
+    (consultation) =>
+      consultation.booking &&
+      FINISHED_BOOKING_STATUSES.includes(consultation.booking.status) &&
+      consultation.medications &&
+      consultation.medications.length > 0
+  );
+
+  const vets = await lookupById<{ id: string; display_name: string }>(
+    'staff_profiles',
+    'id, display_name',
+    prescribed.map((consultation) => consultation.veterinarian_id)
+  );
+  const branches = await lookupById<{
+    id: string;
+    name: string;
+    address: string;
+  }>(
+    'branches',
+    'id, name, address',
+    prescribed.flatMap((consultation) =>
+      consultation.booking?.branch_id ? [consultation.booking.branch_id] : []
     )
-    .map((consultation) => ({
+  );
+
+  const owners = await lookupById<{ id: string; full_name: string }>(
+    'customer_profiles',
+    'id, full_name',
+    prescribed.length > 0 ? [pet.customer_id] : []
+  );
+  const ownerName = owners.get(pet.customer_id)?.full_name ?? null;
+
+  return prescribed.map((consultation) => {
+    const branch = branches.get(consultation.booking?.branch_id ?? '');
+
+    return {
       consultation_id: consultation.id,
       date: consultation.booking?.completed_at ?? consultation.created_at,
-      medications: consultation.medications ?? [],
-    }));
+      veterinarian_name:
+        vets.get(consultation.veterinarian_id)?.display_name ?? null,
+      branch_name: branch?.name ?? null,
+      branch_address: branch?.address ?? null,
+      pet_name: pet.name,
+      owner_name: ownerName,
+      medications: (consultation.medications ?? []).map((medication) => ({
+        name: medication.name,
+        dose: medication.dose,
+        notes: medication.notes ?? null,
+        medicine_type: medication.medicine_type ?? null,
+        frequency: medication.frequency ?? null,
+        duration: medication.duration ?? null,
+        quantity: medication.quantity ?? null,
+      })),
+    };
+  });
 }
 
 /**

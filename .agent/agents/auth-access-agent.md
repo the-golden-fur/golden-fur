@@ -1,7 +1,7 @@
 # auth-access-agent
 
 **Role:** a dev-time subagent that helps write and review RBAC, TOTP MFA,
-and Google/Facebook OAuth account-merge code. Deliberately read-mostly so
+and Google OAuth account-merge code. Deliberately read-mostly so
 it can't accidentally touch production config while working on security
 code.
 

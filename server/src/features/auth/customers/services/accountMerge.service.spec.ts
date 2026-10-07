@@ -13,7 +13,7 @@ describe('accountMerge.service', () => {
     vi.clearAllMocks();
   });
 
-  const mockSession = (provider: string, email: string, facebookId?: string) =>
+  const mockSession = (provider: string, email: string) =>
     ({
       user: {
         id: 'test-user-id',
@@ -21,7 +21,6 @@ describe('accountMerge.service', () => {
         app_metadata: { provider },
         user_metadata: {
           full_name: 'Test User',
-          ...(facebookId && { provider_id: facebookId }),
         },
       },
     }) as any;
@@ -102,46 +101,6 @@ describe('accountMerge.service', () => {
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         primary_auth_provider: 'google',
-      })
-    );
-  });
-
-  it('updates facebook_id during merge (double-provider)', async () => {
-    const session = mockSession('facebook', 'existing@test.com', 'fb-12345');
-    const selectMock = vi.fn().mockReturnThis();
-    const eqSelectMock = vi.fn().mockReturnValue({
-      maybeSingle: vi.fn().mockResolvedValue({
-        data: {
-          id: 'existing-id',
-          account_email: 'existing@test.com',
-          primary_auth_provider: 'google',
-        },
-        error: null,
-      }),
-    });
-    const updateMock = vi.fn().mockReturnThis();
-    const eqUpdateMock = vi.fn().mockResolvedValue({ error: null });
-
-    (supabase.from as any).mockImplementation((table: string) => {
-      if (table === 'customer_profiles') {
-        return {
-          select: selectMock,
-          update: updateMock,
-          eq: (field: string, value: any) => {
-            if (field === 'account_email') return eqSelectMock(field, value);
-            if (field === 'id') return eqUpdateMock(field, value);
-          },
-        };
-      }
-    });
-
-    const result = await mergeOrCreate(session);
-
-    expect(result.action).toBe('merged');
-    expect(updateMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        primary_auth_provider: 'facebook',
-        facebook_id: 'fb-12345',
       })
     );
   });

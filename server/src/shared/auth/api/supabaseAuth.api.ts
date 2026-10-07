@@ -17,8 +17,7 @@ export interface CreateCustomerProfileFields {
   id: string;
   account_email: string;
   full_name: string;
-  primary_auth_provider: 'email' | 'google' | 'facebook';
-  facebook_id?: string | null;
+  primary_auth_provider: 'email' | 'google';
 }
 
 /**

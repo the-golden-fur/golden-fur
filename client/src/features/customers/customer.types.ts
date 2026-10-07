@@ -8,8 +8,7 @@ export interface CustomerProfile {
   emergency_contact_number: string | null;
   preferred_communication_channel: CommunicationChannel | null;
   account_email: string;
-  primary_auth_provider: 'email' | 'google' | 'facebook';
-  facebook_id: string | null;
+  primary_auth_provider: 'email' | 'google';
   profile_photo_url: string | null;
   is_active: boolean;
   archived_at: string | null;
@@ -144,6 +143,13 @@ export interface PetMedicalNote {
 export interface PetPrescriptionHistoryEntry {
   consultation_id: string;
   date: string;
+  /** Pharmacy prescriptions: who prescribed it and where - shown on the
+   * printed prescription a customer takes to another pharmacy. */
+  veterinarian_name: string | null;
+  branch_name: string | null;
+  branch_address: string | null;
+  pet_name: string | null;
+  owner_name: string | null;
   medications: Array<{
     name: string;
     dose: string;
@@ -151,6 +157,7 @@ export interface PetPrescriptionHistoryEntry {
     medicine_type?: string | null;
     frequency?: string | null;
     duration?: string | null;
+    quantity?: number | null;
   }>;
 }
 

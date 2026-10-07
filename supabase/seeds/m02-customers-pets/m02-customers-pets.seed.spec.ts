@@ -164,22 +164,6 @@ describe('m02-customers-pets seed', () => {
     }
   });
 
-  it('sets a placeholder facebook_id on exactly one seed customer (customer1)', async () => {
-    await seedCustomers(supabase as never);
-
-    const rows = supabase.state.customerProfiles as Map<
-      string,
-      { facebook_id: string | null }
-    >;
-
-    expect(rows.get('customer1@goldenfur.com')?.facebook_id).toBe(
-      'seed-facebook-id-customer1'
-    );
-    expect([...rows.entries()].filter(([, r]) => !!r.facebook_id)).toHaveLength(
-      1
-    );
-  });
-
   it('is idempotent: re-running does not duplicate customers or pets', async () => {
     await seedCustomers(supabase as never);
     await expect(seedCustomers(supabase as never)).resolves.not.toThrow();

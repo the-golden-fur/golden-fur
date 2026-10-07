@@ -1,17 +1,22 @@
+import type { Booking } from '../../booking/booking.types';
 import type {
   Consultation,
   ConsultationFormTemplate,
   CreateConsultationFormTemplatePayload,
   CreateMedicationCatalogItemPayload,
   CreatePrescriptionTemplatePayload,
+  CreateServiceCatalogItemPayload,
+  LinkFollowUpPayload,
   PetHealthCondition,
   UpdateConsultationFormTemplatePayload,
   UpdateConsultationPayload,
   UpdateMedicationCatalogItemPayload,
   UpdatePrescriptionTemplatePayload,
+  UpdateServiceCatalogItemPayload,
   VeterinarianPatient,
   VetMedicationCatalogItem,
   VetPrescriptionTemplate,
+  VetServiceCatalogItem,
 } from '../veterinary.types';
 
 interface VeterinaryApiResult<T> {
@@ -125,6 +130,39 @@ export async function updateConsultation(
 
   const result = await parseBody<{ consultation: Consultation }>(response);
   return { data: result.data?.consultation ?? null, error: result.error };
+}
+
+export interface LinkFollowUpBookingResult {
+  consultation: Consultation;
+  booking: Booking;
+}
+
+/**
+ * Vet-priced visits: links a follow-up booking the Schedule follow-up form
+ * just created (through the normal POST /bookings) onto the consultation it
+ * follows, along with why the vet wants the pet back. Only the vet who
+ * handled the visit may do this, once per visit - enforced server-side
+ * (followUp.service.ts).
+ */
+export async function linkFollowUpBooking(
+  consultationId: string,
+  accessToken: string,
+  payload: LinkFollowUpPayload
+): Promise<VeterinaryApiResult<LinkFollowUpBookingResult>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/consultations/${consultationId}/follow-up`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<LinkFollowUpBookingResult>(response);
 }
 
 /** Issue #78: upserts the pet's current known health conditions - Veterinary-
@@ -267,6 +305,83 @@ export async function deleteMedicationCatalogItem(
 ): Promise<VeterinaryApiResult<null>> {
   const response = await fetch(
     `${API_BASE_URL}/veterinary/medication-catalog/${itemId}`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+// Vet-priced visits: the clinic's shared list of veterinary services and
+// their usual prices (My Catalog > Services), suggested from in the
+// "Services done" completion pop-up.
+
+export async function listServiceCatalog(
+  accessToken: string
+): Promise<VeterinaryApiResult<VetServiceCatalogItem[]>> {
+  const response = await fetch(`${API_BASE_URL}/veterinary/service-catalog`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ services: VetServiceCatalogItem[] }>(
+    response
+  );
+  return { data: result.data?.services ?? null, error: result.error };
+}
+
+export async function createServiceCatalogItem(
+  accessToken: string,
+  payload: CreateServiceCatalogItemPayload
+): Promise<VeterinaryApiResult<VetServiceCatalogItem>> {
+  const response = await fetch(`${API_BASE_URL}/veterinary/service-catalog`, {
+    method: 'POST',
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ service: VetServiceCatalogItem }>(response);
+  return { data: result.data?.service ?? null, error: result.error };
+}
+
+export async function updateServiceCatalogItem(
+  itemId: string,
+  accessToken: string,
+  payload: UpdateServiceCatalogItemPayload
+): Promise<VeterinaryApiResult<VetServiceCatalogItem>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/service-catalog/${itemId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ service: VetServiceCatalogItem }>(response);
+  return { data: result.data?.service ?? null, error: result.error };
+}
+
+export async function deleteServiceCatalogItem(
+  itemId: string,
+  accessToken: string
+): Promise<VeterinaryApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/veterinary/service-catalog/${itemId}`,
     { method: 'DELETE', headers: authHeaders(accessToken) }
   );
 

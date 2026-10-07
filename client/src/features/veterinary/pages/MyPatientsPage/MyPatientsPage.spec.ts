@@ -84,7 +84,6 @@ function buildCustomer(
     preferred_communication_channel: null,
     account_email: 'jane@example.com',
     primary_auth_provider: 'email',
-    facebook_id: null,
     is_active: true,
     archived_at: null,
     deactivated_at: null,

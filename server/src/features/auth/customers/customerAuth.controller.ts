@@ -441,7 +441,7 @@ export async function customerOauthCallbackController(
   req: Request,
   res: Response
 ) {
-  // In a real OAuth flow with an API, the client handles the redirect from Google/Facebook,
+  // In a real OAuth flow with an API, the client handles the redirect from Google,
   // gets the token from the URL hash, and sends the session/access_token to the server to verify.
   // We'll expect the client to send the access_token in the Authorization header.
 

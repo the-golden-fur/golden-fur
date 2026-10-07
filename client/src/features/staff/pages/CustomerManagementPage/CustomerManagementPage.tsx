@@ -87,7 +87,6 @@ const SIGN_IN_METHOD_LABELS: Record<
 > = {
   email: 'Email',
   google: 'Google',
-  facebook: 'Facebook',
 };
 
 const PANEL_TITLES: Record<'checkProfile' | 'viewPets' | 'addPet', string> = {

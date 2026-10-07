@@ -119,3 +119,30 @@ where not exists (
   select 1 from public.vet_consultation_form_templates as existing
   where existing.veterinarian_id = vet.id and existing.name = v.name
 );
+
+-- public.vet_service_catalog (20261006250): the clinic-wide list of
+-- veterinary services and their usual prices the "Services done" completion
+-- pop-up suggests from. One shared list, so it is guarded by name alone;
+-- created_by ("added by") is the first seeded Veterinarian when there is one.
+insert into public.vet_service_catalog (name, default_price, created_by)
+select
+  v.name,
+  v.default_price,
+  (
+    select id from public.staff_profiles
+    where role = 'Veterinarian'
+    order by registered_email
+    limit 1
+  )
+from (
+  values
+    ('Deworming', 350.00),
+    ('Wound Cleaning & Dressing', 500.00),
+    ('Dental Scaling', 2500.00),
+    ('Minor Surgery', 5000.00),
+    ('Major Surgery', 10000.00)
+) as v(name, default_price)
+where not exists (
+  select 1 from public.vet_service_catalog as existing
+  where existing.name = v.name
+);

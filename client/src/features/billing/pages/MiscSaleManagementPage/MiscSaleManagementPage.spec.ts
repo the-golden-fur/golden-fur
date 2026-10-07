@@ -61,7 +61,6 @@ function buildCustomer(
     preferred_communication_channel: null,
     account_email: 'ada@example.com',
     primary_auth_provider: 'email',
-    facebook_id: null,
     profile_photo_url: null,
     is_active: true,
     archived_at: null,
