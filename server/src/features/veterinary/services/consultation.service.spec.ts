@@ -15,6 +15,10 @@ import {
   planPharmacyCharge,
 } from './pharmacyCharge.service.ts';
 import { postServicesDoneCharge } from './serviceCharge.service.ts';
+import {
+  notifyMedicineChargeChange,
+  notifyVisitCharges,
+} from './vetChargeNotifications.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -29,6 +33,14 @@ vi.mock('./pharmacyCharge.service.ts', () => ({
 
 vi.mock('./serviceCharge.service.ts', () => ({
   postServicesDoneCharge: vi.fn(),
+}));
+
+// What the customer is told has its own spec
+// (vetChargeNotifications.service.spec.ts) - here it's only checked that
+// updateConsultation hands it what the save charged.
+vi.mock('./vetChargeNotifications.service.ts', () => ({
+  notifyVisitCharges: vi.fn(),
+  notifyMedicineChargeChange: vi.fn(),
 }));
 
 const NOTHING_TO_BILL = { locked: false, existing: null, lines: [] };
@@ -747,6 +759,11 @@ describe('consultation.service (#66)', () => {
           expect.objectContaining({ plan, requesterId: VET_ID })
         );
         expect(result.medication_transaction_id).toBe('txn-1');
+        // The customer is told about the change to what they owe.
+        expect(notifyMedicineChargeChange).toHaveBeenCalledWith(
+          expect.objectContaining({ plan })
+        );
+        expect(notifyVisitCharges).not.toHaveBeenCalled();
       });
 
       it('keeps where the medicine is bought as it was when the edit does not say', async () => {
@@ -1002,6 +1019,13 @@ describe('consultation.service (#66)', () => {
         })
       );
       expect(result.booking?.total_price).toBe(10350);
+      // The customer is told what the visit charged them.
+      expect(notifyVisitCharges).toHaveBeenCalledWith(
+        expect.objectContaining({
+          servicesDone,
+          pharmacyPlan: NOTHING_TO_BILL,
+        })
+      );
     });
 
     it('bills no services when the vet listed none', async () => {
@@ -1051,6 +1075,7 @@ describe('consultation.service (#66)', () => {
       });
 
       expect(postServicesDoneCharge).not.toHaveBeenCalled();
+      expect(notifyVisitCharges).not.toHaveBeenCalled();
     });
 
     it('completing without a professional fee writes no fee line item at all', async () => {
@@ -1267,9 +1292,12 @@ describe('#117 prescription/consultation-results reads', () => {
           dose: '50mg',
           notes: null,
           medicine_type: null,
+          strength: null,
           frequency: null,
           duration: null,
           quantity: 2,
+          quantity_unit: null,
+          refills: null,
         },
       ]);
     });

@@ -19,15 +19,20 @@ function formatDate(iso: string): string {
   });
 }
 
-/** A medicine's prescription on one line - type, quantity, dose, frequency,
+/** A medicine's prescription on one line - route, strength, quantity, dose, frequency,
  * duration - leaving out whatever wasn't filled in. */
 function describeMedication(medication: ConsultationMedication): string {
   return [
     medication.medicine_type,
-    medication.quantity != null ? `Qty ${medication.quantity}` : null,
+    medication.strength,
+    medication.quantity != null
+      ? `Qty ${medication.quantity}${medication.quantity_unit ? ` ${medication.quantity_unit}` : ''}`
+      : null,
     medication.dose,
     medication.frequency,
     medication.duration,
+    medication.notes,
+    medication.refills ? `Refills ${medication.refills}` : null,
   ]
     .filter(Boolean)
     .join(' · ');

@@ -2041,12 +2041,10 @@ describe('booking.service (#51)', () => {
       });
     });
 
-    it('a booking that owes nothing (100% discount) is born Fully Paid with no initial charge', async () => {
-      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
-      vi.mocked(getDiscountById).mockResolvedValue({
-        ...DAYCARE_DISCOUNT,
-        discount_type: 'Percentage',
-        value: 100,
+    it('a service priced at zero on purpose is still born Fully Paid with no initial charge', async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(DAYCARE_SERVICE as object),
+        base_price: 0,
       } as never);
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
       queueFromResults(
@@ -2066,7 +2064,6 @@ describe('booking.service (#51)', () => {
           customer_id: CUSTOMER_ID,
           service_category: 'Daycare',
           items: [{ service_id: 'service-daycare' }],
-          discount_id: 'discount-1',
         },
       });
 
@@ -2074,10 +2071,100 @@ describe('booking.service (#51)', () => {
         (write) => write.table === 'bookings' && write.method === 'insert'
       );
       expect(insert?.payload).toMatchObject({ payment_status: 'Fully Paid' });
-      expect((insert?.payload as { paid_at?: string }).paid_at).toBeTruthy();
       expect(
         recordedWrites.some((write) => write.table === 'transactions')
       ).toBe(false);
+    });
+
+    it('refuses a discount that would make the booking free - the customer always pays at least half', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getDiscountById).mockResolvedValue({
+        ...DAYCARE_DISCOUNT,
+        discount_type: 'Percentage',
+        value: 100,
+      } as never);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
+      queueFromResults({ data: PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: 'cashier-1',
+          input: {
+            ...BASE_INPUT,
+            customer_id: CUSTOMER_ID,
+            service_category: 'Daycare',
+            items: [{ service_id: 'service-daycare' }],
+            discount_id: 'discount-1',
+          },
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: expect.stringContaining('at most 50% of the price'),
+      });
+
+      expect(
+        recordedWrites.some(
+          (write) => write.table === 'bookings' && write.method === 'insert'
+        )
+      ).toBe(false);
+    });
+
+    it('refuses a flat discount bigger than half the price, however it is typed in', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getDiscountById).mockResolvedValue({
+        ...DAYCARE_DISCOUNT,
+        discount_type: 'Flat',
+        value: 500, // more than the 100 the service costs
+      } as never);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
+      queueFromResults({ data: PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: 'cashier-1',
+          input: {
+            ...BASE_INPUT,
+            customer_id: CUSTOMER_ID,
+            service_category: 'Daycare',
+            items: [{ service_id: 'service-daycare' }],
+            discount_id: 'discount-1',
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('refuses more than one reduction on a booking - no stacking', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Cashier');
+
+      for (const stacked of [
+        { discount_id: 'discount-1', promo_ids: ['promo-1'] },
+        { promo_ids: ['promo-1', 'promo-2'] },
+        { promo_ids: ['promo-1'], coupon_ids: ['coupon-1'] },
+      ]) {
+        queueFromResults({ data: PET, error: null }); // pet ownership
+
+        await expect(
+          createBooking({
+            requesterId: 'cashier-1',
+            input: {
+              ...BASE_INPUT,
+              customer_id: CUSTOMER_ID,
+              service_category: 'Daycare',
+              items: [{ service_id: 'service-daycare' }],
+              ...stacked,
+            },
+          })
+        ).rejects.toMatchObject({
+          statusCode: 400,
+          message:
+            'Only one discount, promo or coupon can be used per booking.',
+        });
+      }
+
+      // Refused before anything is looked up.
+      expect(getDiscountById).not.toHaveBeenCalled();
+      expect(getPromoById).not.toHaveBeenCalled();
     });
 
     it('rejects a discount when the requester is not a money-handling staff role', async () => {

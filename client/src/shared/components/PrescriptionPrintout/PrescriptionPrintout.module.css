@@ -94,6 +94,11 @@
     break-inside: avoid;
   }
 
+  /* The line under a medicine carrying its instructions. */
+  .instructions {
+    font-size: 10pt;
+  }
+
   .signature {
     display: grid;
     justify-items: center;

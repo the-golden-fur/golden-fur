@@ -96,9 +96,12 @@ export interface PetPrescriptionHistoryEntry {
     dose: string;
     notes?: string | null;
     medicine_type?: string | null;
+    strength?: string | null;
     frequency?: string | null;
     duration?: string | null;
     quantity?: number | null;
+    quantity_unit?: string | null;
+    refills?: number | null;
   }>;
 }
 

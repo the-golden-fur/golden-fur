@@ -96,7 +96,7 @@ function stubCatalogAndBranches(
   } as never);
 }
 
-function renderModal() {
+function renderModal(flow: { stepLabel?: string; onBack?: () => void } = {}) {
   const onClose = vi.fn();
   const onLinked = vi.fn();
 
@@ -112,6 +112,7 @@ function renderModal() {
       veterinarianId: 'vet-1',
       onClose,
       onLinked,
+      ...flow,
     })
   );
 
@@ -307,5 +308,39 @@ describe('ScheduleFollowUpModal', () => {
 
     expect(onClose).toHaveBeenCalled();
     expect(bookingApi.createBooking).not.toHaveBeenCalled();
+  });
+
+  it('as a step of the after-visit flow it is titled with the step, offers Back, and Cancel reads Skip', async () => {
+    stubCatalogAndBranches();
+    const onBack = vi.fn();
+    const { onClose } = renderModal({ stepLabel: 'Step 2 of 2', onBack });
+
+    expect(
+      screen.getByRole('dialog', {
+        name: 'Step 2 of 2: Follow-up consultation',
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Cancel' })
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(onBack).toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Skip' }));
+    expect(onClose).toHaveBeenCalled();
+    expect(bookingApi.createBooking).not.toHaveBeenCalled();
+  });
+
+  it('opened on its own it has no Back and no step in its title', async () => {
+    stubCatalogAndBranches();
+    renderModal();
+
+    expect(
+      screen.getByRole('dialog', { name: 'Schedule follow-up' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Back' })
+    ).not.toBeInTheDocument();
   });
 });

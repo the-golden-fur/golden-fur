@@ -1,5 +1,6 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
+import { sendPaymentConfirmedNotification } from './paymentNotifications.service.ts';
 import {
   applyFirstBookingPaymentSideEffects,
   getBookingById,
@@ -99,6 +100,47 @@ async function loadSpawnedLeftover(
   );
 
   return (spawned as Transaction | undefined) ?? null;
+}
+
+/**
+ * What is still owed on the booking (or booking group) after a settlement:
+ * the total of its Pending booking_payment transactions - a spawned leftover,
+ * a down-payment booking's waiting balance, a vet's unpaid charge. 0 means
+ * nothing is left to pay.
+ */
+async function loadRemainingBalance(
+  bookingId: string | null,
+  bookingGroupId: string | null
+): Promise<number> {
+  if (!bookingId && !bookingGroupId) return 0;
+
+  const query = supabase
+    .from('transactions')
+    .select('total_amount')
+    .eq('transaction_type', 'booking_payment')
+    .eq('payment_status', 'Pending');
+
+  const { data } = bookingId
+    ? await query.eq('booking_id', bookingId)
+    : await query.eq('booking_group_id', bookingGroupId as string);
+
+  return round2(
+    ((data ?? []) as Array<{ total_amount: number }>).reduce(
+      (sum, row) => sum + Number(row.total_amount),
+      0
+    )
+  );
+}
+
+/** Tells the customer their payment was confirmed and what, if anything, is
+ * still owed. Only for a transaction that actually settled. */
+async function notifyPaymentConfirmed(settled: Transaction): Promise<void> {
+  if (settled.payment_status !== 'Fully Paid') return;
+
+  await sendPaymentConfirmedNotification(
+    settled,
+    await loadRemainingBalance(settled.booking_id, settled.booking_group_id)
+  );
 }
 
 /**
@@ -252,6 +294,8 @@ export async function recordTransactionPayment({
     transaction.booking_group_id,
     balanceIdsBefore
   );
+
+  await notifyPaymentConfirmed(settled);
 
   return { transaction: settled, booking, leftover };
 }
@@ -420,6 +464,8 @@ export async function payTransactionWithCredit({
     transaction.booking_group_id,
     balanceIdsBefore
   );
+
+  await notifyPaymentConfirmed(settled);
 
   return {
     transaction: settled,

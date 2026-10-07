@@ -43,6 +43,12 @@ export interface ScheduleFollowUpModalProps {
    * consultation as it now reads (follow-up date + reason set) - lets the
    * caller update its own list without waiting for the next queue poll. */
   onLinked: (consultation: Consultation) => void;
+  /** Set when this is a step of the after-visit flow (e.g. "Step 2 of 2"):
+   * shown in the title, and Cancel then reads Skip. */
+  stepLabel?: string;
+  /** After-visit flow only: go back to the previous step. Shows a Back
+   * button when given. */
+  onBack?: () => void;
 }
 
 /**
@@ -71,6 +77,8 @@ export function ScheduleFollowUpModal({
   veterinarianId,
   onClose,
   onLinked,
+  stepLabel,
+  onBack,
 }: ScheduleFollowUpModalProps) {
   const [branchName, setBranchName] = useState<string | null>(null);
   // undefined = still loading; null = this branch doesn't offer it.
@@ -202,7 +210,11 @@ export function ScheduleFollowUpModal({
   return (
     <Modal
       isOpen
-      title="Schedule follow-up"
+      title={
+        stepLabel
+          ? `${stepLabel}: Follow-up consultation`
+          : 'Schedule follow-up'
+      }
       onClose={onClose}
       closeOnBackdropClick={false}
     >
@@ -293,8 +305,18 @@ export function ScheduleFollowUpModal({
             disabled={isSubmitting}
             onClick={onClose}
           >
-            Cancel
+            {stepLabel ? 'Skip' : 'Cancel'}
           </button>
+          {onBack ? (
+            <button
+              type="button"
+              className={styles.cancelButton}
+              disabled={isSubmitting}
+              onClick={onBack}
+            >
+              Back
+            </button>
+          ) : null}
         </div>
       </div>
     </Modal>

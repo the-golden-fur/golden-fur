@@ -7,6 +7,7 @@ import {
 } from './transactionPayment.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
+import { sendPaymentConfirmedNotification } from './paymentNotifications.service.ts';
 import {
   applyFirstBookingPaymentSideEffects,
   getBookingById,
@@ -19,6 +20,13 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
 
 vi.mock('./creditStub.service.ts', () => ({
   getAvailableCredit: vi.fn(),
+}));
+
+// What the customer is told has its own spec
+// (paymentNotifications.service.spec.ts) - here it's only checked that a
+// settlement hands it the settled transaction and what is still owed.
+vi.mock('./paymentNotifications.service.ts', () => ({
+  sendPaymentConfirmedNotification: vi.fn(),
 }));
 
 // The first-payment side-effects (slot re-check + confirmation alerts) and
@@ -133,6 +141,11 @@ describe('transactionPayment.service', () => {
       paymentStatusBeforePayment: 'Pending',
       revertOnCapacityConflict: false,
     });
+    // The customer is told the payment was confirmed, with nothing left owed.
+    expect(sendPaymentConfirmedNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'txn-1', payment_status: 'Fully Paid' }),
+      0
+    );
   });
 
   it('records a cash payment against a GROUP transaction: settles it and rolls up the whole booking group instead of a single booking', async () => {
@@ -222,7 +235,8 @@ describe('transactionPayment.service', () => {
           },
         ],
         error: null,
-      } // loadSpawnedLeftover
+      }, // loadSpawnedLeftover
+      { data: [{ total_amount: 300 }], error: null } // loadRemainingBalance
     );
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: { booking_id: 'booking-1', payment_status: 'Partially Paid' },
@@ -244,6 +258,11 @@ describe('transactionPayment.service', () => {
       id: 'txn-leftover',
       total_amount: 300,
     });
+    // The customer is told what was received and what is still owed.
+    expect(sendPaymentConfirmedNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'txn-1' }),
+      300
+    );
   });
 
   it('rejects an amount_applied above the transaction total', async () => {
@@ -387,6 +406,11 @@ describe('transactionPayment.service', () => {
       id: 'credit-txn-1',
       amount: -500,
     });
+    // A credit payment is a confirmed payment too.
+    expect(sendPaymentConfirmedNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'txn-1', payment_status: 'Fully Paid' }),
+      0
+    );
   });
 
   it('pays a GROUP transaction fully from credit and rolls up the booking group instead of a single booking', async () => {

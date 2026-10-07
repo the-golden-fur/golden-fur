@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './PrescriptionPrintout.module.css';
 
@@ -6,9 +6,13 @@ export interface PrescriptionPrintoutMedication {
   name: string;
   dose: string;
   medicine_type?: string | null;
+  strength?: string | null;
   frequency?: string | null;
   duration?: string | null;
   quantity?: number | null;
+  quantity_unit?: string | null;
+  notes?: string | null;
+  refills?: number | null;
 }
 
 export interface PrescriptionPrintoutProps {
@@ -98,24 +102,41 @@ export function PrescriptionPrintout({
       <table className={styles.table}>
         <thead>
           <tr>
-            <th scope="col">Medicine</th>
-            <th scope="col">Type</th>
-            <th scope="col">Quantity</th>
-            <th scope="col">Dose</th>
+            <th scope="col">Medication</th>
+            <th scope="col">Strength</th>
+            <th scope="col">Dosage</th>
+            <th scope="col">Route</th>
             <th scope="col">Frequency</th>
             <th scope="col">Duration</th>
+            <th scope="col">Quantity</th>
+            <th scope="col">Refills</th>
           </tr>
         </thead>
         <tbody>
           {medications.map((medication, index) => (
-            <tr key={index}>
-              <th scope="row">{medication.name}</th>
-              <td>{medication.medicine_type || '—'}</td>
-              <td>{medication.quantity ?? '—'}</td>
-              <td>{medication.dose || '—'}</td>
-              <td>{medication.frequency || '—'}</td>
-              <td>{medication.duration || '—'}</td>
-            </tr>
+            <Fragment key={index}>
+              <tr>
+                <th scope="row">{medication.name}</th>
+                <td>{medication.strength || '—'}</td>
+                <td>{medication.dose || '—'}</td>
+                <td>{medication.medicine_type || '—'}</td>
+                <td>{medication.frequency || '—'}</td>
+                <td>{medication.duration || '—'}</td>
+                <td>
+                  {medication.quantity != null
+                    ? `${medication.quantity}${medication.quantity_unit ? ` ${medication.quantity_unit}` : ''}`
+                    : '—'}
+                </td>
+                <td>{medication.refills ?? 0}</td>
+              </tr>
+              {medication.notes ? (
+                <tr>
+                  <td colSpan={8} className={styles.instructions}>
+                    <strong>Instructions:</strong> {medication.notes}
+                  </td>
+                </tr>
+              ) : null}
+            </Fragment>
           ))}
         </tbody>
       </table>

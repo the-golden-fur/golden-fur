@@ -584,6 +584,94 @@ describe('AdminServicesPage', () => {
     expect(within(dialog).getByLabelText('Name')).toHaveValue('Bath');
   });
 
+  describe('closing the form with unsaved edits', () => {
+    async function openConfigureAndRename(
+      user: ReturnType<typeof userEvent.setup>
+    ) {
+      const row = (await screen.findByText('Bath')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Bath' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+      const dialog = screen.getByRole('dialog', { name: 'Edit service' });
+      const name = within(dialog).getByLabelText('Name');
+      await user.clear(name);
+      await user.type(name, 'Bubble Bath');
+
+      return dialog;
+    }
+
+    it('asks before discarding, and keeps the edits on "Keep editing"', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigureAndRename(user);
+
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+      const confirm = screen.getByRole('dialog', {
+        name: 'Discard unsaved changes?',
+      });
+      await user.click(
+        within(confirm).getByRole('button', { name: 'Keep editing' })
+      );
+
+      expect(
+        screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })
+      ).not.toBeInTheDocument();
+      expect(
+        within(
+          screen.getByRole('dialog', { name: 'Edit service' })
+        ).getByLabelText('Name')
+      ).toHaveValue('Bubble Bath');
+    });
+
+    it('closes the form on "Discard changes"', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigureAndRename(user);
+
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      await user.click(
+        within(
+          screen.getByRole('dialog', { name: 'Discard unsaved changes?' })
+        ).getByRole('button', { name: 'Discard changes' })
+      );
+
+      expect(
+        screen.queryByRole('dialog', { name: 'Edit service' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('closes straight away when nothing was edited', async () => {
+      renderPage();
+      const user = userEvent.setup();
+
+      const row = (await screen.findByText('Bath')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Bath' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+      await user.click(
+        within(screen.getByRole('dialog', { name: 'Edit service' })).getByRole(
+          'button',
+          { name: 'Cancel' }
+        )
+      );
+
+      expect(
+        screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('dialog', { name: 'Edit service' })
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it('Configure carries the per-branch "Available at" selection (there is no separate Branch Availability action)', async () => {
     renderPage();
     const user = userEvent.setup();

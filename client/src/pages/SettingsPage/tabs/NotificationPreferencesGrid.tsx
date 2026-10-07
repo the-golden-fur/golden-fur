@@ -60,6 +60,7 @@ const EVENT_TYPES_BY_ROLE: Record<
       label: 'Booking slot became unavailable',
     },
     { type: 'daycare_overdue', label: 'Pet past daycare checkout time' },
+    { type: 'vet_charge_posted', label: 'Veterinary charges added' },
   ],
 };
 
