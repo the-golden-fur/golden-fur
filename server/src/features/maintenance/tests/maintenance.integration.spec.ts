@@ -246,7 +246,8 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
           },
           error: null,
         }, // final fetch
-        { data: PACKAGE_PRICING_CONFIGURATION, error: null } // pricing configuration
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null }, // pricing configuration
+        { data: PRICING_CONFIGURATION, error: null }
       );
 
       const res = await request(app)
@@ -270,7 +271,8 @@ describe('maintenance HTTP surface (Issues #40-#42)', () => {
       queueFromResults(
         { data: { role: 'Receptionist' }, error: null },
         { data: [], error: null },
-        { data: PACKAGE_PRICING_CONFIGURATION, error: null }
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null },
+        { data: PRICING_CONFIGURATION, error: null }
       );
 
       const listRes = await request(app)

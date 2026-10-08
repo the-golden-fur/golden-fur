@@ -55,6 +55,8 @@ import {
   setPromoBranchAvailabilityController,
   setServiceBranchAvailabilityController,
   setServiceBranchPriceController,
+  setServicePricingCellsController,
+  setPackagePricingCellsController,
   setServiceTypeBranchAvailabilityController,
   updateBreedController,
   updatePackageController,
@@ -164,6 +166,13 @@ router.patch(
   superadminWrite,
   setServiceBranchPriceController
 );
+// A Grooming service's own weight x coat prices - Superadmin-only, same as
+// branch prices (per-item weight x coat pricing).
+router.put(
+  '/maintenance/services/:id/pricing-cells',
+  superadminWrite,
+  setServicePricingCellsController
+);
 
 // Packages (#41)
 router.get('/maintenance/packages', staffRead, listPackagesController);
@@ -175,6 +184,12 @@ router.get(
 router.post('/maintenance/packages', adminWrite, createPackageController);
 router.get('/maintenance/packages/:id', staffRead, getPackageController);
 router.patch('/maintenance/packages/:id', adminWrite, updatePackageController);
+// A package's own weight x coat prices - Superadmin-only.
+router.put(
+  '/maintenance/packages/:id/pricing-cells',
+  superadminWrite,
+  setPackagePricingCellsController
+);
 router.patch(
   '/maintenance/packages/:id/branch-availability',
   adminWriteWithBranch,

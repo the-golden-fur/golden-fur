@@ -17,6 +17,11 @@ import {
   uploadPetCareItemPhoto,
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import {
+  isPricedByPetCell,
+  packagePriceForPet,
+  servicePriceForPet,
+} from '../../utils/petMatrixPrice';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
 import { CustomerPicker } from '../../components/CustomerPicker/CustomerPicker';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
@@ -314,6 +319,13 @@ const NIGHT_COUNT_PRESETS = [3, 5];
 
 const DAYCARE_HOUR_PRESETS = [2, 4];
 const MAX_DAYCARE_HOURS = 12;
+
+/** Per-item weight x coat pricing: the line under a card whose price is the
+ * pet's own weight x coat price, e.g. "Price for Large (L), Long Coat". */
+function petCellHint(pet: Pick<Pet, 'weight_class' | 'coat_type'>): string {
+  if (!pet.weight_class || !pet.coat_type) return '';
+  return `Price for ${WEIGHT_CLASS_LABEL[pet.weight_class]} (${pet.weight_class}), ${COAT_TYPE_LABEL[pet.coat_type]}`;
+}
 
 /** What a Daycare booking costs for the hours booked: the service's own
  * first-hour fee, plus its succeeding-hour fee for each further hour.
@@ -1595,12 +1607,12 @@ export function CustomerBookingFlowPage() {
         price:
           category === 'Daycare'
             ? daycareBookingPrice(service, daycareHours)
-            : (serviceFixedPrice ?? service.base_price),
+            : servicePriceForPet(service, selectedPet, serviceFixedPrice),
       })),
       ...selectedPackages.map((pkg) => ({
         id: pkg.id,
         name: pkg.name,
-        price: catalogFixedPrice ?? pkg.bundled_price,
+        price: packagePriceForPet(pkg, selectedPet, catalogFixedPrice),
       })),
     ],
     [
@@ -1610,6 +1622,7 @@ export function CustomerBookingFlowPage() {
       serviceFixedPrice,
       category,
       daycareHours,
+      selectedPet,
     ]
   );
 
@@ -1766,17 +1779,22 @@ export function CustomerBookingFlowPage() {
   // Daycare is the exception to both: it's priced by the hours booked, from
   // the service's own hourly fees (daycareBookingPrice), again exactly as
   // the server does.
+  //
+  // Per-item weight x coat pricing: an item that varies by weight and coat
+  // costs the pet's own cell (servicePriceForPet / packagePriceForPet), the
+  // same price the server charges.
   const itemsTotal =
     (selectedServices.reduce(
       (sum, service) =>
         sum +
         (category === 'Daycare'
           ? daycareBookingPrice(service, daycareHours)
-          : (serviceFixedPrice ?? service.base_price)),
+          : servicePriceForPet(service, selectedPet, serviceFixedPrice)),
       0
     ) +
       selectedPackages.reduce(
-        (sum, pkg) => sum + (catalogFixedPrice ?? pkg.bundled_price),
+        (sum, pkg) =>
+          sum + packagePriceForPet(pkg, selectedPet, catalogFixedPrice),
         0
       )) *
     hotelNightsMultiplier;
@@ -2106,7 +2124,9 @@ export function CustomerBookingFlowPage() {
       category === 'Hotel' || (category === 'Daycare' && cagePreference)
         ? 'Cage & Date'
         : staffPickerAppliesToCategory && !staffPickerUnavailable
-          ? 'Staff & Date'
+          ? category === 'Veterinary'
+            ? 'Vet & Date'
+            : 'Staff & Date'
           : 'Date & Time';
     list.push({ key: 'availability', label: availabilityLabel });
 
@@ -3628,7 +3648,7 @@ export function CustomerBookingFlowPage() {
                       </span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${(serviceFixedPrice ?? service.base_price).toFixed(2)}/night`
+                          ? `PHP ${servicePriceForPet(service, selectedPet, serviceFixedPrice).toFixed(2)}/night`
                           : category === 'Daycare' &&
                               service.first_hour_fee !== null &&
                               service.succeeding_hour_fee !== null
@@ -3640,8 +3660,22 @@ export function CustomerBookingFlowPage() {
                               // price would be misleading about what's
                               // actually billed at pickup.
                               `PHP ${service.first_hour_fee.toFixed(2)} first hr, PHP ${service.succeeding_hour_fee.toFixed(2)}/hr after`
-                            : `PHP ${(serviceFixedPrice ?? service.base_price).toFixed(2)}`}
+                            : `PHP ${servicePriceForPet(service, selectedPet, serviceFixedPrice).toFixed(2)}`}
                       </span>
+                      {selectedPet &&
+                      isPricedByPetCell(
+                        {
+                          use_pricing_matrix: service.use_pricing_matrix,
+                          category: service.category,
+                          cells: service.service_pricing_tiers,
+                        },
+                        selectedPet,
+                        serviceFixedPrice
+                      ) ? (
+                        <span className={styles.optionMeta}>
+                          {petCellHint(selectedPet)}
+                        </span>
+                      ) : null}
                       {category === 'Daycare' ? (
                         <span className={styles.optionMeta}>
                           Hotel nightly rate applies if not picked up before
@@ -3686,9 +3720,22 @@ export function CustomerBookingFlowPage() {
                       <span className={styles.optionTitle}>{pkg.name}</span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${(catalogFixedPrice ?? pkg.bundled_price).toFixed(2)}/night`
-                          : `PHP ${(catalogFixedPrice ?? pkg.bundled_price).toFixed(2)}`}
+                          ? `PHP ${packagePriceForPet(pkg, selectedPet, catalogFixedPrice).toFixed(2)}/night`
+                          : `PHP ${packagePriceForPet(pkg, selectedPet, catalogFixedPrice).toFixed(2)}`}
                       </span>
+                      {selectedPet &&
+                      isPricedByPetCell(
+                        {
+                          use_pricing_matrix: pkg.use_pricing_matrix,
+                          cells: pkg.pricing_tiers,
+                        },
+                        selectedPet,
+                        catalogFixedPrice
+                      ) ? (
+                        <span className={styles.optionMeta}>
+                          {petCellHint(selectedPet)}
+                        </span>
+                      ) : null}
                       {category !== 'Hotel' ? (
                         <span className={styles.optionMeta}>
                           {formatDuration(

@@ -19,8 +19,8 @@ vi.mock('../../api/veterinary.api', () => ({
   linkFollowUpBooking: vi.fn(),
 }));
 
-// SlotPicker/StaffPickerList have their own specs covering availability/
-// staff-assignment fetching - stubbed here to simple one-click selections so
+// SlotPicker has its own spec covering availability fetching - stubbed here
+// to a simple one-click selection so
 // this file can focus on ScheduleFollowUpModal's own orchestration (locked
 // context, the fixed service, reason, createBooking + linkFollowUpBooking).
 vi.mock('../../../booking/components/SlotPicker/SlotPicker', () => ({
@@ -40,18 +40,6 @@ vi.mock('../../../booking/components/SlotPicker/SlotPicker', () => ({
       `Pick mock slot (${props.slotDurationMinutes} min)`
     ),
 }));
-vi.mock('../../../booking/components/StaffPickerList/StaffPickerList', () => ({
-  StaffPickerList: (props: {
-    selected: { type: string; staff_id?: string } | null;
-    onSelect: (preference: { type: 'no_preference' }) => void;
-  }) =>
-    createElement(
-      'button',
-      { onClick: () => props.onSelect({ type: 'no_preference' }) },
-      `Pick mock staff (now ${props.selected?.staff_id ?? props.selected?.type})`
-    ),
-}));
-
 function buildService(overrides: Partial<Service> = {}): Service {
   return {
     id: 'service-followup',
@@ -207,7 +195,7 @@ describe('ScheduleFollowUpModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('lets the vet hand the follow-up to another vet through the staff picker', async () => {
+  it('always books the follow-up with the vet scheduling it - no staff picker', async () => {
     stubCatalogAndBranches();
     vi.mocked(bookingApi.createBooking).mockResolvedValue({
       data: { id: 'booking-2' } as never,
@@ -220,17 +208,18 @@ describe('ScheduleFollowUpModal', () => {
 
     renderModal();
     await screen.findByText('Follow-up Consultation (₱0.00)');
+    expect(screen.getByText('Veterinarian')).toBeInTheDocument();
+    expect(screen.getByText('You')).toBeInTheDocument();
 
     await pickSlot();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Pick mock staff (now vet-1)' })
-    );
     await userEvent.type(reasonBox(), 'Recheck the ear');
     await userEvent.click(confirmButton());
 
     expect(bookingApi.createBooking).toHaveBeenCalledWith(
       'token',
-      expect.objectContaining({ staff_preference: { type: 'no_preference' } })
+      expect.objectContaining({
+        staff_preference: { type: 'specific', staff_id: 'vet-1' },
+      })
     );
   });
 

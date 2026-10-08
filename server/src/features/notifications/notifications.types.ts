@@ -33,13 +33,18 @@ export const NOTIFICATION_EVENT_TYPES = [
    * row to send this notification. */
   'spin_wheel_earned',
   /** Custom change (Daycare overdue checkout fee, migration 20261004241):
-   * fires once when a booked Daycare pet is still checked in past its booked
-   * end time - see daycareOverdue.job.ts. */
+   * fires once when a booked pet's checkout countdown is complete and it is
+   * still checked in - Daycare originally, Hotel too since the checkout
+   * countdown notifications change. See stayCheckout.job.ts. */
   'daycare_overdue',
   /** Custom change (vet-priced visits, migration 20261007251): fires when a
    * veterinarian's save puts a charge on the customer's booking, or changes
    * or removes one - see vetChargeNotifications.service.ts. */
   'vet_charge_posted',
+  /** Custom change (checkout countdown notifications, migration
+   * 20261008254): fires once, 15 minutes before a booked Hotel or Daycare
+   * pet's checkout time - see stayCheckout.job.ts. */
+  'checkout_reminder',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];

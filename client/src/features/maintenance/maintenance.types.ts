@@ -28,15 +28,33 @@ export const COAT_TYPES: CoatType[] = ['SC', 'LC'];
 
 /**
  * One cell of the Grooming size x coat matrix, as returned by the API.
- * Epic B (#80/#81): derived server-side from base_price + pricing_configuration,
- * no longer editable per-cell - id/service_id are synthesized.
+ * Epic B (#80/#81): derived server-side from base_price + pricing_configuration
+ * - id/service_id are synthesized.
  */
-export interface ServicePricingTier {
+export interface ServicePricingTier extends PricingCell {
   id: string;
   service_id: string;
+}
+
+/** Custom change (per-item weight x coat pricing): one S/M/L/XL x SC/LC
+ * price of a Grooming service or package. `is_custom` = a Superadmin set
+ * this cell's price for this item; false = it follows the shared Pricing
+ * Configuration formula. */
+export interface PricingCell {
   weight_class: WeightClass;
   coat_type: CoatType;
   price: number;
+  is_custom: boolean;
+}
+
+/** PUT /maintenance/{services|packages}/:id/pricing-cells - a number sets a
+ * cell, null puts it back on the formula. Superadmin-only. */
+export interface PricingCellsPayload {
+  cells: {
+    weight_class: WeightClass;
+    coat_type: CoatType;
+    price: number | null;
+  }[];
 }
 
 /** Custom change (configurable pricing rules): each size (and Long coat)
@@ -221,10 +239,14 @@ export interface Package {
    * estimate a package's contribution to a booking's total scheduled time
    * (multi-item bookings revision). */
   total_duration_minutes: number | null;
-  /** Whether this package's booking-time price is derived from its
-   * included services' own per-pet price (bundle-discounted) instead of
-   * the flat bundled_price above. Ignored for a Cat pet regardless. */
+  /** Whether this package's price varies by the pet's weight class and coat
+   * type (pricing_tiers below) instead of the flat bundled_price above. A
+   * pet type's fixed price still wins. Superadmin-only. */
   use_pricing_matrix: boolean;
+  /** Custom change (per-item weight x coat pricing): the 8 S/M/L/XL x SC/LC
+   * prices - bundled_price through the shared formula, with any cell a
+   * Superadmin set for this package in its place. */
+  pricing_tiers?: PricingCell[];
   is_active: boolean;
   /** Custom change (Architectural-Change-History): a curated Lucide icon
    * name (see shared/components/IconPicker/serviceIcons.ts), or null. */

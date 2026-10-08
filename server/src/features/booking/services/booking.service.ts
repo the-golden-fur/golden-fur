@@ -23,9 +23,7 @@ import {
   applyPromoCap,
   type PromoCapRow,
 } from '../../../shared/services/promoCap/promoCap.service.ts';
-import { getPricingConfiguration } from '../../maintenance/services/pricingConfiguration.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
-import { deriveGroomingMatrix } from '../../maintenance/utils/deriveGroomingMatrix.ts';
 import {
   createNotification,
   notifyStaffRoleAtBranch,
@@ -397,7 +395,7 @@ async function resolveBookingItem(
 export async function resolvePackagePrice(
   pkg: Pick<
     Awaited<ReturnType<typeof getPackageById>>,
-    'bundled_price' | 'use_pricing_matrix'
+    'bundled_price' | 'use_pricing_matrix' | 'pricing_tiers'
   >,
   pet: PetRow,
   fixedPriceOverride: number | null = null
@@ -408,16 +406,14 @@ export async function resolvePackagePrice(
     return Number(pkg.bundled_price);
   }
 
-  const pricingConfiguration = await getPricingConfiguration();
-  const cell = deriveGroomingMatrix(
-    Number(pkg.bundled_price),
-    pricingConfiguration
-  ).find(
+  // Per-item weight x coat pricing: the package's own cells (formula, with
+  // any Superadmin-set cell in its place) - attached by getPackageById.
+  const cell = (pkg.pricing_tiers ?? []).find(
     (row) =>
       row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
   );
 
-  return cell?.price ?? Number(pkg.bundled_price);
+  return cell ? Number(cell.price) : Number(pkg.bundled_price);
 }
 
 export async function resolveBookingItems(

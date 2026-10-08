@@ -108,6 +108,14 @@ vi.mock('./configTiles.config', () => ({
     icon: Wrench,
     Component: () => createElement('p', null, 'Embedded Mascot FAQs Page'),
   },
+  VET_SERVICES_TILE: {
+    title: 'Veterinary Services',
+    description: 'Vet procedure list config.',
+    to: '/staff/admin/maintenance/veterinary-services',
+    icon: Wrench,
+    Component: () =>
+      createElement('p', null, 'Embedded Veterinary Services Page'),
+  },
   HIDDEN_CONFIG_TILES: [],
 }));
 

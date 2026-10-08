@@ -58,7 +58,10 @@ default row, `pricing_configuration`.
 `care_log_entries`, `credit_balances`, `credit_transactions`,
 `cancellation_logs`, `notifications`, `activity_log`, `message_threads` /
 messages / drafts / attachments, `staff_unavailability_blocks`,
-`pet_vaccination_records`, `pet_medical_notes`, `pet_health_conditions`.
+`pet_vaccination_records`, `pet_medical_notes`, `pet_health_conditions`,
+`service_pricing_cell_overrides` / `package_pricing_cell_overrides` (a
+Superadmin's own weight x coat prices; no rows = every cell follows the
+`pricing_configuration` formula).
 If a demo genuinely needs one of these pre-filled, say so and get a nod
 first — then seed it in its own clearly-labelled `mNN-<slug>/` folder and
 keep it out of `seed:all` if it would interfere with tests.

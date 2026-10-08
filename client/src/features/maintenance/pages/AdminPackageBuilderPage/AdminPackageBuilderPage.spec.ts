@@ -582,6 +582,11 @@ describe('AdminPackageBuilderPage', () => {
 
   describe('package pricing matrix redesign (custom change)', () => {
     it("applies the matrix directly to the package's own derived price, independent of any member's own flag - and any service is selectable regardless of its own matrix flag", async () => {
+      // Per-item weight x coat pricing: switching it is Superadmin-only.
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Superadmin')],
+        error: null,
+      });
       // A member with its own matrix flag - it should not affect whether
       // it's selectable, nor be consulted for the package's own price.
       vi.mocked(maintenanceApi.listServices).mockResolvedValue({
@@ -626,19 +631,21 @@ describe('AdminPackageBuilderPage', () => {
       );
 
       const matrixToggle = screen.getByRole('switch', {
-        name: 'Adjust price by pet size and coat',
+        name: 'Price varies by weight class and coat',
       });
       expect(matrixToggle).toHaveAttribute('aria-checked', 'false');
 
       await user.click(matrixToggle);
       expect(matrixToggle).toHaveAttribute('aria-checked', 'true');
 
-      // The breakdown grid derives from the package's own 450 total, not
-      // from either member's own tier (999) - S/SC cell = 450 * 1.0 = 450.
+      // The grid derives from the package's own 450 total, not from either
+      // member's own tier (999) - S/SC cell = 450 * 1.0 = 450.
       expect(
-        screen.getByText('Size & coat pricing matrix - derived, read-only')
+        screen.getByText('Price by weight class and coat')
       ).toBeInTheDocument();
-      expect(screen.getAllByText('PHP 450.00').length).toBeGreaterThan(1);
+      expect(screen.getByLabelText('Small (S), short coat price')).toHaveValue(
+        450
+      );
 
       await user.click(screen.getByRole('button', { name: 'Save package' }));
 
