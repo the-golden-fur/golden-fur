@@ -16,6 +16,13 @@ export const VETERINARY_READ_ROLES: readonly string[] = [
 
 export const VETERINARY_WRITE_ROLES: readonly string[] = ['Veterinarian'];
 
+/** The vet procedure list (vet_service_catalog): Veterinarians use and edit
+ * it, and a Superadmin manages it from Config > Veterinary Services. */
+export const VETERINARY_SERVICE_CATALOG_ROLES: readonly string[] = [
+  'Veterinarian',
+  'Superadmin',
+];
+
 /** Array element shape stored on consultations.medications (#63 migration).
  * #117: medicine_type/frequency/duration added so this row is a real
  * prescription (medicine type, dosage, frequency), not just name+dose - all

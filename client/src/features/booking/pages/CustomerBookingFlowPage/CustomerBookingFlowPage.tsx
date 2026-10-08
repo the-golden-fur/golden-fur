@@ -2106,7 +2106,9 @@ export function CustomerBookingFlowPage() {
       category === 'Hotel' || (category === 'Daycare' && cagePreference)
         ? 'Cage & Date'
         : staffPickerAppliesToCategory && !staffPickerUnavailable
-          ? 'Staff & Date'
+          ? category === 'Veterinary'
+            ? 'Vet & Date'
+            : 'Staff & Date'
           : 'Date & Time';
     list.push({ key: 'availability', label: availabilityLabel });
 

@@ -15,8 +15,15 @@ import {
 import type { VetServiceCatalogItem } from '../../veterinary.types';
 import styles from './VetCatalogPage.module.css';
 
+const DEFAULT_DESCRIPTION =
+  'Suggested when you list the services done at a visit. The price fills in and can still be changed per visit.';
+
 interface VetServiceCatalogTabProps {
   accessToken: string;
+  /** The line beside "Add service". Defaults to the vet-facing copy; null
+   * hides it (Config > Veterinary Services explains the list in its own
+   * page header instead). */
+  description?: string | null;
 }
 
 interface ServiceForm {
@@ -48,6 +55,7 @@ const COLUMNS: DataTableColumn<VetServiceCatalogItem>[] = [
  */
 export function VetServiceCatalogTab({
   accessToken,
+  description = DEFAULT_DESCRIPTION,
 }: VetServiceCatalogTabProps) {
   const [services, setServices] = useState<VetServiceCatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -160,10 +168,7 @@ export function VetServiceCatalogTab({
   return (
     <>
       <div className={styles.toolbar}>
-        <p className={styles.copy}>
-          Suggested when you list the services done at a visit. The price fills
-          in and can still be changed per visit.
-        </p>
+        {description ? <p className={styles.copy}>{description}</p> : null}
         <button
           type="button"
           className={styles.primaryButton}
