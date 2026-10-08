@@ -54,8 +54,14 @@ describe('sendFollowUpScheduledNotification', () => {
 
   it('tells the owner when, with whom and why the follow-up is booked', async () => {
     stubLookups({
-      customer_profiles: { data: { account_email: 'c@example.com' }, error: null },
-      branches: { data: { name: 'Makati', timezone: 'Asia/Manila' }, error: null },
+      customer_profiles: {
+        data: { account_email: 'c@example.com' },
+        error: null,
+      },
+      branches: {
+        data: { name: 'Makati', timezone: 'Asia/Manila' },
+        error: null,
+      },
       pets: { data: { name: 'Mochi' }, error: null },
       staff_profiles: { data: { display_name: 'Dr. Reyes' }, error: null },
     });

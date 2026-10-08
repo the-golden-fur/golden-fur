@@ -22,7 +22,7 @@ describe('assertCanSetPricingMatrix', () => {
     ).toThrow(expect.objectContaining({ statusCode: 403 }));
   });
 
-  it("still lets an Admin save an item without changing it", () => {
+  it('still lets an Admin save an item without changing it', () => {
     expect(() =>
       assertCanSetPricingMatrix({
         requesterRole: 'Admin',

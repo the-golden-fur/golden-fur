@@ -63,8 +63,8 @@ export function VetServicesConfigurationPage() {
       <div className={styles.content}>
         <h1 className={styles.title}>Veterinary Services</h1>
         <p className={styles.copy}>
-          The services and usual prices vets choose from when they list what
-          was done at a visit. The price fills in for the vet and can still be
+          The services and usual prices vets choose from when they list what was
+          done at a visit. The price fills in for the vet and can still be
           changed per visit. Changes save straight away.
         </p>
 
