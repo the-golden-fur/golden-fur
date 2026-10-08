@@ -1421,6 +1421,61 @@ describe('CustomerBookingFlowPage', () => {
     expect(note).not.toHaveTextContent(/bathing, brushing/);
   });
 
+  it("per-item weight x coat pricing: a Grooming service that varies by weight and coat shows and totals the pet's own price", async () => {
+    // Max is M / short coat; Bath's M/SC cell is its own 420.
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [
+          {
+            ...GROOMING_SERVICE,
+            use_pricing_matrix: true,
+            service_pricing_tiers: [
+              {
+                id: 'service-1:S:SC',
+                service_id: 'service-1',
+                weight_class: 'S',
+                coat_type: 'SC',
+                price: 300,
+                is_custom: false,
+              },
+              {
+                id: 'service-1:M:SC',
+                service_id: 'service-1',
+                weight_class: 'M',
+                coat_type: 'SC',
+                price: 420,
+                is_custom: true,
+              },
+            ],
+          },
+        ],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    } as never);
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+
+    await user.click(bookingForm().getByText('Grooming'));
+    await user.click(bookingForm().getByText('Next'));
+
+    await waitFor(() =>
+      expect(bookingForm().getByText('Bath')).toBeInTheDocument()
+    );
+    expect(
+      bookingForm().getByText('Price for Medium (M), Short coat')
+    ).toBeInTheDocument();
+
+    await user.click(bookingForm().getByText('Bath'));
+    // The card and the running total both show the pet's own price, not
+    // the flat 300 base price - the same price the server charges.
+    expect(bookingForm().getAllByText('PHP 420.00')).toHaveLength(2);
+    expect(bookingForm().queryByText('PHP 300.00')).not.toBeInTheDocument();
+  });
+
   it("switching category tabs clears the previous tab's selection immediately, with no warning", async () => {
     const user = userEvent.setup();
     renderPage();

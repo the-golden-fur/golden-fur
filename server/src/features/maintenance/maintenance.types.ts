@@ -41,9 +41,24 @@ export type CoatType = 'SC' | 'LC';
  * consumers (booking.service.ts's resolveServicePrice, this feature's own
  * client pages).
  */
-export interface ServicePricingTier {
+export interface ServicePricingTier extends PricingCell {
   id: string;
   service_id: string;
+}
+
+/** Custom change (per-item weight x coat pricing): one S/M/L/XL x SC/LC
+ * price of a Grooming service or package. `is_custom` = a Superadmin set
+ * this cell's price for this item (service_/package_pricing_cell_overrides);
+ * false = it follows the shared pricing_configuration formula. */
+export interface PricingCell {
+  weight_class: WeightClass;
+  coat_type: CoatType;
+  price: number;
+  is_custom: boolean;
+}
+
+/** A stored override row, as embedded on a service/package select. */
+export interface PricingCellOverrideRow {
   weight_class: WeightClass;
   coat_type: CoatType;
   price: number;
@@ -154,7 +169,9 @@ export interface Service {
    * Bath/Blow-dry/Brushing are seeded on, matching the board's "individual
    * services don't vary by size/coat" pricing. Always ignored for a Cat
    * pet regardless of this flag - see resolveServicePrice in
-   * booking.service.ts. */
+   * booking.service.ts. Superadmin-only since per-item weight x coat
+   * pricing; a pet type's fixed price never applies to an individual
+   * Grooming service either way. */
   use_pricing_matrix: boolean;
   /** Daycare-only: flat charge for the first hour (or less) of a session on
    * this service. NULL falls back to the documented ₱100 default
@@ -183,6 +200,9 @@ export interface Service {
   created_at: string;
   updated_at: string;
   service_pricing_tiers?: ServicePricingTier[];
+  /** Raw embedded rows - folded into service_pricing_tiers on read and
+   * never returned (attachPricingMatrix). */
+  service_pricing_cell_overrides?: PricingCellOverrideRow[];
   service_branch_availability?: ServiceBranchAvailability[];
 }
 
@@ -228,8 +248,13 @@ export interface Package {
    * resolvePackagePrice in booking.service.ts. Also exempt for a Cat pet,
    * same as a service's own matrix. bundled_price above still shows the
    * flat estimate either way (an S/SC-equivalent reference figure for the
-   * admin list). */
+   * admin list). Superadmin-only since per-item weight x coat pricing. */
   use_pricing_matrix: boolean;
+  /** Custom change (per-item weight x coat pricing): the 8 S/M/L/XL x SC/LC
+   * prices - bundled_price through the shared formula, with any cell a
+   * Superadmin set for this package in its place. Only charged when
+   * use_pricing_matrix is on (resolvePackagePrice). */
+  pricing_tiers: PricingCell[];
   is_active: boolean;
   /** Custom change (Architectural-Change-History): a curated Lucide icon
    * name (see maintenance.validator.ts's SERVICE_ICON_NAMES), or null. */

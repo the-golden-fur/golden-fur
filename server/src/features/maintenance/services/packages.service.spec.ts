@@ -55,6 +55,23 @@ const PACKAGE_PRICING_CONFIGURATION = {
   bundle_discount_percentage: 0.1,
 };
 
+// The shared grooming formula - packages now carry their 8 weight x coat
+// cells too (per-item weight x coat pricing), so every package read loads it
+// right after the bundle discount.
+const GROOMING_PRICING_CONFIGURATION = {
+  id: 'pricing-1',
+  size_s_rule_type: 'multiplier',
+  size_s_rule_value: 1,
+  size_m_rule_type: 'multiplier',
+  size_m_rule_value: 1.2,
+  size_l_rule_type: 'multiplier',
+  size_l_rule_value: 1.5,
+  size_xl_rule_type: 'multiplier',
+  size_xl_rule_value: 2,
+  coat_long_rule_type: 'flat',
+  coat_long_rule_value: 100,
+};
+
 const RAW_GOLDEN_PACKAGE = {
   id: 'package-1',
   name: 'Golden Package',
@@ -93,7 +110,8 @@ describe('packages.service', () => {
         { data: null, error: null }, // insert package_services
         { data: null, error: null }, // insert package_branch_availability
         { data: RAW_GOLDEN_PACKAGE, error: null }, // final fetch (getPackageById)
-        { data: PACKAGE_PRICING_CONFIGURATION, error: null } // pricing configuration
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null }, // pricing configuration
+        { data: GROOMING_PRICING_CONFIGURATION, error: null }
       );
 
       const result = await createPackage({
@@ -152,7 +170,8 @@ describe('packages.service', () => {
           },
           error: null,
         }, // final fetch
-        { data: PACKAGE_PRICING_CONFIGURATION, error: null } // pricing configuration
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null }, // pricing configuration
+        { data: GROOMING_PRICING_CONFIGURATION, error: null }
       );
 
       const result = await updatePackage({
@@ -170,7 +189,8 @@ describe('packages.service', () => {
         { data: { id: 'package-1' }, error: null },
         { data: null, error: null }, // update
         { data: { ...RAW_GOLDEN_PACKAGE, is_active: false }, error: null },
-        { data: PACKAGE_PRICING_CONFIGURATION, error: null }
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null },
+        { data: GROOMING_PRICING_CONFIGURATION, error: null }
       );
 
       const result = await updatePackage({
@@ -199,7 +219,8 @@ describe('packages.service', () => {
     it('AC-5: lists active packages filterable by branch, via the joined package_branch_availability array', async () => {
       queueFromResults(
         { data: [RAW_GOLDEN_PACKAGE], error: null },
-        { data: PACKAGE_PRICING_CONFIGURATION, error: null }
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null },
+        { data: GROOMING_PRICING_CONFIGURATION, error: null }
       );
 
       const result = await listPackages({ branchId: 'branch-makati' });
@@ -212,7 +233,8 @@ describe('packages.service', () => {
     it('custom change: excludes a package that is not available at the requested branch', async () => {
       queueFromResults(
         { data: [RAW_GOLDEN_PACKAGE], error: null },
-        { data: PACKAGE_PRICING_CONFIGURATION, error: null }
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null },
+        { data: GROOMING_PRICING_CONFIGURATION, error: null }
       );
 
       const result = await listPackages({ branchId: 'branch-southwoods' });

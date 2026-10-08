@@ -363,6 +363,37 @@ export const branchPriceValidator = z
   .strict();
 
 /**
+ * Custom change (per-item weight x coat pricing): a Superadmin's own prices
+ * for some of a Grooming service's or package's 8 S/M/L/XL x SC/LC cells. A
+ * number sets that cell; null puts it back on the shared formula. Each cell
+ * at most once per request.
+ */
+export const pricingCellsValidator = z
+  .object({
+    cells: z
+      .array(
+        z
+          .object({
+            weight_class: z.enum(['S', 'M', 'L', 'XL']),
+            coat_type: z.enum(['SC', 'LC']),
+            price: z.number().min(0).max(99999999.99).nullable(),
+          })
+          .strict()
+      )
+      .min(1)
+      .max(8)
+      .refine(
+        (cells) =>
+          new Set(cells.map((cell) => `${cell.weight_class}:${cell.coat_type}`))
+            .size === cells.length,
+        { message: 'Each weight class and coat type cell may appear only once' }
+      ),
+  })
+  .strict();
+
+export type PricingCellsInput = z.infer<typeof pricingCellsValidator>;
+
+/**
  * Packages bundle "two or more services" per the #41 user story, hence
  * min(2). Custom change: packages are no longer scoped to exactly one branch
  * (the old MA22 rule) - branch_ids picks which branches this package starts

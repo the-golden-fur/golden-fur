@@ -11,6 +11,7 @@ import type {
   CreateServicePayload,
   CreateServiceTypePayload,
   Package,
+  PricingCellsPayload,
   PackageBranchAvailability,
   PackagePricingConfiguration,
   PetType,
@@ -266,6 +267,54 @@ export async function setServiceBranchAvailability(
     response
   );
   return { data: result.data?.availability ?? null, error: result.error };
+}
+
+/** Per-item weight x coat pricing: a Grooming service's own cell prices.
+ * Superadmin-only (server-enforced). */
+export async function setServicePricingCells(
+  serviceId: string,
+  accessToken: string,
+  payload: PricingCellsPayload
+): Promise<MaintenanceApiResult<Service>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/services/${serviceId}/pricing-cells`,
+    {
+      method: 'PUT',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ service: Service }>(response);
+  return { data: result.data?.service ?? null, error: result.error };
+}
+
+/** Per-item weight x coat pricing: a package's own cell prices.
+ * Superadmin-only (server-enforced). */
+export async function setPackagePricingCells(
+  packageId: string,
+  accessToken: string,
+  payload: PricingCellsPayload
+): Promise<MaintenanceApiResult<Package>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/packages/${packageId}/pricing-cells`,
+    {
+      method: 'PUT',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ package: Package }>(response);
+  return { data: result.data?.package ?? null, error: result.error };
 }
 
 /** Sets (or, with null, clears) one branch's own price for a service.

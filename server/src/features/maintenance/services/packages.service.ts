@@ -6,13 +6,18 @@ import {
 import type {
   Package,
   PackageBranchAvailability,
+  PricingCellOverrideRow,
 } from '../maintenance.types.ts';
 import type {
   CreatePackageInput,
   UpdatePackageInput,
 } from '../modules/validators/maintenance.validator.ts';
 import { getPackagePricingConfiguration } from './packagePricing.service.ts';
+import { getPricingConfiguration } from './pricingConfiguration.service.ts';
 import { deriveBundledPrice } from '../utils/deriveBundledPrice.ts';
+import { deriveGroomingMatrix } from '../utils/deriveGroomingMatrix.ts';
+import { mergePriceCells } from '../utils/mergePriceCells.ts';
+import { assertCanSetPricingMatrix } from '../utils/assertCanSetPricingMatrix.ts';
 import { derivePackageDuration } from '../utils/derivePackageDuration.ts';
 
 /** Postgres foreign_key_violation. */
@@ -25,8 +30,10 @@ const FOREIGN_KEY_VIOLATION = '23503';
 // service_branch_availability/service_type_branch_availability's own SELECT
 // shape (custom change: packages moved off the old MA22 single-branch_id
 // model onto the same many-to-many join).
+// package_pricing_cell_overrides (per-item weight x coat pricing) is folded
+// into pricing_tiers by attachBundledPrice and never returned raw.
 const PACKAGE_SELECT =
-  '*, package_services(service_id, services(base_price, duration_minutes)), package_branch_availability(*)';
+  '*, package_services(service_id, services(base_price, duration_minutes)), package_branch_availability(*), package_pricing_cell_overrides(weight_class, coat_type, price)';
 
 interface RawPackageServiceLink {
   service_id: string;
@@ -38,10 +45,27 @@ interface RawPackageServiceLink {
  * used to derive it. */
 type RawPackage = Omit<
   Package,
-  'bundled_price' | 'total_duration_minutes' | 'package_services'
+  | 'bundled_price'
+  | 'total_duration_minutes'
+  | 'package_services'
+  | 'pricing_tiers'
 > & {
   package_services?: RawPackageServiceLink[];
+  package_pricing_cell_overrides?: PricingCellOverrideRow[];
 };
+
+interface PricingConfigurations {
+  bundle: Awaited<ReturnType<typeof getPackagePricingConfiguration>>;
+  grooming: Awaited<ReturnType<typeof getPricingConfiguration>>;
+}
+
+async function loadPricingConfigurations(): Promise<PricingConfigurations> {
+  const [bundle, grooming] = await Promise.all([
+    getPackagePricingConfiguration(),
+    getPricingConfiguration(),
+  ]);
+  return { bundle, grooming };
+}
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -54,12 +78,14 @@ function throwWithStatus(statusCode: number, message: string): never {
  * base_price and package_pricing_configuration, not a stored column. The
  * nested services(base_price) join is stripped back down to the
  * { service_id } shape existing consumers expect on package_services.
+ *
+ * Custom change (per-item weight x coat pricing): also attaches the 8
+ * S/M/L/XL x SC/LC prices - bundled_price through the shared grooming
+ * formula, with this package's own Superadmin-set cells in their place.
  */
 function attachBundledPrice(
   pkg: RawPackage,
-  pricingConfiguration: Awaited<
-    ReturnType<typeof getPackagePricingConfiguration>
-  >
+  pricingConfigurations: PricingConfigurations
 ): Package {
   const links = pkg.package_services ?? [];
   const basePrices = links.map((link) =>
@@ -69,11 +95,21 @@ function attachBundledPrice(
     (link) => link.services?.duration_minutes ?? null
   );
 
+  const bundledPrice = deriveBundledPrice(
+    basePrices,
+    pricingConfigurations.bundle
+  );
+  const { package_pricing_cell_overrides: overrides, ...rest } = pkg;
+
   return {
-    ...pkg,
-    bundled_price: deriveBundledPrice(basePrices, pricingConfiguration),
+    ...rest,
+    bundled_price: bundledPrice,
     total_duration_minutes: derivePackageDuration(durations),
     package_services: links.map((link) => ({ service_id: link.service_id })),
+    pricing_tiers: mergePriceCells(
+      deriveGroomingMatrix(bundledPrice, pricingConfigurations.grooming),
+      overrides
+    ),
   };
 }
 
@@ -84,11 +120,15 @@ interface ListPackagesParams {
 
 interface CreatePackageParams {
   requesterId: string;
+  /** For the Superadmin-only use_pricing_matrix switch - see
+   * assertCanSetPricingMatrix. */
+  requesterRole?: string;
   input: CreatePackageInput;
 }
 
 interface UpdatePackageParams {
   requesterId: string;
+  requesterRole?: string;
   packageId: string;
   updates: UpdatePackageInput;
 }
@@ -151,10 +191,10 @@ export async function listPackages({
 
   if (error) throwWithStatus(400, error.message);
 
-  const pricingConfiguration = await getPackagePricingConfiguration();
+  const pricingConfigurations = await loadPricingConfigurations();
 
   const packages = ((data ?? []) as RawPackage[]).map((pkg) =>
-    attachBundledPrice(pkg, pricingConfiguration)
+    attachBundledPrice(pkg, pricingConfigurations)
   );
 
   if (!branchId) {
@@ -178,9 +218,9 @@ export async function getPackageById(packageId: string): Promise<Package> {
   if (error) throwWithStatus(400, error.message);
   if (!data) throwWithStatus(404, 'Package not found');
 
-  const pricingConfiguration = await getPackagePricingConfiguration();
+  const pricingConfigurations = await loadPricingConfigurations();
 
-  return attachBundledPrice(data as RawPackage, pricingConfiguration);
+  return attachBundledPrice(data as RawPackage, pricingConfigurations);
 }
 
 /**
@@ -195,8 +235,15 @@ export async function getPackageById(packageId: string): Promise<Package> {
  */
 export async function createPackage({
   requesterId,
+  requesterRole,
   input,
 }: CreatePackageParams): Promise<Package> {
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: input.use_pricing_matrix,
+    current: false,
+  });
+
   const {
     service_ids: serviceIds,
     branch_ids: branchIds,
@@ -249,6 +296,7 @@ export async function createPackage({
  */
 export async function updatePackage({
   requesterId,
+  requesterRole,
   packageId,
   updates,
 }: UpdatePackageParams): Promise<Package> {
@@ -256,12 +304,18 @@ export async function updatePackage({
 
   const { data: existing, error: lookupError } = await supabase
     .from('packages')
-    .select('id')
+    .select('id, use_pricing_matrix')
     .eq('id', packageId)
     .maybeSingle();
 
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Package not found');
+
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: updates.use_pricing_matrix,
+    current: Boolean(existing.use_pricing_matrix),
+  });
 
   if (serviceIds) {
     await assertServicesExistAndActive(serviceIds);
@@ -420,10 +474,10 @@ export async function listArchivedPackages(): Promise<Package[]> {
 
   if (error) throwWithStatus(400, error.message);
 
-  const pricingConfiguration = await getPackagePricingConfiguration();
+  const pricingConfigurations = await loadPricingConfigurations();
 
   return ((data ?? []) as RawPackage[]).map((pkg) =>
-    attachBundledPrice(pkg, pricingConfiguration)
+    attachBundledPrice(pkg, pricingConfigurations)
   );
 }
 

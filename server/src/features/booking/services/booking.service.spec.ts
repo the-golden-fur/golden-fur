@@ -2859,22 +2859,6 @@ describe('booking.service (#51)', () => {
   // coat type, fixed price" (fixed by always using the flat base_price for
   // a Cat pet, regardless of the matrix flag).
   describe('pricing matrix (custom change)', () => {
-    const PRICING_CONFIG = {
-      id: 'pricing-config-1',
-      size_s_rule_type: 'multiplier',
-      size_s_rule_value: 1.0,
-      size_m_rule_type: 'multiplier',
-      size_m_rule_value: 1.1,
-      size_l_rule_type: 'multiplier',
-      size_l_rule_value: 1.25,
-      size_xl_rule_type: 'multiplier',
-      size_xl_rule_value: 1.5,
-      coat_long_rule_type: 'flat',
-      coat_long_rule_value: 0,
-      updated_by_staff_id: null,
-      updated_at: '2026-01-01T00:00:00.000Z',
-    };
-
     it('resolveServicePrice: a matrix-enabled Grooming service returns the matching tier for a Dog', () => {
       const price = resolveServicePrice(
         {
@@ -2954,16 +2938,52 @@ describe('booking.service (#51)', () => {
       expect(price).toBe(999);
     });
 
-    it("resolvePackagePrice: a matrix-enabled package derives from its own bundled_price via the matrix, independent of any member's own flag (custom change: package pricing redesign)", async () => {
-      queueFromResults({ data: PRICING_CONFIG, error: null }); // getPricingConfiguration
+    // Per-item weight x coat pricing: the package's 8 cells (formula, with
+    // any Superadmin-set cell in its place) arrive already attached by
+    // getPackageById - resolvePackagePrice only picks the pet's one.
+    const PACKAGE_CELLS = [
+      { weight_class: 'S', coat_type: 'SC', price: 300, is_custom: false },
+      { weight_class: 'L', coat_type: 'SC', price: 375, is_custom: false },
+      { weight_class: 'L', coat_type: 'LC', price: 650, is_custom: true },
+    ];
 
+    it("resolvePackagePrice: a matrix-enabled package charges the pet's own cell, independent of any member's own flag (custom change: package pricing redesign)", async () => {
       const price = await resolvePackagePrice(
-        { bundled_price: 300, use_pricing_matrix: true },
-        { ...PET, weight_class: 'L', coat_type: 'SC' } as never // L multiplier 1.25
+        {
+          bundled_price: 300,
+          use_pricing_matrix: true,
+          pricing_tiers: PACKAGE_CELLS,
+        } as never,
+        { ...PET, weight_class: 'L', coat_type: 'SC' } as never
       );
 
-      // 300 * 1.25 = 375
       expect(price).toBe(375);
+    });
+
+    it('resolvePackagePrice: a Superadmin-set cell is what the pet is charged', async () => {
+      const price = await resolvePackagePrice(
+        {
+          bundled_price: 300,
+          use_pricing_matrix: true,
+          pricing_tiers: PACKAGE_CELLS,
+        } as never,
+        { ...PET, weight_class: 'L', coat_type: 'LC' } as never
+      );
+
+      expect(price).toBe(650);
+    });
+
+    it('resolvePackagePrice: falls back to bundled_price when the pet has no matching cell (not assessed yet)', async () => {
+      const price = await resolvePackagePrice(
+        {
+          bundled_price: 300,
+          use_pricing_matrix: true,
+          pricing_tiers: PACKAGE_CELLS,
+        } as never,
+        { ...PET, weight_class: null, coat_type: null } as never
+      );
+
+      expect(price).toBe(300);
     });
 
     it('resolvePackagePrice: fixedPriceOverride wins outright regardless of matrix config, for any pet type', async () => {
@@ -2977,14 +2997,16 @@ describe('booking.service (#51)', () => {
     });
 
     it('resolvePackagePrice: a Cat pet with NO override falls through to the matrix exactly like a Dog would', async () => {
-      queueFromResults({ data: PRICING_CONFIG, error: null }); // getPricingConfiguration
-
       const price = await resolvePackagePrice(
-        { bundled_price: 300, use_pricing_matrix: true },
-        CAT_PET as never // S multiplier 1.0
+        {
+          bundled_price: 300,
+          use_pricing_matrix: true,
+          pricing_tiers: PACKAGE_CELLS,
+        } as never,
+        CAT_PET as never // S/SC
       );
 
-      // 300 * 1.0 = 300 (S tier), reached via the matrix, not a species check
+      // The S/SC cell, reached via the matrix, not a species check
       expect(price).toBe(300);
     });
   });
