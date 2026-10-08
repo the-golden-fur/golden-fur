@@ -429,6 +429,33 @@ describe('VeterinaryConsolePage (#70)', () => {
       ).toBeInTheDocument();
     });
 
+    it('has its own button right on a Completed row, no menu needed', async () => {
+      vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+        data: buildViewerProfile('Veterinarian'),
+        error: null,
+      });
+      vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+        data: {
+          consultations: [
+            buildConsultation({ accepted_by: 'vet-1' }, 'Completed'),
+          ],
+        },
+        error: null,
+      });
+      stubPetAndOwner();
+
+      renderPage();
+
+      await screen.findByText('Whiskers');
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Schedule follow-up' })
+      );
+
+      expect(
+        await screen.findByRole('dialog', { name: 'Schedule follow-up' })
+      ).toBeInTheDocument();
+    });
+
     it.each([
       [
         'a visit another vet handled',
@@ -453,6 +480,14 @@ describe('VeterinaryConsolePage (#70)', () => {
       ],
     ])('is not offered for %s', async (_label, build) => {
       const dialog = await openDetails(build());
+
+      // Neither on the row itself...
+      expect(
+        screen.queryAllByRole('button', {
+          name: 'Schedule follow-up',
+          hidden: true,
+        }).length
+      ).toBe(0);
 
       expect(
         within(dialog).queryByRole('button', { name: 'Schedule follow-up' })

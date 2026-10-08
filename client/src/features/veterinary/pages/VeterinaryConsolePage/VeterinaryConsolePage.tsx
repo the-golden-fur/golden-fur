@@ -677,6 +677,28 @@ export function VeterinaryConsolePage() {
       );
     }
 
+    // A finished visit's follow-up, right on the row - also still in the
+    // row's options menu and the details panel.
+    if (canScheduleFollowUp(row.consultation)) {
+      return (
+        <button
+          type="button"
+          className={styles.followUpButton}
+          disabled={isSaving}
+          onClick={() => setFollowUpForId(row.consultation.id)}
+        >
+          Schedule follow-up
+        </button>
+      );
+    }
+
+    if (
+      rowBookingStatus === 'Completed' &&
+      row.consultation.follow_up_booking_id
+    ) {
+      return <span className={styles.rowMeta}>Follow-up booked</span>;
+    }
+
     return null;
   }
 

@@ -200,6 +200,22 @@
   opacity: 0.6;
 }
 
+/* Secondary to Start/Complete: same pill shape, outlined, so a finished
+   visit's row doesn't compete with the rows still waiting on the vet. */
+.followUpButton {
+  composes: startButton;
+  border: 1px solid var(--color-accent-gold-primary);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: none;
+}
+
+.followUpButton:hover:not(:disabled) {
+  background: var(--color-surface);
+  border-color: var(--color-accent-gold-highlight);
+  box-shadow: var(--shadow-sm);
+}
+
 .modalActions {
   display: flex;
   flex-wrap: wrap;

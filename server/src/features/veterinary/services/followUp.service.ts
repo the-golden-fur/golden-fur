@@ -4,6 +4,7 @@ import {
   type Booking,
 } from '../../booking/booking.types.ts';
 import { getConsultation } from './consultation.service.ts';
+import { sendFollowUpScheduledNotification } from './followUpNotifications.service.ts';
 import type { Consultation } from '../veterinary.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
@@ -30,9 +31,8 @@ interface LinkFollowUpBookingParams {
  * Issue #67 (revised for the ScheduleFollowUpModal flow): the follow-up
  * booking is now created through the normal booking pipeline (POST
  * /bookings, same as a receptionist walk-in - see ScheduleFollowUpModal on
- * the client), which already runs pricing/capacity/staff checks and fires
- * the customer's booking_confirmed notification. This endpoint's only
- * remaining job is to link that already-created booking back onto the
+ * the client), which already runs pricing/capacity/staff checks. This
+ * endpoint links that already-created booking back onto the
  * originating consultation, after re-validating the same business rules the
  * old placeholder-creation version enforced (must be finished, only one
  * follow-up per consultation) plus a new ownership check (the linked booking
@@ -117,6 +117,14 @@ export async function linkFollowUpBooking({
       updateError?.message ?? 'Failed to link the follow-up booking'
     );
   }
+
+  // The owner hears about it here, not from createBooking - see
+  // sendFollowUpScheduledNotification for why.
+  await sendFollowUpScheduledNotification({
+    booking: followUpBooking as Booking,
+    veterinarianId: requesterId,
+    reason,
+  });
 
   return {
     consultation: updatedConsultation as Consultation,
