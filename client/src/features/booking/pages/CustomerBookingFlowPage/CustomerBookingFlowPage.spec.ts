@@ -463,6 +463,15 @@ function bookingForm() {
   return within(screen.getByRole('region', { name: 'Book a service' }));
 }
 
+/** Customer mode only: pressing Next on the Branch step opens the Store
+ * policies popup, which has to be agreed to before the Pet step shows. */
+async function agreeToStorePolicies(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByLabelText('I have read and agree to the store policies')
+  );
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
+}
+
 describe('CustomerBookingFlowPage', () => {
   beforeEach(() => {
     // Draft autosave/restore persists to real localStorage (must survive an
@@ -569,6 +578,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     const petButton = screen.getByText('Max').closest('button')!;
@@ -600,6 +610,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -624,6 +635,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     const petButton = screen.getByText('Max').closest('button')!;
@@ -659,6 +671,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(bookingForm().getByText('Makati'));
     await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() =>
       expect(bookingForm().getByText('Choot')).toBeInTheDocument()
@@ -694,6 +707,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -720,6 +734,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -1163,6 +1178,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -1195,6 +1211,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -1258,6 +1275,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: '+ Add a pet' }));
@@ -1265,10 +1283,53 @@ describe('CustomerBookingFlowPage', () => {
     expect(await screen.findByText('Pet Manager page')).toBeInTheDocument();
   });
 
+  it('Store policies: a customer leaving the Branch step must agree before the Pet step shows', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Max')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+
+    // Closing without agreeing stays on Branch.
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Max')).not.toBeInTheDocument();
+
+    // It comes back, unticked, on the next attempt.
+    await user.click(screen.getByText('Next'));
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    await agreeToStorePolicies(user);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+  });
+
+  it('Store policies: the staff flow leaves the Branch step with no popup', async () => {
+    const user = userEvent.setup();
+    renderStaffPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+    );
+  });
+
   async function goToCategoryStep(user: ReturnType<typeof userEvent.setup>) {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -1545,6 +1606,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(bookingForm().getByText('Makati'));
     await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() =>
       expect(bookingForm().getByText('Luna')).toBeInTheDocument()
@@ -1593,6 +1655,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(bookingForm().getByText('Makati'));
     await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() =>
       expect(bookingForm().getByText('Luna')).toBeInTheDocument()
@@ -1620,6 +1683,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(bookingForm().getByText('Makati'));
     await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() =>
       expect(bookingForm().getByText('Max')).toBeInTheDocument()
@@ -1665,6 +1729,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -2201,6 +2266,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(bookingForm().getByText('Makati'));
     await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() =>
       expect(bookingForm().getByText('Choot')).toBeInTheDocument()
