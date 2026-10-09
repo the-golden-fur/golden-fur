@@ -40,6 +40,7 @@ import {
   type BookingSummaryRow,
 } from '../../components/BookingSummaryPanel/BookingSummaryPanel';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
+import { StorePoliciesModal } from '../../components/StorePoliciesModal/StorePoliciesModal';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
 import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
@@ -968,6 +969,8 @@ export function CustomerBookingFlowPage() {
   const [reachedStepKeys, setReachedStepKeys] = useState<Set<StepDef['key']>>(
     () => new Set<StepDef['key']>(['branch'])
   );
+
+  const [showStorePolicies, setShowStorePolicies] = useState(false);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2253,6 +2256,14 @@ export function CustomerBookingFlowPage() {
   function goNext() {
     if (!isCurrentStepValid) return;
 
+    // Store policies: a customer leaving the Branch step has to agree to
+    // them first, every time - handleStorePoliciesAgree does the actual
+    // advance. Staff booking on a customer's behalf skip this.
+    if (!isReceptionistMode && currentStep.key === 'branch') {
+      setShowStorePolicies(true);
+      return;
+    }
+
     // Multi-booking checkout: leaving this booking's LAST configured step
     // ('availability' for Grooming/Veterinary/Assessment, 'hotelDetails' for
     // Hotel/Daycare) commits it into bookingsList right here, before
@@ -2268,6 +2279,11 @@ export function CustomerBookingFlowPage() {
       resetForNextBooking();
     }
 
+    advanceTo(currentStepIndex + 1);
+  }
+
+  function handleStorePoliciesAgree() {
+    setShowStorePolicies(false);
     advanceTo(currentStepIndex + 1);
   }
 
@@ -4901,6 +4917,13 @@ export function CustomerBookingFlowPage() {
               </button>
             </div>
           )}
+
+          {showStorePolicies ? (
+            <StorePoliciesModal
+              onClose={() => setShowStorePolicies(false)}
+              onAgree={handleStorePoliciesAgree}
+            />
+          ) : null}
         </section>
 
         <div className={styles.summaryColumn}>
