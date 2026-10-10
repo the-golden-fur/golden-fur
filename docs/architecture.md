@@ -79,8 +79,11 @@ find on both sides:
 - Two physical **branches**: Makati and Southwoods. Veterinary services are
   Makati-only; every other service type is offered at both branches.
 - **Staff roles**: Superadmin, Admin, Supervisor, Receptionist, Groomer,
-  Veterinarian, Cashier, Pet Assistant — each with a role-scoped dashboard
-  and permission tier enforced both in the UI and via RLS/API checks.
+  Veterinarian, Cashier, Pet Assistant, Front Desk — each with a
+  role-scoped dashboard and permission tier enforced both in the UI and
+  via RLS/API checks. Front Desk is a combined role: the union of
+  Receptionist's and Cashier's access, added without changing either of
+  those two roles.
 - **Customers** manage **pets**, which flow through **bookings** for one of
   four service types: Grooming, Pet Hotel, Daycare, and Veterinary
   consultations.
