@@ -1,5 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
+import { readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import { seedTempTransactions } from './temp-demo.transactions.ts';
 import { seedTempClinical } from './temp-demo.clinical.ts';
 
@@ -159,12 +162,111 @@ export async function seedTempDemo(supabase: SupabaseClient) {
   await seedTempClinical(supabase);
 }
 
+export function resolveSeedUrl(
+  useLinkedProject: boolean,
+  linkedProjectRef?: string,
+  configuredUrl = process.env.SUPABASE_URL ?? ''
+): string {
+  if (!useLinkedProject) return configuredUrl;
+
+  if (!linkedProjectRef || !/^[a-z0-9]+$/.test(linkedProjectRef)) {
+    throw new Error(
+      'A valid linked Supabase project ref is required. Run `supabase link` first.'
+    );
+  }
+
+  return `https://${linkedProjectRef}.supabase.co`;
+}
+
+function getLinkedServiceRoleKey(projectRef: string): string {
+  const result = spawnSync(
+    'supabase',
+    ['projects', 'api-keys', '--project-ref', projectRef, '--output', 'json'],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+      windowsHide: true,
+    }
+  );
+
+  if (result.error) {
+    throw new Error(`Unable to run Supabase CLI: ${result.error.message}`);
+  }
+
+  if (result.status !== 0) {
+    throw new Error(
+      `Unable to retrieve API keys for linked Supabase project ${projectRef}: ${result.stderr.trim()}`
+    );
+  }
+
+  let keys: unknown;
+  try {
+    keys = JSON.parse(result.stdout);
+  } catch {
+    throw new Error('Supabase CLI returned invalid JSON for linked API keys.');
+  }
+
+  if (!Array.isArray(keys)) {
+    throw new Error(
+      'Supabase CLI returned an unexpected linked API keys format.'
+    );
+  }
+
+  const serviceRoleKey = keys.find(
+    (key): key is { name: string; api_key: string } =>
+      typeof key === 'object' &&
+      key !== null &&
+      'name' in key &&
+      key.name === 'service_role' &&
+      'api_key' in key &&
+      typeof key.api_key === 'string'
+  );
+
+  if (!serviceRoleKey) {
+    throw new Error(
+      `No service_role API key was returned for linked Supabase project ${projectRef}.`
+    );
+  }
+
+  return serviceRoleKey.api_key;
+}
+
 async function main() {
-  const url = process.env.SUPABASE_URL ?? '';
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  const useLinkedProject = process.argv.includes('--supabase-linked');
+  let linkedProjectRef: string | undefined;
+
+  if (useLinkedProject) {
+    const linkedProjectRefPath = path.resolve(
+      process.cwd(),
+      'supabase/.temp/project-ref'
+    );
+
+    try {
+      linkedProjectRef = (await readFile(linkedProjectRefPath, 'utf8')).trim();
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        throw new Error(
+          'No linked Supabase project found. Run `supabase link` first.'
+        );
+      }
+      throw error;
+    }
+  }
+
+  const url = resolveSeedUrl(useLinkedProject, linkedProjectRef);
+  const serviceKey = useLinkedProject
+    ? getLinkedServiceRoleKey(linkedProjectRef ?? '')
+    : (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
 
   if (!url || !serviceKey) {
-    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
+    throw new Error(
+      'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for the selected project'
+    );
   }
 
   console.info(`Seeding temp demo data into ${url}`);
