@@ -3,6 +3,7 @@ export const CUSTOMER_MANAGER_ROLES: readonly string[] = [
   'Admin',
   'Supervisor',
   'Superadmin',
+  'Front Desk',
 ];
 
 export type CommunicationChannel = 'Call' | 'Text' | 'Viber' | 'Messenger';

@@ -14,7 +14,7 @@ describe('StaffRoleMultiSelect', () => {
       })
     );
 
-    expect(screen.getAllByRole('checkbox')).toHaveLength(8);
+    expect(screen.getAllByRole('checkbox')).toHaveLength(9);
     expect(screen.getByRole('checkbox', { name: 'Groomer' })).toBeChecked();
     expect(
       screen.getByRole('checkbox', { name: 'Veterinarian' })

@@ -75,6 +75,7 @@ const TRANSACTION_HISTORY_ROLES = new Set([
   'Admin',
   'Supervisor',
   'Cashier',
+  'Front Desk',
 ]);
 
 export function MiscSaleManagementPage() {

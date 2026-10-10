@@ -31,10 +31,12 @@ export function DaycareCheckInFormPage() {
   const [role, setRole] = useState<string | null>(null);
   // Reached from the front desk's Bookings Queue ("Check In" on a Daycare
   // row) rather than the Daycare Queue - go back there, not to a queue the
-  // viewer didn't come from. A Receptionist always goes back there: the
-  // Daycare Queue page isn't open to that role.
+  // viewer didn't come from. A Receptionist/Front Desk always goes back
+  // there: the Daycare Queue page isn't open to those roles.
   const cameFromBookingsQueue =
-    searchParams.get('from') === 'bookings' || role === 'Receptionist';
+    searchParams.get('from') === 'bookings' ||
+    role === 'Receptionist' ||
+    role === 'Front Desk';
   const backTo = cameFromBookingsQueue
     ? '/staff/bookings/queue'
     : '/staff/daycare/queue';

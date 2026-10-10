@@ -13,6 +13,7 @@ export const BOOKING_POLICY_READ_ROLES: readonly string[] = [
   'Veterinarian',
   'Cashier',
   'Pet Assistant',
+  'Front Desk',
 ];
 
 export const BOOKING_POLICY_WRITE_ROLES: readonly string[] = [
@@ -39,6 +40,7 @@ export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Supervisor',
   'Receptionist',
   'Cashier',
+  'Front Desk',
 ];
 
 /** Direct status override (forward OR backward) - Admin/Superadmin only,

@@ -7,6 +7,7 @@ export const MISC_SALE_VIEWER_ROLES = new Set([
   'Supervisor',
   'Receptionist',
   'Cashier',
+  'Front Desk',
 ]);
 
 export const MISC_SALES_PATH = '/staff/admin/misc-sales';

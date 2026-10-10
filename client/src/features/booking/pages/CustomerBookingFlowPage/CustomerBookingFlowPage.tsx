@@ -637,6 +637,7 @@ export function CustomerBookingFlowPage() {
   const isBranchLockedStaff =
     isReceptionistMode &&
     (viewerRole === 'Receptionist' ||
+      viewerRole === 'Front Desk' ||
       viewerRole === 'Admin' ||
       viewerRole === 'Veterinarian');
 
@@ -660,7 +661,9 @@ export function CustomerBookingFlowPage() {
   // access here.
   const restrictsToPlayWalkOnly =
     isReceptionistMode &&
-    (viewerRole === 'Receptionist' || viewerRole === 'Groomer');
+    (viewerRole === 'Receptionist' ||
+      viewerRole === 'Front Desk' ||
+      viewerRole === 'Groomer');
 
   useEffect(() => {
     if (!isVeterinarianStaff || !accessToken) return;

@@ -19,6 +19,7 @@ const STAFF_ROLES = [
   'Veterinarian',
   'Cashier',
   'Pet Assistant',
+  'Front Desk',
 ] as const;
 const DISCOUNT_TYPES = ['Percentage', 'Flat'] as const;
 const PROMO_SCOPE_TYPES = ['all_services', 'specific'] as const;

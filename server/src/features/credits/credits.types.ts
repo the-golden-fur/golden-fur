@@ -9,6 +9,7 @@ export const CREDIT_STAFF_ROLES: readonly string[] = [
   'Superadmin',
   'Admin',
   'Cashier',
+  'Front Desk',
 ];
 
 export const CREDIT_ADMIN_ROLES: readonly string[] = ['Admin', 'Superadmin'];

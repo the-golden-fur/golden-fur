@@ -13,6 +13,7 @@ export const MAINTENANCE_READ_ROLES: readonly string[] = [
   'Veterinarian',
   'Cashier',
   'Pet Assistant',
+  'Front Desk',
 ];
 
 export const MAINTENANCE_WRITE_ROLES: readonly string[] = [

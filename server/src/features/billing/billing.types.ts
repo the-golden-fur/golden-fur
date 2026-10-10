@@ -12,6 +12,7 @@ export const BILLING_STAFF_ROLES: readonly string[] = [
   'Supervisor',
   'Receptionist',
   'Cashier',
+  'Front Desk',
 ];
 
 export const BILLING_ADMIN_ROLES: readonly string[] = ['Admin', 'Superadmin'];

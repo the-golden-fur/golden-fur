@@ -20,6 +20,7 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Admin',
   'Supervisor',
   'Superadmin',
+  'Front Desk',
 ]);
 
 /**

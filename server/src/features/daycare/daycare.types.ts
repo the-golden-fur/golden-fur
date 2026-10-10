@@ -8,6 +8,7 @@ export const DAYCARE_ROLES: readonly string[] = [
   'Admin',
   'Supervisor',
   'Superadmin',
+  'Front Desk',
 ];
 
 /** Groomer/Pet Assistant advance rights: Daycare has no dedicated assigned-

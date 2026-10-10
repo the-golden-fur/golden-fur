@@ -9,6 +9,7 @@ import type { PetVaccinationRecord } from '../pet.types.ts';
  */
 export const VACCINATION_MANAGER_ROLES: readonly string[] = [
   'Receptionist',
+  'Front Desk',
   'Veterinarian',
   'Admin',
   'Supervisor',

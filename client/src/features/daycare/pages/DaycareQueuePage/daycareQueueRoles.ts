@@ -18,4 +18,5 @@ export const DAYCARE_QUEUE_VIEWER_ROLES = new Set([
 export const DAYCARE_CHECK_IN_FORM_ROLES = new Set([
   ...DAYCARE_QUEUE_VIEWER_ROLES,
   'Receptionist',
+  'Front Desk',
 ]);

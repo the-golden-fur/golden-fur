@@ -35,7 +35,8 @@ export type StaffDashboardSlug =
   | 'groomer'
   | 'veterinarian'
   | 'cashier'
-  | 'pet-assistant';
+  | 'pet-assistant'
+  | 'front-desk';
 
 /**
  * Superadmin and Admin share the 'admin' dashboard - they share the same
@@ -51,6 +52,7 @@ export const ROLE_TO_DASHBOARD_SLUG: Record<StaffRole, StaffDashboardSlug> = {
   Veterinarian: 'veterinarian',
   Cashier: 'cashier',
   'Pet Assistant': 'pet-assistant',
+  'Front Desk': 'front-desk',
 };
 
 export interface DashboardTileConfig {
@@ -517,6 +519,76 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description:
               'See the rest days and approved leave plotted for you this month.',
             to: '/staff/my-schedule',
+          },
+          {
+            title: 'Checkout & Billing',
+            description: 'Assemble charges, apply discounts, and take payment.',
+          },
+          {
+            title: 'Miscellaneous Sales',
+            description:
+              'Record and review counter sales unrelated to a booking.',
+            to: '/staff/admin/misc-sales',
+          },
+          {
+            title: 'Transactions',
+            description:
+              'Record a payment against any pending charge; add balance payments.',
+            to: '/staff/reports/transaction-history',
+          },
+          {
+            title: 'Credit Management',
+            description:
+              "Look up a customer's branch credit balance, history, and expiry.",
+            to: '/staff/credits',
+          },
+          {
+            title: 'Credit Review Queue',
+            description:
+              'Approve or deny returning a downpayment as credit for a Manual-review cancellation.',
+            to: '/staff/bookings/credit-review-queue',
+          },
+        ],
+      },
+    ],
+  },
+  'front-desk': {
+    heading: 'Front Desk dashboard',
+    sections: [
+      {
+        label: null,
+        tiles: [
+          {
+            title: 'Days Off',
+            description: 'Request a day off, or take the rest of today off.',
+            to: '/staff/days-off',
+          },
+          {
+            title: 'My Schedule',
+            description:
+              'See the rest days and approved leave plotted for you this month.',
+            to: '/staff/my-schedule',
+          },
+          {
+            title: 'Customer Management',
+            description: 'Look up customers, pets, and walk-in records.',
+            to: '/staff/admin/customers',
+          },
+          {
+            title: 'Bookings Queue',
+            description: "Today's confirmed bookings for the front desk.",
+            to: '/staff/bookings/queue',
+          },
+          {
+            title: 'Assessment Queue',
+            description:
+              "Start/complete a pet's Initial Assessment or Reassessment, recording weight and coat.",
+            to: '/staff/assessment/queue',
+          },
+          {
+            title: 'Cage Occupancy',
+            description: 'Real-time cage availability by size category.',
+            to: '/staff/reports/cage-occupancy',
           },
           {
             title: 'Checkout & Billing',

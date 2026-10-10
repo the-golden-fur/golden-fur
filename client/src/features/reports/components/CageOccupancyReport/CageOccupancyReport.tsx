@@ -42,6 +42,7 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Supervisor',
   'Superadmin',
   'Receptionist',
+  'Front Desk',
 ]);
 
 const SIZE_ORDER = CAGE_SIZE_ORDER;

@@ -47,6 +47,7 @@ const ROLE_TIMEOUT_MS: Record<string, number> = {
   Groomer: 8 * 60 * 60 * 1000,
   Veterinarian: 8 * 60 * 60 * 1000,
   'Pet Assistant': 8 * 60 * 60 * 1000,
+  'Front Desk': 4 * 60 * 60 * 1000,
 };
 
 function requiresMfa(role: string | null) {

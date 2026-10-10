@@ -636,14 +636,16 @@ export async function createBookingGroup({
       relatedBookingId: booking.id,
     });
 
-    await notifyStaffRoleAtBranch({
-      role: 'Receptionist',
-      branchId: booking.branch_id,
-      eventType: 'booking_confirmed',
-      title: 'Free package unlocked for a Hotel booking',
-      message: `${message} (Booking ${booking.id})`,
-      relatedBookingId: booking.id,
-    });
+    for (const role of ['Receptionist', 'Front Desk']) {
+      await notifyStaffRoleAtBranch({
+        role,
+        branchId: booking.branch_id,
+        eventType: 'booking_confirmed',
+        title: 'Free package unlocked for a Hotel booking',
+        message: `${message} (Booking ${booking.id})`,
+        relatedBookingId: booking.id,
+      });
+    }
   }
 
   // Step 14: return the group row plus every member booking, re-fetched
