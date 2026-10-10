@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { seedTempDemo } from './temp-demo.seed.ts';
+import { resolveSeedUrl, seedTempDemo } from './temp-demo.seed.ts';
 
 const LOOKUPS: Record<string, Array<Record<string, unknown>>> = {
   staff_profiles: [
@@ -74,6 +74,27 @@ function mockClient() {
 }
 
 describe('temp-demo seed', () => {
+  it('uses the linked Supabase project URL when requested', () => {
+    expect(resolveSeedUrl(true, 'abc123', 'https://abc123.supabase.co')).toBe(
+      'https://abc123.supabase.co'
+    );
+  });
+
+  it('uses the configured Supabase URL by default', () => {
+    expect(
+      resolveSeedUrl(false, undefined, 'https://configured.supabase.co')
+    ).toBe('https://configured.supabase.co');
+  });
+
+  it('requires a valid linked project ref', () => {
+    expect(() => resolveSeedUrl(true, undefined)).toThrow(
+      /valid linked Supabase project ref/
+    );
+    expect(() => resolveSeedUrl(true, 'invalid/ref')).toThrow(
+      /valid linked Supabase project ref/
+    );
+  });
+
   it('upserts with ignoreDuplicates so re-running never duplicates rows', async () => {
     const { client, upsert } = mockClient();
 
