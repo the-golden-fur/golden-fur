@@ -48,6 +48,7 @@ import type {
 } from '../../veterinary.types';
 import { ScheduleFollowUpModal } from '../../components/ScheduleFollowUpModal/ScheduleFollowUpModal';
 import { ConsultationDetailPanel } from './ConsultationDetailPanel';
+import { PrescribeModal } from './PrescribeModal';
 import { ServicesDoneModal } from './ServicesDoneModal';
 import {
   CONSULTATION_QUEUE_FILTER_FIELDS,
@@ -168,6 +169,13 @@ export function VeterinaryConsolePage() {
   const [pendingComplete, setPendingComplete] = useState<{
     consultationId: string;
     fields: CompleteFields;
+  } | null>(null);
+  // The after-visit flow that follows a completed visit: Step 1 Prescription,
+  // then Step 2 Follow-up consultation. Both optional - each can be skipped,
+  // and Step 2 can go Back to Step 1.
+  const [afterVisit, setAfterVisit] = useState<{
+    consultationId: string;
+    step: 'prescription' | 'followUp';
   } | null>(null);
   // The Completed visit whose Schedule follow-up form is open.
   const [followUpForId, setFollowUpForId] = useState<string | null>(null);
@@ -397,6 +405,9 @@ export function VeterinaryConsolePage() {
     (row) => row.consultation.id === pendingStartId
   );
   const followUpRow = rows.find((row) => row.consultation.id === followUpForId);
+  const afterVisitRow = rows.find(
+    (row) => row.consultation.id === afterVisit?.consultationId
+  );
   const pendingCompleteRow = rows.find(
     (row) => row.consultation.id === pendingComplete?.consultationId
   );
@@ -547,7 +558,78 @@ export function VeterinaryConsolePage() {
       servicesDone
     );
 
-    if (succeeded) setPendingComplete(null);
+    if (!succeeded) return;
+
+    // The visit is done - on to prescribing, then the follow-up. The details
+    // form is closed first so it can't sit behind the pop-ups showing the
+    // prescription as it was before they changed it.
+    const completedId = pendingComplete.consultationId;
+    setPendingComplete(null);
+    setOpenId(null);
+    setAfterVisit({ consultationId: completedId, step: 'prescription' });
+  }
+
+  /** A follow-up was booked and linked - from the menu's form or Step 2. */
+  function handleFollowUpLinked(linked: Consultation) {
+    setConsultations((prev) =>
+      prev.map((consultation) =>
+        // Merged, not replaced: the link endpoint returns the visit without
+        // the medicine-transaction join the queue carries.
+        consultation.id === linked.id
+          ? { ...consultation, ...linked }
+          : consultation
+      )
+    );
+  }
+
+  /** Step 1 is done (saved or skipped) - on to the follow-up, when this vet
+   * may schedule one for the visit; otherwise the flow is over. */
+  function leavePrescriptionStep() {
+    const consultation = afterVisitRow?.consultation;
+
+    setSaveError(null);
+    setAfterVisit(
+      consultation && canScheduleFollowUp(consultation)
+        ? { consultationId: consultation.id, step: 'followUp' }
+        : null
+    );
+  }
+
+  /** Saves Step 1's prescription. Only the prescription is sent, so the
+   * diagnosis already on the visit is left alone. Resolves to whether it
+   * saved - the step decides what happens next (continue, or print). */
+  async function handleSavePrescription(fields: {
+    medications: MedicationInput[];
+    soldAtPharmacy: boolean;
+  }): Promise<boolean> {
+    if (!accessToken || !afterVisit) return false;
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    const result = await updateConsultation(
+      afterVisit.consultationId,
+      accessToken,
+      {
+        medications: fields.medications,
+        sold_at_pharmacy: fields.soldAtPharmacy,
+      }
+    );
+
+    setIsSaving(false);
+
+    if (result.error || !result.data) {
+      setSaveError(result.error ?? 'Could not save this prescription.');
+      return false;
+    }
+
+    const updated = result.data;
+    setConsultations((prev) =>
+      prev.map((consultation) =>
+        consultation.id === updated.id ? updated : consultation
+      )
+    );
+    return true;
   }
 
   /** The row's direct status action: Start on a Pending row, Complete on
@@ -593,6 +675,28 @@ export function VeterinaryConsolePage() {
           Complete
         </button>
       );
+    }
+
+    // A finished visit's follow-up, right on the row - also still in the
+    // row's options menu and the details panel.
+    if (canScheduleFollowUp(row.consultation)) {
+      return (
+        <button
+          type="button"
+          className={styles.followUpButton}
+          disabled={isSaving}
+          onClick={() => setFollowUpForId(row.consultation.id)}
+        >
+          Schedule follow-up
+        </button>
+      );
+    }
+
+    if (
+      rowBookingStatus === 'Completed' &&
+      row.consultation.follow_up_booking_id
+    ) {
+      return <span className={styles.rowMeta}>Follow-up booked</span>;
     }
 
     return null;
@@ -887,17 +991,55 @@ export function VeterinaryConsolePage() {
           branchId={followUpRow.consultation.booking.branch_id}
           veterinarianId={user.id}
           onClose={() => setFollowUpForId(null)}
-          onLinked={(linked) =>
-            setConsultations((prev) =>
-              prev.map((consultation) =>
-                // Merged, not replaced: the link endpoint returns the visit
-                // without the medicine-transaction join the queue carries.
-                consultation.id === linked.id
-                  ? { ...consultation, ...linked }
-                  : consultation
-              )
-            )
+          onLinked={handleFollowUpLinked}
+        />
+      ) : null}
+
+      {afterVisit?.step === 'prescription' && afterVisitRow ? (
+        <PrescribeModal
+          key={afterVisitRow.consultation.id}
+          consultation={afterVisitRow.consultation}
+          petName={afterVisitRow.petName}
+          accessToken={accessToken}
+          stepLabel={
+            canScheduleFollowUp(afterVisitRow.consultation)
+              ? 'Step 1 of 2'
+              : 'Step 1 of 1'
           }
+          isSaving={isSaving}
+          error={saveError}
+          onSave={handleSavePrescription}
+          onContinue={leavePrescriptionStep}
+          onSkip={leavePrescriptionStep}
+          onClose={() => {
+            setSaveError(null);
+            setAfterVisit(null);
+          }}
+        />
+      ) : null}
+
+      {afterVisit?.step === 'followUp' &&
+      afterVisitRow?.consultation.booking &&
+      user?.id ? (
+        <ScheduleFollowUpModal
+          key={`after-visit-${afterVisitRow.consultation.id}`}
+          accessToken={accessToken}
+          consultationId={afterVisitRow.consultation.id}
+          petId={afterVisitRow.consultation.pet_id}
+          petName={afterVisitRow.petName}
+          customerId={afterVisitRow.consultation.booking.customer_id}
+          ownerName={afterVisitRow.ownerName}
+          branchId={afterVisitRow.consultation.booking.branch_id}
+          veterinarianId={user.id}
+          stepLabel="Step 2 of 2"
+          onBack={() =>
+            setAfterVisit({
+              consultationId: afterVisitRow.consultation.id,
+              step: 'prescription',
+            })
+          }
+          onClose={() => setAfterVisit(null)}
+          onLinked={handleFollowUpLinked}
         />
       ) : null}
 

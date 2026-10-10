@@ -17,6 +17,11 @@ import {
   uploadPetCareItemPhoto,
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import {
+  isPricedByPetCell,
+  packagePriceForPet,
+  servicePriceForPet,
+} from '../../utils/petMatrixPrice';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
 import { CustomerPicker } from '../../components/CustomerPicker/CustomerPicker';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
@@ -35,6 +40,7 @@ import {
   type BookingSummaryRow,
 } from '../../components/BookingSummaryPanel/BookingSummaryPanel';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
+import { StorePoliciesModal } from '../../components/StorePoliciesModal/StorePoliciesModal';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
 import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
@@ -83,6 +89,10 @@ import { getMyCoupons } from '../../../rewards/api/rewards.api';
 import type { CustomerCoupon } from '../../../rewards/rewards.types';
 import { isPromoCurrentlyEligible } from '../../../../shared/utils/promoEligibility';
 import { applyPromoCap } from '../../utils/applyPromoCap';
+import {
+  REDUCTION_LIMIT_MESSAGE,
+  exceedsReductionLimit,
+} from '../../utils/minPayableShare';
 import { PromoCouponMultiSelect } from '../../components/PromoCouponMultiSelect/PromoCouponMultiSelect';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import {
@@ -310,6 +320,13 @@ const NIGHT_COUNT_PRESETS = [3, 5];
 
 const DAYCARE_HOUR_PRESETS = [2, 4];
 const MAX_DAYCARE_HOURS = 12;
+
+/** Per-item weight x coat pricing: the line under a card whose price is the
+ * pet's own weight x coat price, e.g. "Price for Large (L), Long Coat". */
+function petCellHint(pet: Pick<Pet, 'weight_class' | 'coat_type'>): string {
+  if (!pet.weight_class || !pet.coat_type) return '';
+  return `Price for ${WEIGHT_CLASS_LABEL[pet.weight_class]} (${pet.weight_class}), ${COAT_TYPE_LABEL[pet.coat_type]}`;
+}
 
 /** What a Daycare booking costs for the hours booked: the service's own
  * first-hour fee, plus its succeeding-hour fee for each further hour.
@@ -953,6 +970,8 @@ export function CustomerBookingFlowPage() {
     () => new Set<StepDef['key']>(['branch'])
   );
 
+  const [showStorePolicies, setShowStorePolicies] = useState(false);
+
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Plural because a multi-booking checkout confirms several bookings at
@@ -1244,9 +1263,21 @@ export function CustomerBookingFlowPage() {
       setSelectedSlot(draft.selectedSlot);
       setHotelNights(draft.hotelNights);
       setDaycareHours(draft.daycareHours ?? 1);
-      setSelectedPromoIds(draft.selectedPromoIds ?? []);
-      setSelectedCouponIds(draft.selectedCouponIds ?? []);
-      setSelectedDiscountId(draft.selectedDiscountId);
+      // One reduction per booking: a draft saved while several could be
+      // picked keeps only the first (promo, then coupon, then discount), so
+      // it isn't restored into a selection the server would refuse.
+      const draftPromoIds = (draft.selectedPromoIds ?? []).slice(0, 1);
+      const draftCouponIds =
+        draftPromoIds.length > 0
+          ? []
+          : (draft.selectedCouponIds ?? []).slice(0, 1);
+      setSelectedPromoIds(draftPromoIds);
+      setSelectedCouponIds(draftCouponIds);
+      setSelectedDiscountId(
+        draftPromoIds.length + draftCouponIds.length > 0
+          ? ''
+          : draft.selectedDiscountId
+      );
       setPaymentChoice(draft.paymentChoice);
       setSpecialInstructions(draft.specialInstructions);
       setHotelFeeding(draft.hotelFeeding);
@@ -1579,12 +1610,12 @@ export function CustomerBookingFlowPage() {
         price:
           category === 'Daycare'
             ? daycareBookingPrice(service, daycareHours)
-            : (serviceFixedPrice ?? service.base_price),
+            : servicePriceForPet(service, selectedPet, serviceFixedPrice),
       })),
       ...selectedPackages.map((pkg) => ({
         id: pkg.id,
         name: pkg.name,
-        price: catalogFixedPrice ?? pkg.bundled_price,
+        price: packagePriceForPet(pkg, selectedPet, catalogFixedPrice),
       })),
     ],
     [
@@ -1594,6 +1625,7 @@ export function CustomerBookingFlowPage() {
       serviceFixedPrice,
       category,
       daycareHours,
+      selectedPet,
     ]
   );
 
@@ -1750,17 +1782,22 @@ export function CustomerBookingFlowPage() {
   // Daycare is the exception to both: it's priced by the hours booked, from
   // the service's own hourly fees (daycareBookingPrice), again exactly as
   // the server does.
+  //
+  // Per-item weight x coat pricing: an item that varies by weight and coat
+  // costs the pet's own cell (servicePriceForPet / packagePriceForPet), the
+  // same price the server charges.
   const itemsTotal =
     (selectedServices.reduce(
       (sum, service) =>
         sum +
         (category === 'Daycare'
           ? daycareBookingPrice(service, daycareHours)
-          : (serviceFixedPrice ?? service.base_price)),
+          : servicePriceForPet(service, selectedPet, serviceFixedPrice)),
       0
     ) +
       selectedPackages.reduce(
-        (sum, pkg) => sum + (catalogFixedPrice ?? pkg.bundled_price),
+        (sum, pkg) =>
+          sum + packagePriceForPet(pkg, selectedPet, catalogFixedPrice),
         0
       )) *
     hotelNightsMultiplier;
@@ -1943,6 +1980,42 @@ export function CustomerBookingFlowPage() {
     groupSubtotal - discountAmount - promoDiscount
   );
 
+  // One reduction per booking - a discount, OR a promo, OR a coupon (the
+  // server refuses more than one, see resolveDiscountAndPromos). Picking one
+  // therefore replaces whatever was picked before; picking the selected
+  // promo/coupon again clears it.
+  function selectOnlyPromo(promoId: string) {
+    setSelectedPromoIds((prev) => (prev.includes(promoId) ? [] : [promoId]));
+    setSelectedCouponIds([]);
+    setSelectedDiscountId('');
+  }
+
+  function selectOnlyCoupon(couponId: string) {
+    setSelectedCouponIds((prev) => (prev.includes(couponId) ? [] : [couponId]));
+    setSelectedPromoIds([]);
+    setSelectedDiscountId('');
+  }
+
+  function selectOnlyDiscount(discountId: string) {
+    setSelectedDiscountId(discountId);
+    setSelectedPromoIds([]);
+    setSelectedCouponIds([]);
+  }
+
+  // What the Review step calls the chosen promo/coupon.
+  const selectedReductionName =
+    applicablePromos.find((promo) => promo.id === selectedPromoIds[0])?.name ??
+    (selectedCouponIds.length > 0 ? 'Coupon' : 'Promo');
+
+  // No booking is made free by its reductions: the server refuses a
+  // discount + promos + coupons selection that takes off more than the
+  // allowed share (resolveDiscountAndPromos) - said here first, and Confirm
+  // is held back, so the customer isn't surprised at submit.
+  const reductionOverLimit = exceedsReductionLimit(
+    groupSubtotal,
+    discountAmount + promoDiscount
+  );
+
   // True if ANY booking in the list requires payment (a mixed group still
   // shows/collects a shared charge even though a Veterinary entry's own
   // share is excluded server-side - see createBookingGroup's
@@ -1991,7 +2064,14 @@ export function CustomerBookingFlowPage() {
     enabled: downpaymentStatus?.pay_at_checkout_enabled ?? false,
     bookings: bookingsList,
   });
-  const showPaymentChoice = downpaymentRequired || payAtCheckoutAvailable;
+  // An Initial Assessment has no payment scheme to choose - it's the pet's
+  // onsite first check, not a slot held by a down payment. Only when EVERY
+  // booking in the list is one: a mixed group still needs the decision.
+  const isAssessmentOnly =
+    bookingsList.length > 0 &&
+    bookingsList.every((entry) => entry.category === 'Assessment');
+  const showPaymentChoice =
+    !isAssessmentOnly && (downpaymentRequired || payAtCheckoutAvailable);
   const effectivePaymentChoice = resolvePaymentChoice(paymentChoice, {
     downpaymentRequired,
     payAtCheckoutAvailable,
@@ -2047,7 +2127,9 @@ export function CustomerBookingFlowPage() {
       category === 'Hotel' || (category === 'Daycare' && cagePreference)
         ? 'Cage & Date'
         : staffPickerAppliesToCategory && !staffPickerUnavailable
-          ? 'Staff & Date'
+          ? category === 'Veterinary'
+            ? 'Vet & Date'
+            : 'Staff & Date'
           : 'Date & Time';
     list.push({ key: 'availability', label: availabilityLabel });
 
@@ -2174,6 +2256,14 @@ export function CustomerBookingFlowPage() {
   function goNext() {
     if (!isCurrentStepValid) return;
 
+    // Store policies: a customer leaving the Branch step has to agree to
+    // them first, every time - handleStorePoliciesAgree does the actual
+    // advance. Staff booking on a customer's behalf skip this.
+    if (!isReceptionistMode && currentStep.key === 'branch') {
+      setShowStorePolicies(true);
+      return;
+    }
+
     // Multi-booking checkout: leaving this booking's LAST configured step
     // ('availability' for Grooming/Veterinary/Assessment, 'hotelDetails' for
     // Hotel/Daycare) commits it into bookingsList right here, before
@@ -2189,6 +2279,11 @@ export function CustomerBookingFlowPage() {
       resetForNextBooking();
     }
 
+    advanceTo(currentStepIndex + 1);
+  }
+
+  function handleStorePoliciesAgree() {
+    setShowStorePolicies(false);
     advanceTo(currentStepIndex + 1);
   }
 
@@ -3569,7 +3664,7 @@ export function CustomerBookingFlowPage() {
                       </span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${(serviceFixedPrice ?? service.base_price).toFixed(2)}/night`
+                          ? `PHP ${servicePriceForPet(service, selectedPet, serviceFixedPrice).toFixed(2)}/night`
                           : category === 'Daycare' &&
                               service.first_hour_fee !== null &&
                               service.succeeding_hour_fee !== null
@@ -3581,8 +3676,22 @@ export function CustomerBookingFlowPage() {
                               // price would be misleading about what's
                               // actually billed at pickup.
                               `PHP ${service.first_hour_fee.toFixed(2)} first hr, PHP ${service.succeeding_hour_fee.toFixed(2)}/hr after`
-                            : `PHP ${(serviceFixedPrice ?? service.base_price).toFixed(2)}`}
+                            : `PHP ${servicePriceForPet(service, selectedPet, serviceFixedPrice).toFixed(2)}`}
                       </span>
+                      {selectedPet &&
+                      isPricedByPetCell(
+                        {
+                          use_pricing_matrix: service.use_pricing_matrix,
+                          category: service.category,
+                          cells: service.service_pricing_tiers,
+                        },
+                        selectedPet,
+                        serviceFixedPrice
+                      ) ? (
+                        <span className={styles.optionMeta}>
+                          {petCellHint(selectedPet)}
+                        </span>
+                      ) : null}
                       {category === 'Daycare' ? (
                         <span className={styles.optionMeta}>
                           Hotel nightly rate applies if not picked up before
@@ -3627,9 +3736,22 @@ export function CustomerBookingFlowPage() {
                       <span className={styles.optionTitle}>{pkg.name}</span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
-                          ? `PHP ${(catalogFixedPrice ?? pkg.bundled_price).toFixed(2)}/night`
-                          : `PHP ${(catalogFixedPrice ?? pkg.bundled_price).toFixed(2)}`}
+                          ? `PHP ${packagePriceForPet(pkg, selectedPet, catalogFixedPrice).toFixed(2)}/night`
+                          : `PHP ${packagePriceForPet(pkg, selectedPet, catalogFixedPrice).toFixed(2)}`}
                       </span>
+                      {selectedPet &&
+                      isPricedByPetCell(
+                        {
+                          use_pricing_matrix: pkg.use_pricing_matrix,
+                          cells: pkg.pricing_tiers,
+                        },
+                        selectedPet,
+                        catalogFixedPrice
+                      ) ? (
+                        <span className={styles.optionMeta}>
+                          {petCellHint(selectedPet)}
+                        </span>
+                      ) : null}
                       {category !== 'Hotel' ? (
                         <span className={styles.optionMeta}>
                           {formatDuration(
@@ -4315,32 +4437,24 @@ export function CustomerBookingFlowPage() {
         return (
           <div>
             <p className={styles.copy}>
-              Select any promos or coupons to apply - the total below already
-              respects the combined-discount limit.
+              Choose one promo or coupon - only one can be used per booking.
             </p>
             <PromoCouponMultiSelect
               promos={applicablePromos}
               coupons={applicableCoupons}
               selectedPromoIds={selectedPromoIds}
               selectedCouponIds={selectedCouponIds}
-              onTogglePromo={(promoId) =>
-                setSelectedPromoIds((prev) =>
-                  prev.includes(promoId)
-                    ? prev.filter((id) => id !== promoId)
-                    : [...prev, promoId]
-                )
-              }
-              onToggleCoupon={(couponId) =>
-                setSelectedCouponIds((prev) =>
-                  prev.includes(couponId)
-                    ? prev.filter((id) => id !== couponId)
-                    : [...prev, couponId]
-                )
-              }
+              onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
+              onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
               cap={promoCap}
               cappedTotal={promoDiscount}
               groupSubtotal={groupSubtotal}
             />
+            {reductionOverLimit ? (
+              <p className={styles.errorBanner} role="alert">
+                {REDUCTION_LIMIT_MESSAGE}
+              </p>
+            ) : null}
           </div>
         );
 
@@ -4430,6 +4544,11 @@ export function CustomerBookingFlowPage() {
                 in, and the bill for the actual stay goes to the cashier at
                 checkout.
               </p>
+            ) : isAssessmentOnly ? (
+              <p className={styles.copy}>
+                No payment is collected in this step. Any charge is settled
+                afterwards at the counter.
+              </p>
             ) : requiresPayment ? (
               <p className={styles.copy}>
                 No payment is collected in this step - you are only choosing the
@@ -4503,7 +4622,7 @@ export function CustomerBookingFlowPage() {
                       type="radio"
                       name="discount"
                       checked={selectedDiscountId === discount.id}
-                      onChange={() => setSelectedDiscountId(discount.id)}
+                      onChange={() => selectOnlyDiscount(discount.id)}
                     />
                     {discount.name} (
                     {discount.discount_type === 'Percentage'
@@ -4523,7 +4642,7 @@ export function CustomerBookingFlowPage() {
               <p className={styles.copy}>
                 {selectedPromoIds.length + selectedCouponIds.length === 0
                   ? 'None selected.'
-                  : `${selectedPromoIds.length + selectedCouponIds.length} selected, -PHP ${promoDiscount.toFixed(2)}.`}
+                  : `${selectedReductionName}, -PHP ${promoDiscount.toFixed(2)}.`}
               </p>
               <button
                 type="button"
@@ -4536,6 +4655,12 @@ export function CustomerBookingFlowPage() {
               </button>
             </div>
 
+            {reductionOverLimit ? (
+              <p className={styles.errorBanner} role="alert">
+                {REDUCTION_LIMIT_MESSAGE}
+              </p>
+            ) : null}
+
             {submitError ? (
               <p className={styles.errorBanner} role="alert">
                 {submitError}
@@ -4545,7 +4670,9 @@ export function CustomerBookingFlowPage() {
             <button
               type="button"
               className={styles.primaryButton}
-              disabled={!isCurrentStepValid || isSubmitting}
+              disabled={
+                !isCurrentStepValid || isSubmitting || reductionOverLimit
+              }
               onClick={() => void handleSubmit()}
             >
               {isSubmitting ? 'Confirming...' : 'Confirm booking'}
@@ -4790,6 +4917,13 @@ export function CustomerBookingFlowPage() {
               </button>
             </div>
           )}
+
+          {showStorePolicies ? (
+            <StorePoliciesModal
+              onClose={() => setShowStorePolicies(false)}
+              onAgree={handleStorePoliciesAgree}
+            />
+          ) : null}
         </section>
 
         <div className={styles.summaryColumn}>

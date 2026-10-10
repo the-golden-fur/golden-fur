@@ -80,6 +80,54 @@
   gap: var(--space-1);
 }
 
+/* One prescribed medicine: its labelled fields, then its Remove button. */
+.medicationCard {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+}
+
+.medicationCard .secondaryButton {
+  justify-self: start;
+}
+
+/* A text input has its own built-in width, wider than a narrow grid column,
+   so without this the boxes spill out of their cells and sit on top of each
+   other. Each field is held to its column and its box fills it. */
+.medicationCard .medicationRowFields {
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-2);
+}
+
+.medicationCard .field {
+  min-width: 0;
+}
+
+.medicationCard .input,
+.medicationCard .readOnlyField {
+  width: 100%;
+  min-width: 0;
+}
+
+.medicationCard .readOnlyField {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+/* Instructions is a sentence, not a value - it gets the whole row. */
+.medicationCard .fieldWide {
+  grid-column: 1 / -1;
+}
+
+/* Quantity: the number, then what it counts ("14" "capsules"). */
+.quantityInputs {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--space-1);
+}
+
 .medicationRowFields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
@@ -266,4 +314,29 @@
 .addMedicineRow .input {
   flex: 1;
   min-width: 12rem;
+}
+
+/* View Details > Services done: what the vet billed at the visit, amounts
+   right-aligned so they line up down the list. */
+.servicesDoneList {
+  display: grid;
+  gap: var(--space-0-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.servicesDoneRow,
+.servicesDoneTotal {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.servicesDoneTotal {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-1);
+  font-weight: var(--weight-semibold);
 }

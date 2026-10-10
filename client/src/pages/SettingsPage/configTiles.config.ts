@@ -10,6 +10,7 @@ import {
   Percent,
   Scale,
   ScrollText,
+  Stethoscope,
   type LucideIcon,
 } from 'lucide-react';
 import { AdminServicesAndPackagesPage } from '../../features/maintenance/pages/AdminServicesAndPackagesPage/AdminServicesAndPackagesPage';
@@ -22,6 +23,7 @@ import { AdminDiscountManagementPage } from '../../features/discounts/pages/Admi
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
 import { FaqConfigurationPage } from '../../features/faq/pages/FaqConfigurationPage/FaqConfigurationPage';
+import { VetServicesConfigurationPage } from '../../features/veterinary/pages/VetServicesConfigurationPage/VetServicesConfigurationPage';
 
 export interface ConfigTileConfig {
   title: string;
@@ -143,6 +145,23 @@ export const FAQS_TILE: ConfigTileConfig = {
   to: '/staff/admin/maintenance/faqs',
   icon: MessageCircleQuestion,
   Component: FaqConfigurationPage,
+};
+
+/**
+ * Superadmin-only, appended conditionally to `CONFIG_TILES` (see
+ * SettingsPage.tsx), same shape as FAQS_TILE above: the vet procedure list
+ * (services and usual prices a vet picks from when completing a visit) is one
+ * list for every branch. VetServicesConfigurationPage enforces this too
+ * (ALLOWED_VIEWER_ROLES), as do the server's /veterinary/service-catalog
+ * routes. The services customers book stay under Services and Packages.
+ */
+export const VET_SERVICES_TILE: ConfigTileConfig = {
+  title: 'Veterinary Services',
+  description:
+    'Set the services and usual prices vets choose from when completing a visit.',
+  to: '/staff/admin/maintenance/veterinary-services',
+  icon: Stethoscope,
+  Component: VetServicesConfigurationPage,
 };
 
 /**

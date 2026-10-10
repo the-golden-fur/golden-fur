@@ -256,6 +256,33 @@ describe('services.service', () => {
       expect(smallLongCoat?.price).toBe(350);
     });
 
+    it("uses a Superadmin-set cell in place of the formula's price, and never returns the raw rows", async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              ...GROOMING_SERVICE,
+              service_pricing_cell_overrides: [
+                { weight_class: 'S', coat_type: 'LC', price: '420.00' },
+              ],
+            },
+          ],
+          error: null,
+        },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
+
+      const [service] = await listServices({});
+      const cell = (weight: string, coat: string) =>
+        service.service_pricing_tiers?.find(
+          (tier) => tier.weight_class === weight && tier.coat_type === coat
+        );
+
+      expect(cell('S', 'LC')).toMatchObject({ price: 420, is_custom: true });
+      expect(cell('S', 'SC')).toMatchObject({ price: 300, is_custom: false });
+      expect(service).not.toHaveProperty('service_pricing_cell_overrides');
+    });
+
     it('returns an empty matrix for non-Grooming services', async () => {
       const vetService = { ...GROOMING_SERVICE, category: 'Veterinary' };
       queueFromResults(

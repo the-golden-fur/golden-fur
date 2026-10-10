@@ -26,6 +26,10 @@ import {
   type PharmacyChargePlan,
 } from './pharmacyCharge.service.ts';
 import { postServicesDoneCharge } from './serviceCharge.service.ts';
+import {
+  notifyMedicineChargeChange,
+  notifyVisitCharges,
+} from './vetChargeNotifications.service.ts';
 
 // consultations has TWO foreign keys to bookings (booking_id and
 // follow_up_booking_id - see ...040_m07_create_veterinary_schema.sql), so
@@ -35,8 +39,10 @@ import { postServicesDoneCharge } from './serviceCharge.service.ts';
 // medication_transaction (pharmacy prescriptions) is the visit's medicine
 // sale, when there is one - only its payment_status, so the console can tell
 // a vet whether an edit will still change the bill.
+// line_items: what the vet listed as done at the visit ('procedure' rows),
+// so View Details can show it back - see updateConsultation.
 const CONSULTATION_SELECT =
-  '*, booking:bookings!booking_id(*), medication_transaction:transactions!medication_transaction_id(payment_status)';
+  '*, booking:bookings!booking_id(*), medication_transaction:transactions!medication_transaction_id(payment_status), line_items:consultation_line_items(item_type, description, amount)';
 
 /** The bookings a vet can act on: 'In Progress', plus 'Pending' ones that
  * have been paid for (the paid check is in listConsultationQueue itself).
@@ -403,7 +409,7 @@ async function releaseConsultationClaim(
 
 /**
  * consultations.medications stores {name, dose, notes, medicine_type,
- * frequency, duration} (#63 migration comment, widened #117) plus, for
+ * strength, frequency, duration, quantity_unit, refills} (#63 migration comment, widened #117) plus, for
  * pharmacy prescriptions, quantity and the medicine-list entry it came from.
  * A price is never stored here - a sale's unit price is read from the
  * medicine list when the medicine transaction is written.
@@ -417,18 +423,24 @@ function toStoredMedications(
       dose,
       notes,
       medicine_type,
+      strength,
       frequency,
       duration,
       quantity,
+      quantity_unit,
+      refills,
       medication_catalog_id,
     }) => ({
       name,
       dose,
       notes: notes ?? null,
       medicine_type: medicine_type ?? null,
+      strength: strength ?? null,
       frequency: frequency ?? null,
       duration: duration ?? null,
       quantity: quantity ?? 1,
+      quantity_unit: quantity_unit ?? null,
+      refills: refills ?? 0,
       medication_catalog_id: medication_catalog_id ?? null,
     })
   );
@@ -531,7 +543,16 @@ async function updateFinishedConsultation({
     );
   }
 
-  return applyPharmacyPlan(updated as Consultation, plan, requesterId);
+  const saved = await applyPharmacyPlan(
+    updated as Consultation,
+    plan,
+    requesterId
+  );
+
+  // The customer hears about every change to what they owe.
+  await notifyMedicineChargeChange({ consultation: saved, plan });
+
+  return saved;
 }
 
 /**
@@ -733,6 +754,16 @@ export async function updateConsultation({
     saved = await getConsultation(consultationId);
   }
 
+  if (input.status === 'Completed') {
+    // The customer hears what this visit charged them - services done and
+    // medicines together, in one notification.
+    await notifyVisitCharges({
+      consultation: saved,
+      servicesDone,
+      pharmacyPlan,
+    });
+  }
+
   return saved;
 }
 
@@ -915,9 +946,12 @@ export async function listPetPrescriptionsForRequester({
         dose: medication.dose,
         notes: medication.notes ?? null,
         medicine_type: medication.medicine_type ?? null,
+        strength: medication.strength ?? null,
         frequency: medication.frequency ?? null,
         duration: medication.duration ?? null,
         quantity: medication.quantity ?? null,
+        quantity_unit: medication.quantity_unit ?? null,
+        refills: medication.refills ?? null,
       })),
     };
   });

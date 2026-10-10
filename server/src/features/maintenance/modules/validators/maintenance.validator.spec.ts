@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  pricingCellsValidator,
   branchAvailabilityValidator,
   createBreedValidator,
   createPackageValidator,
@@ -765,5 +766,43 @@ describe('upsertPromoCapConfigurationValidator (Epic B #84)', () => {
         cap_value: 2.5,
       }).success
     ).toBe(false);
+  });
+});
+
+describe('pricingCellsValidator (per-item weight x coat pricing)', () => {
+  it('accepts a price, or null to go back to the formula', () => {
+    expect(
+      pricingCellsValidator.safeParse({
+        cells: [
+          { weight_class: 'L', coat_type: 'LC', price: 650 },
+          { weight_class: 'S', coat_type: 'SC', price: null },
+        ],
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects the same cell twice, an unknown size, or a negative price', () => {
+    expect(
+      pricingCellsValidator.safeParse({
+        cells: [
+          { weight_class: 'L', coat_type: 'LC', price: 650 },
+          { weight_class: 'L', coat_type: 'LC', price: 700 },
+        ],
+      }).success
+    ).toBe(false);
+    expect(
+      pricingCellsValidator.safeParse({
+        cells: [{ weight_class: 'XXL', coat_type: 'LC', price: 650 }],
+      }).success
+    ).toBe(false);
+    expect(
+      pricingCellsValidator.safeParse({
+        cells: [{ weight_class: 'L', coat_type: 'LC', price: -1 }],
+      }).success
+    ).toBe(false);
+  });
+
+  it('needs at least one cell', () => {
+    expect(pricingCellsValidator.safeParse({ cells: [] }).success).toBe(false);
   });
 });

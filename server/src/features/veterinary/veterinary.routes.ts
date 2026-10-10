@@ -35,6 +35,7 @@ import {
 } from './veterinary.controller.ts';
 import {
   VETERINARY_READ_ROLES,
+  VETERINARY_SERVICE_CATALOG_ROLES,
   VETERINARY_WRITE_ROLES,
 } from './veterinary.types.ts';
 
@@ -59,6 +60,14 @@ const vetWrite = [
   sessionTimeoutMiddleware,
   requireRole([...VETERINARY_WRITE_ROLES]),
   requireBranch,
+];
+
+// The vet procedure list is clinic-wide, so no requireBranch: a Superadmin
+// managing it from Config isn't necessarily tied to a branch.
+const serviceCatalogWrite = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...VETERINARY_SERVICE_CATALOG_ROLES]),
 ];
 
 const medicationImageUpload = multer({
@@ -210,26 +219,26 @@ router.delete(
 
 // Vet-priced visits: the clinic's shared list of veterinary services and
 // their usual prices, suggested from when a vet lists what was done at a
-// visit. Veterinarian-only (vetWrite), reads included - same as the
-// medication catalog above.
+// visit. Veterinarians and Superadmins (Config > Veterinary Services), reads
+// included - see serviceCatalogWrite.
 router.get(
   '/veterinary/service-catalog',
-  vetWrite,
+  serviceCatalogWrite,
   listServiceCatalogController
 );
 router.post(
   '/veterinary/service-catalog',
-  vetWrite,
+  serviceCatalogWrite,
   createServiceCatalogItemController
 );
 router.patch(
   '/veterinary/service-catalog/:id',
-  vetWrite,
+  serviceCatalogWrite,
   updateServiceCatalogItemController
 );
 router.delete(
   '/veterinary/service-catalog/:id',
-  vetWrite,
+  serviceCatalogWrite,
   deleteServiceCatalogItemController
 );
 

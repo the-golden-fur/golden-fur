@@ -25,6 +25,7 @@ vi.mock('../../api/maintenance.api', () => ({
   listBranches: vi.fn(),
   listServices: vi.fn(),
   createService: vi.fn(),
+  setServicePricingCells: vi.fn(),
   updateService: vi.fn(),
   archiveService: vi.fn(),
   setServiceBranchAvailability: vi.fn(),
@@ -318,8 +319,16 @@ describe('AdminServicesPage', () => {
     });
   });
 
-  it('Epic B #81: create form no longer accepts pricing_tiers - the matrix is derived read-only', async () => {
+  it('per-item weight x coat pricing: a Superadmin turns it on, overrides one cell, and the changed cell is saved', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
+      error: null,
+    });
     vi.mocked(maintenanceApi.createService).mockResolvedValue({
+      data: buildService({ id: 'service-new', name: 'Dematting' }),
+      error: null,
+    });
+    vi.mocked(maintenanceApi.setServicePricingCells).mockResolvedValue({
       data: buildService({ id: 'service-new', name: 'Dematting' }),
       error: null,
     });
@@ -333,36 +342,71 @@ describe('AdminServicesPage', () => {
     await user.type(screen.getByLabelText('Name'), 'Dematting');
     await user.type(screen.getByLabelText('Base price (PHP)'), '350');
 
-    // Custom change (pricing matrix fix): the matrix is now opt-in - off by
-    // default, so the preview doesn't render until the checkbox is checked.
+    // Opt-in: no grid until the switch is on.
+    expect(
+      screen.queryByText('Price by weight class and coat')
+    ).not.toBeInTheDocument();
     await user.click(
       screen.getByRole('switch', {
-        name: /Derive price from weight\/coat matrix/,
+        name: /Price varies by weight class and coat/,
       })
     );
 
-    // The derived preview shows the computed price, with no editable inputs
-    // of its own (only the Base price and Average service time form fields
-    // remain spinbuttons).
-    expect(screen.getByText('PHP 350.00')).toBeInTheDocument();
-    expect(screen.queryAllByRole('spinbutton')).toHaveLength(2);
+    // Every cell starts at the formula's price for the base price.
+    const smallShort = screen.getByLabelText('Small (S), short coat price');
+    expect(smallShort).toHaveValue(350);
+    expect(screen.getAllByText('Formula')).toHaveLength(8);
+
+    const largeLong = screen.getByLabelText('Large (L), long coat price');
+    await user.clear(largeLong);
+    await user.type(largeLong, '650');
+    expect(screen.getByText('Own price')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Save service' }));
 
     await waitFor(() => {
-      expect(maintenanceApi.createService).toHaveBeenCalledWith('token', {
-        name: 'Dematting',
-        category: 'Grooming',
-        base_price: 350,
-        requires_assessed_pet: true,
-        captures_pet_assessment: false,
-        use_pricing_matrix: true,
-        icon: null,
-        image_url: null,
-      });
+      expect(maintenanceApi.createService).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({ base_price: 350, use_pricing_matrix: true })
+      );
+    });
+    // Only the changed cell is sent; the other 7 keep following the formula.
+    expect(maintenanceApi.setServicePricingCells).toHaveBeenCalledWith(
+      'service-new',
+      'token',
+      { cells: [{ weight_class: 'L', coat_type: 'LC', price: 650 }] }
+    );
+    expect(await screen.findByText('Service created.')).toBeInTheDocument();
+  });
+
+  it('per-item weight x coat pricing: an Admin sees the switch and grid but cannot change them', async () => {
+    vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+      data: [buildService({ use_pricing_matrix: true })],
+      error: null,
     });
 
-    expect(await screen.findByText('Service created.')).toBeInTheDocument();
+    renderPage();
+    const user = userEvent.setup();
+
+    const row = (await screen.findByText('Bath')).closest('tr') as HTMLElement;
+    await user.click(
+      within(row).getByRole('button', { name: 'Actions for Bath' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+    expect(
+      screen.getByRole('switch', {
+        name: /Price varies by weight class and coat/,
+      })
+    ).toBeDisabled();
+    expect(
+      screen.getByText('Only a Superadmin can change these prices.')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Large (L), long coat price', {
+        selector: 'input',
+      })
+    ).not.toBeInTheDocument();
   });
 
   it('Architectural-Change-History: the "average service time" field shows for every category and is submitted', async () => {
@@ -404,7 +448,11 @@ describe('AdminServicesPage', () => {
     });
   });
 
-  it('the pricing matrix preview is opt-in for Grooming and hidden entirely for non-Grooming categories', async () => {
+  it('the pricing matrix grid is opt-in for Grooming and hidden entirely for non-Grooming categories', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
+      error: null,
+    });
     renderPage();
     const user = userEvent.setup();
 
@@ -415,17 +463,17 @@ describe('AdminServicesPage', () => {
     // Custom change (pricing matrix fix): off by default even for Grooming -
     // the checkbox exists, but the preview doesn't render until it's checked.
     const matrixCheckbox = screen.getByRole('switch', {
-      name: /Derive price from weight\/coat matrix/,
+      name: /Price varies by weight class and coat/,
     });
     expect(matrixCheckbox).not.toBeChecked();
     expect(
-      screen.queryByText('Size & coat pricing matrix - derived, read-only')
+      screen.queryByText('Price by weight class and coat')
     ).not.toBeInTheDocument();
 
     await user.click(matrixCheckbox);
 
     expect(
-      screen.getByText('Size & coat pricing matrix - derived, read-only')
+      screen.getByText('Price by weight class and coat')
     ).toBeInTheDocument();
 
     // Two "Category" controls exist once the form is open (the list filter
@@ -434,11 +482,11 @@ describe('AdminServicesPage', () => {
 
     expect(
       screen.queryByRole('switch', {
-        name: /Derive price from weight\/coat matrix/,
+        name: /Price varies by weight class and coat/,
       })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Size & coat pricing matrix - derived, read-only')
+      screen.queryByText('Price by weight class and coat')
     ).not.toBeInTheDocument();
   });
 
@@ -582,6 +630,94 @@ describe('AdminServicesPage', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Edit service' });
     expect(within(dialog).getByLabelText('Name')).toHaveValue('Bath');
+  });
+
+  describe('closing the form with unsaved edits', () => {
+    async function openConfigureAndRename(
+      user: ReturnType<typeof userEvent.setup>
+    ) {
+      const row = (await screen.findByText('Bath')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Bath' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+      const dialog = screen.getByRole('dialog', { name: 'Edit service' });
+      const name = within(dialog).getByLabelText('Name');
+      await user.clear(name);
+      await user.type(name, 'Bubble Bath');
+
+      return dialog;
+    }
+
+    it('asks before discarding, and keeps the edits on "Keep editing"', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigureAndRename(user);
+
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+      const confirm = screen.getByRole('dialog', {
+        name: 'Discard unsaved changes?',
+      });
+      await user.click(
+        within(confirm).getByRole('button', { name: 'Keep editing' })
+      );
+
+      expect(
+        screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })
+      ).not.toBeInTheDocument();
+      expect(
+        within(
+          screen.getByRole('dialog', { name: 'Edit service' })
+        ).getByLabelText('Name')
+      ).toHaveValue('Bubble Bath');
+    });
+
+    it('closes the form on "Discard changes"', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigureAndRename(user);
+
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      await user.click(
+        within(
+          screen.getByRole('dialog', { name: 'Discard unsaved changes?' })
+        ).getByRole('button', { name: 'Discard changes' })
+      );
+
+      expect(
+        screen.queryByRole('dialog', { name: 'Edit service' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('closes straight away when nothing was edited', async () => {
+      renderPage();
+      const user = userEvent.setup();
+
+      const row = (await screen.findByText('Bath')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Bath' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+      await user.click(
+        within(screen.getByRole('dialog', { name: 'Edit service' })).getByRole(
+          'button',
+          { name: 'Cancel' }
+        )
+      );
+
+      expect(
+        screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('dialog', { name: 'Edit service' })
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('Configure carries the per-branch "Available at" selection (there is no separate Branch Availability action)', async () => {

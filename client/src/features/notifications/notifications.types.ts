@@ -12,7 +12,9 @@ export type NotificationEventType =
   | 'staff_assigned'
   | 'booking_slot_conflict'
   | 'spin_wheel_earned'
-  | 'daycare_overdue';
+  | 'daycare_overdue'
+  | 'vet_charge_posted'
+  | 'checkout_reminder';
 
 export interface Notification {
   id: string;

@@ -51,6 +51,8 @@ const medicationInputValidator = z
     // never be blocked from entering something outside the client's
     // suggested-value lists.
     medicine_type: z.string().trim().optional(),
+    // How strong the product is ("250 mg") - free text.
+    strength: z.string().trim().optional(),
     frequency: z.string().trim().optional(),
     duration: z.string().trim().optional(),
     // Pharmacy prescriptions: how many units are prescribed, and which
@@ -58,6 +60,9 @@ const medicationInputValidator = z
     // always read from that entry server-side (pharmacyCharge.service.ts),
     // never taken from the request.
     quantity: z.number().int().positive().optional(),
+    // What the quantity counts ("capsules"), and how many refills.
+    quantity_unit: z.string().trim().optional(),
+    refills: z.number().int().min(0).optional(),
     medication_catalog_id: z.uuid().nullable().optional(),
     // No longer read - kept only so an older client that still sends a
     // per-medicine price isn't rejected by .strict().

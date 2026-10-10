@@ -8,6 +8,7 @@ import { AdminPromosAndRewardsPage } from './pages/AdminPromosAndRewardsPage/Adm
 import { AdminPetsPage } from './pages/AdminPetsPage/AdminPetsPage';
 import { BranchesPage } from './pages/BranchesPage/BranchesPage';
 import { FaqConfigurationPage } from '../faq/pages/FaqConfigurationPage/FaqConfigurationPage';
+import { VetServicesConfigurationPage } from '../veterinary/pages/VetServicesConfigurationPage/VetServicesConfigurationPage';
 
 /**
  * Admin maintenance panel routes (#45-#47). StaffAuthGuard handles
@@ -35,6 +36,11 @@ export const maintenanceRoutes = (
       <Route
         path="/staff/admin/maintenance/faqs"
         element={<FaqConfigurationPage />}
+      />
+      {/* Same for Veterinary Services (features/veterinary). */}
+      <Route
+        path="/staff/admin/maintenance/veterinary-services"
+        element={<VetServicesConfigurationPage />}
       />
       <Route
         path="/staff/admin/maintenance/promos-and-rewards"

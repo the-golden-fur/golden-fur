@@ -14,6 +14,10 @@ import {
 } from './services/services.service.ts';
 import { uploadServiceImage } from './services/maintenanceImageUpload.service.ts';
 import {
+  setPackagePricingCells,
+  setServicePricingCells,
+} from './services/pricingCells.service.ts';
+import {
   archivePackage,
   createPackage,
   getPackageById,
@@ -73,6 +77,7 @@ import {
 import {
   branchAvailabilityValidator,
   branchPriceValidator,
+  pricingCellsValidator,
   createBreedValidator,
   createPackageValidator,
   createPromoValidator,
@@ -247,7 +252,11 @@ export async function createServiceController(
   }
 
   try {
-    const service = await createService({ requesterId, input: parsed.data });
+    const service = await createService({
+      requesterId,
+      requesterRole: req.user?.role,
+      input: parsed.data,
+    });
     return res.status(201).json({ service });
   } catch (error) {
     return sendServiceError(res, error);
@@ -275,6 +284,7 @@ export async function updateServiceController(
   try {
     const service = await updateService({
       requesterId,
+      requesterRole: req.user?.role,
       serviceId: paramId(req, 'id'),
       updates: parsed.data,
     });
@@ -353,6 +363,57 @@ export async function setServiceBranchPriceController(
   }
 }
 
+/** Per-item weight x coat pricing - shared by the service and package
+ * routes below. Superadmin-only (route + service). */
+async function handlePricingCells(
+  req: AuthenticatedRequest,
+  res: Response,
+  kind: 'service' | 'package'
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+
+  if (!requesterId || !requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = pricingCellsValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  const params = { cells: parsed.data.cells, requesterId, requesterRole };
+
+  try {
+    if (kind === 'service') {
+      const service = await setServicePricingCells(paramId(req, 'id'), params);
+      return res.status(200).json({ service });
+    }
+
+    const pkg = await setPackagePricingCells(paramId(req, 'id'), params);
+    return res.status(200).json({ package: pkg });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export function setServicePricingCellsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  return handlePricingCells(req, res, 'service');
+}
+
+export function setPackagePricingCellsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  return handlePricingCells(req, res, 'package');
+}
+
 // ---------------------------------------------------------------------------
 // Packages (#41)
 // ---------------------------------------------------------------------------
@@ -404,7 +465,11 @@ export async function createPackageController(
   }
 
   try {
-    const pkg = await createPackage({ requesterId, input: parsed.data });
+    const pkg = await createPackage({
+      requesterId,
+      requesterRole: req.user?.role,
+      input: parsed.data,
+    });
     return res.status(201).json({ package: pkg });
   } catch (error) {
     return sendServiceError(res, error);
@@ -432,6 +497,7 @@ export async function updatePackageController(
   try {
     const pkg = await updatePackage({
       requesterId,
+      requesterRole: req.user?.role,
       packageId: paramId(req, 'id'),
       updates: parsed.data,
     });

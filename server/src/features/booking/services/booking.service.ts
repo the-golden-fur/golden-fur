@@ -23,9 +23,7 @@ import {
   applyPromoCap,
   type PromoCapRow,
 } from '../../../shared/services/promoCap/promoCap.service.ts';
-import { getPricingConfiguration } from '../../maintenance/services/pricingConfiguration.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
-import { deriveGroomingMatrix } from '../../maintenance/utils/deriveGroomingMatrix.ts';
 import {
   createNotification,
   notifyStaffRoleAtBranch,
@@ -397,7 +395,7 @@ async function resolveBookingItem(
 export async function resolvePackagePrice(
   pkg: Pick<
     Awaited<ReturnType<typeof getPackageById>>,
-    'bundled_price' | 'use_pricing_matrix'
+    'bundled_price' | 'use_pricing_matrix' | 'pricing_tiers'
   >,
   pet: PetRow,
   fixedPriceOverride: number | null = null
@@ -408,16 +406,14 @@ export async function resolvePackagePrice(
     return Number(pkg.bundled_price);
   }
 
-  const pricingConfiguration = await getPricingConfiguration();
-  const cell = deriveGroomingMatrix(
-    Number(pkg.bundled_price),
-    pricingConfiguration
-  ).find(
+  // Per-item weight x coat pricing: the package's own cells (formula, with
+  // any Superadmin-set cell in its place) - attached by getPackageById.
+  const cell = (pkg.pricing_tiers ?? []).find(
     (row) =>
       row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
   );
 
-  return cell?.price ?? Number(pkg.bundled_price);
+  return cell ? Number(cell.price) : Number(pkg.bundled_price);
 }
 
 export async function resolveBookingItems(
@@ -577,6 +573,36 @@ async function getPromoCapRow(branchId: string): Promise<PromoCapRow> {
   return capRow;
 }
 
+/** The share of a booking's price the customer always pays, whatever
+ * discount, promos and coupons are selected - together they may take off at
+ * most the rest. Mirrored client-side in minPayableShare.ts. */
+export const MIN_PAYABLE_SHARE = 0.5;
+
+/**
+ * No booking is made free (or nearly free) by its reductions: refuses a
+ * selection that takes off more than 1 - MIN_PAYABLE_SHARE of the price,
+ * rather than quietly trimming it, so the customer chooses what to drop. A
+ * service priced at zero on purpose (Initial Assessment, Follow-up
+ * Consultation) has nothing to reduce and is unaffected.
+ */
+function assertMinimumPayable(
+  totalPrice: number,
+  discountAmount: number,
+  promoAmount: number
+): void {
+  if (totalPrice <= 0) return;
+
+  const reduction = round2(discountAmount + promoAmount);
+  const maxReduction = round2(totalPrice * (1 - MIN_PAYABLE_SHARE));
+
+  if (reduction > maxReduction) {
+    throwWithStatus(
+      400,
+      `Discounts and promos can take off at most ${Math.round((1 - MIN_PAYABLE_SHARE) * 100)}% of the price. This booking is PHP ${totalPrice.toFixed(2)} and they take off PHP ${reduction.toFixed(2)} - remove one to continue.`
+    );
+  }
+}
+
 export interface PromoSelectionResolution {
   promoId: string | null;
   couponId: string | null;
@@ -620,6 +646,21 @@ export async function resolveDiscountAndPromos(
   totalPrice: number,
   customerId: string
 ): Promise<DiscountPromoResolution> {
+  // No stacking: a booking carries one reduction in total - a discount, OR a
+  // promo, OR a coupon. Refused rather than trimmed to the best one, so the
+  // customer chooses which.
+  const reductionCount =
+    (input.discount_id ? 1 : 0) +
+    (input.promo_ids ?? []).length +
+    (input.coupon_ids ?? []).length;
+
+  if (reductionCount > 1) {
+    throwWithStatus(
+      400,
+      'Only one discount, promo or coupon can be used per booking.'
+    );
+  }
+
   let selectedDiscountId: string | null = null;
   let discountAmount = 0;
 
@@ -684,6 +725,8 @@ export async function resolveDiscountAndPromos(
   const couponIds = input.coupon_ids ?? [];
 
   if (promoIds.length === 0 && couponIds.length === 0) {
+    assertMinimumPayable(totalPrice, discountAmount, 0);
+
     return {
       selectedDiscountId,
       discountAmount,
@@ -787,6 +830,8 @@ export async function resolveDiscountAndPromos(
   const promoAmount = round2(
     promoSelections.reduce((sum, selection) => sum + selection.appliedAmount, 0)
   );
+
+  assertMinimumPayable(totalPrice, discountAmount, promoAmount);
 
   return { selectedDiscountId, discountAmount, promoSelections, promoAmount };
 }

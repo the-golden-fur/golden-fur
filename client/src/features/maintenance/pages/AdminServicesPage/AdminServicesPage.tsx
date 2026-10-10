@@ -11,9 +11,15 @@ import {
   listServices,
   setServiceBranchAvailability,
   setServiceBranchPrice,
+  setServicePricingCells,
   updateService,
 } from '../../api/maintenance.api';
-import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
+import { PricingMatrixEditor } from '../../components/PricingMatrixEditor/PricingMatrixEditor';
+import {
+  draftsFromCells,
+  pricingCellsChanges,
+  type CellDrafts,
+} from '../../components/PricingMatrixEditor/pricingCellDrafts';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
@@ -27,6 +33,7 @@ import type {
   FilterValue,
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import {
   MoreOptionsMenu,
@@ -100,6 +107,9 @@ interface ServiceFormState {
    * branch id, as typed. '' (or no entry) = the branch charges the base
    * price. */
   branchPrices: Record<string, string>;
+  /** Superadmin-only (per-item weight x coat pricing): this service's own
+   * weight x coat prices, as typed. A missing cell follows the formula. */
+  pricingCells: CellDrafts;
   icon: string | null;
   imageUrl: string | null;
 }
@@ -119,6 +129,7 @@ const EMPTY_FORM: ServiceFormState = {
   daycareOvernightFee: '',
   branchIds: [],
   branchPrices: {},
+  pricingCells: {},
   icon: null,
   imageUrl: null,
 };
@@ -154,6 +165,7 @@ function formStateFromService(service: Service): ServiceFormState {
         .filter((row) => row.price_override != null)
         .map((row) => [row.branch_id, String(row.price_override)])
     ),
+    pricingCells: draftsFromCells(service.service_pricing_tiers),
     icon: service.icon,
     imageUrl: service.image_url,
   };
@@ -188,6 +200,10 @@ export function AdminServicesPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [form, setForm] = useState<ServiceFormState>(EMPTY_FORM);
+  // The form as it was when the modal opened - what `form` is compared
+  // against to tell whether there are unsaved edits (see requestCloseForm).
+  const [initialForm, setInitialForm] = useState<ServiceFormState>(EMPTY_FORM);
+  const [isConfirmingDiscard, setIsConfirmingDiscard] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -352,24 +368,50 @@ export function AdminServicesPage() {
     });
 
   const openCreateForm = () => {
+    const blankForm = {
+      ...EMPTY_FORM,
+      branchIds: branches.map((branch) => branch.id),
+    };
+
     setEditingServiceId(null);
-    setForm({ ...EMPTY_FORM, branchIds: branches.map((branch) => branch.id) });
+    setForm(blankForm);
+    setInitialForm(blankForm);
     setFormError(null);
     setIsFormOpen(true);
   };
 
   const openEditForm = (service: Service) => {
+    const serviceForm = formStateFromService(service);
+
     setEditingServiceId(service.id);
-    setForm(formStateFromService(service));
+    setForm(serviceForm);
+    setInitialForm(serviceForm);
     setFormError(null);
     setIsFormOpen(true);
   };
 
   const closeForm = () => {
     setIsFormOpen(false);
+    setIsConfirmingDiscard(false);
     setEditingServiceId(null);
     setForm(EMPTY_FORM);
+    setInitialForm(EMPTY_FORM);
     setFormError(null);
+  };
+
+  // Closing by Cancel, the X, Escape or a click outside (never by a
+  // successful save, which calls closeForm directly) asks "Discard unsaved
+  // changes?" first when the form was edited, so a stray click can't silently
+  // throw the edits away. Same pattern as BranchConfigureModal.
+  const isFormDirty = JSON.stringify(form) !== JSON.stringify(initialForm);
+
+  const requestCloseForm = () => {
+    if (isFormDirty) {
+      setIsConfirmingDiscard(true);
+      return;
+    }
+
+    closeForm();
   };
 
   /**
@@ -427,6 +469,40 @@ export function AdminServicesPage() {
     });
 
     return { ...service, service_branch_availability: updatedRows };
+  }
+
+  /**
+   * Per-item weight x coat pricing: saves the cells the Superadmin changed
+   * (already validated by pricingCellsChanges in handleSubmit) and returns
+   * the service with its cells as they now read. An error leaves the rest
+   * of the save standing and is reported to the caller.
+   */
+  async function applyPricingCells(
+    service: Service,
+    cells: ReturnType<typeof pricingCellsChanges>['cells']
+  ): Promise<{ service: Service; error: string | null }> {
+    if (!accessToken || !canSetBranchPrices || cells.length === 0) {
+      return { service, error: null };
+    }
+
+    const result = await setServicePricingCells(service.id, accessToken, {
+      cells,
+    });
+
+    if (result.error || !result.data) {
+      return {
+        service,
+        error: result.error ?? 'Could not save the weight and coat prices.',
+      };
+    }
+
+    return {
+      service: {
+        ...service,
+        service_pricing_tiers: result.data.service_pricing_tiers,
+      },
+      error: null,
+    };
   }
 
   /**
@@ -524,6 +600,27 @@ export function AdminServicesPage() {
       return;
     }
 
+    // Per-item weight x coat pricing: only a Superadmin's grid is ever sent,
+    // and only for a Grooming service that varies by weight and coat.
+    const savedService =
+      editingServiceId === null
+        ? null
+        : services.find((service) => service.id === editingServiceId);
+    const pricingCells =
+      canSetBranchPrices &&
+      form.category === 'Grooming' &&
+      form.usePricingMatrix
+        ? pricingCellsChanges(
+            draftsFromCells(savedService?.service_pricing_tiers),
+            form.pricingCells
+          )
+        : { cells: [], error: null };
+
+    if (pricingCells.error) {
+      setFormError(pricingCells.error);
+      return;
+    }
+
     const firstHourFee =
       form.firstHourFee === '' ? undefined : Number(form.firstHourFee);
     const succeedingHourFee =
@@ -597,14 +694,21 @@ export function AdminServicesPage() {
         return;
       }
 
-      const finalService = await applyBranchPrices(
-        await applyBranchSelection(result.data, form.branchIds),
-        form.branchPrices
+      const priced = await applyPricingCells(
+        await applyBranchPrices(
+          await applyBranchSelection(result.data, form.branchIds),
+          form.branchPrices
+        ),
+        pricingCells.cells
       );
 
       setIsSubmitting(false);
-      setServices((prev) => [...prev, finalService]);
-      setMessage('Service created.');
+      setServices((prev) => [...prev, priced.service]);
+      setMessage(
+        priced.error
+          ? `Service created, but its weight and coat prices were not saved: ${priced.error}`
+          : 'Service created.'
+      );
       closeForm();
       return;
     }
@@ -634,14 +738,21 @@ export function AdminServicesPage() {
       return;
     }
 
-    const finalService = await applyBranchPrices(
-      await applyBranchSelection(result.data, form.branchIds),
-      form.branchPrices
+    const priced = await applyPricingCells(
+      await applyBranchPrices(
+        await applyBranchSelection(result.data, form.branchIds),
+        form.branchPrices
+      ),
+      pricingCells.cells
     );
 
     setIsSubmitting(false);
-    replaceService(finalService);
-    setMessage('Service updated.');
+    replaceService(priced.service);
+    setMessage(
+      priced.error
+        ? `Service updated, but its weight and coat prices were not saved: ${priced.error}`
+        : 'Service updated.'
+    );
     closeForm();
   };
 
@@ -896,7 +1007,7 @@ export function AdminServicesPage() {
         <Modal
           isOpen={isFormOpen}
           title={editingServiceId === null ? 'Create service' : 'Edit service'}
-          onClose={closeForm}
+          onClose={requestCloseForm}
         >
           {isFormOpen ? (
             <form className={styles.form} onSubmit={handleSubmit}>
@@ -960,7 +1071,7 @@ export function AdminServicesPage() {
                   <p className={styles.fieldHint}>
                     Leave a branch blank to charge the base price there.
                     {form.usePricingMatrix
-                      ? ' A branch price replaces the base price only - it does not change the size and coat matrix.'
+                      ? ' While the price varies by weight class and coat, those prices apply at every branch and a branch price is not used.'
                       : ''}
                   </p>
                   {branches.map((branch) => (
@@ -1023,21 +1134,37 @@ export function AdminServicesPage() {
               ) : null}
 
               {form.category === 'Grooming' ? (
-                <ToggleSwitch
-                  label="Derive price from weight/coat matrix (off = flat base price for every pet, except this never applies to Cats either way)"
-                  checked={form.usePricingMatrix}
-                  onChange={(checked) =>
-                    setForm((prev) => ({ ...prev, usePricingMatrix: checked }))
-                  }
-                />
+                <>
+                  <ToggleSwitch
+                    label="Price varies by weight class and coat (off = the base price for every pet)"
+                    checked={form.usePricingMatrix}
+                    disabled={!canSetBranchPrices}
+                    onChange={(checked) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        usePricingMatrix: checked,
+                      }))
+                    }
+                  />
+                  {!canSetBranchPrices ? (
+                    <p className={styles.fieldHint}>
+                      Only a Superadmin can change this.
+                    </p>
+                  ) : null}
+                </>
               ) : null}
 
               {form.category === 'Grooming' &&
               form.usePricingMatrix &&
               pricingConfiguration ? (
-                <PricingMatrixPreview
+                <PricingMatrixEditor
                   basePrice={Number(form.basePrice) || 0}
                   configuration={pricingConfiguration}
+                  drafts={form.pricingCells}
+                  readOnly={!canSetBranchPrices}
+                  onChange={(pricingCells) =>
+                    setForm((prev) => ({ ...prev, pricingCells }))
+                  }
                 />
               ) : null}
 
@@ -1222,7 +1349,7 @@ export function AdminServicesPage() {
                 <button
                   type="button"
                   className={styles.secondaryButton}
-                  onClick={closeForm}
+                  onClick={requestCloseForm}
                 >
                   Cancel
                 </button>
@@ -1265,6 +1392,16 @@ export function AdminServicesPage() {
       </div>
 
       {dialogs}
+      <ConfirmDialog
+        isOpen={isConfirmingDiscard}
+        title="Discard unsaved changes?"
+        body="You have changes to this service that haven't been saved. Closing now will lose them."
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        tone="danger"
+        onConfirm={closeForm}
+        onCancel={() => setIsConfirmingDiscard(false)}
+      />
     </main>
   );
 }

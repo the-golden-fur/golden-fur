@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { linkFollowUpBooking } from './followUp.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { sendFollowUpScheduledNotification } from './followUpNotifications.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
+}));
+
+// Its own spec covers the message; here it only matters that the owner is
+// told once the follow-up is linked, and never when linking is refused.
+vi.mock('./followUpNotifications.service.ts', () => ({
+  sendFollowUpScheduledNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 interface QueryResult {
@@ -120,6 +127,14 @@ describe('followUp.service (#67, revised for ScheduleFollowUpModal)', () => {
       follow_up_booking_id: 'booking-2',
       follow_up_reason: 'Recheck the ear',
     });
+    expect(sendFollowUpScheduledNotification).toHaveBeenCalledWith({
+      booking: expect.objectContaining({
+        id: 'booking-2',
+        customer_id: 'customer-1',
+      }),
+      veterinarianId: 'vet-1',
+      reason: 'Recheck the ear',
+    });
   });
 
   it('only lets the vet who handled the visit schedule its follow-up', async () => {
@@ -136,6 +151,7 @@ describe('followUp.service (#67, revised for ScheduleFollowUpModal)', () => {
         reason: 'Recheck the ear',
       })
     ).rejects.toMatchObject({ statusCode: 403 });
+    expect(sendFollowUpScheduledNotification).not.toHaveBeenCalled();
 
     expect(recordedWrites).toEqual([]);
   });

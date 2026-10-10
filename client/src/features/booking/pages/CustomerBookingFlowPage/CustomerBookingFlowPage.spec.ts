@@ -463,6 +463,15 @@ function bookingForm() {
   return within(screen.getByRole('region', { name: 'Book a service' }));
 }
 
+/** Customer mode only: pressing Next on the Branch step opens the Store
+ * policies popup, which has to be agreed to before the Pet step shows. */
+async function agreeToStorePolicies(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByLabelText('I have read and agree to the store policies')
+  );
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
+}
+
 describe('CustomerBookingFlowPage', () => {
   beforeEach(() => {
     // Draft autosave/restore persists to real localStorage (must survive an
@@ -569,6 +578,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     const petButton = screen.getByText('Max').closest('button')!;
@@ -600,6 +610,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -624,6 +635,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     const petButton = screen.getByText('Max').closest('button')!;
@@ -659,6 +671,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(bookingForm().getByText('Makati'));
     await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() =>
       expect(bookingForm().getByText('Choot')).toBeInTheDocument()
@@ -694,6 +707,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -720,6 +734,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -933,9 +948,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(screen.getByText('Next'));
     await waitFor(() =>
-      expect(
-        screen.getByText(/Select any promos or coupons/)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -1034,9 +1047,7 @@ describe('CustomerBookingFlowPage', () => {
     // New Promos & Coupons step (session 86), before Review - nothing
     // required here, just advance past it.
     await waitFor(() =>
-      expect(
-        screen.getByText(/Select any promos or coupons/)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -1167,6 +1178,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -1199,6 +1211,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -1244,9 +1257,7 @@ describe('CustomerBookingFlowPage', () => {
     // New Promos & Coupons step (session 86), before Review - nothing
     // required here, just advance past it.
     await waitFor(() =>
-      expect(
-        screen.getByText(/Select any promos or coupons/)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -1264,6 +1275,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: '+ Add a pet' }));
@@ -1271,10 +1283,53 @@ describe('CustomerBookingFlowPage', () => {
     expect(await screen.findByText('Pet Manager page')).toBeInTheDocument();
   });
 
+  it('Store policies: a customer leaving the Branch step must agree before the Pet step shows', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Max')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+
+    // Closing without agreeing stays on Branch.
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Max')).not.toBeInTheDocument();
+
+    // It comes back, unticked, on the next attempt.
+    await user.click(screen.getByText('Next'));
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    await agreeToStorePolicies(user);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+  });
+
+  it('Store policies: the staff flow leaves the Branch step with no popup', async () => {
+    const user = userEvent.setup();
+    renderStaffPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+    );
+  });
+
   async function goToCategoryStep(user: ReturnType<typeof userEvent.setup>) {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -1427,6 +1482,61 @@ describe('CustomerBookingFlowPage', () => {
     expect(note).not.toHaveTextContent(/bathing, brushing/);
   });
 
+  it("per-item weight x coat pricing: a Grooming service that varies by weight and coat shows and totals the pet's own price", async () => {
+    // Max is M / short coat; Bath's M/SC cell is its own 420.
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [
+          {
+            ...GROOMING_SERVICE,
+            use_pricing_matrix: true,
+            service_pricing_tiers: [
+              {
+                id: 'service-1:S:SC',
+                service_id: 'service-1',
+                weight_class: 'S',
+                coat_type: 'SC',
+                price: 300,
+                is_custom: false,
+              },
+              {
+                id: 'service-1:M:SC',
+                service_id: 'service-1',
+                weight_class: 'M',
+                coat_type: 'SC',
+                price: 420,
+                is_custom: true,
+              },
+            ],
+          },
+        ],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    } as never);
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+
+    await user.click(bookingForm().getByText('Grooming'));
+    await user.click(bookingForm().getByText('Next'));
+
+    await waitFor(() =>
+      expect(bookingForm().getByText('Bath')).toBeInTheDocument()
+    );
+    expect(
+      bookingForm().getByText('Price for Medium (M), Short coat')
+    ).toBeInTheDocument();
+
+    await user.click(bookingForm().getByText('Bath'));
+    // The card and the running total both show the pet's own price, not
+    // the flat 300 base price - the same price the server charges.
+    expect(bookingForm().getAllByText('PHP 420.00')).toHaveLength(2);
+    expect(bookingForm().queryByText('PHP 300.00')).not.toBeInTheDocument();
+  });
+
   it("switching category tabs clears the previous tab's selection immediately, with no warning", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -1496,6 +1606,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(bookingForm().getByText('Makati'));
     await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() =>
       expect(bookingForm().getByText('Luna')).toBeInTheDocument()
@@ -1544,6 +1655,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(bookingForm().getByText('Makati'));
     await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() =>
       expect(bookingForm().getByText('Luna')).toBeInTheDocument()
@@ -1571,6 +1683,7 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(bookingForm().getByText('Makati'));
     await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() =>
       expect(bookingForm().getByText('Max')).toBeInTheDocument()
@@ -1616,6 +1729,7 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     await user.click(screen.getByText('Max'));
@@ -1691,7 +1805,7 @@ describe('CustomerBookingFlowPage', () => {
     // required here, just advance past it.
     await waitFor(() =>
       expect(
-        bookingForm().getByText(/Select any promos or coupons/)
+        bookingForm().getByText(/Choose one promo or coupon/)
       ).toBeInTheDocument()
     );
     await user.click(bookingForm().getByText('Next'));
@@ -1992,9 +2106,7 @@ describe('CustomerBookingFlowPage', () => {
     // New Promos & Coupons step (session 86), before Review - nothing
     // required here, just advance past it.
     await waitFor(() =>
-      expect(
-        screen.getByText(/Select any promos or coupons/)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -2045,9 +2157,7 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
-      expect(
-        screen.getByText(/Select any promos or coupons/)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -2106,9 +2216,7 @@ describe('CustomerBookingFlowPage', () => {
     // New Promos & Coupons step (session 86), before Review - nothing
     // required here, just advance past it.
     await waitFor(() =>
-      expect(
-        screen.getByText(/Select any promos or coupons/)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -2126,6 +2234,164 @@ describe('CustomerBookingFlowPage', () => {
     // Switching to full payment hides the split.
     await user.click(screen.getByLabelText(/^Full payment/));
     expect(screen.queryByText('Downpayment amount')).not.toBeInTheDocument();
+  });
+
+  it('Review offers no payment scheme for an Initial Assessment booking, even when the branch downpayment policy is enabled', async () => {
+    vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+      data: {
+        downpayment_enabled: true,
+        downpayment_type: 'Flat',
+        downpayment_amount: 100,
+      },
+      error: null,
+    });
+    vi.mocked(customerApi.listCustomerPets).mockResolvedValue({
+      data: [UNASSESSED_PET],
+      error: null,
+    });
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, ASSESSMENT_SERVICE, HOTEL_SERVICE],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() =>
+      expect(bookingForm().getByText('Makati')).toBeInTheDocument()
+    );
+    await user.click(bookingForm().getByText('Makati'));
+    await user.click(bookingForm().getByText('Next'));
+    await agreeToStorePolicies(user);
+
+    await waitFor(() =>
+      expect(bookingForm().getByText('Choot')).toBeInTheDocument()
+    );
+    await user.click(bookingForm().getByText('Choot'));
+    await user.click(bookingForm().getByText('Next'));
+
+    await waitFor(() =>
+      expect(bookingForm().getByText('Assessment')).toBeInTheDocument()
+    );
+    await user.click(bookingForm().getByText('Next'));
+
+    // Initial Assessment is pre-selected for an unassessed pet.
+    await waitFor(() =>
+      expect(bookingForm().getByText('Initial Assessment')).toBeInTheDocument()
+    );
+    await advanceThroughAvailability(user, { staff: false });
+
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+    );
+
+    expect(screen.queryByText('Payment scheme')).not.toBeInTheDocument();
+    expect(screen.queryByText('Downpayment amount')).not.toBeInTheDocument();
+
+    await user.click(screen.getByText('Confirm booking'));
+
+    await waitFor(() => expect(bookingApi.createBooking).toHaveBeenCalled());
+    expect(
+      JSON.stringify(vi.mocked(bookingApi.createBooking).mock.calls)
+    ).not.toContain('payment_scheme');
+  });
+
+  it('only one promo can be picked, and one that takes off more than half the price blocks Confirm', async () => {
+    const promo = (id: string, name: string, value: number) => ({
+      id,
+      name,
+      promo_type: 'date_range',
+      start_date: null,
+      end_date: null,
+      days_of_week: null,
+      condition_note: null,
+      discount_type: 'Flat',
+      value,
+      scope_type: 'all_services',
+      is_active: true,
+      promo_scope: [],
+      promo_branch_availability: [
+        { promo_id: id, branch_id: BRANCH.id, is_available: true },
+      ],
+    });
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, HOTEL_SERVICE],
+        packages: [],
+        promos: [
+          promo('promo-big', 'Big Flat', 200),
+          promo('promo-small', 'Small Flat', 30),
+        ],
+        // Loose enough that the cap itself doesn't trim the big promo.
+        promoCap: { cap_type: 'flat', cap_value: 1000 },
+      },
+      error: null,
+    } as never);
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToCategoryStep(user);
+    await user.click(screen.getByText('Grooming'));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    await user.click(screen.getByText('Bath')); // base_price 300
+    await advanceThroughAvailability(user, { staff: true });
+
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
+    const bigPromo = await screen.findByRole('checkbox', { name: /Big Flat/ });
+
+    // PHP 200 off a PHP 300 booking is more than half.
+    await user.click(bigPromo);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Discounts and promos can take off at most 50% of the price.'
+    );
+
+    await user.click(screen.getByText('Next'));
+    await waitFor(() =>
+      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+    );
+    expect(screen.getByText('Confirm booking')).toBeDisabled();
+
+    // Picking another promo replaces the first - no stacking.
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.click(
+      await screen.findByRole('checkbox', { name: /Small Flat/ })
+    );
+    expect(
+      screen.getByRole('checkbox', { name: /Big Flat/ })
+    ).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Small Flat/ })).toBeChecked();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await user.click(screen.getByText('Next'));
+    await waitFor(() =>
+      expect(screen.getByText('Confirm booking')).toBeEnabled()
+    );
+    await user.click(screen.getByText('Confirm booking'));
+
+    await waitFor(() => expect(bookingApi.createBooking).toHaveBeenCalled());
+    const sent = JSON.stringify(vi.mocked(bookingApi.createBooking).mock.calls);
+    expect(sent).toContain('promo-small');
+    expect(sent).not.toContain('promo-big');
   });
 
   it('does not restore (or show a banner for) a draft older than 24 hours', async () => {
@@ -2317,7 +2583,7 @@ describe('CustomerBookingFlowPage', () => {
       // required here, just advance past it.
       await waitFor(() =>
         expect(
-          screen.getByText(/Select any promos or coupons/)
+          screen.getByText(/Choose one promo or coupon/)
         ).toBeInTheDocument()
       );
       await user.click(screen.getByText('Next'));
@@ -2434,7 +2700,7 @@ describe('CustomerBookingFlowPage', () => {
 
         await waitFor(() =>
           expect(
-            screen.getByText(/Select any promos or coupons/)
+            screen.getByText(/Choose one promo or coupon/)
           ).toBeInTheDocument()
         );
         await user.click(screen.getByText('Next'));
@@ -2579,7 +2845,7 @@ describe('CustomerBookingFlowPage', () => {
       // required here, just advance past it.
       await waitFor(() =>
         expect(
-          screen.getByText(/Select any promos or coupons/)
+          screen.getByText(/Choose one promo or coupon/)
         ).toBeInTheDocument()
       );
       await user.click(screen.getByText('Next'));
@@ -2682,7 +2948,7 @@ describe('CustomerBookingFlowPage', () => {
       // required here, just advance past it.
       await waitFor(() =>
         expect(
-          screen.getByText(/Select any promos or coupons/)
+          screen.getByText(/Choose one promo or coupon/)
         ).toBeInTheDocument()
       );
       await user.click(screen.getByText('Next'));

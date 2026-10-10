@@ -11,6 +11,7 @@ import {
   listPackages,
   listServices,
   setPackageBranchAvailability,
+  setPackagePricingCells,
   updatePackage,
   updatePackagePricingConfiguration,
 } from '../../api/maintenance.api';
@@ -19,7 +20,12 @@ import {
   type ServiceMultiSelectOption,
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
 import { PackagePricingPreview } from '../../components/PackagePricingPreview/PackagePricingPreview';
-import { PricingMatrixPreview } from '../../components/PricingMatrixPreview/PricingMatrixPreview';
+import { PricingMatrixEditor } from '../../components/PricingMatrixEditor/PricingMatrixEditor';
+import {
+  draftsFromCells,
+  pricingCellsChanges,
+  type CellDrafts,
+} from '../../components/PricingMatrixEditor/pricingCellDrafts';
 import { deriveBundledPrice } from '../../utils/deriveBundledPrice';
 import { formatDuration } from '../../../../shared/utils/formatDuration';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
@@ -150,6 +156,8 @@ export function AdminPackageBuilderPage() {
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [discountPercentInput, setDiscountPercentInput] = useState('0');
   const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
+  // Per-item weight x coat pricing: this package's own cell prices, as typed.
+  const [formPricingCells, setFormPricingCells] = useState<CellDrafts>({});
   const [formIcon, setFormIcon] = useState<string | null>(null);
   const [formImageUrl, setFormImageUrl] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -195,6 +203,8 @@ export function AdminPackageBuilderPage() {
   // An Admin is scoped to their own branch's availability; Superadmin can
   // touch any branch.
   const lockedBranchId = viewerRole === 'Admin' ? viewerBranchId : null;
+  // Per-item weight x coat pricing is Superadmin-only (server-enforced too).
+  const isSuperadmin = viewerRole === 'Superadmin';
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -466,6 +476,7 @@ export function AdminPackageBuilderPage() {
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(false);
+    setFormPricingCells({});
     setFormIcon(null);
     setFormImageUrl(null);
   }
@@ -493,6 +504,7 @@ export function AdminPackageBuilderPage() {
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(pkg.use_pricing_matrix);
+    setFormPricingCells(draftsFromCells(pkg.pricing_tiers));
     setFormIcon(pkg.icon);
     setFormImageUrl(pkg.image_url);
     setFormError(null);
@@ -657,6 +669,24 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
+    // Per-item weight x coat pricing: only a Superadmin's grid is ever sent.
+    const savedPackage =
+      editingPackageId === null
+        ? null
+        : packages.find((pkg) => pkg.id === editingPackageId);
+    const pricingCells =
+      isSuperadmin && formUsePricingMatrix
+        ? pricingCellsChanges(
+            draftsFromCells(savedPackage?.pricing_tiers),
+            formPricingCells
+          )
+        : { cells: [], error: null };
+
+    if (pricingCells.error) {
+      setFormError(pricingCells.error);
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
 
@@ -678,15 +708,21 @@ export function AdminPackageBuilderPage() {
         image_url: formImageUrl,
       });
 
-      setIsSubmitting(false);
-
       if (result.error || !result.data) {
+        setIsSubmitting(false);
         setFormError(result.error ?? 'Could not create the package.');
         return;
       }
 
-      setPackages((prev) => [...prev, result.data as Package]);
-      setMessage('Package created.');
+      const priced = await applyPricingCells(result.data, pricingCells.cells);
+
+      setIsSubmitting(false);
+      setPackages((prev) => [...prev, priced.pkg]);
+      setMessage(
+        priced.error
+          ? `Package created, but its weight and coat prices were not saved: ${priced.error}`
+          : 'Package created.'
+      );
       // The draft is now saved - clear it so the next "New package" starts
       // fresh instead of resuming these now-persisted values.
       resetFormFields();
@@ -708,16 +744,48 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
-    const finalPackage = await applyBranchSelection(
-      result.data,
-      selectedBranchIds
+    const priced = await applyPricingCells(
+      await applyBranchSelection(result.data, selectedBranchIds),
+      pricingCells.cells
     );
 
     setIsSubmitting(false);
-    replacePackage(finalPackage);
-    setMessage('Package updated.');
+    replacePackage(priced.pkg);
+    setMessage(
+      priced.error
+        ? `Package updated, but its weight and coat prices were not saved: ${priced.error}`
+        : 'Package updated.'
+    );
     closeForm();
   };
+
+  /** Per-item weight x coat pricing: saves the cells the Superadmin changed
+   * and returns the package with its cells as they now read. An error
+   * leaves the rest of the save standing and is reported to the caller. */
+  async function applyPricingCells(
+    pkg: Package,
+    cells: ReturnType<typeof pricingCellsChanges>['cells']
+  ): Promise<{ pkg: Package; error: string | null }> {
+    if (!accessToken || !isSuperadmin || cells.length === 0) {
+      return { pkg, error: null };
+    }
+
+    const result = await setPackagePricingCells(pkg.id, accessToken, {
+      cells,
+    });
+
+    if (result.error || !result.data) {
+      return {
+        pkg,
+        error: result.error ?? 'Could not save the weight and coat prices.',
+      };
+    }
+
+    return {
+      pkg: { ...pkg, pricing_tiers: result.data.pricing_tiers },
+      error: null,
+    };
+  }
 
   function buildPackageActionItems(pkg: Package): MoreOptionsMenuItem[] {
     return [
@@ -1062,20 +1130,25 @@ export function AdminPackageBuilderPage() {
                 ) : null}
 
                 <ToggleSwitch
-                  label="Adjust price by pet size and coat"
+                  label="Price varies by weight class and coat"
                   checked={formUsePricingMatrix}
+                  disabled={!isSuperadmin}
                   onChange={setFormUsePricingMatrix}
                 />
                 <p className={styles.copy}>
-                  Applies the same size/coat pricing rules used for grooming
-                  services to this package&apos;s own price above - not to its
-                  individual services.
+                  Prices this package by the pet&apos;s weight class and coat,
+                  starting from its own price above - not from its individual
+                  services.
+                  {isSuperadmin ? null : ' Only a Superadmin can change this.'}
                 </p>
 
                 {formUsePricingMatrix && pricingConfiguration ? (
-                  <PricingMatrixPreview
+                  <PricingMatrixEditor
                     basePrice={derivedBundledPrice}
                     configuration={pricingConfiguration}
+                    drafts={formPricingCells}
+                    readOnly={!isSuperadmin}
+                    onChange={setFormPricingCells}
                   />
                 ) : null}
               </div>

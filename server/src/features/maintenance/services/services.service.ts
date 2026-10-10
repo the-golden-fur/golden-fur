@@ -7,6 +7,8 @@ import type {
   Service,
   ServiceBranchAvailability,
 } from '../maintenance.types.ts';
+import { mergePriceCells } from '../utils/mergePriceCells.ts';
+import { assertCanSetPricingMatrix } from '../utils/assertCanSetPricingMatrix.ts';
 import type {
   CreateServiceInput,
   UpdateServiceInput,
@@ -14,7 +16,10 @@ import type {
 import { getPricingConfiguration } from './pricingConfiguration.service.ts';
 import { deriveGroomingMatrix } from '../utils/deriveGroomingMatrix.ts';
 
-const SERVICE_SELECT = '*, service_branch_availability(*)';
+// service_pricing_cell_overrides (per-item weight x coat pricing) is folded
+// into service_pricing_tiers by attachPricingMatrix and never returned raw.
+const SERVICE_SELECT =
+  '*, service_branch_availability(*), service_pricing_cell_overrides(weight_class, coat_type, price)';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -36,11 +41,15 @@ interface ListServicesParams {
 
 interface CreateServiceParams {
   requesterId: string;
+  /** For the Superadmin-only use_pricing_matrix switch - see
+   * assertCanSetPricingMatrix. */
+  requesterRole?: string;
   input: CreateServiceInput;
 }
 
 interface UpdateServiceParams {
   requesterId: string;
+  requesterRole?: string;
   serviceId: string;
   updates: UpdateServiceInput;
 }
@@ -60,18 +69,26 @@ interface SetBranchAvailabilityParams {
  * already read (booking.service.ts's resolveServicePrice, this feature's own
  * client pages), with a synthesized id/service_id since there is no longer a
  * real row behind each cell.
+ *
+ * Custom change (per-item weight x coat pricing): a cell a Superadmin set for
+ * this service (service_pricing_cell_overrides) replaces the formula's price
+ * for that cell (is_custom: true). The cells always start from the service's
+ * own base_price, never a branch's price - with the grid on, it applies at
+ * every branch.
  */
 function attachPricingMatrix(
-  service: Service,
+  rawService: Service,
   pricingConfiguration: Awaited<ReturnType<typeof getPricingConfiguration>>
 ): Service {
+  const { service_pricing_cell_overrides: overrides, ...service } = rawService;
+
   if (service.category !== 'Grooming') {
     return { ...service, service_pricing_tiers: [] };
   }
 
-  const matrix = deriveGroomingMatrix(
-    Number(service.base_price),
-    pricingConfiguration
+  const matrix = mergePriceCells(
+    deriveGroomingMatrix(Number(service.base_price), pricingConfiguration),
+    overrides
   );
 
   return {
@@ -82,6 +99,7 @@ function attachPricingMatrix(
       weight_class: cell.weight_class,
       coat_type: cell.coat_type,
       price: cell.price,
+      is_custom: cell.is_custom,
     })),
   };
 }
@@ -164,8 +182,15 @@ export async function getServiceById(serviceId: string): Promise<Service> {
  */
 export async function createService({
   requesterId,
+  requesterRole,
   input,
 }: CreateServiceParams): Promise<Service> {
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: input.use_pricing_matrix,
+    current: false,
+  });
+
   // Custom change (Daycare fee configuration follow-up): base_price isn't
   // admin-entered for Daycare - the validator requires first_hour_fee
   // instead (requireDaycareFeesOrBasePrice), so it's mirrored into
@@ -217,12 +242,13 @@ export async function createService({
 /** PATCH semantics per #40 AC-2: any field editable. */
 export async function updateService({
   requesterId,
+  requesterRole,
   serviceId,
   updates,
 }: UpdateServiceParams): Promise<Service> {
   const { data: existing, error: lookupError } = await supabase
     .from('services')
-    .select('id, category, first_hour_fee, archived_at')
+    .select('id, category, first_hour_fee, archived_at, use_pricing_matrix')
     .eq('id', serviceId)
     .maybeSingle();
 
@@ -231,6 +257,12 @@ export async function updateService({
   if (existing.archived_at) {
     throwWithStatus(409, 'This service is archived - restore it to edit it');
   }
+
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: updates.use_pricing_matrix,
+    current: Boolean(existing.use_pricing_matrix),
+  });
 
   // Custom change (Daycare fee configuration follow-up): keep base_price
   // mirroring first_hour_fee whenever the (possibly just-updated) category

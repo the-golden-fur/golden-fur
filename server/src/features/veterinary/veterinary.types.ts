@@ -16,6 +16,13 @@ export const VETERINARY_READ_ROLES: readonly string[] = [
 
 export const VETERINARY_WRITE_ROLES: readonly string[] = ['Veterinarian'];
 
+/** The vet procedure list (vet_service_catalog): Veterinarians use and edit
+ * it, and a Superadmin manages it from Config > Veterinary Services. */
+export const VETERINARY_SERVICE_CATALOG_ROLES: readonly string[] = [
+  'Veterinarian',
+  'Superadmin',
+];
+
 /** Array element shape stored on consultations.medications (#63 migration).
  * #117: medicine_type/frequency/duration added so this row is a real
  * prescription (medicine type, dosage, frequency), not just name+dose - all
@@ -30,9 +37,15 @@ export interface ConsultationMedication {
   dose: string;
   notes?: string | null;
   medicine_type?: string | null;
+  /** How strong the product is ("250 mg") - free text. Absent, like
+   * quantity_unit and refills, on rows saved before these existed. */
+  strength?: string | null;
   frequency?: string | null;
   duration?: string | null;
   quantity?: number | null;
+  /** What `quantity` counts ("capsules") - free text. */
+  quantity_unit?: string | null;
+  refills?: number | null;
   medication_catalog_id?: string | null;
 }
 
@@ -135,6 +148,13 @@ export interface Consultation {
   medication_transaction_id: string | null;
   /** Joined by CONSULTATION_SELECT - null/absent when nothing was billed. */
   medication_transaction?: { payment_status: string } | null;
+  /** Joined by CONSULTATION_SELECT - the visit's billed items; the services
+   * the vet listed as done are the 'procedure' rows. */
+  line_items?: Array<{
+    item_type: 'professional_fee' | 'medication' | 'procedure';
+    description: string;
+    amount: number;
+  }>;
   created_at: string;
   updated_at: string;
   booking?: Booking;

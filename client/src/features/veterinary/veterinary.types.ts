@@ -11,10 +11,17 @@ export interface ConsultationMedication {
   dose: string;
   notes?: string | null;
   medicine_type?: string | null;
+  /** How strong the product is, e.g. "250 mg" - free text. Absent (like
+   * quantity_unit and refills) on rows saved before these existed. */
+  strength?: string | null;
   frequency?: string | null;
   duration?: string | null;
   /** Pharmacy prescriptions: how many units are prescribed. */
   quantity?: number | null;
+  /** What `quantity` counts, e.g. "capsules" - free text. */
+  quantity_unit?: string | null;
+  /** How many times the prescription may be refilled. */
+  refills?: number | null;
   /** The shared medicine-list entry this row was added from - where the
    * server reads its selling price. Null on rows saved before this existed. */
   medication_catalog_id?: string | null;
@@ -119,6 +126,13 @@ export interface Consultation {
   /** That transaction's payment status - once it isn't 'Pending' the bill
    * is fixed and an edit only changes the medical record. */
   medication_transaction?: { payment_status: string } | null;
+  /** The visit's billed items - the services the vet listed as done when
+   * completing it are the 'procedure' rows. */
+  line_items?: Array<{
+    item_type: 'professional_fee' | 'medication' | 'procedure';
+    description: string;
+    amount: number;
+  }>;
   created_at: string;
   updated_at: string;
   booking?: Booking;
@@ -152,14 +166,28 @@ export const FREQUENCY_OPTIONS: readonly string[] = [
   'As needed',
 ];
 
+/** Suggestions for what a prescribed quantity counts - like the two lists
+ * above, suggestion-only. */
+export const QUANTITY_UNIT_OPTIONS: readonly string[] = [
+  'capsules',
+  'tablets',
+  'mL',
+  'bottle',
+  'tube',
+  'sachet',
+];
+
 export interface MedicationInput {
   name: string;
   dose: string;
   notes?: string;
   medicine_type?: string;
+  strength?: string;
   frequency?: string;
   duration?: string;
   quantity?: number;
+  quantity_unit?: string;
+  refills?: number;
   medication_catalog_id?: string | null;
 }
 

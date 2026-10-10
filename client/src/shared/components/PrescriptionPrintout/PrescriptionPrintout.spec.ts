@@ -18,6 +18,10 @@ const PROPS: PrescriptionPrintoutProps = {
       name: 'Amoxicillin',
       dose: '50mg',
       medicine_type: 'Oral',
+      strength: '250 mg',
+      notes: 'After meals',
+      quantity_unit: 'capsules',
+      refills: 1,
       frequency: 'Twice daily',
       duration: '7 days',
       quantity: 14,
@@ -40,13 +44,26 @@ describe('PrescriptionPrintout', () => {
     expect(within(sheet).getByText('Jane Doe')).toBeInTheDocument();
   });
 
-  it('lists every medicine with its type, quantity, dose, frequency and duration', () => {
+  it('lists every medicine with its strength, dosage, route, frequency, duration, quantity and refills, and its instructions underneath', () => {
     render(createElement(PrescriptionPrintout, PROPS));
 
     const row = screen.getByRole('row', { name: /Amoxicillin/ });
-    for (const detail of ['Oral', '14', '50mg', 'Twice daily', '7 days']) {
+    for (const detail of [
+      '250 mg',
+      '50mg',
+      'Oral',
+      'Twice daily',
+      '7 days',
+      '14 capsules',
+      '1',
+    ]) {
       expect(within(row).getByText(detail)).toBeInTheDocument();
     }
+
+    // Instructions get a line of their own, so the table still fits a page.
+    expect(
+      screen.getByRole('row', { name: /Instructions: After meals/ })
+    ).toBeInTheDocument();
   });
 
   it('never shows a price - it is for buying at another pharmacy', () => {

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import { SlotPicker } from '../../../booking/components/SlotPicker/SlotPicker';
-import { StaffPickerList } from '../../../booking/components/StaffPickerList/StaffPickerList';
 import {
   createBooking,
   getBookingCatalog,
@@ -35,14 +34,19 @@ export interface ScheduleFollowUpModalProps {
   customerId: string;
   ownerName: string;
   branchId: string;
-  /** The vet scheduling the follow-up - who it is booked with unless they
-   * pick someone else in the staff picker. */
+  /** The vet scheduling the follow-up - always who it is booked with. */
   veterinarianId: string;
   onClose: () => void;
   /** Fired once the booking is created and linked, with the originating
    * consultation as it now reads (follow-up date + reason set) - lets the
    * caller update its own list without waiting for the next queue poll. */
   onLinked: (consultation: Consultation) => void;
+  /** Set when this is a step of the after-visit flow (e.g. "Step 2 of 2"):
+   * shown in the title, and Cancel then reads Skip. */
+  stepLabel?: string;
+  /** After-visit flow only: go back to the previous step. Shows a Back
+   * button when given. */
+  onBack?: () => void;
 }
 
 /**
@@ -51,7 +55,9 @@ export interface ScheduleFollowUpModalProps {
  * (removed in vet-bookings-queue-access) and narrowed: the service is no
  * longer chosen - a follow-up is always the free "Follow-up Consultation",
  * whose actual charges the vet lists when that visit is completed - and the
- * vet must say WHY the pet is coming back.
+ * vet must say WHY the pet is coming back. The follow-up is always booked
+ * with the vet scheduling it (the one who saw the pet), so there is no staff
+ * picker here.
  *
  * Confirming goes through the real booking pipeline (the same createBooking()
  * a receptionist walk-in uses, so capacity, staff availability and the
@@ -71,6 +77,8 @@ export function ScheduleFollowUpModal({
   veterinarianId,
   onClose,
   onLinked,
+  stepLabel,
+  onBack,
 }: ScheduleFollowUpModalProps) {
   const [branchName, setBranchName] = useState<string | null>(null);
   // undefined = still loading; null = this branch doesn't offer it.
@@ -78,11 +86,6 @@ export function ScheduleFollowUpModal({
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
   const [selectedSlot, setSelectedSlot] = useState<SelectedSlot | null>(null);
-  const [staffPreference, setStaffPreference] = useState<StaffPreferenceInput>({
-    type: 'specific',
-    staff_id: veterinarianId,
-  });
-  const [staffPickerUnavailable, setStaffPickerUnavailable] = useState(false);
   const [reason, setReason] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -147,6 +150,11 @@ export function ScheduleFollowUpModal({
           new Date(selectedSlot.start).getTime() + durationMinutes * 60000
         ).toISOString();
 
+        const staffPreference: StaffPreferenceInput = {
+          type: 'specific',
+          staff_id: veterinarianId,
+        };
+
         const bookingResult = await createBooking(accessToken, {
           customer_id: customerId,
           pet_id: petId,
@@ -202,7 +210,11 @@ export function ScheduleFollowUpModal({
   return (
     <Modal
       isOpen
-      title="Schedule follow-up"
+      title={
+        stepLabel
+          ? `${stepLabel}: Follow-up consultation`
+          : 'Schedule follow-up'
+      }
       onClose={onClose}
       closeOnBackdropClick={false}
     >
@@ -229,6 +241,10 @@ export function ScheduleFollowUpModal({
                   ? '...'
                   : FOLLOW_UP_SERVICE_NAME}
             </span>
+          </div>
+          <div className={styles.lockedField}>
+            <span className={styles.fieldLabel}>Veterinarian</span>
+            <span>You</span>
           </div>
         </div>
 
@@ -257,21 +273,6 @@ export function ScheduleFollowUpModal({
           />
         ) : null}
 
-        {createdBookingId === null &&
-        selectedSlot &&
-        !staffPickerUnavailable ? (
-          <StaffPickerList
-            accessToken={accessToken}
-            branchId={branchId}
-            serviceCategory="Veterinary"
-            scheduledStart={selectedSlot.start}
-            scheduledEnd={selectedSlot.end}
-            selected={staffPreference}
-            onSelect={setStaffPreference}
-            onUnavailable={() => setStaffPickerUnavailable(true)}
-          />
-        ) : null}
-
         {shownError ? (
           <p className={styles.errorBanner} role="alert">
             {shownError}
@@ -293,8 +294,18 @@ export function ScheduleFollowUpModal({
             disabled={isSubmitting}
             onClick={onClose}
           >
-            Cancel
+            {stepLabel ? 'Skip' : 'Cancel'}
           </button>
+          {onBack ? (
+            <button
+              type="button"
+              className={styles.cancelButton}
+              disabled={isSubmitting}
+              onClick={onBack}
+            >
+              Back
+            </button>
+          ) : null}
         </div>
       </div>
     </Modal>

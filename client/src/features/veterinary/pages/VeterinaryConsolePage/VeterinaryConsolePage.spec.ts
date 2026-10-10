@@ -56,6 +56,8 @@ vi.mock('../../components/ScheduleFollowUpModal/ScheduleFollowUpModal', () => ({
     veterinarianId: string;
     onClose: () => void;
     onLinked: (consultation: unknown) => void;
+    stepLabel?: string;
+    onBack?: () => void;
   }) =>
     createElement(
       'div',
@@ -78,7 +80,11 @@ vi.mock('../../components/ScheduleFollowUpModal/ScheduleFollowUpModal', () => ({
         },
         'Mock confirm follow-up'
       ),
-      createElement('button', { onClick: props.onClose }, 'Mock cancel')
+      createElement('button', { onClick: props.onClose }, 'Mock cancel'),
+      props.stepLabel ? createElement('p', null, props.stepLabel) : null,
+      props.onBack
+        ? createElement('button', { onClick: props.onBack }, 'Mock back')
+        : null
     ),
 }));
 
@@ -423,6 +429,33 @@ describe('VeterinaryConsolePage (#70)', () => {
       ).toBeInTheDocument();
     });
 
+    it('has its own button right on a Completed row, no menu needed', async () => {
+      vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+        data: buildViewerProfile('Veterinarian'),
+        error: null,
+      });
+      vi.mocked(veterinaryApi.listConsultationQueue).mockResolvedValue({
+        data: {
+          consultations: [
+            buildConsultation({ accepted_by: 'vet-1' }, 'Completed'),
+          ],
+        },
+        error: null,
+      });
+      stubPetAndOwner();
+
+      renderPage();
+
+      await screen.findByText('Whiskers');
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Schedule follow-up' })
+      );
+
+      expect(
+        await screen.findByRole('dialog', { name: 'Schedule follow-up' })
+      ).toBeInTheDocument();
+    });
+
     it.each([
       [
         'a visit another vet handled',
@@ -448,6 +481,14 @@ describe('VeterinaryConsolePage (#70)', () => {
     ])('is not offered for %s', async (_label, build) => {
       const dialog = await openDetails(build());
 
+      // Neither on the row itself...
+      expect(
+        screen.queryAllByRole('button', {
+          name: 'Schedule follow-up',
+          hidden: true,
+        }).length
+      ).toBe(0);
+
       expect(
         within(dialog).queryByRole('button', { name: 'Schedule follow-up' })
       ).not.toBeInTheDocument();
@@ -459,6 +500,346 @@ describe('VeterinaryConsolePage (#70)', () => {
         screen.queryByRole('menuitem', { name: 'Schedule follow-up' })
       ).not.toBeInTheDocument();
     });
+  });
+
+  describe('View Details: services done', () => {
+    it('lists what the vet billed at a Completed visit, with the total', async () => {
+      const dialog = await openDetails(
+        buildConsultation(
+          {
+            line_items: [
+              { item_type: 'procedure', description: 'Surgery', amount: 10000 },
+              {
+                item_type: 'procedure',
+                description: 'Wound dressing',
+                amount: 350,
+              },
+              // Not something the vet listed as done.
+              {
+                item_type: 'professional_fee',
+                description: 'Professional Fee',
+                amount: 500,
+              },
+            ],
+          },
+          'Completed'
+        )
+      );
+
+      expect(within(dialog).getByText('Services done')).toBeInTheDocument();
+      expect(within(dialog).getByText('Surgery')).toBeInTheDocument();
+      expect(within(dialog).getByText('Wound dressing')).toBeInTheDocument();
+      expect(within(dialog).queryByText('Professional Fee')).toBeNull();
+      expect(within(dialog).getByText('Total').parentElement).toHaveTextContent(
+        /10,350/
+      );
+    });
+
+    it('says so when nothing extra was listed', async () => {
+      const dialog = await openDetails(buildConsultation({}, 'Completed'));
+
+      expect(
+        within(dialog).getByText(
+          'No extra services were listed for this visit.'
+        )
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('after completing: Step 1 Prescription, then Step 2 Follow-up', () => {
+    const STEP_1 = 'Step 1 of 2: Prescription for Whiskers';
+
+    const prescriptionDialog = () =>
+      screen.findByRole('dialog', { name: STEP_1 });
+    const followUpDialog = () =>
+      screen.findByRole('dialog', { name: 'Schedule follow-up' });
+
+    /** Completes the one In Progress visit from its details form and returns
+     * Step 1, the "Prescription" pop-up that follows. `saved` is what the
+     * server hands back for every save after that. */
+    async function completeAndReachPrescription(
+      saved: Partial<Consultation> = {}
+    ) {
+      vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+        data: buildConsultation(
+          { accepted_by: 'vet-1', ...saved },
+          'Completed'
+        ),
+        error: null,
+      });
+
+      const dialog = await openDetails(
+        buildConsultation({ accepted_by: 'vet-1' }, 'In Progress')
+      );
+      await completeFromDetails(dialog);
+
+      return prescriptionDialog();
+    }
+
+    const AMOXICILLIN = {
+      name: 'Amoxicillin',
+      dose: '50 mg',
+      notes: 'Morning',
+      medicine_type: null,
+      strength: '250 mg',
+      frequency: null,
+      duration: null,
+      quantity: 1,
+      medication_catalog_id: null,
+    };
+
+    it('Save and continue: a typed medicine is not lost, needs a dosage, is saved on its own, then Step 2 opens', async () => {
+      const popup = await completeAndReachPrescription();
+
+      // Step 1 takes the place of the details form.
+      expect(
+        screen.queryByRole('dialog', { name: 'Consultation Details' })
+      ).not.toBeInTheDocument();
+
+      // Typed, but "Add medicine" never pressed - saving adds it as a row
+      // instead of dropping it, and asks for its dosage.
+      await userEvent.type(
+        within(popup).getByRole('combobox', { name: 'Medicine name' }),
+        'Amoxicillin'
+      );
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Save and continue' })
+      );
+      expect(within(popup).getByRole('alert')).toHaveTextContent(
+        'Enter a dosage for Amoxicillin.'
+      );
+      expect(veterinaryApi.updateConsultation).toHaveBeenCalledTimes(1);
+
+      await userEvent.type(within(popup).getByLabelText('Dosage'), '50 mg');
+      await userEvent.type(
+        within(popup).getByLabelText('Instructions'),
+        'Morning'
+      );
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Save and continue' })
+      );
+
+      await waitFor(() =>
+        expect(veterinaryApi.updateConsultation).toHaveBeenCalledTimes(2)
+      );
+      // Only the prescription - the diagnosis on the visit is left alone.
+      expect(
+        vi.mocked(veterinaryApi.updateConsultation).mock.calls[1][2]
+      ).toEqual({
+        medications: [
+          expect.objectContaining({
+            name: 'Amoxicillin',
+            dose: '50 mg',
+            notes: 'Morning',
+          }),
+        ],
+        sold_at_pharmacy: false,
+      });
+
+      const followUp = await followUpDialog();
+      expect(within(followUp).getByText('Step 2 of 2')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('dialog', { name: STEP_1 })
+      ).not.toBeInTheDocument();
+    });
+
+    it('sends every field of the prescription form', async () => {
+      const popup = await completeAndReachPrescription();
+
+      await userEvent.type(
+        within(popup).getByRole('combobox', { name: 'Medicine name' }),
+        'Amoxicillin{Enter}'
+      );
+      await userEvent.type(within(popup).getByLabelText('Strength'), '250 mg');
+      await userEvent.type(within(popup).getByLabelText('Dosage'), '10 mg/kg');
+      await userEvent.type(within(popup).getByLabelText('Route'), 'Oral');
+      await userEvent.type(
+        within(popup).getByLabelText('Frequency'),
+        'Every 12 hours'
+      );
+      await userEvent.type(within(popup).getByLabelText('Duration'), '7 days');
+      const quantity = within(popup).getByLabelText('Quantity of Amoxicillin');
+      await userEvent.clear(quantity);
+      await userEvent.type(quantity, '14');
+      await userEvent.type(
+        within(popup).getByLabelText('Quantity unit of Amoxicillin'),
+        'capsules'
+      );
+      await userEvent.type(
+        within(popup).getByLabelText('Instructions'),
+        'Give with food'
+      );
+      const refills = within(popup).getByLabelText('Refills');
+      await userEvent.clear(refills);
+      await userEvent.type(refills, '2');
+
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Save and continue' })
+      );
+
+      await waitFor(() =>
+        expect(veterinaryApi.updateConsultation).toHaveBeenCalledTimes(2)
+      );
+      expect(
+        vi.mocked(veterinaryApi.updateConsultation).mock.calls[1][2]
+      ).toMatchObject({
+        medications: [
+          {
+            name: 'Amoxicillin',
+            strength: '250 mg',
+            dose: '10 mg/kg',
+            medicine_type: 'Oral',
+            frequency: 'Every 12 hours',
+            duration: '7 days',
+            quantity: 14,
+            quantity_unit: 'capsules',
+            notes: 'Give with food',
+            refills: 2,
+          },
+        ],
+      });
+    });
+
+    it('an empty prescription is never saved - it has to be skipped', async () => {
+      const popup = await completeAndReachPrescription();
+
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Save and continue' })
+      );
+
+      expect(within(popup).getByRole('alert')).toHaveTextContent(
+        'Add a medicine first, or press Skip.'
+      );
+      // Only the completing save itself.
+      expect(veterinaryApi.updateConsultation).toHaveBeenCalledTimes(1);
+    });
+
+    it('both steps can be skipped, Step 2 can go Back to Step 1, and skipping saves nothing', async () => {
+      const popup = await completeAndReachPrescription();
+
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Skip' })
+      );
+
+      // Back from the follow-up returns to the prescription.
+      await userEvent.click(
+        within(await followUpDialog()).getByRole('button', {
+          name: 'Mock back',
+        })
+      );
+      const again = await prescriptionDialog();
+      expect(
+        screen.queryByRole('dialog', { name: 'Schedule follow-up' })
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(
+        within(again).getByRole('button', { name: 'Skip' })
+      );
+      await userEvent.click(
+        within(await followUpDialog()).getByRole('button', {
+          name: 'Mock cancel',
+        })
+      );
+
+      expect(
+        screen.queryByRole('dialog', { name: 'Schedule follow-up' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('dialog', { name: STEP_1 })
+      ).not.toBeInTheDocument();
+      expect(veterinaryApi.updateConsultation).toHaveBeenCalledTimes(1);
+    });
+
+    it('coming Back to Step 1 shows the prescription that was just saved', async () => {
+      const popup = await completeAndReachPrescription({
+        medications: [AMOXICILLIN],
+      });
+
+      // The visit already carries the prescription (written in the details
+      // form), so Step 1 opens with it filled in.
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Save and continue' })
+      );
+
+      await userEvent.click(
+        within(await followUpDialog()).getByRole('button', {
+          name: 'Mock back',
+        })
+      );
+
+      const again = await prescriptionDialog();
+      expect(within(again).getByLabelText('Dosage')).toHaveValue('50 mg');
+      expect(within(again).getByLabelText('Instructions')).toHaveValue(
+        'Morning'
+      );
+    });
+
+    it('Print prescription saves it, shows the print sheet, and stays on Step 1', async () => {
+      vi.mocked(customerApi.listPetPrescriptions).mockResolvedValue({
+        data: [
+          {
+            consultation_id: 'consultation-1',
+            date: '2026-07-19T02:00:00.000Z',
+            veterinarian_name: 'Vet One',
+            branch_name: 'Golden Fur Makati',
+            branch_address: null,
+            pet_name: 'Whiskers',
+            owner_name: 'Jane Doe',
+            medications: [AMOXICILLIN],
+          },
+        ],
+        error: null,
+      });
+      const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+
+      const popup = await completeAndReachPrescription({
+        medications: [AMOXICILLIN],
+      });
+
+      // The visit already carries the prescription (written in the details
+      // form), so Step 1 opens with it filled in.
+      await userEvent.click(
+        within(popup).getByRole('button', { name: 'Print prescription' })
+      );
+
+      await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+      // Saved first - the sheet is built from the saved prescription.
+      expect(veterinaryApi.updateConsultation).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByRole('document', { name: 'Prescription' })
+      ).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: STEP_1 })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('dialog', { name: 'Schedule follow-up' })
+      ).not.toBeInTheDocument();
+
+      print.mockRestore();
+    });
+  });
+
+  it('the details form does not lose a medicine typed but never added when completing', async () => {
+    vi.mocked(veterinaryApi.updateConsultation).mockResolvedValue({
+      data: buildConsultation({}, 'Completed'),
+      error: null,
+    });
+
+    const dialog = await openDetails(buildConsultation({}, 'In Progress'));
+    await userEvent.type(
+      within(dialog).getByRole('combobox', { name: 'Medicine name' }),
+      'Amoxicillin'
+    );
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /complete consultation/i })
+    );
+
+    // Held for its dosage - the Services done pop-up has not opened yet.
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Enter a dosage for Amoxicillin.'
+    );
+    expect(
+      screen.queryByRole('dialog', { name: 'Services done for Whiskers' })
+    ).not.toBeInTheDocument();
+    expect(veterinaryApi.updateConsultation).not.toHaveBeenCalled();
   });
 
   describe('services done (vet-priced visits)', () => {
@@ -615,14 +996,12 @@ describe('VeterinaryConsolePage (#70)', () => {
       // The list's own spelling and type are used, and the box is cleared
       // ready for the next medicine.
       expect(within(dialog).getByText('Amoxicillin')).toBeInTheDocument();
-      expect(within(dialog).getByPlaceholderText('Medicine type')).toHaveValue(
-        'Oral'
-      );
+      expect(within(dialog).getByLabelText('Route')).toHaveValue('Oral');
       expect(
         within(dialog).getByRole('combobox', { name: 'Medicine name' })
       ).toHaveValue('');
 
-      await userEvent.type(within(dialog).getByPlaceholderText('Dose'), '50mg');
+      await userEvent.type(within(dialog).getByLabelText('Dosage'), '50mg');
       await completeFromDetails(dialog);
 
       await waitFor(() =>
@@ -654,7 +1033,11 @@ describe('VeterinaryConsolePage (#70)', () => {
         within(dialog).getByRole('combobox', { name: 'Medicine name' }),
         'Mystery syrup{Enter}'
       );
-      await userEvent.type(within(dialog).getByPlaceholderText('Dose'), '5ml');
+      await userEvent.type(within(dialog).getByLabelText('Dosage'), '5ml');
+      await userEvent.type(
+        within(dialog).getByLabelText('Instructions'),
+        'After meals'
+      );
 
       await userEvent.click(
         within(dialog).getByRole('radio', { name: 'Buying from our pharmacy' })
@@ -681,6 +1064,7 @@ describe('VeterinaryConsolePage (#70)', () => {
               expect.objectContaining({
                 name: 'Mystery syrup',
                 dose: '5ml',
+                notes: 'After meals',
                 medication_catalog_id: null,
               }),
             ],
@@ -756,7 +1140,7 @@ describe('VeterinaryConsolePage (#70)', () => {
         within(dialog).getByRole('button', { name: 'Add medicine' })
       );
 
-      expect(within(dialog).queryByPlaceholderText('Dose')).toBeNull();
+      expect(within(dialog).queryByLabelText('Dosage')).toBeNull();
     });
 
     it('no longer offers "Add from a saved prescription" in the Prescription section', async () => {
@@ -809,7 +1193,7 @@ describe('VeterinaryConsolePage (#70)', () => {
       const quantity = within(dialog).getByLabelText('Quantity of Amoxicillin');
       await userEvent.clear(quantity);
       await userEvent.type(quantity, '2');
-      await userEvent.type(within(dialog).getByPlaceholderText('Dose'), '50mg');
+      await userEvent.type(within(dialog).getByLabelText('Dosage'), '50mg');
 
       // A price is never typed in - it comes from the medicine list.
       expect(
@@ -864,7 +1248,7 @@ describe('VeterinaryConsolePage (#70)', () => {
       const quantity = within(dialog).getByLabelText('Quantity of Amoxicillin');
       await userEvent.clear(quantity);
       await userEvent.type(quantity, '2');
-      await userEvent.type(within(dialog).getByPlaceholderText('Dose'), '50mg');
+      await userEvent.type(within(dialog).getByLabelText('Dosage'), '50mg');
 
       expect(within(dialog).queryByText(/Medicine total/)).toBeNull();
 
@@ -1011,7 +1395,7 @@ describe('VeterinaryConsolePage (#70)', () => {
       expect(
         within(dialog).getByRole('radio', { name: 'Buying from our pharmacy' })
       ).toBeDisabled();
-      expect(within(dialog).getByPlaceholderText('Dose')).toBeEnabled();
+      expect(within(dialog).getByLabelText('Dosage')).toBeEnabled();
     });
 
     it('prints a Completed visit prescription with the vet and branch on it', async () => {
