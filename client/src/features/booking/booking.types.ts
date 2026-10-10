@@ -21,6 +21,7 @@ export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Supervisor',
   'Receptionist',
   'Cashier',
+  'Front Desk',
 ];
 
 /** Mirrors the server's BOOKING_STATUS_OVERRIDE_ROLES - gates the queue's

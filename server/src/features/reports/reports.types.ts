@@ -19,6 +19,7 @@ export const REPORTS_READ_ROLES: readonly string[] = [
 export const TRANSACTION_HISTORY_READ_ROLES: readonly string[] = [
   ...REPORTS_READ_ROLES,
   'Cashier',
+  'Front Desk',
 ];
 
 /** Custom change (occupied/vacant cages view for Receptionist): cage
@@ -29,6 +30,7 @@ export const TRANSACTION_HISTORY_READ_ROLES: readonly string[] = [
 export const CAGE_OCCUPANCY_READ_ROLES: readonly string[] = [
   ...REPORTS_READ_ROLES,
   'Receptionist',
+  'Front Desk',
 ];
 
 /** Modules-Features is explicit the analytics dashboard is Superadmin-only,

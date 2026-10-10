@@ -15,7 +15,12 @@ import { LoadingState } from '../../../../shared/components/LoadingState/Loading
 
 /** Cashier/Admin/Superadmin (#95 AC-3) - matches CREDIT_STAFF_ROLES
  * server-side. */
-const ALLOWED_VIEWER_ROLES = new Set(['Cashier', 'Admin', 'Superadmin']);
+const ALLOWED_VIEWER_ROLES = new Set([
+  'Cashier',
+  'Admin',
+  'Superadmin',
+  'Front Desk',
+]);
 
 /**
  * Issue #95: Cashier/Admin/Superadmin view of a customer's credit balance,

@@ -76,6 +76,7 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Supervisor',
   'Receptionist',
   'Cashier',
+  'Front Desk',
 ]);
 
 /** The Record-payment modal lets a cashier settle straight from the

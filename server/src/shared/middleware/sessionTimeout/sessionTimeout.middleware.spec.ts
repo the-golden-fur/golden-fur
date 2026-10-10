@@ -36,6 +36,7 @@ describe('sessionTimeout middleware', () => {
     ['Supervisor', 'Supervisor', 60 * 60 * 1000],
     ['Receptionist', 'Receptionist', 4 * 60 * 60 * 1000],
     ['Cashier', 'Cashier', 4 * 60 * 60 * 1000],
+    ['Front Desk', 'Front Desk', 4 * 60 * 60 * 1000],
     ['Groomer', 'Groomer', 8 * 60 * 60 * 1000],
     ['Veterinarian', 'Veterinarian', 8 * 60 * 60 * 1000],
     ['Pet Assistant', 'Pet Assistant', 8 * 60 * 60 * 1000],

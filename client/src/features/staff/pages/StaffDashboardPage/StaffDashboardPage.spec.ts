@@ -449,4 +449,61 @@ describe('StaffDashboardPage', () => {
       screen.getByRole('heading', { name: 'Credit Review Queue' })
     ).toBeInTheDocument();
   });
+  it('shows both the Receptionist-side and Cashier-side widgets, with one shared Credit Review Queue, for a Front Desk viewer', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Front Desk', display_name: 'Fran Desk' }),
+      error: null,
+    });
+    vi.mocked(staffApi.listUnavailabilityBlocks).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(bookingApi.listPendingCreditReviews).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(reportsApi.getCageOccupancyReport).mockResolvedValue({
+      data: [{ size: 'M', status: 'Available', cage_count: 3 }],
+      error: null,
+    });
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+
+    renderDashboard('/staff/dashboard/front-desk');
+
+    expect(
+      await screen.findByRole('heading', { name: "Today's Bookings Queue" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /new walk-in customer/i })
+    ).toHaveAttribute('href', '/staff/admin/customers');
+    expect(screen.getByRole('link', { name: /^new booking/i })).toHaveAttribute(
+      'href',
+      '/staff/bookings/new'
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Assessment Queue' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Cage Occupancy' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Transactions' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'My Schedule' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /credit management/i })
+    ).toHaveAttribute('href', '/staff/credits');
+    expect(
+      screen.getAllByRole('heading', { name: 'Credit Review Queue' })
+    ).toHaveLength(1);
+  });
 });

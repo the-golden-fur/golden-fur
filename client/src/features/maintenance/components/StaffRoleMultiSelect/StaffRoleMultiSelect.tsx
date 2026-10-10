@@ -10,7 +10,7 @@ interface StaffRoleMultiSelectProps {
 }
 
 /**
- * Checkbox multiselect over the fixed 8-role staff_role enum - same
+ * Checkbox multiselect over the fixed staff_role enum - same
  * {label, selected*, onChange} shape as BranchMultiSelect, but over a
  * static list rather than a fetched one, so it skips BranchMultiSelect's
  * SearchSortBar/useSearchAndSort (not worth it for a short, unchanging

@@ -34,6 +34,7 @@ const ALL_STAFF_ROLES: StaffRole[] = [
   'Veterinarian',
   'Cashier',
   'Pet Assistant',
+  'Front Desk',
 ];
 
 function toggle<T>(set: Set<T>, value: T): Set<T> {

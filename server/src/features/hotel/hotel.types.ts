@@ -12,6 +12,7 @@ export const HOTEL_FRONT_DESK_ROLES: readonly string[] = [
   'Admin',
   'Supervisor',
   'Superadmin',
+  'Front Desk',
 ];
 
 export const HOTEL_ADMIN_ROLES: readonly string[] = ['Admin', 'Superadmin'];

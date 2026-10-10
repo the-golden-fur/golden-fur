@@ -7,6 +7,7 @@ export const ALL_STAFF_ROLES = [
   'Veterinarian',
   'Cashier',
   'Pet Assistant',
+  'Front Desk',
 ] as const;
 
 export type StaffRole = (typeof ALL_STAFF_ROLES)[number];
@@ -47,6 +48,7 @@ export const UNAVAILABILITY_MANAGER_ROLES: readonly string[] = [
 export const STAFF_BOOKING_RESTRICTED_FIELD_ROLES: readonly string[] = [
   'Receptionist',
   'Groomer',
+  'Front Desk',
 ];
 
 /**
