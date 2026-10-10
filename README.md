@@ -15,9 +15,10 @@ The system is split into two applications sharing one Supabase backend:
   manage pet profiles, book and manage appointments across services and
   packages, view service history, and track promo/credit balances.
 - **Staff Console** — role-based dashboards (Superadmin, Admin, Supervisor,
-  Receptionist, Groomer, Veterinarian, Cashier, Pet Assistant) covering staff
-  account management, the booking queue, customer/pet management, service &
-  package configuration, and promo/discount administration.
+  Receptionist, Groomer, Veterinarian, Cashier, Pet Assistant, Front Desk)
+  covering staff account management, the booking queue, customer/pet
+  management, service & package configuration, and promo/discount
+  administration.
 
 See [docs/architecture.md](docs/architecture.md) for the full module
 breakdown and how the codebase is organized.

@@ -1,6 +1,6 @@
 ---
 name: rbac-totp-setup
-description: Reference steps for scaffolding TOTP enrollment and role-gated middleware for the 8 staff roles, so new protected routes/pages follow the same pattern. Use whenever adding a protected route/page, or touching login/session/MFA/OAuth code.
+description: Reference steps for scaffolding TOTP enrollment and role-gated middleware for the 9 staff roles, so new protected routes/pages follow the same pattern. Use whenever adding a protected route/page, or touching login/session/MFA/OAuth code.
 ---
 
 # RBAC & TOTP setup
