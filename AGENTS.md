@@ -7,8 +7,8 @@ two-branch pet care business (Makati and Southwoods) offering grooming, pet
 hotel, daycare, and veterinary services. It has two applications sharing one
 Supabase backend: a customer-facing booking portal, and a role-scoped staff
 console (Superadmin, Admin, Supervisor, Receptionist, Groomer, Veterinarian,
-Cashier, Pet Assistant) for running bookings, service execution, billing,
-promos/discounts, and customer/pet records. See
+Cashier, Pet Assistant, Front Desk) for running bookings, service
+execution, billing, promos/discounts, and customer/pet records. See
 [docs/architecture.md](docs/architecture.md) for the full module breakdown.
 
 ## Tech stack
