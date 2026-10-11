@@ -10,4 +10,5 @@ export const MANDATORY_MFA_ROLES = new Set([
   'Admin',
   'Supervisor',
   'Superadmin',
+  'Front Desk',
 ]);
