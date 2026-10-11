@@ -5,6 +5,16 @@ import { getCageOccupancyReport } from './services/cageOccupancy.service.ts';
 import { listTransactionHistory } from './services/transactionHistory.service.ts';
 import { getAnalyticsSummary } from './services/analytics.service.ts';
 import { getBranchComparison } from './services/branchComparison.service.ts';
+import {
+  getGoals,
+  setGoalGrowthRate,
+  setGoalMonthlyTarget,
+} from './services/goals.service.ts';
+import {
+  goalsQueryValidator,
+  setGoalGrowthRateValidator,
+  setGoalTargetValidator,
+} from './modules/validators/goals.validator.ts';
 
 function sendServiceError(res: Response, error: unknown) {
   const statusCode =
@@ -191,6 +201,96 @@ export async function branchComparisonController(
     });
 
     return res.status(200).json({ branches });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function goalsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+
+  if (!requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = goalsQueryValidator.safeParse({
+    month: queryParam(req, 'month'),
+    branch_id: queryParam(req, 'branch_id'),
+  });
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const goals = await getGoals({
+      requesterRole,
+      month: parsed.data.month,
+      branchId: parsed.data.branch_id ?? null,
+    });
+
+    return res.status(200).json({ goals });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setGoalGrowthRateController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+
+  if (!requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = setGoalGrowthRateValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    await setGoalGrowthRate(requesterRole, req.user?.sub ?? null, parsed.data);
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setGoalTargetController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+
+  if (!requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = setGoalTargetValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    await setGoalMonthlyTarget(
+      requesterRole,
+      req.user?.sub ?? null,
+      parsed.data
+    );
+    return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
   }

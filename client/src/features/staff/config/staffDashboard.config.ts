@@ -20,6 +20,7 @@ import {
   Scissors,
   ShoppingBag,
   Stethoscope,
+  Target,
   UserCog,
   Users,
   UserSearch,
@@ -283,6 +284,13 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description:
               'Compare revenue and bookings across every branch, side by side.',
             to: '/staff/reports/branch-comparison',
+            roles: ['Superadmin'],
+          },
+          {
+            title: 'Goals',
+            description:
+              'Monthly goals for appointments, revenue, new customers, services, and packages.',
+            to: '/staff/reports/goals',
             roles: ['Superadmin'],
           },
         ],
@@ -710,6 +718,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Branch Reports': BarChart3,
   'Cage Occupancy': DoorOpen,
   'Branch Comparison': GitCompareArrows,
+  Goals: Target,
 };
 
 export interface SidebarReadySection {

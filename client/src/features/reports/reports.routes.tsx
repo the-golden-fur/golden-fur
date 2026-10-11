@@ -5,6 +5,7 @@ import { CustomerAuthGuard } from '../auth/customer/guards/CustomerAuthGuard/Cus
 import { DailySalesReportPage } from './pages/DailySalesReportPage/DailySalesReportPage';
 import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage/AnalyticsDashboardPage';
 import { BranchComparisonPage } from './pages/BranchComparisonPage/BranchComparisonPage';
+import { GoalsPage } from './pages/GoalsPage/GoalsPage';
 import { CustomerTransactionHistoryPage } from './pages/CustomerTransactionHistoryPage/CustomerTransactionHistoryPage';
 import { CageOccupancyReport } from './components/CageOccupancyReport/CageOccupancyReport';
 import { TransactionHistoryTable } from './components/TransactionHistoryTable/TransactionHistoryTable';
@@ -35,6 +36,7 @@ export const reportsRoutes = (
         path="/staff/reports/branch-comparison"
         element={<BranchComparisonPage />}
       />
+      <Route path="/staff/reports/goals" element={<GoalsPage />} />
       <Route
         path="/staff/reports/cage-occupancy"
         element={<CageOccupancyReport />}

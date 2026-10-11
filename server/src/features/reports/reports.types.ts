@@ -134,3 +134,50 @@ export interface BranchComparisonRow {
   bookings_availed_by_category: Record<string, number>;
   new_customers: number;
 }
+
+/** Custom change (Goals page): Superadmin-only, read and configure alike. */
+export const GOALS_ROLES: readonly string[] = ['Superadmin'];
+
+/** One period's block of get_goal_stats() (20261011258). */
+export interface GoalPeriodStats {
+  appointments: number;
+  by_category: Record<string, number>;
+  revenue: number;
+  /** Booking payments only - counter sales belong to no service. */
+  revenue_by_category: Record<string, number>;
+  new_customers: number;
+  packages: Record<string, number>;
+}
+
+export interface GoalStats {
+  current: GoalPeriodStats;
+  previous: GoalPeriodStats;
+}
+
+/** One goal line: a metric's actual for the selected month, the month
+ * before, and the goal it's measured against. */
+export interface GoalRow {
+  /** metric_key - what a saved growth rate/target is stored under. */
+  key: string;
+  label: string;
+  actual: number;
+  previous: number;
+  goal: number;
+  /** 'target' = an exact number typed for this month; 'growth' = previous
+   * month + growth_rate %. */
+  goal_source: 'target' | 'growth';
+  growth_rate: number;
+  target: number | null;
+}
+
+export interface GoalsReport {
+  /** YYYY-MM */
+  month: string;
+  branch_id: string | null;
+  appointments: GoalRow;
+  services: GoalRow[];
+  revenue: GoalRow;
+  revenue_services: GoalRow[];
+  new_customers: GoalRow;
+  packages: GoalRow[];
+}

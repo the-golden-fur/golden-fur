@@ -1008,6 +1008,9 @@ export function AdminServicesPage() {
           isOpen={isFormOpen}
           title={editingServiceId === null ? 'Create service' : 'Edit service'}
           onClose={requestCloseForm}
+          // A click outside the form does nothing - only the close button
+          // and Cancel close it.
+          closeOnBackdropClick={false}
         >
           {isFormOpen ? (
             <form className={styles.form} onSubmit={handleSubmit}>

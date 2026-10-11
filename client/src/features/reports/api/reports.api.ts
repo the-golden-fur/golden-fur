@@ -3,6 +3,7 @@ import type {
   BranchComparisonRow,
   CageOccupancyRow,
   DailySalesReport,
+  GoalsReport,
   TransactionRecord,
 } from '../reports.types';
 
@@ -196,4 +197,86 @@ export async function getBranchComparison(
 
   const result = await parseBody<{ branches: BranchComparisonRow[] }>(response);
   return { data: result.data?.branches ?? null, error: result.error };
+}
+
+/** `month` is YYYY-MM; `branchId` null = every branch together. */
+export async function getGoals(
+  month: string,
+  branchId: string | null,
+  accessToken: string
+): Promise<ReportsApiResult<GoalsReport>> {
+  const params = new URLSearchParams({ month });
+  if (branchId) params.set('branch_id', branchId);
+
+  const response = await fetch(
+    `${API_BASE_URL}/reports/goals?${params.toString()}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ goals: GoalsReport }>(response);
+  return { data: result.data?.goals ?? null, error: result.error };
+}
+
+async function putGoalSetting(
+  path: string,
+  body: Record<string, unknown>,
+  accessToken: string
+): Promise<ReportsApiResult<true>> {
+  const response = await fetch(`${API_BASE_URL}/reports/goals/${path}`, {
+    method: 'PUT',
+    headers: {
+      ...authHeaders(accessToken),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: true, error: null };
+}
+
+/** Growth % over the previous month, used for every month of this metric
+ * that has no exact target. */
+export function saveGoalGrowthRate(
+  input: { metricKey: string; branchId: string | null; growthRate: number },
+  accessToken: string
+) {
+  return putGoalSetting(
+    'growth-rate',
+    {
+      metric_key: input.metricKey,
+      branch_id: input.branchId,
+      growth_rate: input.growthRate,
+    },
+    accessToken
+  );
+}
+
+/** An exact target for one month; `targetValue` null clears it. */
+export function saveGoalTarget(
+  input: {
+    metricKey: string;
+    branchId: string | null;
+    month: string;
+    targetValue: number | null;
+  },
+  accessToken: string
+) {
+  return putGoalSetting(
+    'target',
+    {
+      metric_key: input.metricKey,
+      branch_id: input.branchId,
+      month: input.month,
+      target_value: input.targetValue,
+    },
+    accessToken
+  );
 }
