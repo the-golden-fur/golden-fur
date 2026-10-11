@@ -9,12 +9,16 @@ import {
   cageOccupancyReportController,
   customerTransactionHistoryController,
   dailySalesReportController,
+  goalsController,
+  setGoalGrowthRateController,
+  setGoalTargetController,
   transactionHistoryController,
 } from './reports.controller.ts';
 import {
   ANALYTICS_READ_ROLES,
   BRANCH_COMPARISON_READ_ROLES,
   CAGE_OCCUPANCY_READ_ROLES,
+  GOALS_ROLES,
   REPORTS_READ_ROLES,
   TRANSACTION_HISTORY_READ_ROLES,
 } from './reports.types.ts';
@@ -98,5 +102,22 @@ router.get(
   branchComparisonRead,
   branchComparisonController
 );
+
+// Custom change (Goals page): Superadmin-only, reading and configuring
+// alike. No requireBranch - the branch (or "all branches") is the caller's
+// own pick, not their assigned one.
+const goalsAccess = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...GOALS_ROLES]),
+];
+
+router.get('/reports/goals', goalsAccess, goalsController);
+router.put(
+  '/reports/goals/growth-rate',
+  goalsAccess,
+  setGoalGrowthRateController
+);
+router.put('/reports/goals/target', goalsAccess, setGoalTargetController);
 
 export default router;

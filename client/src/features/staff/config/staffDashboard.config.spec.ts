@@ -30,6 +30,11 @@ describe('toSidebarSections', () => {
     expect(titles).not.toContain('Branch Comparison');
     expect(titles).toContain('Branch Reports');
   });
+
+  it('shows Goals under Supervisor for a Superadmin only', () => {
+    expect(supervisorTitles('Superadmin')).toContain('Goals');
+    expect(supervisorTitles('Admin')).not.toContain('Goals');
+  });
 });
 
 describe('Front Desk dashboard', () => {

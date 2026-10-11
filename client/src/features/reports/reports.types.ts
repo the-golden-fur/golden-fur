@@ -126,3 +126,36 @@ export type BranchComparisonMetric =
   | 'bookings'
   | 'avg_sale'
   | 'new_customers';
+
+/** One goal line from GET /reports/goals: a metric's actual for the selected
+ * month, the month before, and the goal it's measured against. */
+export interface GoalRow {
+  /** What a saved growth rate/target is stored under, e.g. `revenue`,
+   * `service:Grooming`, `package:<name>`. */
+  key: string;
+  label: string;
+  actual: number;
+  previous: number;
+  goal: number;
+  /** 'target' = an exact number typed for this month; 'growth' = previous
+   * month + growth_rate %. */
+  goal_source: 'target' | 'growth';
+  growth_rate: number;
+  target: number | null;
+}
+
+export interface GoalsReport {
+  /** YYYY-MM */
+  month: string;
+  /** null = all branches. */
+  branch_id: string | null;
+  appointments: GoalRow;
+  services: GoalRow[];
+  revenue: GoalRow;
+  /** Booking payments per service - counter sales belong to no service, so
+   * these can add up to less than `revenue`. */
+  revenue_services: GoalRow[];
+  new_customers: GoalRow;
+  /** One per package name - grows on its own as packages are added. */
+  packages: GoalRow[];
+}

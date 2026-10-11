@@ -27,6 +27,7 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
 vi.mock('../../../reports/api/reports.api', () => ({
   getAnalyticsSummary: vi.fn(),
   getCageOccupancyReport: vi.fn(),
+  getGoals: vi.fn(),
   getTransactionHistory: vi.fn(),
 }));
 
@@ -195,6 +196,29 @@ describe('StaffDashboardPage', () => {
     });
     vi.mocked(reportsApi.getCageOccupancyReport).mockResolvedValue({
       data: [{ size: 'M', status: 'Available', cage_count: 3 }],
+      error: null,
+    });
+    const goalRow = (key: string, label: string) => ({
+      key,
+      label,
+      actual: 0,
+      previous: 0,
+      goal: 0,
+      goal_source: 'growth' as const,
+      growth_rate: 10,
+      target: null,
+    });
+    vi.mocked(reportsApi.getGoals).mockResolvedValue({
+      data: {
+        month: '2026-10',
+        branch_id: null,
+        appointments: goalRow('appointments', 'All appointments'),
+        services: [goalRow('service:Grooming', 'Grooming')],
+        revenue: goalRow('revenue', 'Revenue'),
+        revenue_services: [],
+        new_customers: goalRow('new_customers', 'New customers'),
+        packages: [],
+      },
       error: null,
     });
     vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
