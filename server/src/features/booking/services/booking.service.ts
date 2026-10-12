@@ -1716,6 +1716,10 @@ export async function getBookingById({
 
 export interface ListBookingsFilters {
   branchId?: string;
+  /** One customer's bookings, for a staff caller (Customer Management's
+   * booking history). A customer caller is always scoped to their own rows,
+   * whatever is passed here. */
+  customerId?: string;
   /** YYYY-MM-DD, matched against scheduled_start's calendar date (UTC). */
   date?: string;
   /** Inclusive date-range bounds (UTC calendar dates) - either may be given
@@ -1768,8 +1772,14 @@ export async function listBookings({
 
   if (!staffRole) {
     query = query.eq('customer_id', requesterId);
-  } else if (filters.branchId) {
-    query = query.eq('branch_id', filters.branchId);
+  } else {
+    if (filters.branchId) {
+      query = query.eq('branch_id', filters.branchId);
+    }
+
+    if (filters.customerId) {
+      query = query.eq('customer_id', filters.customerId);
+    }
   }
 
   if (filters.serviceCategory) {

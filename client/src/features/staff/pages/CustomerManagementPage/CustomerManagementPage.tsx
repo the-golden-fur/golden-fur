@@ -34,6 +34,9 @@ import {
   useGroupBy,
   type GroupSortMode,
 } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { listBookings } from '../../../booking/api/booking.api';
+import type { Booking } from '../../../booking/booking.types';
+import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
   activateCustomer,
   archiveCustomer,
@@ -90,11 +93,21 @@ const SIGN_IN_METHOD_LABELS: Record<
   google: 'Google',
 };
 
-const PANEL_TITLES: Record<'checkProfile' | 'viewPets' | 'addPet', string> = {
+type CustomerPanelAction = 'overview' | 'checkProfile' | 'viewPets' | 'addPet';
+
+/** 'overview' is titled with the customer's name alone - see the Modal. */
+const PANEL_TITLES: Record<Exclude<CustomerPanelAction, 'overview'>, string> = {
   checkProfile: 'Profile',
   viewPets: 'Pets',
   addPet: 'Add a pet',
 };
+
+function formatBookingDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
 
 /**
  * Issue #76: renamed from AdminCustomerListPage/"Customer Directory" ->
@@ -103,6 +116,10 @@ const PANEL_TITLES: Record<'checkProfile' | 'viewPets' | 'addPet', string> = {
  * form directly - it now opens a "…" action menu (CustomerRowActionMenu)
  * offering Check Profile / View Pets / Add Pet, with Add Pet now one option
  * among several rather than the only outcome of expanding a row.
+ *
+ * Clicking a customer (the whole card in Gallery/Board, the name in
+ * Table/List) opens an overview of that customer: contact details, pets and
+ * booking history in one place.
  */
 export function CustomerManagementPage() {
   const { user, accessToken } = useAuth();
@@ -115,16 +132,24 @@ export function CustomerManagementPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // 'deactivate'/'archive' are immediate actions (see handleSelectAction)
-  // and never land here - only the three modal-opening actions do.
+  // and never land here - only the modal-opening actions do.
   const [activePanel, setActivePanel] = useState<{
     customerId: string;
-    action: 'checkProfile' | 'viewPets' | 'addPet';
+    action: CustomerPanelAction;
   } | null>(null);
   const [petsByCustomer, setPetsByCustomer] = useState<Record<string, Pet[]>>(
     {}
   );
   const [isPetsLoading, setIsPetsLoading] = useState(false);
   const [petsLoadError, setPetsLoadError] = useState<string | null>(null);
+  // The overview's booking history - cached per customer like the pets.
+  const [bookingsByCustomer, setBookingsByCustomer] = useState<
+    Record<string, Booking[]>
+  >({});
+  const [isBookingsLoading, setIsBookingsLoading] = useState(false);
+  const [bookingsLoadError, setBookingsLoadError] = useState<string | null>(
+    null
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -344,6 +369,10 @@ export function CustomerManagementPage() {
     const canArchive = viewerRole === 'Admin' || viewerRole === 'Superadmin';
     const items: MoreOptionsMenuItem[] = [
       {
+        label: 'View details',
+        onSelect: () => handleSelectAction(customer.id, 'overview'),
+      },
+      {
         label: 'Check Profile',
         onSelect: () => handleSelectAction(customer.id, 'checkProfile'),
       },
@@ -386,7 +415,9 @@ export function CustomerManagementPage() {
     setMessage(null);
     setActivePanel({ customerId, action });
 
-    if (action === 'viewPets' && accessToken && !petsByCustomer[customerId]) {
+    const needsPets = action === 'viewPets' || action === 'overview';
+
+    if (needsPets && accessToken && !petsByCustomer[customerId]) {
       setIsPetsLoading(true);
       setPetsLoadError(null);
 
@@ -401,60 +432,162 @@ export function CustomerManagementPage() {
         setPetsByCustomer((prev) => ({ ...prev, [customerId]: result.data! }));
       });
     }
+
+    if (action === 'overview' && accessToken) {
+      // Unlike pets, bookings change from elsewhere in the app all day, so
+      // they are re-read each time the overview opens - the cached list
+      // just keeps the last one on screen while the fresh one loads.
+      setIsBookingsLoading(true);
+      setBookingsLoadError(null);
+
+      void listBookings(accessToken, { customerId }).then((result) => {
+        setIsBookingsLoading(false);
+
+        if (result.error || !result.data) {
+          setBookingsLoadError(result.error ?? 'Could not load bookings.');
+          return;
+        }
+
+        setBookingsByCustomer((prev) => ({
+          ...prev,
+          [customerId]: result.data!,
+        }));
+      });
+    }
   }
 
   const activePanelCustomer = customers.find(
     (customer) => customer.id === activePanel?.customerId
   );
 
-  function renderPanelContent(customer: CustomerProfile) {
-    if (activePanel?.action === 'checkProfile') {
+  function renderProfileDetails(customer: CustomerProfile) {
+    return (
+      <dl className={styles.profileDetails}>
+        <div className={styles.detail}>
+          <dt className={styles.detailLabel}>Contact number</dt>
+          <dd className={styles.detailValue}>
+            {customer.contact_number ?? '—'}
+          </dd>
+        </div>
+        <div className={styles.detail}>
+          <dt className={styles.detailLabel}>Emergency contact</dt>
+          <dd className={styles.detailValue}>
+            {customer.emergency_contact_name ?? '—'}
+            {customer.emergency_contact_number
+              ? ` (${customer.emergency_contact_number})`
+              : ''}
+          </dd>
+        </div>
+        <div className={styles.detail}>
+          <dt className={styles.detailLabel}>Preferred communication</dt>
+          <dd className={styles.detailValue}>
+            {customer.preferred_communication_channel ?? '—'}
+          </dd>
+        </div>
+      </dl>
+    );
+  }
+
+  function renderPets(customer: CustomerProfile) {
+    if (isPetsLoading) return <LoadingState label="Loading pets..." />;
+    if (petsLoadError) {
       return (
-        <dl className={styles.profileDetails}>
-          <div className={styles.detail}>
-            <dt className={styles.detailLabel}>Contact number</dt>
-            <dd className={styles.detailValue}>
-              {customer.contact_number ?? '—'}
-            </dd>
-          </div>
-          <div className={styles.detail}>
-            <dt className={styles.detailLabel}>Emergency contact</dt>
-            <dd className={styles.detailValue}>
-              {customer.emergency_contact_name ?? '—'}
-              {customer.emergency_contact_number
-                ? ` (${customer.emergency_contact_number})`
-                : ''}
-            </dd>
-          </div>
-          <div className={styles.detail}>
-            <dt className={styles.detailLabel}>Preferred communication</dt>
-            <dd className={styles.detailValue}>
-              {customer.preferred_communication_channel ?? '—'}
-            </dd>
-          </div>
-        </dl>
+        <p className={styles.errorBanner} role="alert">
+          {petsLoadError}
+        </p>
+      );
+    }
+    if ((petsByCustomer[customer.id] ?? []).length === 0) {
+      return <p className={styles.copy}>No pets on file yet.</p>;
+    }
+    return (
+      <div className={styles.petsGrid}>
+        {(petsByCustomer[customer.id] ?? []).map((pet) => (
+          <PetCard key={pet.id} pet={pet} linkBasePath="/staff/pets" />
+        ))}
+      </div>
+    );
+  }
+
+  function renderBookingHistory(customer: CustomerProfile) {
+    const bookings = bookingsByCustomer[customer.id];
+
+    if (bookingsLoadError) {
+      return (
+        <p className={styles.errorBanner} role="alert">
+          {bookingsLoadError}
+        </p>
+      );
+    }
+    if (!bookings) {
+      return isBookingsLoading ? (
+        <LoadingState label="Loading bookings..." />
+      ) : null;
+    }
+    if (bookings.length === 0) {
+      return <p className={styles.copy}>No bookings yet.</p>;
+    }
+
+    const petNames = new Map(
+      (petsByCustomer[customer.id] ?? []).map((pet) => [pet.id, pet.name])
+    );
+    // Newest first - the server sends them oldest first.
+    const newestFirst = [...bookings].sort((a, b) =>
+      b.scheduled_start.localeCompare(a.scheduled_start)
+    );
+
+    return (
+      <ul className={styles.bookingList}>
+        {newestFirst.map((booking) => (
+          <li key={booking.id}>
+            <Link
+              className={styles.bookingRow}
+              to={`/staff/bookings/${booking.id}`}
+            >
+              <span className={styles.bookingDate}>
+                {formatBookingDate(booking.scheduled_start)}
+              </span>
+              <span className={styles.bookingService}>
+                {booking.service_category}
+              </span>
+              {/* An archived pet is no longer in the customer's pet list. */}
+              <span className={styles.bookingPet}>
+                {petNames.get(booking.pet_id) ?? '—'}
+              </span>
+              <BookingStatusBadge status={booking.status} />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  function renderPanelContent(customer: CustomerProfile) {
+    if (activePanel?.action === 'overview') {
+      return (
+        <div className={styles.overview}>
+          <section className={styles.overviewSection}>
+            <h3 className={styles.overviewHeading}>Contact</h3>
+            {renderProfileDetails(customer)}
+          </section>
+          <section className={styles.overviewSection}>
+            <h3 className={styles.overviewHeading}>Pets</h3>
+            {renderPets(customer)}
+          </section>
+          <section className={styles.overviewSection}>
+            <h3 className={styles.overviewHeading}>Booking history</h3>
+            {renderBookingHistory(customer)}
+          </section>
+        </div>
       );
     }
 
+    if (activePanel?.action === 'checkProfile') {
+      return renderProfileDetails(customer);
+    }
+
     if (activePanel?.action === 'viewPets') {
-      if (isPetsLoading) return <LoadingState label="Loading pets..." />;
-      if (petsLoadError) {
-        return (
-          <p className={styles.errorBanner} role="alert">
-            {petsLoadError}
-          </p>
-        );
-      }
-      if ((petsByCustomer[customer.id] ?? []).length === 0) {
-        return <p className={styles.copy}>No pets on file yet.</p>;
-      }
-      return (
-        <div className={styles.petsGrid}>
-          {(petsByCustomer[customer.id] ?? []).map((pet) => (
-            <PetCard key={pet.id} pet={pet} linkBasePath="/staff/pets" />
-          ))}
-        </div>
-      );
+      return renderPets(customer);
     }
 
     if (activePanel?.action === 'addPet' && accessToken) {
@@ -475,9 +608,7 @@ export function CustomerManagementPage() {
     {
       id: 'name',
       header: 'Name',
-      render: (customer) => (
-        <span className={styles.customerName}>{customer.full_name}</span>
-      ),
+      render: (customer) => renderCustomerNameButton(customer),
     },
     {
       id: 'email',
@@ -497,22 +628,41 @@ export function CustomerManagementPage() {
     },
   ];
 
+  /** Table/List: the name opens the customer's overview. */
+  function renderCustomerNameButton(customer: CustomerProfile) {
+    return (
+      <button
+        type="button"
+        className={styles.customerNameButton}
+        onClick={() => handleSelectAction(customer.id, 'overview')}
+      >
+        {customer.full_name}
+      </button>
+    );
+  }
+
   function renderCustomerCard(customer: CustomerProfile) {
     return (
       <CardContextMenu
         items={buildCustomerActionItems(customer)}
         label={`Actions for ${customer.full_name}`}
       >
-        <div className={styles.customerCard}>
-          <div className={styles.cardHeader}>
+        {/* The whole card opens the overview; right-click / long-press
+            still reaches the actions menu through CardContextMenu. */}
+        <button
+          type="button"
+          className={styles.customerCard}
+          onClick={() => handleSelectAction(customer.id, 'overview')}
+        >
+          <span className={styles.cardHeader}>
             <span className={styles.customerName}>{customer.full_name}</span>
             <StatusBadge isActive={customer.is_active} />
-          </div>
+          </span>
           <span className={styles.customerEmail}>{customer.account_email}</span>
           <span className={styles.signInBadge}>
             {SIGN_IN_METHOD_LABELS[customer.primary_auth_provider]}
           </span>
-        </div>
+        </button>
       </CardContextMenu>
     );
   }
@@ -645,9 +795,7 @@ export function CustomerManagementPage() {
                 getRowKey={(customer) => customer.id}
                 renderItem={(customer) => (
                   <div className={styles.customerRow}>
-                    <span className={styles.customerName}>
-                      {customer.full_name}
-                    </span>
+                    {renderCustomerNameButton(customer)}
                     <span className={styles.customerEmail}>
                       {customer.account_email}
                     </span>
@@ -677,7 +825,12 @@ export function CustomerManagementPage() {
 
       <Modal
         isOpen={activePanel !== null && activePanelCustomer !== undefined}
-        title={`${activePanel ? PANEL_TITLES[activePanel.action] : ''} - ${activePanelCustomer?.full_name ?? ''}`}
+        title={
+          !activePanel || activePanel.action === 'overview'
+            ? (activePanelCustomer?.full_name ?? '')
+            : `${PANEL_TITLES[activePanel.action]} - ${activePanelCustomer?.full_name ?? ''}`
+        }
+        size={activePanel?.action === 'overview' ? 'wide' : 'default'}
         onClose={() => setActivePanel(null)}
       >
         {activePanelCustomer ? renderPanelContent(activePanelCustomer) : null}

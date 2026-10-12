@@ -216,6 +216,7 @@ export async function listBookingsController(
       requesterId,
       filters: {
         branchId: parsed.data.branch_id,
+        customerId: parsed.data.customer_id,
         date: parsed.data.date,
         dateFrom: parsed.data.date_from,
         dateTo: parsed.data.date_to,

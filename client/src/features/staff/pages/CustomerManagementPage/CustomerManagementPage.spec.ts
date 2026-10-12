@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { listBookings } from '../../../booking/api/booking.api';
 import {
   listCustomerPets,
   listCustomers,
@@ -26,6 +27,10 @@ vi.mock('../../../customers/api/customer.api', () => ({
   listBreeds: vi.fn(() => Promise.resolve({ data: [], error: null })),
   listPetTypes: vi.fn(() => Promise.resolve({ data: [], error: null })),
   uploadPetPhoto: vi.fn(),
+}));
+
+vi.mock('../../../booking/api/booking.api', () => ({
+  listBookings: vi.fn(() => Promise.resolve({ data: [], error: null })),
 }));
 
 const CUSTOMER = {
@@ -431,5 +436,175 @@ describe('CustomerManagementPage (#76)', () => {
     expect(
       screen.getByText('John Dela Cruz (+63 917 000 0002)')
     ).toBeInTheDocument();
+  });
+
+  describe('customer overview (pets + booking history)', () => {
+    const PET = {
+      id: 'pet-1',
+      customer_id: 'customer-1',
+      name: 'Buddy',
+      pet_type: 'Dog',
+      breed_id: null,
+      photo_url: null,
+      gender: null,
+      date_of_birth: null,
+      weight_class: 'M',
+      coat_type: 'SC',
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+
+    function mockReceptionistWithCustomer() {
+      vi.mocked(useAuth).mockReturnValue({
+        user: { id: 'staff-1' },
+        accessToken: 'token',
+      } as never);
+      vi.mocked(listStaff).mockResolvedValue({
+        data: [{ id: 'staff-1', role: 'Receptionist' }],
+        error: null,
+      } as never);
+      vi.mocked(listCustomers).mockResolvedValue({
+        data: [CUSTOMER],
+        error: null,
+      });
+      vi.mocked(listCustomerPets).mockResolvedValue({
+        data: [PET],
+        error: null,
+      } as never);
+      vi.mocked(listBookings).mockClear();
+      vi.mocked(listBookings).mockResolvedValue({
+        data: [
+          {
+            id: 'booking-old',
+            pet_id: 'pet-1',
+            service_category: 'Grooming',
+            status: 'Completed',
+            scheduled_start: '2026-03-01T02:00:00.000Z',
+          },
+          {
+            id: 'booking-new',
+            // A pet that has since been archived - not in the pet list.
+            pet_id: 'pet-gone',
+            service_category: 'Hotel',
+            status: 'Pending',
+            scheduled_start: '2026-09-01T02:00:00.000Z',
+          },
+        ],
+        error: null,
+      } as never);
+    }
+
+    it("clicking a Gallery card opens the customer's contact details, pets and booking history", async () => {
+      mockReceptionistWithCustomer();
+      renderPage();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: /Jane Dela Cruz/ })
+      );
+
+      const dialog = await screen.findByRole('dialog', {
+        name: 'Jane Dela Cruz',
+      });
+      expect(
+        within(dialog).getByText('John Dela Cruz (+63 917 000 0002)')
+      ).toBeInTheDocument();
+      // By href - the pet's name also appears in its booking's row below.
+      await within(dialog).findByText('Booking history');
+      await vi.waitFor(() =>
+        expect(
+          within(dialog)
+            .getAllByRole('link')
+            .map((link) => link.getAttribute('href'))
+        ).toContain('/staff/pets/pet-1')
+      );
+
+      expect(listCustomerPets).toHaveBeenCalledWith('customer-1', 'token');
+      expect(listBookings).toHaveBeenCalledWith('token', {
+        customerId: 'customer-1',
+      });
+
+      // Newest booking first, each linking to its own booking page.
+      const bookingLinks = (await within(dialog).findAllByRole('link')).filter(
+        (link) => link.getAttribute('href')?.startsWith('/staff/bookings/')
+      );
+      expect(bookingLinks.map((link) => link.getAttribute('href'))).toEqual([
+        '/staff/bookings/booking-new',
+        '/staff/bookings/booking-old',
+      ]);
+      expect(bookingLinks[0]).toHaveTextContent('Hotel');
+      expect(bookingLinks[0]).toHaveTextContent('Pending');
+      // The archived pet has no name to show.
+      expect(bookingLinks[0]).toHaveTextContent('—');
+      expect(bookingLinks[1]).toHaveTextContent('Grooming');
+      expect(bookingLinks[1]).toHaveTextContent('Buddy');
+    });
+
+    it('clicking the name in Table view opens the same overview', async () => {
+      mockReceptionistWithCustomer();
+      renderPage();
+
+      await screen.findByText('Jane Dela Cruz');
+      await userEvent.click(screen.getByRole('button', { name: 'Table' }));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Jane Dela Cruz' })
+      );
+
+      const dialog = await screen.findByRole('dialog', {
+        name: 'Jane Dela Cruz',
+      });
+      expect(within(dialog).getByText('Booking history')).toBeInTheDocument();
+      expect(listBookings).toHaveBeenCalledWith('token', {
+        customerId: 'customer-1',
+      });
+    });
+
+    it('says so when the customer has no pets and no bookings', async () => {
+      mockReceptionistWithCustomer();
+      vi.mocked(listCustomerPets).mockResolvedValue({ data: [], error: null });
+      vi.mocked(listBookings).mockResolvedValue({ data: [], error: null });
+      renderPage();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: /Jane Dela Cruz/ })
+      );
+
+      expect(
+        await screen.findByText('No pets on file yet.')
+      ).toBeInTheDocument();
+      expect(await screen.findByText('No bookings yet.')).toBeInTheDocument();
+    });
+
+    it('a bookings failure is reported without hiding the pets', async () => {
+      mockReceptionistWithCustomer();
+      vi.mocked(listBookings).mockResolvedValue({
+        data: null,
+        error: 'Could not reach the server.',
+      });
+      renderPage();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: /Jane Dela Cruz/ })
+      );
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Could not reach the server.'
+      );
+      expect(screen.getByRole('link', { name: /buddy/i })).toBeInTheDocument();
+    });
+
+    it('right-clicking a card opens the actions menu instead, with View details in it', async () => {
+      mockReceptionistWithCustomer();
+      renderPage();
+
+      fireEvent.contextMenu(await screen.findByText('Jane Dela Cruz'));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(listBookings).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('menuitem', { name: 'View details' }));
+      expect(
+        await screen.findByRole('dialog', { name: 'Jane Dela Cruz' })
+      ).toBeInTheDocument();
+    });
   });
 });
