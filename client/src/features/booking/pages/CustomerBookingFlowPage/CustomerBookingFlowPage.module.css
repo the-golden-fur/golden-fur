@@ -292,6 +292,15 @@
   gap: var(--space-2);
 }
 
+/* Services step: the service type cards sit above the services they
+   filter, set apart from them by a rule. */
+.serviceTypePicker {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
 .tabRow {
   display: flex;
   flex-wrap: wrap;
@@ -336,7 +345,7 @@
   color: var(--color-accent-gold-primary);
 }
 
-/* Service Type / Booking Type steps: the ⓘ popover sits in the card's
+/* Service type cards (Services step) / Booking Type step: the ⓘ popover sits in the card's
    top-right corner as a sibling of the card <button> (a button can't nest
    inside a button). */
 .infoCardWrap {
@@ -355,7 +364,7 @@
   z-index: 1;
 }
 
-/* Read-only contents of the Service Type step's ⓘ popover. */
+/* Read-only contents of a service type card's ⓘ popover. */
 .infoText {
   margin: 0;
 }

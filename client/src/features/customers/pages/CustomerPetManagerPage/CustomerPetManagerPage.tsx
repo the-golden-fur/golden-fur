@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { Columns3, List as ListIcon, Table as TableIcon } from 'lucide-react';
+import {
+  Columns3,
+  List as ListIcon,
+  Table as TableIcon,
+  TriangleAlert,
+} from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
-import { listCustomerPets } from '../../api/customer.api';
+import { getPetBookingConflicts } from '../../../booking/api/booking.api';
+import {
+  archivePet,
+  deactivatePet,
+  listCustomerPets,
+} from '../../api/customer.api';
 import { PetCard } from '../../components/cards/PetCard/PetCard';
 import { PetForm } from '../../components/forms/PetForm/PetForm';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
 import {
@@ -22,6 +33,7 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
+import { formatPetAge } from '../../../../shared/utils/formatPetAge';
 import { formatRelativeTime } from '../../../../shared/utils/formatRelativeTime';
 import type { Pet } from '../../customer.types';
 import {
@@ -56,6 +68,14 @@ export function CustomerPetManagerPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showPetForm, setShowPetForm] = useState(false);
   const [petMessage, setPetMessage] = useState<string | null>(null);
+  // Pets with a booking that isn't finished yet - these can't be deleted
+  // (same check the booking flow's Pet step uses to block a double booking).
+  const [conflictPetIds, setConflictPetIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [petToDelete, setPetToDelete] = useState<Pet | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
@@ -79,6 +99,14 @@ export function CustomerPetManagerPage() {
       }
     });
 
+    void getPetBookingConflicts(user.id, accessToken).then((result) => {
+      if (isMounted && result.data) {
+        setConflictPetIds(
+          new Set(result.data.map((conflict) => conflict.pet_id))
+        );
+      }
+    });
+
     return () => {
       isMounted = false;
     };
@@ -89,6 +117,45 @@ export function CustomerPetManagerPage() {
     setShowPetForm(false);
     setPetMessage('Pet added.');
   };
+
+  function handleDeleteClick(pet: Pet) {
+    setPetMessage(null);
+
+    if (conflictPetIds.has(pet.id)) {
+      setDeleteError(
+        `${pet.name} has a booking that isn't finished yet. Cancel or complete it before deleting this pet.`
+      );
+      return;
+    }
+
+    setDeleteError(null);
+    setPetToDelete(pet);
+  }
+
+  /** "Delete" archives the pet: it leaves the customer's list but its
+   * booking and medical history stay, and staff can restore it. The server
+   * only archives an inactive pet (petArchive.service.ts), so deactivate
+   * goes first. */
+  async function handleConfirmDelete() {
+    if (!petToDelete || !accessToken) return;
+
+    setIsDeleting(true);
+    const deactivated = await deactivatePet(petToDelete.id, accessToken);
+    const archived = deactivated.error
+      ? deactivated
+      : await archivePet(petToDelete.id, accessToken);
+    setIsDeleting(false);
+
+    if (archived.error) {
+      setDeleteError(archived.error);
+      setPetToDelete(null);
+      return;
+    }
+
+    setPets((prev) => prev.filter((pet) => pet.id !== petToDelete.id));
+    setPetToDelete(null);
+    setPetMessage('Pet deleted.');
+  }
 
   const filterFields = useMemo(() => buildPetFilterFields(pets), [pets]);
   const groupByAxes = useMemo(() => buildPetGroupByAxes(pets), [pets]);
@@ -145,6 +212,11 @@ export function CustomerPetManagerPage() {
       ),
     },
     {
+      id: 'age',
+      header: 'Age',
+      render: (pet) => formatPetAge(pet.date_of_birth) ?? '—',
+    },
+    {
       id: 'assessment',
       header: 'Weight / Coat',
       render: (pet) =>
@@ -171,6 +243,9 @@ export function CustomerPetManagerPage() {
           {pet.name}
         </Link>
         <span className={styles.petTypeBadge}>{pet.pet_type}</span>
+        {formatPetAge(pet.date_of_birth) ? (
+          <span className={styles.copy}>{formatPetAge(pet.date_of_birth)}</span>
+        ) : null}
         {pet.weight_class && pet.coat_type ? (
           <span className={styles.assessmentBadge}>
             {pet.weight_class} · {pet.coat_type}
@@ -204,6 +279,11 @@ export function CustomerPetManagerPage() {
       <section className={styles.panel}>
         {petMessage ? (
           <p className={styles.successBanner}>{petMessage}</p>
+        ) : null}
+        {deleteError ? (
+          <p className={styles.errorBanner} role="alert">
+            {deleteError}
+          </p>
         ) : null}
 
         {isLoading ? (
@@ -257,6 +337,17 @@ export function CustomerPetManagerPage() {
                 columns={columns}
                 rows={visiblePets}
                 getRowKey={(pet) => pet.id}
+                renderRowActions={(pet) => (
+                  <button
+                    type="button"
+                    className={styles.deleteButton}
+                    aria-label={`Delete ${pet.name}`}
+                    title={`Delete ${pet.name}`}
+                    onClick={() => handleDeleteClick(pet)}
+                  >
+                    Delete
+                  </button>
+                )}
                 emptyMessage="No pets match this filter."
               />
             ) : view === 'list' ? (
@@ -286,13 +377,38 @@ export function CustomerPetManagerPage() {
         </button>
 
         {showPetForm ? (
-          <PetForm
-            customerId={user.id}
-            accessToken={accessToken}
-            onCreated={handlePetCreated}
-          />
+          <div className={styles.petFormWrap}>
+            <PetForm
+              customerId={user.id}
+              accessToken={accessToken}
+              onCreated={handlePetCreated}
+            />
+          </div>
         ) : null}
       </section>
+
+      <ConfirmDialog
+        isOpen={petToDelete !== null}
+        title={`Delete ${petToDelete?.name ?? 'pet'}?`}
+        body={
+          <p className={styles.deleteWarning}>
+            <TriangleAlert
+              className={styles.deleteWarningIcon}
+              aria-hidden="true"
+            />
+            <span>
+              <strong>Warning:</strong> {petToDelete?.name} will be removed from
+              your pets. You won&apos;t be able to book services for{' '}
+              {petToDelete?.name} unless the clinic restores it.
+            </span>
+          </p>
+        }
+        confirmLabel="Delete pet"
+        tone="danger"
+        isConfirming={isDeleting}
+        onConfirm={() => void handleConfirmDelete()}
+        onCancel={() => setPetToDelete(null)}
+      />
     </main>
   );
 }

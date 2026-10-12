@@ -230,4 +230,30 @@ describe('PetForm', () => {
       )
     );
   });
+
+  it('shows the age under Date of birth as soon as a date is entered', async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    expect(screen.queryByText(/^Age:/)).not.toBeInTheDocument();
+
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    const dateOfBirth = [
+      twoYearsAgo.getFullYear(),
+      String(twoYearsAgo.getMonth() + 1).padStart(2, '0'),
+      String(twoYearsAgo.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    fireEvent.change(screen.getByLabelText(/Date of birth/), {
+      target: { value: dateOfBirth },
+    });
+
+    expect(await screen.findByText('Age: 2 yr')).toBeInTheDocument();
+  });
 });

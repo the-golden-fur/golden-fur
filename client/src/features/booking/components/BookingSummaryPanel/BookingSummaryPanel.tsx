@@ -34,10 +34,14 @@ interface BookingSummaryPanelProps {
   /** Multi-booking checkout: bookings already committed to this checkout
    * ("Add another booking"), shown above the rows for the one in progress. */
   committedEntries: BookingSummaryCommittedEntry[];
-  /** Services/packages subtotal across the whole checkout - discounts and
-   * promos are only resolved on the Review step, so they're not reflected
-   * here. */
+  /** Services/packages subtotal across the whole checkout, before any
+   * discount/promo/coupon. */
   subtotal: number;
+  /** What the discount/promo/coupon picked on the Review step takes off.
+   * While it's 0 (nothing picked yet) the footer shows the subtotal alone;
+   * once set, it shows the reduction and the resulting estimated total -
+   * the same figure the Review step's own "Estimated total" shows. */
+  reduction?: number;
 }
 
 function formatPhp(amount: number): string {
@@ -55,7 +59,10 @@ export function BookingSummaryPanel({
   rows,
   committedEntries,
   subtotal,
+  reduction = 0,
 }: BookingSummaryPanelProps) {
+  const hasReduction = reduction > 0;
+
   return (
     <aside className={styles.panel} aria-labelledby="booking-summary-title">
       <h2 id="booking-summary-title" className={styles.title}>
@@ -146,13 +153,36 @@ export function BookingSummaryPanel({
         })}
       </ol>
 
-      <div className={styles.footer}>
-        <span>Subtotal</span>
-        <span className={styles.total}>{formatPhp(subtotal)}</span>
-      </div>
-      <p className={styles.footnote}>
-        Discounts and promos are applied on the Review step.
-      </p>
+      {hasReduction ? (
+        <div className={styles.footer}>
+          <div className={styles.footerRow}>
+            <span>Subtotal</span>
+            <span className={styles.amount}>{formatPhp(subtotal)}</span>
+          </div>
+          <div className={styles.footerRow}>
+            <span>Discounts &amp; promos</span>
+            <span className={styles.amount}>-{formatPhp(reduction)}</span>
+          </div>
+          <div className={styles.footerTotalRow}>
+            <span>Estimated total</span>
+            <span className={styles.total}>
+              {formatPhp(Math.max(0, subtotal - reduction))}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className={styles.footer}>
+            <div className={styles.footerTotalRow}>
+              <span>Subtotal</span>
+              <span className={styles.total}>{formatPhp(subtotal)}</span>
+            </div>
+          </div>
+          <p className={styles.footnote}>
+            Discounts and promos are applied on the Review step.
+          </p>
+        </>
+      )}
     </aside>
   );
 }

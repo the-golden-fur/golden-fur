@@ -61,6 +61,43 @@ describe('BookingSummaryPanel', () => {
     );
   });
 
+  it('shows the subtotal alone until a discount or promo is applied', () => {
+    renderPanel([], { subtotal: 300 });
+
+    expect(screen.getByText('Subtotal').parentElement).toHaveTextContent(
+      'PHP 300.00'
+    );
+    expect(screen.queryByText('Estimated total')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Discounts and promos are applied on the Review step.')
+    ).toBeInTheDocument();
+  });
+
+  it('shows the reduction and the estimated total once one is applied', () => {
+    renderPanel([], { subtotal: 300, reduction: 30 });
+
+    expect(screen.getByText('Subtotal').parentElement).toHaveTextContent(
+      'PHP 300.00'
+    );
+    expect(
+      screen.getByText('Discounts & promos').parentElement
+    ).toHaveTextContent('-PHP 30.00');
+    expect(screen.getByText('Estimated total').parentElement).toHaveTextContent(
+      'PHP 270.00'
+    );
+    expect(
+      screen.queryByText('Discounts and promos are applied on the Review step.')
+    ).not.toBeInTheDocument();
+  });
+
+  it('never shows an estimated total below zero', () => {
+    renderPanel([], { subtotal: 100, reduction: 150 });
+
+    expect(screen.getByText('Estimated total').parentElement).toHaveTextContent(
+      'PHP 0.00'
+    );
+  });
+
   it('lets a reachable row jump back to its step, and leaves others inert', () => {
     const onSelect = vi.fn();
     renderPanel([
