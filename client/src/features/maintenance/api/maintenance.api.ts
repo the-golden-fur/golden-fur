@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../../../shared/auth/api/auth.api';
 import type {
+  Branch,
   BranchAvailabilityPayload,
   BranchPricePayload,
   BranchSummary,
@@ -138,6 +139,36 @@ export async function listBranches(): Promise<
   }
 
   return { data: (data ?? []) as BranchSummary[], error: null };
+}
+
+export type BranchLetterhead = Pick<
+  Branch,
+  'id' | 'name' | 'address' | 'contact_number'
+>;
+
+/**
+ * What a printed slip's letterhead needs for the branch it came from (see
+ * TransactionReceiptPrintout). Read directly like listBranches above, but
+ * archived branches are kept - an old transaction still belongs to one.
+ */
+export async function listBranchLetterheads(): Promise<
+  MaintenanceApiResult<BranchLetterhead[]>
+> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return { data: null, error: 'Supabase client is not configured.' };
+  }
+
+  const { data, error } = await supabase
+    .from('branches')
+    .select('id, name, address, contact_number');
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: (data ?? []) as BranchLetterhead[], error: null };
 }
 
 export interface ListServicesFilters {
