@@ -344,7 +344,7 @@ export async function getStaffPickerOptions(
  * pattern as that file's own listBranches/customer.api.ts's listBreeds:
  * service_types RLS grants SELECT to every authenticated user, so both the
  * customer flow and receptionist walk-in mode read it directly via the
- * Supabase client. Used to drive the Service Type step's active/inactive
+ * Supabase client. Used to drive the Services step's type picker's active/inactive
  * filtering and customer-facing labels.
  */
 export async function listServiceTypes(): Promise<

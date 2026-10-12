@@ -587,7 +587,7 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Max'));
     await user.click(screen.getByText('Next'));
 
-    // Still stuck on the Pet step - Service Type (the next step) never appeared.
+    // Still stuck on the Pet step - Services (the next step) never appeared.
     expect(screen.queryByText('Grooming')).not.toBeInTheDocument();
   });
 
@@ -687,10 +687,8 @@ describe('CustomerBookingFlowPage', () => {
     expect(bookingForm().queryByText('Grooming')).not.toBeInTheDocument();
     expect(bookingForm().queryByText('Hotel')).not.toBeInTheDocument();
 
-    await user.click(bookingForm().getByText('Next'));
-
-    // Initial Assessment is pre-selected on the Services step without the
-    // user clicking it.
+    // Initial Assessment is pre-selected on the same Services step without
+    // the user clicking it.
     await waitFor(() =>
       expect(bookingForm().getByText('Initial Assessment')).toBeInTheDocument()
     );
@@ -717,7 +715,6 @@ describe('CustomerBookingFlowPage', () => {
       expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
     await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
 
@@ -743,12 +740,11 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
-    await user.click(screen.getByText('Grooming'));
-    // Category selection is its own step - items aren't shown here.
+    // Nothing is listed until a service type is picked.
     expect(screen.queryByText('Bath')).not.toBeInTheDocument();
-    await user.click(screen.getByText('Next'));
+    await user.click(screen.getByText('Grooming'));
 
-    // Services step comes before Date & Time now.
+    // The type's services load right below it, on the same step.
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath'));
     await user.click(screen.getByText('Next'));
@@ -797,7 +793,6 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Hotel')).toBeInTheDocument());
     await user.click(screen.getByText('Hotel'));
-    await user.click(screen.getByText('Next'));
 
     // Services step comes before Booking Type / Date & Time now.
     await waitFor(() =>
@@ -903,10 +898,9 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
 
     await user.click(screen.getByText('Daycare'));
-    await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
       expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
@@ -947,11 +941,6 @@ describe('CustomerBookingFlowPage', () => {
       expect(screen.getByText('Add another booking')).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
-    await waitFor(() =>
-      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Next'));
-
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeInTheDocument()
     );
@@ -1005,10 +994,9 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
 
     await user.click(screen.getByText('Daycare'));
-    await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
       expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
@@ -1041,13 +1029,6 @@ describe('CustomerBookingFlowPage', () => {
     // one booking still goes through the plain single-booking endpoint).
     await waitFor(() =>
       expect(screen.getByText('Add another booking')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Next'));
-
-    // New Promos & Coupons step (session 86), before Review - nothing
-    // required here, just advance past it.
-    await waitFor(() =>
-      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -1110,10 +1091,9 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
 
     await user.click(screen.getByText('Daycare'));
-    await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
       expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
@@ -1186,7 +1166,6 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Hotel')).toBeInTheDocument());
     await user.click(screen.getByText('Hotel'));
-    await user.click(screen.getByText('Next'));
 
     // Services step - the two Hotel services are single-select cards here.
     const mediumCage = await screen.findByText('Hotel Stay - Medium Cage');
@@ -1221,7 +1200,6 @@ describe('CustomerBookingFlowPage', () => {
       expect(screen.getByText('Grooming')).toBeInTheDocument()
     );
     await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath'));
@@ -1254,20 +1232,14 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(screen.getByText('Next'));
 
-    // New Promos & Coupons step (session 86), before Review - nothing
-    // required here, just advance past it.
-    await waitFor(() =>
-      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Next'));
-
     expect(screen.getByText('Confirm booking')).toBeInTheDocument();
   });
 
   /** Step order (Architectural-Change-History "Rearrange booking steps"):
-   * Branch > Pet > Service Type > Services > Date & Time (+ Staff/Cage) >
-   * ... - this helper walks branch/pet and lands on the category step with
-   * nothing picked yet. */
+   * Branch > Pet > Services (service type + its services, one step) >
+   * Date & Time (+ Staff/Cage) > ... - goToServicesStep below walks
+   * branch/pet and lands on the Services step with no service type picked
+   * yet. */
   it('Pet step: "Add a pet" sends a customer to their Pet Manager instead of opening a form here', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -1325,7 +1297,7 @@ describe('CustomerBookingFlowPage', () => {
     );
   });
 
-  async function goToCategoryStep(user: ReturnType<typeof userEvent.setup>) {
+  async function goToServicesStep(user: ReturnType<typeof userEvent.setup>) {
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     await user.click(screen.getByText('Makati'));
     await user.click(screen.getByText('Next'));
@@ -1393,7 +1365,7 @@ describe('CustomerBookingFlowPage', () => {
     };
   }
 
-  it('Service Types addendum: a newly created, active service type with a brand-new key shows up in the Service Type step', async () => {
+  it('Service Types addendum: a newly created, active service type with a brand-new key shows up in the Services step', async () => {
     vi.mocked(bookingApi.listServiceTypes).mockResolvedValue({
       data: [
         serviceType({ key: 'Grooming' }),
@@ -1407,7 +1379,7 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
 
     // Exact name, not /Overnight Boarding/ - each card now also has an
     // "About <label>" ⓘ trigger button whose name would match a substring.
@@ -1416,7 +1388,7 @@ describe('CustomerBookingFlowPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('Service Types addendum: an inactive custom service type stays hidden from the Service Type step', async () => {
+  it('Service Types addendum: an inactive custom service type stays hidden from the Services step', async () => {
     vi.mocked(bookingApi.listServiceTypes).mockResolvedValue({
       data: [
         serviceType({ key: 'Grooming' }),
@@ -1431,17 +1403,44 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
 
     expect(
       screen.queryByRole('button', { name: 'Overnight Boarding' })
     ).not.toBeInTheDocument();
   });
 
-  it("the Service Type step's ⓘ button previews what the type covers plus its read-only service list for the branch", async () => {
+  it('Services step: picking a service type lists its services right below, with no Next press in between', async () => {
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
+
+    // Nothing to choose from yet - just the type cards and a prompt.
+    expect(
+      screen.getByText('Choose a service type to see its services.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Bath')).not.toBeInTheDocument();
+    expect(screen.getByText('Next')).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Grooming' }));
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    expect(
+      screen.queryByText('Choose a service type to see its services.')
+    ).not.toBeInTheDocument();
+    // The type cards stay on screen so another one can still be picked.
+    expect(screen.getByRole('button', { name: 'Hotel' })).toBeInTheDocument();
+    // A type alone isn't enough - a service has to be picked too.
+    expect(screen.getByText('Next')).toBeDisabled();
+
+    await user.click(screen.getByText('Bath'));
+    expect(screen.getByText('Next')).toBeEnabled();
+  });
+
+  it("a service type's ⓘ button previews what the type covers plus its read-only service list for the branch", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await goToServicesStep(user);
 
     await user.click(screen.getByRole('button', { name: 'About Grooming' }));
 
@@ -1456,7 +1455,7 @@ describe('CustomerBookingFlowPage', () => {
     expect(note).not.toHaveTextContent('Hotel Stay - Medium Cage');
   });
 
-  it('the Service Type ⓘ popover for a custom type with no built-in definition shows only its service list, and the empty-state line when the branch has none', async () => {
+  it('the service type ⓘ popover for a custom type with no built-in definition shows only its service list, and the empty-state line when the branch has none', async () => {
     vi.mocked(bookingApi.listServiceTypes).mockResolvedValue({
       data: [
         serviceType({ key: 'Grooming' }),
@@ -1467,7 +1466,7 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
 
     await user.click(
       screen.getByRole('button', { name: 'About Overnight Boarding' })
@@ -1518,10 +1517,9 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
 
     await user.click(bookingForm().getByText('Grooming'));
-    await user.click(bookingForm().getByText('Next'));
 
     await waitFor(() =>
       expect(bookingForm().getByText('Bath')).toBeInTheDocument()
@@ -1540,10 +1538,9 @@ describe('CustomerBookingFlowPage', () => {
   it("switching category tabs clears the previous tab's selection immediately, with no warning", async () => {
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
 
     await user.click(bookingForm().getByText('Grooming'));
-    await user.click(bookingForm().getByText('Next'));
 
     await waitFor(() =>
       expect(bookingForm().getByText('Bath')).toBeInTheDocument()
@@ -1552,18 +1549,12 @@ describe('CustomerBookingFlowPage', () => {
     // Both the option card and the running total show "PHP 300.00".
     expect(bookingForm().getAllByText('PHP 300.00')).toHaveLength(2);
 
-    // Back to category step (Services is one step back now), switch to Hotel
-    // - Bath's pick is dropped the moment the category actually changes, not
-    // just once something new is picked - so there's nothing left to warn
-    // about.
-    await user.click(bookingForm().getByText('Back'));
-    await waitFor(() =>
-      expect(bookingForm().getByText('Grooming')).toBeInTheDocument()
-    );
-    await user.click(bookingForm().getByText('Hotel'));
+    // Switch to Hotel on the same step - Bath's pick is dropped the moment
+    // the category actually changes, not just once something new is picked -
+    // so there's nothing left to warn about.
+    await user.click(bookingForm().getByRole('button', { name: 'Hotel' }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-    await user.click(bookingForm().getByText('Next'));
     await waitFor(() =>
       expect(
         bookingForm().getByText('Hotel Stay - Medium Cage')
@@ -1571,10 +1562,11 @@ describe('CustomerBookingFlowPage', () => {
     );
     expect(bookingForm().queryByText('Bath')).not.toBeInTheDocument();
 
+    // Nothing is picked under Hotel yet, so the step can't be left.
+    expect(bookingForm().getByText('Next')).toBeDisabled();
+
     // Switching back to Grooming does NOT restore the dropped selection.
-    await user.click(bookingForm().getByText('Back'));
-    await user.click(bookingForm().getByText('Grooming'));
-    await user.click(bookingForm().getByText('Next'));
+    await user.click(bookingForm().getByRole('button', { name: 'Grooming' }));
     await waitFor(() =>
       expect(bookingForm().getByText('Bath')).toBeInTheDocument()
     );
@@ -1618,7 +1610,6 @@ describe('CustomerBookingFlowPage', () => {
       expect(bookingForm().getByText('Grooming')).toBeInTheDocument()
     );
     await user.click(bookingForm().getByText('Grooming'));
-    await user.click(bookingForm().getByText('Next'));
 
     await waitFor(() =>
       expect(bookingForm().getByText('Bath')).toBeInTheDocument()
@@ -1667,7 +1658,6 @@ describe('CustomerBookingFlowPage', () => {
       expect(bookingForm().getByText('Hotel')).toBeInTheDocument()
     );
     await user.click(bookingForm().getByText('Hotel'));
-    await user.click(bookingForm().getByText('Next'));
 
     expect(
       await bookingForm().findByText('PHP 950.00/night')
@@ -1695,7 +1685,6 @@ describe('CustomerBookingFlowPage', () => {
       expect(bookingForm().getByText('Hotel')).toBeInTheDocument()
     );
     await user.click(bookingForm().getByText('Hotel'));
-    await user.click(bookingForm().getByText('Next'));
 
     // Services step: pick the cage service, then move to Date & Time where
     // the number of nights lives (alongside Cage & Date).
@@ -1737,7 +1726,6 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Hotel')).toBeInTheDocument());
     await user.click(screen.getByText('Hotel'));
-    await user.click(screen.getByText('Next'));
 
     await user.click(await screen.findByText('Hotel Stay - Medium Cage'));
     await user.click(screen.getByText('Next'));
@@ -1749,17 +1737,17 @@ describe('CustomerBookingFlowPage', () => {
     fireEvent.change(nightsInput, { target: { value: '5' } });
     expect(nightsInput).toHaveValue(5);
 
-    // Browse back to the category step, over to Grooming and back to Hotel -
+    // Browse back to the Services step, over to Grooming and back to Hotel -
     // nights is not category-scoped state, so it should still read 5 rather
     // than snapping back to the 1 default.
     await user.click(screen.getByText('Back')); // -> Services
-    await user.click(screen.getByText('Back')); // -> Service Type
     await waitFor(() =>
-      expect(screen.getByText('Grooming')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Grooming' })
+      ).toBeInTheDocument()
     );
-    await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Hotel'));
-    await user.click(screen.getByText('Next'));
+    await user.click(screen.getByRole('button', { name: 'Grooming' }));
+    await user.click(screen.getByRole('button', { name: 'Hotel' }));
 
     await user.click(await screen.findByText('Hotel Stay - Medium Cage'));
     await user.click(screen.getByText('Next'));
@@ -1781,9 +1769,8 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
     await user.click(bookingForm().getByText('Grooming'));
-    await user.click(bookingForm().getByText('Next'));
 
     await waitFor(() =>
       expect(bookingForm().getByText('Bath')).toBeInTheDocument()
@@ -1798,15 +1785,6 @@ describe('CustomerBookingFlowPage', () => {
     // Multi-booking checkout: lands on "Your bookings" before Review.
     await waitFor(() =>
       expect(bookingForm().getByText('Add another booking')).toBeInTheDocument()
-    );
-    await user.click(bookingForm().getByText('Next'));
-
-    // New Promos & Coupons step (session 86), before Review - nothing
-    // required here, just advance past it.
-    await waitFor(() =>
-      expect(
-        bookingForm().getByText(/Choose one promo or coupon/)
-      ).toBeInTheDocument()
     );
     await user.click(bookingForm().getByText('Next'));
 
@@ -1839,9 +1817,8 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
     await user.click(bookingForm().getByText('Grooming'));
-    await user.click(bookingForm().getByText('Next'));
 
     await waitFor(() =>
       expect(bookingForm().getByText('Bath')).toBeInTheDocument()
@@ -1864,9 +1841,8 @@ describe('CustomerBookingFlowPage', () => {
   it("shows each service's duration and an estimated-duration total on the Services step", async () => {
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
     await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
 
     // Bath's own duration (60min), shown as a meta line on its option card.
     const bathCard = (await screen.findByText('Bath')).closest('button')!;
@@ -1881,20 +1857,23 @@ describe('CustomerBookingFlowPage', () => {
   it('fills in the "Your booking" summary panel as each step is completed', async () => {
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
 
     const panel = screen.getByRole('complementary', { name: 'Your booking' });
-    // Service Type is the current step; Services hasn't been reached yet.
-    expect(
-      within(panel).getByText('Service Type').closest('li')
-    ).toHaveAttribute('aria-current', 'step');
+    // Services is the current step, and there is no separate Service Type
+    // row any more.
+    expect(within(panel).getByText('Services').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step'
+    );
+    expect(within(panel).queryByText('Service Type')).not.toBeInTheDocument();
 
     await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
 
+    // The picked service type shows on the Services row straight away.
     await waitFor(() =>
       expect(
-        within(panel).getByText('Service Type').closest('li')
+        within(panel).getByText('Services').closest('li')
       ).toHaveTextContent('Grooming')
     );
 
@@ -1934,9 +1913,8 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
     await user.click(bookingForm().getByText('Grooming'));
-    await user.click(bookingForm().getByText('Next'));
 
     await waitFor(() =>
       expect(bookingForm().getByText('Bath')).toBeInTheDocument()
@@ -1981,9 +1959,8 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
     await user.click(bookingForm().getByText('Grooming'));
-    await user.click(bookingForm().getByText('Next'));
 
     await waitFor(() =>
       expect(bookingForm().getByText('Bath')).toBeInTheDocument()
@@ -2014,7 +1991,7 @@ describe('CustomerBookingFlowPage', () => {
   // Browser-close-safe draft autosave/restore - keyed off the signed-in
   // customer's own id (renderPage's user.id is 'cust-1'), matching
   // bookingDraftStorageKey's customer-mode branch.
-  const CUSTOMER_DRAFT_KEY = 'booking-draft:customer:v3:cust-1';
+  const CUSTOMER_DRAFT_KEY = 'booking-draft:customer:v5:cust-1';
 
   function seedDraft(overrides: Record<string, unknown> = {}) {
     localStorage.setItem(
@@ -2089,9 +2066,8 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
     await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath'));
@@ -2100,13 +2076,6 @@ describe('CustomerBookingFlowPage', () => {
     // Multi-booking checkout: lands on "Your bookings" before Review.
     await waitFor(() =>
       expect(screen.getByText('Add another booking')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Next'));
-
-    // New Promos & Coupons step (session 86), before Review - nothing
-    // required here, just advance past it.
-    await waitFor(() =>
-      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -2143,9 +2112,8 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
     await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath'));
@@ -2153,11 +2121,6 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() =>
       expect(screen.getByText('Add another booking')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Next'));
-
-    await waitFor(() =>
-      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -2199,9 +2162,8 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
     await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath')); // base_price 300
@@ -2210,13 +2172,6 @@ describe('CustomerBookingFlowPage', () => {
     // Multi-booking checkout: lands on "Your bookings" before Review.
     await waitFor(() =>
       expect(screen.getByText('Add another booking')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Next'));
-
-    // New Promos & Coupons step (session 86), before Review - nothing
-    // required here, just advance past it.
-    await waitFor(() =>
-      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -2277,7 +2232,6 @@ describe('CustomerBookingFlowPage', () => {
     await waitFor(() =>
       expect(bookingForm().getByText('Assessment')).toBeInTheDocument()
     );
-    await user.click(bookingForm().getByText('Next'));
 
     // Initial Assessment is pre-selected for an unassessed pet.
     await waitFor(() =>
@@ -2287,11 +2241,6 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() =>
       expect(screen.getByText('Add another booking')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Next'));
-
-    await waitFor(() =>
-      expect(screen.getByText(/Choose one promo or coupon/)).toBeInTheDocument()
     );
     await user.click(screen.getByText('Next'));
 
@@ -2344,9 +2293,8 @@ describe('CustomerBookingFlowPage', () => {
 
     const user = userEvent.setup();
     renderPage();
-    await goToCategoryStep(user);
+    await goToServicesStep(user);
     await user.click(screen.getByText('Grooming'));
-    await user.click(screen.getByText('Next'));
 
     await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
     await user.click(screen.getByText('Bath')); // base_price 300
@@ -2357,32 +2305,43 @@ describe('CustomerBookingFlowPage', () => {
     );
     await user.click(screen.getByText('Next'));
 
+    // Promos & Coupons are picked on Review itself - the picker and the
+    // Confirm button share the last step, with no step of their own.
     const bigPromo = await screen.findByRole('checkbox', { name: /Big Flat/ });
+    expect(screen.getByText('Confirm booking')).toBeEnabled();
+    expect(
+      bookingForm().getByText('Estimated total').parentElement
+    ).toHaveTextContent('PHP 300.00');
 
     // PHP 200 off a PHP 300 booking is more than half.
     await user.click(bigPromo);
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Discounts and promos can take off at most 50% of the price.'
     );
-
-    await user.click(screen.getByText('Next'));
-    await waitFor(() =>
-      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
-    );
     expect(screen.getByText('Confirm booking')).toBeDisabled();
 
-    // Picking another promo replaces the first - no stacking.
-    await user.click(screen.getByRole('button', { name: 'Change' }));
-    await user.click(
-      await screen.findByRole('checkbox', { name: /Small Flat/ })
-    );
+    // Picking another promo replaces the first - no stacking - and the
+    // total updates on the same screen.
+    await user.click(screen.getByRole('checkbox', { name: /Small Flat/ }));
     expect(
       screen.getByRole('checkbox', { name: /Big Flat/ })
     ).not.toBeChecked();
     expect(screen.getByRole('checkbox', { name: /Small Flat/ })).toBeChecked();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      bookingForm().getByText('Estimated total').parentElement
+    ).toHaveTextContent('PHP 270.00');
+    // The "Your booking" side panel follows along with the same figure.
+    const summaryPanel = screen.getByRole('complementary', {
+      name: 'Your booking',
+    });
+    expect(
+      within(summaryPanel).getByText('Discounts & promos').parentElement
+    ).toHaveTextContent('-PHP 30.00');
+    expect(
+      within(summaryPanel).getByText('Estimated total').parentElement
+    ).toHaveTextContent('PHP 270.00');
 
-    await user.click(screen.getByText('Next'));
     await waitFor(() =>
       expect(screen.getByText('Confirm booking')).toBeEnabled()
     );
@@ -2438,7 +2397,6 @@ describe('CustomerBookingFlowPage', () => {
         expect(screen.getByText('Grooming')).toBeInTheDocument()
       );
       await user.click(screen.getByText('Grooming'));
-      await user.click(screen.getByText('Next'));
 
       await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
       await user.click(screen.getByText('Bath'));
@@ -2500,7 +2458,6 @@ describe('CustomerBookingFlowPage', () => {
         expect(screen.getByText('Daycare')).toBeInTheDocument()
       );
       await user.click(screen.getByText('Daycare'));
-      await user.click(screen.getByText('Next'));
 
       await waitFor(() =>
         expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
@@ -2528,9 +2485,8 @@ describe('CustomerBookingFlowPage', () => {
     it('never appears at all in customer self-service mode - always implicitly Online', async () => {
       const user = userEvent.setup();
       renderPage();
-      await goToCategoryStep(user);
+      await goToServicesStep(user);
       await user.click(screen.getByText('Grooming'));
-      await user.click(screen.getByText('Next'));
 
       await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
       await user.click(screen.getByText('Bath'));
@@ -2576,15 +2532,6 @@ describe('CustomerBookingFlowPage', () => {
       // Multi-booking checkout: lands on "Your bookings" before Review.
       await waitFor(() =>
         expect(screen.getByText('Add another booking')).toBeInTheDocument()
-      );
-      await user.click(screen.getByText('Next'));
-
-      // New Promos & Coupons step (session 86), before Review - nothing
-      // required here, just advance past it.
-      await waitFor(() =>
-        expect(
-          screen.getByText(/Choose one promo or coupon/)
-        ).toBeInTheDocument()
       );
       await user.click(screen.getByText('Next'));
 
@@ -2664,7 +2611,6 @@ describe('CustomerBookingFlowPage', () => {
           expect(screen.getByText('Daycare')).toBeInTheDocument()
         );
         await user.click(screen.getByText('Daycare'));
-        await user.click(screen.getByText('Next'));
 
         await waitFor(() =>
           expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
@@ -2695,13 +2641,6 @@ describe('CustomerBookingFlowPage', () => {
 
         await waitFor(() =>
           expect(screen.getByText('Add another booking')).toBeInTheDocument()
-        );
-        await user.click(screen.getByText('Next'));
-
-        await waitFor(() =>
-          expect(
-            screen.getByText(/Choose one promo or coupon/)
-          ).toBeInTheDocument()
         );
         await user.click(screen.getByText('Next'));
 
@@ -2841,15 +2780,6 @@ describe('CustomerBookingFlowPage', () => {
       );
       await user.click(screen.getByText('Next'));
 
-      // New Promos & Coupons step (session 86), before Review - nothing
-      // required here, just advance past it.
-      await waitFor(() =>
-        expect(
-          screen.getByText(/Choose one promo or coupon/)
-        ).toBeInTheDocument()
-      );
-      await user.click(screen.getByText('Next'));
-
       await waitFor(() =>
         expect(screen.getByText('Confirm booking')).toBeInTheDocument()
       );
@@ -2927,7 +2857,6 @@ describe('CustomerBookingFlowPage', () => {
         expect(screen.getByText('Grooming')).toBeInTheDocument()
       );
       await user.click(screen.getByText('Grooming'));
-      await user.click(screen.getByText('Next'));
 
       await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
       await user.click(screen.getByText('Bath'));
@@ -2941,15 +2870,6 @@ describe('CustomerBookingFlowPage', () => {
 
       await waitFor(() =>
         expect(screen.getByText('Add another booking')).toBeInTheDocument()
-      );
-      await user.click(screen.getByText('Next'));
-
-      // New Promos & Coupons step (session 86), before Review - nothing
-      // required here, just advance past it.
-      await waitFor(() =>
-        expect(
-          screen.getByText(/Choose one promo or coupon/)
-        ).toBeInTheDocument()
       );
       await user.click(screen.getByText('Next'));
 
@@ -3103,7 +3023,7 @@ describe('CustomerBookingFlowPage', () => {
       expect(screen.queryByText('Jamie Cruz')).not.toBeInTheDocument();
     });
 
-    it('New Consultation: a locked service category removes the Service Type step entirely, not just auto-advances past it', async () => {
+    it('New Consultation: a locked service category hides the service type picker on the Services step', async () => {
       vi.mocked(staffApi.listStaff).mockResolvedValue({
         data: [staffSelf('Veterinarian')],
         error: null,
@@ -3136,8 +3056,8 @@ describe('CustomerBookingFlowPage', () => {
       await user.click(screen.getByText('Max'));
       await user.click(screen.getByText('Next'));
 
-      // Landed straight on Services - never the category-picker buttons
-      // (Grooming/Hotel/Daycare/Veterinary) Service Type would have shown.
+      // Landed on Services with the type already fixed - none of the
+      // service type cards (Grooming/Hotel/Daycare/Veterinary) are offered.
       expect(screen.queryByText('Service Type')).not.toBeInTheDocument();
       expect(screen.queryByText('Grooming')).not.toBeInTheDocument();
     });

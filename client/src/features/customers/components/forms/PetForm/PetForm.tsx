@@ -13,6 +13,7 @@ import type {
   PetTypeRow,
   PetWeightClass,
 } from '../../../customer.types';
+import { formatPetAge } from '../../../../../shared/utils/formatPetAge';
 import { BreedSelect } from '../BreedSelect/BreedSelect';
 import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import styles from './PetForm.module.css';
@@ -230,6 +231,9 @@ export function PetForm({
           value={dateOfBirth}
           onChange={(event) => setDateOfBirth(event.target.value)}
         />
+        {formatPetAge(dateOfBirth) ? (
+          <span className={styles.copy}>Age: {formatPetAge(dateOfBirth)}</span>
+        ) : null}
       </label>
       {isStaff ? (
         <>

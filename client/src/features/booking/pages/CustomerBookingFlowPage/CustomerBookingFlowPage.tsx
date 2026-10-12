@@ -199,7 +199,6 @@ interface StepDef {
     | 'customer'
     | 'pet'
     | 'branch'
-    | 'category'
     | 'bookingType'
     | 'availability'
     | 'items'
@@ -211,10 +210,9 @@ interface StepDef {
     // scheme stay shared across the whole list - see the "OR to make things
     // easier" decision this feature is built from.
     | 'bookingsList'
-    // Promos & Coupons multiselect step (session 86): shown right before
-    // Review, once per checkout (single booking or the whole
-    // bookingsList) - see PromoCouponMultiSelect below.
-    | 'promos'
+    // Review - also where the one promo/coupon for the whole checkout
+    // (single booking or the whole bookingsList) is picked, see
+    // PromoCouponMultiSelect below.
     | 'payment';
   label: string;
 }
@@ -281,7 +279,7 @@ const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
 };
 
 /** A general, plain-language definition of what each service type is, shown
- * in the Service Type step's ⓘ popover above the read-only list of services
+ * in the service type card's ⓘ popover above the read-only list of services
  * actually offered at the chosen branch. Keyed by the hardcoded
  * ServiceCategory - a custom Service Types row (key outside this list) just
  * shows its service list with no definition line. */
@@ -513,9 +511,13 @@ function bookingDraftStorageKey(
   // v3: care instruction units + photos added quantity_unit/dose_unit as
   // required feeding/medication row fields - a pre-v3 draft's rows would
   // rehydrate missing them, same lapse-instead-of-migrate precedent as v2.
+  // v4: the Service Type step was merged into Services - a pre-v4 draft
+  // could be parked on the removed 'category' step key, so it lapses too.
+  // v5: Promos & Coupons was merged into Review - same again for a draft
+  // parked on the removed 'promos' step key.
   return isReceptionistMode
-    ? `booking-draft:staff:v3:${userId}`
-    : `booking-draft:customer:v3:${userId}`;
+    ? `booking-draft:staff:v5:${userId}`
+    : `booking-draft:customer:v5:${userId}`;
 }
 
 function readBookingDraft(key: string): PersistedBookingDraft | null {
@@ -1075,7 +1077,7 @@ export function CustomerBookingFlowPage() {
     });
   }, []);
 
-  // Custom change: Service Types addendum - drives the Service Type step's
+  // Custom change: Service Types addendum - drives the Services step's type picker's
   // active/inactive filtering and customer-facing labels below. An empty/
   // failed result degrades to every hardcoded ServiceCategory shown under
   // its own literal name (today's behavior, unchanged) rather than hiding
@@ -1206,8 +1208,9 @@ export function CustomerBookingFlowPage() {
     };
   }, [accessToken, selectedBranchId, canApplyDiscounts]);
 
-  // Promos & Coupons step (session 86): the acting customer's own unused,
-  // unexpired coupons - for isReceptionistMode this is the customer being
+  // Promos & Coupons picker on Review (session 86): the acting customer's
+  // own unused, unexpired coupons - for isReceptionistMode this is the
+  // customer being
   // booked FOR (effectiveCustomerId), not the logged-in staff member, same
   // resolution every other customer-scoped fetch on this page already uses.
   useEffect(() => {
@@ -1549,8 +1552,8 @@ export function CustomerBookingFlowPage() {
   // Every service bookable for this pet (requires_assessed_pet=false ones -
   // Initial Assessment - exist ONLY for an unassessed pet; once assessed
   // they're already done and hidden, leaving only requires_assessed_pet
-  // services visible), grouped by category. Powers the Service Type step's
-  // ⓘ popover, which previews each category's list before one is picked.
+  // services visible), grouped by category. Powers the service type
+  // cards' ⓘ popover, which previews each category's list before one is picked.
   // Empty until the branch's catalog has loaded.
   const bookableServicesByCategory = useMemo(() => {
     const byCategory = new Map<string, Service[]>();
@@ -2005,11 +2008,6 @@ export function CustomerBookingFlowPage() {
     setSelectedCouponIds([]);
   }
 
-  // What the Review step calls the chosen promo/coupon.
-  const selectedReductionName =
-    applicablePromos.find((promo) => promo.id === selectedPromoIds[0])?.name ??
-    (selectedCouponIds.length > 0 ? 'Coupon' : 'Promo');
-
   // No booking is made free by its reductions: the server refuses a
   // discount + promos + coupons selection that takes off more than the
   // allowed share (resolveDiscountAndPromos) - said here first, and Confirm
@@ -2084,8 +2082,9 @@ export function CustomerBookingFlowPage() {
   // ---- Steps ----
 
   // Order (Architectural-Change-History, "Rearrange booking steps"):
-  //   Branch > Customer > Pet > Service Type > Services/Packages >
-  //   Online/Walk-in > Date & Time (+ Staff/Cage) > Confirmation.
+  //   Branch > Customer > Pet > Services (service type + its services/
+  //   packages, one step) > Online/Walk-in > Date & Time (+ Staff/Cage) >
+  //   Confirmation.
   // Services now precede the availability step so the real, item-derived
   // slot duration (slotDurationMinutes, accumulating across every selected
   // service/package) is known when the slot is picked - the availability
@@ -2109,11 +2108,8 @@ export function CustomerBookingFlowPage() {
     }
 
     list.push({ key: 'pet', label: 'Pet' });
-    // vet-bookings-queue-access: a New Consultation booking already has its
-    // service type fixed by lockedServiceCategory - nothing left to pick.
-    if (!lockedServiceCategory) {
-      list.push({ key: 'category', label: 'Service Type' });
-    }
+    // Service type and its services share this one step - the type cards sit
+    // above the services they filter (see the 'items' render case).
     list.push({ key: 'items', label: 'Services' });
 
     // Walk-in booking flow: receptionist-only, sits right before Date &
@@ -2152,15 +2148,12 @@ export function CustomerBookingFlowPage() {
     // (jumps back to 'pet') before moving on to the shared Review step.
     list.push({ key: 'bookingsList', label: 'Your bookings' });
 
-    list.push({ key: 'promos', label: 'Promos & Coupons' });
-
     list.push({ key: 'payment', label: 'Review' });
 
     return list;
   }, [
     isBranchLockedStaff,
     isReceptionistMode,
-    lockedServiceCategory,
     category,
     cagePreference,
     staffPickerUnavailable,
@@ -2212,8 +2205,6 @@ export function CustomerBookingFlowPage() {
         return selectedPetId !== '';
       case 'branch':
         return selectedBranchId !== '';
-      case 'category':
-        return category !== '';
       case 'bookingType':
         // Always valid - bookingSource defaults to 'Online' so the step is
         // never a hard blocker, matching "Default wizard state: bookingSource:
@@ -3218,93 +3209,9 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
-      case 'category':
-        return (
-          <div className={styles.serviceStep}>
-            <div className={styles.categoryGrid}>
-              {availableCategories.map((candidate) => {
-                // A custom Service Types row (key outside SERVICE_CATEGORIES)
-                // has no dedicated icon - fall back to the generic one rather
-                // than rendering `undefined` as a component.
-                const Icon = CATEGORY_ICONS[candidate] ?? ClipboardList;
-                // Custom change: Service Types addendum - the row's `name`
-                // is only ever a display-label override (Admin Settings >
-                // Service Types); `candidate` (the real ServiceCategory
-                // value) is still what's submitted/compared everywhere else.
-                const label =
-                  serviceTypeByKey.get(candidate)?.name ?? candidate;
-                const description = CATEGORY_DESCRIPTIONS[candidate] ?? null;
-                const bookableServices =
-                  bookableServicesByCategory.get(candidate) ?? [];
-                return (
-                  // The ⓘ popover is a sibling of the card <button>, not a
-                  // child - a button can't nest inside a button (same layout
-                  // as the Booking Type step).
-                  <div key={candidate} className={styles.infoCardWrap}>
-                    <button
-                      type="button"
-                      aria-pressed={category === candidate}
-                      className={`${styles.categoryCard} ${
-                        category === candidate ? styles.selected : ''
-                      }`}
-                      onClick={() => handleCategorySelect(candidate)}
-                    >
-                      <Icon
-                        className={styles.categoryIcon}
-                        aria-hidden="true"
-                      />
-                      <span className={styles.categoryLabel}>{label}</span>
-                    </button>
-                    <span className={styles.infoCardBadge}>
-                      <InfoPopover label={`About ${label}`}>
-                        {description ? (
-                          <p className={styles.infoText}>{description}</p>
-                        ) : null}
-                        <p className={styles.infoHeading}>
-                          Services at this branch
-                        </p>
-                        {allServices.length === 0 ? (
-                          // Catalog still loading - don't claim the branch
-                          // offers nothing until we actually know.
-                          <LoadingState
-                            label="Loading services…"
-                            size="inline"
-                          />
-                        ) : bookableServices.length > 0 ? (
-                          // Names only - prices vary by category (Daycare is
-                          // hourly, Hotel is per-night, Grooming can use a
-                          // size/coat matrix), so the accurate figure is left
-                          // to the Services step rather than shown flat here.
-                          <ul className={styles.infoServiceList}>
-                            {bookableServices.map((service) => (
-                              <li key={service.id}>{service.name}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className={styles.infoText}>
-                            No services are listed for this branch yet.
-                          </p>
-                        )}
-                      </InfoPopover>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {selectedPet && !isSelectedPetAssessed ? (
-              <p className={styles.copy}>
-                {selectedPet.name} hasn&apos;t been assessed by staff yet
-                (weight class and coat type are recorded onsite). Only Initial
-                Assessment can be booked for this pet until then.
-              </p>
-            ) : null}
-          </div>
-        );
-
       // Walk-in booking flow: receptionist-only (steps only ever include
-      // this key in receptionist mode). Mirrors the 'category' step's own
-      // single-choice card pattern above.
+      // this key in receptionist mode). Mirrors the Services step's own
+      // single-choice service type cards below.
       case 'bookingType':
         return (
           <div className={styles.serviceStep}>
@@ -3572,6 +3479,102 @@ export function CustomerBookingFlowPage() {
       case 'items':
         return (
           <div className={styles.serviceStep}>
+            {/* vet-bookings-queue-access: a New Consultation booking already
+                has its service type fixed by lockedServiceCategory - nothing
+                left to pick, so only the services themselves show. */}
+            {!lockedServiceCategory ? (
+              <div className={styles.serviceTypePicker}>
+                <div className={styles.categoryGrid}>
+                  {availableCategories.map((candidate) => {
+                    // A custom Service Types row (key outside
+                    // SERVICE_CATEGORIES) has no dedicated icon - fall back
+                    // to the generic one rather than rendering `undefined`
+                    // as a component.
+                    const Icon = CATEGORY_ICONS[candidate] ?? ClipboardList;
+                    // Custom change: Service Types addendum - the row's
+                    // `name` is only ever a display-label override (Admin
+                    // Settings > Service Types); `candidate` (the real
+                    // ServiceCategory value) is still what's submitted/
+                    // compared everywhere else.
+                    const label =
+                      serviceTypeByKey.get(candidate)?.name ?? candidate;
+                    const description =
+                      CATEGORY_DESCRIPTIONS[candidate] ?? null;
+                    const bookableServices =
+                      bookableServicesByCategory.get(candidate) ?? [];
+                    return (
+                      // The ⓘ popover is a sibling of the card <button>,
+                      // not a child - a button can't nest inside a button
+                      // (same layout as the Booking Type step).
+                      <div key={candidate} className={styles.infoCardWrap}>
+                        <button
+                          type="button"
+                          aria-pressed={category === candidate}
+                          className={`${styles.categoryCard} ${
+                            category === candidate ? styles.selected : ''
+                          }`}
+                          onClick={() => handleCategorySelect(candidate)}
+                        >
+                          <Icon
+                            className={styles.categoryIcon}
+                            aria-hidden="true"
+                          />
+                          <span className={styles.categoryLabel}>{label}</span>
+                        </button>
+                        <span className={styles.infoCardBadge}>
+                          <InfoPopover label={`About ${label}`}>
+                            {description ? (
+                              <p className={styles.infoText}>{description}</p>
+                            ) : null}
+                            <p className={styles.infoHeading}>
+                              Services at this branch
+                            </p>
+                            {allServices.length === 0 ? (
+                              // Catalog still loading - don't claim the
+                              // branch offers nothing until we actually know.
+                              <LoadingState
+                                label="Loading services…"
+                                size="inline"
+                              />
+                            ) : bookableServices.length > 0 ? (
+                              // Names only - prices vary by category
+                              // (Daycare is hourly, Hotel is per-night,
+                              // Grooming can use a size/coat matrix), so the
+                              // accurate figure is left to the service cards
+                              // below rather than shown flat here.
+                              <ul className={styles.infoServiceList}>
+                                {bookableServices.map((service) => (
+                                  <li key={service.id}>{service.name}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className={styles.infoText}>
+                                No services are listed for this branch yet.
+                              </p>
+                            )}
+                          </InfoPopover>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {selectedPet && !isSelectedPetAssessed ? (
+                  <p className={styles.copy}>
+                    {selectedPet.name} hasn&apos;t been assessed by staff yet
+                    (weight class and coat type are recorded onsite). Only
+                    Initial Assessment can be booked for this pet until then.
+                  </p>
+                ) : null}
+
+                {!category ? (
+                  <p className={styles.copy}>
+                    Choose a service type to see its services.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {category ? (
               <div className={styles.tabRow}>
                 <button
@@ -3801,16 +3804,20 @@ export function CustomerBookingFlowPage() {
               </div>
             ) : null}
 
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Special instructions (optional)
-              </span>
-              <textarea
-                className={styles.input}
-                value={specialInstructions}
-                onChange={(event) => setSpecialInstructions(event.target.value)}
-              />
-            </label>
+            {category ? (
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  Special instructions (optional)
+                </span>
+                <textarea
+                  className={styles.input}
+                  value={specialInstructions}
+                  onChange={(event) =>
+                    setSpecialInstructions(event.target.value)
+                  }
+                />
+              </label>
+            ) : null}
           </div>
         );
 
@@ -4436,31 +4443,6 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
-      case 'promos':
-        return (
-          <div>
-            <p className={styles.copy}>
-              Choose one promo or coupon - only one can be used per booking.
-            </p>
-            <PromoCouponMultiSelect
-              promos={applicablePromos}
-              coupons={applicableCoupons}
-              selectedPromoIds={selectedPromoIds}
-              selectedCouponIds={selectedCouponIds}
-              onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
-              onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
-              cap={promoCap}
-              cappedTotal={promoDiscount}
-              groupSubtotal={groupSubtotal}
-            />
-            {reductionOverLimit ? (
-              <p className={styles.errorBanner} role="alert">
-                {REDUCTION_LIMIT_MESSAGE}
-              </p>
-            ) : null}
-          </div>
-        );
-
       case 'payment':
         return (
           <div className={styles.paymentStep}>
@@ -4637,25 +4619,25 @@ export function CustomerBookingFlowPage() {
               </fieldset>
             ) : null}
 
-            {/* Multiselect (session 86): picking promos/coupons moved to its
-                own step ('promos', right before this one) - this is just a
-                summary + a way back to change the selection. */}
+            {/* Promos & Coupons are picked right here, next to the totals
+                they change - they used to be a step of their own just
+                before this one. */}
             <div className={styles.field}>
               <span className={styles.fieldLabel}>Promos &amp; Coupons</span>
               <p className={styles.copy}>
-                {selectedPromoIds.length + selectedCouponIds.length === 0
-                  ? 'None selected.'
-                  : `${selectedReductionName}, -PHP ${promoDiscount.toFixed(2)}.`}
+                Choose one promo or coupon - only one can be used per booking.
               </p>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() =>
-                  advanceTo(steps.findIndex((step) => step.key === 'promos'))
-                }
-              >
-                Change
-              </button>
+              <PromoCouponMultiSelect
+                promos={applicablePromos}
+                coupons={applicableCoupons}
+                selectedPromoIds={selectedPromoIds}
+                selectedCouponIds={selectedCouponIds}
+                onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
+                onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
+                cap={promoCap}
+                cappedTotal={promoDiscount}
+                groupSubtotal={groupSubtotal}
+              />
             </div>
 
             {reductionOverLimit ? (
@@ -4704,7 +4686,6 @@ export function CustomerBookingFlowPage() {
     bookingsListStepIndex >= 0 && currentStepIndex >= bookingsListStepIndex;
   const perBookingStepKeys = new Set<StepDef['key']>([
     'pet',
-    'category',
     'items',
     'bookingType',
     'availability',
@@ -4719,13 +4700,18 @@ export function CustomerBookingFlowPage() {
         return walkInCustomer ? [{ text: walkInCustomer.full_name }] : [];
       case 'pet':
         return selectedPet ? [{ text: selectedPet.name }] : [];
-      case 'category':
-        return category ? [{ text: category }] : [];
       case 'items': {
-        const lines: BookingSummaryLine[] = selectedItemsSummary.map(
-          (item) => ({ text: item.name, amount: item.price })
-        );
-        if (category === 'Hotel' && hotelNights > 1 && lines.length > 0) {
+        if (!category) return [];
+        // The service type leads the row (it no longer has a step of its
+        // own), using the same display-label override the type cards show.
+        const lines: BookingSummaryLine[] = [
+          { text: serviceTypeByKey.get(category)?.name ?? category },
+          ...selectedItemsSummary.map((item) => ({
+            text: item.name,
+            amount: item.price,
+          })),
+        ];
+        if (category === 'Hotel' && hotelNights > 1 && lines.length > 1) {
           lines.push({ text: `× ${hotelNights} nights` });
         }
         if (category === 'Daycare' && daycareRateService && daycareHours > 1) {
@@ -4784,7 +4770,9 @@ export function CustomerBookingFlowPage() {
               },
             ]
           : [];
-      case 'promos': {
+      // Review - carries what the Promos & Coupons row used to: the
+      // discount/promo/coupon applied to the whole checkout.
+      case 'payment': {
         const lines: BookingSummaryLine[] = [];
         if (selectedDiscount) lines.push({ text: selectedDiscount.name });
         for (const promo of promos) {
@@ -4799,8 +4787,6 @@ export function CustomerBookingFlowPage() {
         }
         return lines;
       }
-      case 'payment':
-        return [];
     }
   }
 
@@ -4934,6 +4920,7 @@ export function CustomerBookingFlowPage() {
             rows={summaryRows}
             committedEntries={summaryCommittedEntries}
             subtotal={summarySubtotal}
+            reduction={discountAmount + promoDiscount}
           />
         </div>
       </div>
