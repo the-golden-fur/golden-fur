@@ -700,6 +700,9 @@ export const catalogQueryValidator = z.object({
 
 export const listBookingsQueryValidator = z.object({
   branch_id: z.uuid().optional(),
+  // Staff-only: one customer's bookings (Customer Management's booking
+  // history). Ignored for a customer caller, who only ever sees their own.
+  customer_id: z.uuid().optional(),
   date: z.iso.date().optional(),
   // Inclusive date-range bounds, either may be given alone. Distinct from
   // `date` (kept for existing exact-day callers, e.g. Daycare Check-in).

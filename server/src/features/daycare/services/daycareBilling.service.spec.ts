@@ -649,6 +649,181 @@ describe('daycareBilling.service (#65)', () => {
       vi.useRealTimers();
     });
 
+    describe('a booked pet checked in earlier than its booked time', () => {
+      // Checked in 08:00 and picked up 10:00 = 2 Daycare hours (₱150).
+      function queueCheckout(bookedItemPrice: number) {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-19T10:00:00.000Z'));
+
+        queueFromResults(
+          {
+            data: {
+              id: 'session-1',
+              booking_id: 'booking-1',
+              branch_id: 'branch-1',
+              status: 'Active',
+              check_in_at: '2026-07-19T08:00:00.000Z',
+            },
+            error: null,
+          },
+          noOutstandingTasksResult(),
+          { data: { scheduled_end: '2026-07-19T10:00:00.000Z' }, error: null },
+          BRANCH_NO_HOURS,
+          {
+            data: {
+              id: 'session-1',
+              booking_id: 'booking-1',
+              status: 'Completed',
+            },
+            error: null,
+          },
+          { data: null, error: null }, // cage release
+          {
+            // What the booking was charged for its Daycare hours.
+            data: [
+              {
+                id: 'item-1',
+                service_id: null,
+                price_at_booking: bookedItemPrice,
+              },
+            ],
+            error: null,
+          }
+        );
+      }
+
+      it('posts the hours beyond those charged at booking, so the bill adds up to the whole stay', async () => {
+        // Booked (and charged) for 1 hour, ₱100.
+        queueCheckout(100);
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        expect(postDaycareOverdueCharge).toHaveBeenCalledWith({
+          bookingId: 'booking-1',
+          overdueHours: 0,
+          overdueFee: 0,
+          additionalHours: { charge: 50 },
+          requesterId: undefined,
+        });
+
+        vi.useRealTimers();
+      });
+
+      it('posts nothing when the pet stayed exactly the hours it was charged for', async () => {
+        queueCheckout(150);
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        expect(postDaycareOverdueCharge).not.toHaveBeenCalled();
+
+        vi.useRealTimers();
+      });
+
+      it('never posts a negative amount for a pet picked up early', async () => {
+        // Charged for 4 hours (₱250), stayed 2.
+        queueCheckout(250);
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        expect(postDaycareOverdueCharge).not.toHaveBeenCalled();
+
+        vi.useRealTimers();
+      });
+    });
+
+    describe('a booked pet that was not picked up before closing', () => {
+      // Checked in Sunday 16:00 Manila (08:00 UTC); the branch closes 18:00
+      // Manila (10:00 UTC); picked up the next morning.
+      const OVERNIGHT_SESSION: QueryResult = {
+        data: {
+          id: 'session-1',
+          booking_id: 'booking-1',
+          branch_id: 'branch-1',
+          status: 'Active',
+          check_in_at: '2026-07-19T08:00:00.000Z',
+        },
+        error: null,
+      };
+      const BRANCH_CLOSES_AT_SIX: QueryResult = {
+        data: {
+          operating_hours: {
+            sunday: { open: '08:00', close: '18:00' },
+            monday: { open: '08:00', close: '18:00' },
+          },
+          timezone: 'Asia/Manila',
+        },
+        error: null,
+      };
+      const HOTEL_RATE_850: QueryResult = {
+        data: [{ base_price: 850 }],
+        error: null,
+      };
+      const CHECKED_OUT: QueryResult = {
+        data: { id: 'session-1', booking_id: 'booking-1', status: 'Completed' },
+        error: null,
+      };
+
+      it('posts the night to the bill together with the overdue fee, so the cashier can collect both', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-20T01:00:00.000Z'));
+
+        queueFromResults(
+          OVERNIGHT_SESSION,
+          noOutstandingTasksResult(),
+          // Booked until 09:00 UTC - an hour before closing.
+          { data: { scheduled_end: '2026-07-19T09:00:00.000Z' }, error: null },
+          BRANCH_CLOSES_AT_SIX,
+          HOTEL_RATE_850,
+          CHECKED_OUT
+        );
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        // 1 booked hour (₱100, already charged at booking) + 1 overdue hour
+        // up to closing (₱50) + 1 night (₱850).
+        const update = recordedWrites.find(
+          (write) => write.method === 'update'
+        );
+        expect(update?.payload).toMatchObject({ computed_charge: 1000 });
+        expect(postDaycareOverdueCharge).toHaveBeenCalledWith({
+          bookingId: 'booking-1',
+          overdueHours: 1,
+          overdueFee: 50,
+          overnight: { nights: 1, nightlyRate: 850, charge: 850 },
+          requesterId: undefined,
+        });
+
+        vi.useRealTimers();
+      });
+
+      it('posts the night even when there was no overdue hour before closing', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-20T01:00:00.000Z'));
+
+        queueFromResults(
+          OVERNIGHT_SESSION,
+          noOutstandingTasksResult(),
+          // Booked right up to closing time - nothing overdue before it.
+          { data: { scheduled_end: '2026-07-19T10:00:00.000Z' }, error: null },
+          BRANCH_CLOSES_AT_SIX,
+          HOTEL_RATE_850,
+          CHECKED_OUT
+        );
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        expect(postDaycareOverdueCharge).toHaveBeenCalledWith({
+          bookingId: 'booking-1',
+          overdueHours: 0,
+          overdueFee: 0,
+          overnight: { nights: 1, nightlyRate: 850, charge: 850 },
+          requesterId: undefined,
+        });
+
+        vi.useRealTimers();
+      });
+    });
+
     it('says so plainly when the pet was checked out but the overdue fee could not be added to the bill', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-07-19T11:30:00.000Z'));

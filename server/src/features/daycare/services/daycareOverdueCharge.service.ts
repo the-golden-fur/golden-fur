@@ -22,6 +22,12 @@ interface PostDaycareOverdueChargeParams {
   overdueHours: number;
   /** overdueHours x the flat overdue rate. */
   overdueFee: number;
+  /** Daycare hours the pet stayed beyond those charged at booking - e.g. it
+   * was checked in earlier than booked. Left out when there are none. */
+  additionalHours?: { charge: number };
+  /** The nights a pet that was not picked up before closing stayed, billed
+   * at the branch's Hotel nightly rate - left out for a same-day pickup. */
+  overnight?: { nights: number; nightlyRate: number; charge: number };
   /** Who checked the pet out - recorded on a newly-created charge. */
   requesterId?: string;
 }
@@ -35,33 +41,78 @@ interface BookingRow {
 }
 
 /**
- * Puts a Daycare overdue checkout fee onto the booking's `transactions`, so
- * the cashier sees it and can collect it.
+ * Puts what a Daycare checkout charges on top of what was charged at booking
+ * - Daycare hours beyond those booked, the overdue checkout fee, and the
+ * night(s) of a pet that was not picked up before closing - onto the
+ * booking's `transactions`, so the cashier sees it and can collect it.
  *
  * A booking's charges are created up front, at booking time, from the hours
- * that were booked (create_initial_booking_charge) - the overdue fee only
- * exists once the pet is actually checked out late, so nothing would ever
- * add it to those charges otherwise: it would sit on stays.extension_fee,
+ * that were booked (create_initial_booking_charge) - these extras only exist
+ * once the pet is actually checked out late, so nothing would ever add them
+ * to those charges otherwise: they would sit on stays.computed_charge,
  * invisible to the Transactions list. Mirrors how extendStay.service.ts
  * reconciles a Hotel extension:
  *
  * - if the booking (or, for a multi-booking checkout, its booking group)
- *   still has an open Pending 'balance' transaction, the fee is added to
- *   that one, with its own line item;
+ *   still has an open Pending 'balance' transaction, the extras are added to
+ *   that one, each with its own line item;
  * - otherwise a new Pending 'balance' transaction is created for just the
- *   fee.
+ *   extras.
  *
- * The total the booking is paid up against grows by the fee too
+ * The total the booking is paid up against grows by the same amount
  * (bookings.total_price / booking_groups.net_total), so a booking that was
  * Fully Paid for its booked hours correctly reads Partially Paid until the
- * overdue fee is collected.
+ * extras are collected.
  */
 export async function postDaycareOverdueCharge({
   bookingId,
   overdueHours,
   overdueFee,
+  additionalHours,
+  overnight,
   requesterId,
 }: PostDaycareOverdueChargeParams): Promise<Transaction> {
+  const lines = [
+    ...(additionalHours && additionalHours.charge > 0
+      ? [
+          {
+            description: 'Daycare hours beyond those booked',
+            quantity: 1,
+            unit_price: additionalHours.charge,
+            line_total: additionalHours.charge,
+          },
+        ]
+      : []),
+    ...(overdueFee > 0
+      ? [
+          {
+            description: `Daycare overdue checkout fee (${overdueHours} hour${
+              overdueHours === 1 ? '' : 's'
+            } x ₱${DAYCARE_OVERDUE_FEE_PER_HOUR})`,
+            quantity: overdueHours,
+            unit_price: DAYCARE_OVERDUE_FEE_PER_HOUR,
+            line_total: overdueFee,
+          },
+        ]
+      : []),
+    ...(overnight && overnight.charge > 0
+      ? [
+          {
+            description: `Daycare overnight stay - not picked up (${overnight.nights} night${
+              overnight.nights === 1 ? '' : 's'
+            } x ₱${overnight.nightlyRate})`,
+            quantity: overnight.nights,
+            unit_price: overnight.nightlyRate,
+            line_total: overnight.charge,
+          },
+        ]
+      : []),
+  ];
+  /** Everything this checkout adds to the bill. */
+  const extraCharge = round2(
+    lines.reduce((sum, line) => sum + line.line_total, 0)
+  );
+
   const { data: bookingRow, error: bookingError } = await supabase
     .from('bookings')
     .select('id, customer_id, branch_id, total_price, booking_group_id')
@@ -78,7 +129,7 @@ export async function postDaycareOverdueCharge({
   const { error: updateBookingError } = await supabase
     .from('bookings')
     .update({
-      total_price: round2(Number(booking.total_price) + overdueFee),
+      total_price: round2(Number(booking.total_price) + extraCharge),
       updated_at: nowIso,
     })
     .eq('id', bookingId);
@@ -99,7 +150,7 @@ export async function postDaycareOverdueCharge({
         .from('booking_groups')
         .update({
           net_total: round2(
-            Number((groupRow as { net_total: number }).net_total) + overdueFee
+            Number((groupRow as { net_total: number }).net_total) + extraCharge
           ),
           updated_at: nowIso,
         })
@@ -135,8 +186,8 @@ export async function postDaycareOverdueCharge({
     const { data: updatedTxn, error: updateTxnError } = await supabase
       .from('transactions')
       .update({
-        subtotal_amount: round2(Number(existing.subtotal_amount) + overdueFee),
-        total_amount: round2(Number(existing.total_amount) + overdueFee),
+        subtotal_amount: round2(Number(existing.subtotal_amount) + extraCharge),
+        total_amount: round2(Number(existing.total_amount) + extraCharge),
         updated_at: nowIso,
       })
       .eq('id', existing.id)
@@ -165,8 +216,8 @@ export async function postDaycareOverdueCharge({
         payment_method: 'Cash',
         payment_status: 'Pending',
         payment_choice: 'balance',
-        subtotal_amount: overdueFee,
-        total_amount: overdueFee,
+        subtotal_amount: extraCharge,
+        total_amount: extraCharge,
         processed_by_staff_id: requesterId ?? null,
       })
       .select('*')
@@ -184,17 +235,14 @@ export async function postDaycareOverdueCharge({
 
   const { error: lineItemError } = await supabase
     .from('transaction_line_items')
-    .insert({
-      transaction_id: transaction.id,
-      line_item_type: 'service',
-      reference_id: null,
-      description: `Daycare overdue checkout fee (${overdueHours} hour${
-        overdueHours === 1 ? '' : 's'
-      } x ₱${DAYCARE_OVERDUE_FEE_PER_HOUR})`,
-      quantity: overdueHours,
-      unit_price: DAYCARE_OVERDUE_FEE_PER_HOUR,
-      line_total: overdueFee,
-    });
+    .insert(
+      lines.map((line) => ({
+        transaction_id: transaction.id,
+        line_item_type: 'service',
+        reference_id: null,
+        ...line,
+      }))
+    );
 
   if (lineItemError) throwWithStatus(400, lineItemError.message);
 

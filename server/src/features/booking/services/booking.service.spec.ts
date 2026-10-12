@@ -1237,6 +1237,39 @@ describe('booking.service (#51)', () => {
       expect(builder.eq).toHaveBeenCalledWith('status', 'Pending');
     });
 
+    it("narrows to one customer's bookings for a staff caller", async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults({ data: [], error: null });
+
+      await listBookings({
+        requesterId: 'staff-1',
+        filters: { customerId: 'customer-9' },
+      });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(builder.eq).toHaveBeenCalledWith('customer_id', 'customer-9');
+    });
+
+    it("never lets a customer caller read another customer's bookings through the customer filter", async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults({ data: [], error: null });
+
+      await listBookings({
+        requesterId: CUSTOMER_ID,
+        filters: { customerId: 'customer-9' },
+      });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(builder.eq).toHaveBeenCalledWith('customer_id', CUSTOMER_ID);
+      expect(builder.eq).not.toHaveBeenCalledWith('customer_id', 'customer-9');
+    });
+
     it('custom change (bookings/payments queue paid/unpaid filter): applies a payment_status filter independently of status', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       queueFromResults({ data: [], error: null });

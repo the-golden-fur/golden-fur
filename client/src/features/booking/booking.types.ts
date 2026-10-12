@@ -918,6 +918,9 @@ export interface OperatingWindow {
 
 export interface ListBookingsFilters {
   branchId?: string;
+  /** Staff only: one customer's bookings. The server ignores it for a
+   * customer session, which only ever gets its own. */
+  customerId?: string;
   /** YYYY-MM-DD */
   date?: string;
   /** Inclusive date-range bounds (YYYY-MM-DD) - ignored when `date` is also

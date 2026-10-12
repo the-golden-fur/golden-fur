@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Navigate, useNavigate } from 'react-router';
 import { Columns3, Table } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -13,6 +14,11 @@ import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { TransactionReceiptPrintout } from '../../../../shared/components/TransactionReceiptPrintout/TransactionReceiptPrintout';
+import {
+  listBranchLetterheads,
+  type BranchLetterhead,
+} from '../../../maintenance/api/maintenance.api';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   listCustomerPets,
@@ -118,6 +124,13 @@ export function TransactionHistoryTable() {
 
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);
   const [pets, setPets] = useState<Pet[]>([]);
+
+  // The transaction whose receipt is being printed - see
+  // TransactionReceiptPrintout. Branches are only for its letterhead.
+  const [printing, setPrinting] = useState<TransactionRecord | null>(null);
+  const [branches, setBranches] = useState<Map<string, BranchLetterhead>>(
+    () => new Map()
+  );
 
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
@@ -252,6 +265,12 @@ export function TransactionHistoryTable() {
       if (isMounted && result.data) setCustomers(result.data);
     });
 
+    void listBranchLetterheads().then((result) => {
+      if (isMounted && result.data) {
+        setBranches(new Map(result.data.map((branch) => [branch.id, branch])));
+      }
+    });
+
     return () => {
       isMounted = false;
     };
@@ -373,6 +392,13 @@ export function TransactionHistoryTable() {
 
   const payable = payableBalances(transactions);
 
+  function printReceipt(transaction: TransactionRecord) {
+    // The sheet has to be in the page before the print dialog opens, so its
+    // render is flushed rather than left for the next paint.
+    flushSync(() => setPrinting(transaction));
+    window.print();
+  }
+
   function buildMenuItems(
     transaction: TransactionRecord
   ): MoreOptionsMenuItem[] {
@@ -396,6 +422,7 @@ export function TransactionHistoryTable() {
       ...(canPay
         ? [{ label: 'Pay', onSelect: () => openPay(transaction) }]
         : []),
+      { label: 'Print receipt', onSelect: () => printReceipt(transaction) },
     ];
   }
 
@@ -700,6 +727,36 @@ export function TransactionHistoryTable() {
             </div>
           </section>
         </div>
+      ) : null}
+
+      {printing ? (
+        <TransactionReceiptPrintout
+          branchName={branches.get(printing.branch_id)?.name ?? null}
+          branchAddress={branches.get(printing.branch_id)?.address ?? null}
+          branchContactNumber={
+            branches.get(printing.branch_id)?.contact_number ?? null
+          }
+          title={
+            printing.payment_status === 'Pending' ? 'Payment Due' : 'Receipt'
+          }
+          reference={printing.id.replace(/-/g, '').slice(0, 12).toUpperCase()}
+          date={printing.created_at}
+          customerName={printing.customer_name}
+          petName={printing.bookings?.pets?.name ?? null}
+          description={transactionTypeLabel(printing)}
+          service={printing.bookings?.service_category ?? null}
+          paymentLabel={
+            printing.payment_choice ? paymentChoiceLabel(printing) : null
+          }
+          method={
+            printing.payment_status === 'Pending'
+              ? null
+              : printing.payment_method
+          }
+          statusLabel={paymentStatusLabel(printing.payment_status)}
+          amount={printing.total_amount}
+          onDone={() => setPrinting(null)}
+        />
       ) : null}
     </main>
   );
