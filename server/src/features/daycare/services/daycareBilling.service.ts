@@ -253,6 +253,32 @@ async function resolveBookingBillingTerms(
 }
 
 /**
+ * What the booking was charged, at booking time, for its Daycare hours - the
+ * price on its own Daycare item. Null when the booking has no item to read
+ * it from, in which case checkout has nothing to compare the hours against.
+ */
+async function resolveBookedDaycareCharge(
+  bookingId: string,
+  serviceId: string | null
+): Promise<number | null> {
+  const { data: itemRows, error: itemsError } = await supabase
+    .from('booking_items')
+    .select('id, service_id, price_at_booking')
+    .eq('booking_id', bookingId);
+
+  if (itemsError) throwWithStatus(400, itemsError.message);
+
+  const items = (itemRows ?? []) as Array<{
+    service_id: string | null;
+    price_at_booking: number;
+  }>;
+  const daycareItem =
+    items.find((item) => item.service_id === serviceId) ?? items[0];
+
+  return daycareItem ? Number(daycareItem.price_at_booking) : null;
+}
+
+/**
  * Pay at checkout: the booking was created with no charge and only an
  * estimated price. Writes the actual Daycare charge onto the booking's own
  * Daycare item (leaving any other item as booked) and posts the resulting
@@ -438,10 +464,12 @@ export async function checkOutDaycareSession({
     }
 
     // The booking's charges were created at booking time from the hours
-    // booked, so nothing else would ever put the overdue fee on the cashier's
-    // Transactions list - post it there now. By this point the checkout
-    // itself is already saved, so a failure here is reported as exactly
-    // that rather than as a failed checkout.
+    // booked, so nothing else would ever put what checkout adds on top -
+    // hours beyond those booked (e.g. an early check-in), the overdue fee and
+    // any night(s) not picked up - on the cashier's Transactions list: post
+    // it there now, so the booking's transactions add up to computed_charge.
+    // By this point the checkout itself is already saved, so a failure here
+    // is reported as exactly that rather than as a failed checkout.
     if (payAtCheckout) {
       try {
         await postPayAtCheckoutBill(
@@ -460,22 +488,53 @@ export async function checkOutDaycareSession({
           `The pet was checked out, but the ₱${charge} bill could not be sent to the cashier - please add it at the cashier manually`
         );
       }
-    } else if (breakdown.overdue_charge > 0) {
+    } else {
+      let additionalHoursCharge = 0;
+      let lateChargesTotal =
+        breakdown.overdue_charge + breakdown.overnight_charge;
+
       try {
-        await postDaycareOverdueCharge({
-          bookingId: session.booking_id,
-          overdueHours: breakdown.overdue_hours,
-          overdueFee: breakdown.overdue_charge,
-          requesterId,
-        });
+        const bookedCharge = await resolveBookedDaycareCharge(
+          session.booking_id,
+          session.service_id ?? null
+        );
+        // Never negative: a pet picked up early is not refunded here.
+        additionalHoursCharge =
+          bookedCharge === null
+            ? 0
+            : Math.max(0, breakdown.hourly_charge - bookedCharge);
+        lateChargesTotal += additionalHoursCharge;
+
+        if (lateChargesTotal > 0) {
+          await postDaycareOverdueCharge({
+            bookingId: session.booking_id,
+            overdueHours: breakdown.overdue_hours,
+            overdueFee: breakdown.overdue_charge,
+            additionalHours:
+              additionalHoursCharge > 0
+                ? { charge: additionalHoursCharge }
+                : undefined,
+            overnight:
+              breakdown.overnight_charge > 0 && breakdown.nightly_rate !== null
+                ? {
+                    nights: breakdown.nights,
+                    nightlyRate: breakdown.nightly_rate,
+                    charge: breakdown.overnight_charge,
+                  }
+                : undefined,
+            requesterId,
+          });
+        }
       } catch (chargeError) {
         console.error(
-          `checkOutDaycareSession: failed to post the overdue fee for booking ${session.booking_id}:`,
+          `checkOutDaycareSession: failed to post the late checkout charges for booking ${session.booking_id}:`,
           chargeError
         );
         throwWithStatus(
           500,
-          `The pet was checked out, but the ₱${breakdown.overdue_charge} overdue checkout fee could not be added to the bill - please add it at the cashier manually`
+          breakdown.overnight_charge > 0 || additionalHoursCharge > 0
+            ? `The pet was checked out, but the ₱${lateChargesTotal} in extra checkout charges could not be added to the bill - please add it at the cashier manually`
+            : `The pet was checked out, but the ₱${breakdown.overdue_charge} overdue checkout fee could not be added to the bill - please add it at the cashier manually`
         );
       }
     }

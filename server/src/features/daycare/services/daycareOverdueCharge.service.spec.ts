@@ -113,13 +113,15 @@ describe('postDaycareOverdueCharge', () => {
       total_amount: 100,
       processed_by_staff_id: 'staff-1',
     });
-    expect(written('transaction_line_items', 'insert')[0]).toMatchObject({
-      transaction_id: 'txn-new',
-      description: 'Daycare overdue checkout fee (2 hours x ₱50)',
-      quantity: 2,
-      unit_price: 50,
-      line_total: 100,
-    });
+    expect(written('transaction_line_items', 'insert')[0]).toEqual([
+      expect.objectContaining({
+        transaction_id: 'txn-new',
+        description: 'Daycare overdue checkout fee (2 hours x ₱50)',
+        quantity: 2,
+        unit_price: 50,
+        line_total: 100,
+      }),
+    ]);
     expect(recomputeBookingPaymentStatus).toHaveBeenCalledWith('booking-1');
   });
 
@@ -147,11 +149,117 @@ describe('postDaycareOverdueCharge', () => {
       subtotal_amount: 125,
       total_amount: 125,
     });
-    expect(written('transaction_line_items', 'insert')[0]).toMatchObject({
-      transaction_id: 'txn-balance',
-      description: 'Daycare overdue checkout fee (1 hour x ₱50)',
-      line_total: 50,
+    expect(written('transaction_line_items', 'insert')[0]).toEqual([
+      expect.objectContaining({
+        transaction_id: 'txn-balance',
+        description: 'Daycare overdue checkout fee (1 hour x ₱50)',
+        line_total: 50,
+      }),
+    ]);
+  });
+
+  it('bills a night not picked up alongside the overdue fee, each on its own line', async () => {
+    queueFromResults(
+      { data: BOOKING, error: null }, // booking lookup
+      OK, // bookings.total_price update
+      { data: null, error: null }, // no open Pending balance transaction
+      { data: { id: 'txn-new', total_amount: 1750 }, error: null }, // insert
+      OK // line items insert
+    );
+
+    await postDaycareOverdueCharge({
+      bookingId: 'booking-1',
+      overdueHours: 1,
+      overdueFee: 50,
+      overnight: { nights: 2, nightlyRate: 850, charge: 1700 },
     });
+
+    // The booking is owed the overdue hour and both nights.
+    expect(written('bookings', 'update')[0]).toMatchObject({
+      total_price: 1900,
+    });
+    expect(written('transactions', 'insert')[0]).toMatchObject({
+      payment_status: 'Pending',
+      payment_choice: 'balance',
+      subtotal_amount: 1750,
+      total_amount: 1750,
+    });
+    expect(written('transaction_line_items', 'insert')[0]).toEqual([
+      expect.objectContaining({
+        description: 'Daycare overdue checkout fee (1 hour x ₱50)',
+        line_total: 50,
+      }),
+      expect.objectContaining({
+        description: 'Daycare overnight stay - not picked up (2 nights x ₱850)',
+        quantity: 2,
+        unit_price: 850,
+        line_total: 1700,
+      }),
+    ]);
+  });
+
+  it('bills Daycare hours beyond those charged at booking as their own line', async () => {
+    queueFromResults(
+      { data: BOOKING, error: null },
+      OK,
+      { data: null, error: null },
+      { data: { id: 'txn-new', total_amount: 950 }, error: null },
+      OK
+    );
+
+    await postDaycareOverdueCharge({
+      bookingId: 'booking-1',
+      overdueHours: 0,
+      overdueFee: 0,
+      additionalHours: { charge: 100 },
+      overnight: { nights: 1, nightlyRate: 850, charge: 850 },
+    });
+
+    expect(written('bookings', 'update')[0]).toMatchObject({
+      total_price: 1100,
+    });
+    expect(written('transactions', 'insert')[0]).toMatchObject({
+      total_amount: 950,
+    });
+    expect(written('transaction_line_items', 'insert')[0]).toEqual([
+      expect.objectContaining({
+        description: 'Daycare hours beyond those booked',
+        quantity: 1,
+        unit_price: 100,
+        line_total: 100,
+      }),
+      expect.objectContaining({
+        description: 'Daycare overnight stay - not picked up (1 night x ₱850)',
+        line_total: 850,
+      }),
+    ]);
+  });
+
+  it('bills just the night when nothing was overdue before closing', async () => {
+    queueFromResults(
+      { data: BOOKING, error: null },
+      OK,
+      { data: null, error: null },
+      { data: { id: 'txn-new', total_amount: 850 }, error: null },
+      OK
+    );
+
+    await postDaycareOverdueCharge({
+      bookingId: 'booking-1',
+      overdueHours: 0,
+      overdueFee: 0,
+      overnight: { nights: 1, nightlyRate: 850, charge: 850 },
+    });
+
+    expect(written('transactions', 'insert')[0]).toMatchObject({
+      total_amount: 850,
+    });
+    expect(written('transaction_line_items', 'insert')[0]).toEqual([
+      expect.objectContaining({
+        description: 'Daycare overnight stay - not picked up (1 night x ₱850)',
+        line_total: 850,
+      }),
+    ]);
   });
 
   it("puts a grouped booking's fee on the booking group, where its transactions live", async () => {
