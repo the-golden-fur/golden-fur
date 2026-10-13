@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const GENDERS = ['Male', 'Female'] as const;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
-const COAT_TYPES = ['SC', 'LC'] as const;
+const COAT_TYPES = ['SC', 'LC', 'XLC'] as const;
 
 /**
  * Required fields per Modules-Features M02 Process 4's flowchart: name,

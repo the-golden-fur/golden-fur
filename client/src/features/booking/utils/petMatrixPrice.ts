@@ -9,6 +9,32 @@ import type {
 interface PricedPet {
   weight_class: WeightClass | null;
   coat_type: CoatType | null;
+  /** Only needed for a package's own cat price (packageFixedPriceForPet). */
+  pet_type?: string | null;
+}
+
+/** pets.pet_type for a cat - what a package's cat_price applies to. Mirrors
+ * the server's own constant (booking.service.ts). */
+const CAT_PET_TYPE = 'Cat';
+
+/**
+ * Custom change (package cat price): the flat price that settles what this
+ * pet pays for this package before any weight x coat grid is looked at - the
+ * package's own cat price for a cat, otherwise the pet type's fixed price
+ * (null/undefined when it has none). Exactly the precedence
+ * resolvePackagePrice uses server-side. Use its result wherever a package
+ * needs a `fixedPrice` (packagePriceForPet, isPricedByPetCell).
+ */
+export function packageFixedPriceForPet(
+  pkg: Pick<Package, 'cat_price'>,
+  pet: PricedPet | null,
+  fixedPrice: number | null | undefined
+): number | null | undefined {
+  if (pet?.pet_type === CAT_PET_TYPE && pkg.cat_price != null) {
+    return Number(pkg.cat_price);
+  }
+
+  return fixedPrice;
 }
 
 /** The pet's own cell, or null when the pet hasn't been assessed yet (no
@@ -82,15 +108,20 @@ export function withLongStayPrice<
   return { ...service, base_price: Number(service.long_stay_nightly_price) };
 }
 
-/** Same for a package (resolvePackagePrice): fixed price, else the pet's
- * own cell when the package varies by weight and coat, else bundled_price. */
+/** Same for a package (resolvePackagePrice): the package's own cat price
+ * for a cat, else the pet type's fixed price, else the pet's own cell when
+ * the package varies by weight and coat, else bundled_price. */
 export function packagePriceForPet(
-  pkg: Pick<Package, 'bundled_price' | 'use_pricing_matrix' | 'pricing_tiers'>,
+  pkg: Pick<
+    Package,
+    'bundled_price' | 'use_pricing_matrix' | 'pricing_tiers' | 'cat_price'
+  >,
   pet: PricedPet | null,
   /** null/undefined = the pet type has no fixed price. */
   fixedPrice: number | null | undefined
 ): number {
-  if (fixedPrice != null) return fixedPrice;
+  const flatPrice = packageFixedPriceForPet(pkg, pet, fixedPrice);
+  if (flatPrice != null) return flatPrice;
 
   if (pkg.use_pricing_matrix) {
     return cellPrice(pkg.pricing_tiers, pet) ?? pkg.bundled_price;

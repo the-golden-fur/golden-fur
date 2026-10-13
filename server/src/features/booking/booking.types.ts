@@ -392,6 +392,11 @@ export interface Booking {
    * with no upfront charge. total_price is only an estimate until checkout
    * posts the real bill (payAtCheckoutCharge.service.ts). */
   pay_at_checkout: boolean;
+  /** Custom change (book before assessment, 20261013264): the booking was
+   * made for a pet staff have not assessed yet - total_price is an estimate
+   * and no charge exists. Cleared, with the booking repriced and its bill
+   * posted, when the pet's weight class and coat type are recorded. */
+  awaiting_assessment: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only) rather than
@@ -472,6 +477,11 @@ export interface BookingGroup {
   /** Pay at checkout (20261005244): every member is billed at its own
    * checkout - no shared upfront charge. Mirrored onto each member row. */
   pay_at_checkout: boolean;
+  /** Custom change (book before assessment, 20261013264): the booking was
+   * made for a pet staff have not assessed yet - total_price is an estimate
+   * and no charge exists. Cleared, with the booking repriced and its bill
+   * posted, when the pet's weight class and coat type are recorded. */
+  awaiting_assessment: boolean;
   payment_status: PaymentStatus;
   paid_at: string | null;
   created_at: string;

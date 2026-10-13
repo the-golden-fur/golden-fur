@@ -11,6 +11,14 @@ vi.mock('../../../../config/supabase/supabase.config.ts', () => ({
   },
 }));
 
+// Book before assessment (20261013264): covered by its own spec - mocked so
+// its queries stay out of these tests' sequential mock queues.
+vi.mock('../../../booking/services/assessmentReprice.service.ts', () => ({
+  repriceBookingsAwaitingAssessment: vi.fn(),
+}));
+
+import { repriceBookingsAwaitingAssessment } from '../../../booking/services/assessmentReprice.service.ts';
+
 interface QueryResult {
   data: unknown;
   error: unknown;
@@ -316,6 +324,78 @@ describe('pet CRUD (Issue #32)', () => {
       expect(
         (recordedWrites[0]?.payload as { assessed_at?: string }).assessed_at
       ).toBeTruthy();
+    });
+
+    // Custom change (book before assessment, 20261013264).
+    describe('bookings made before the pet was assessed', () => {
+      beforeEach(() => {
+        vi.mocked(repriceBookingsAwaitingAssessment).mockReset();
+        vi.mocked(repriceBookingsAwaitingAssessment).mockResolvedValue({
+          repriced: [{ bookingId: 'booking-1', totalPrice: 425 }],
+          failed: [],
+        });
+      });
+
+      function queueStaffPatch() {
+        mockCaller('staff-1');
+        queueFromResults(
+          { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+          { data: { role: 'Front Desk' }, error: null },
+          {
+            data: { id: 'pet-1', weight_class: 'M', coat_type: 'SC' },
+            error: null,
+          }
+        );
+      }
+
+      it("Front Desk recording the weight and coat reprices the pet's waiting bookings and reports the result", async () => {
+        queueStaffPatch();
+
+        const res = await request(app)
+          .patch('/pets/pet-1')
+          .set('Authorization', 'Bearer token')
+          .send({ weight_class: 'M', coat_type: 'SC' });
+
+        expect(res.status).toBe(200);
+        expect(repriceBookingsAwaitingAssessment).toHaveBeenCalledWith('pet-1');
+        expect(res.body.assessment_reprice).toEqual({
+          repriced: [{ bookingId: 'booking-1', totalPrice: 425 }],
+          failed: [],
+        });
+      });
+
+      it('an edit that leaves the weight and coat alone reprices nothing', async () => {
+        queueStaffPatch();
+
+        const res = await request(app)
+          .patch('/pets/pet-1')
+          .set('Authorization', 'Bearer token')
+          .send({ name: 'New Name' });
+
+        expect(res.status).toBe(200);
+        expect(repriceBookingsAwaitingAssessment).not.toHaveBeenCalled();
+        expect(res.body).not.toHaveProperty('assessment_reprice');
+      });
+
+      it('still saves the assessment when the reprice itself blows up', async () => {
+        vi.mocked(repriceBookingsAwaitingAssessment).mockRejectedValue(
+          new Error('boom')
+        );
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        queueStaffPatch();
+
+        const res = await request(app)
+          .patch('/pets/pet-1')
+          .set('Authorization', 'Bearer token')
+          .send({ weight_class: 'M', coat_type: 'SC' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.pet).toMatchObject({ weight_class: 'M' });
+        expect(res.body.assessment_reprice).toEqual({
+          repriced: [],
+          failed: [],
+        });
+      });
     });
 
     it('derives weight_class from a submitted weight_kg and stamps the assessment', async () => {

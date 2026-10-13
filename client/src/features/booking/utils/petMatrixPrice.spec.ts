@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isPricedByPetCell,
+  packageFixedPriceForPet,
   packagePriceForPet,
   servicePriceForPet,
   withLongStayPrice,
@@ -131,5 +132,39 @@ describe('withLongStayPrice (Hotel long-stay rate)', () => {
       withLongStayPrice({ ...HOTEL, category: 'Grooming' as const }, 9)
         .base_price
     ).toBe(850);
+  });
+});
+
+// Custom change (package cat price): one separate price for a cat, per package.
+describe("a package's own cat price", () => {
+  const PACKAGE = {
+    bundled_price: 300,
+    use_pricing_matrix: true,
+    pricing_tiers: CELLS,
+    cat_price: 650,
+  };
+  const CAT = { ...LARGE_LONG, pet_type: 'Cat' };
+  const DOG = { ...LARGE_LONG, pet_type: 'Dog' };
+
+  it('is what a cat pays, ahead of the pet type fixed price and the grid', () => {
+    expect(packagePriceForPet(PACKAGE, CAT, 800)).toBe(650);
+    expect(packagePriceForPet(PACKAGE, CAT, null)).toBe(650);
+  });
+
+  it('never applies to another pet type', () => {
+    expect(packagePriceForPet(PACKAGE, DOG, null)).toBe(
+      packagePriceForPet({ ...PACKAGE, cat_price: null }, DOG, null)
+    );
+    expect(packageFixedPriceForPet(PACKAGE, DOG, null)).toBeNull();
+  });
+
+  it('left empty, a cat is priced as before', () => {
+    expect(packagePriceForPet({ ...PACKAGE, cat_price: null }, CAT, 800)).toBe(
+      800
+    );
+  });
+
+  it('a cat price of zero is honoured, not treated as empty', () => {
+    expect(packagePriceForPet({ ...PACKAGE, cat_price: 0 }, CAT, 800)).toBe(0);
   });
 });

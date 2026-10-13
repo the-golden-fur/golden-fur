@@ -39,6 +39,21 @@ describe('cageAssignment.service (#75)', () => {
   });
 
   describe('suggestCage', () => {
+    // Book before assessment (20261013264): no weight class means no size to
+    // suggest - and must never reach the cage_size enum as "null".
+    it('asks for the pet to be assessed first when it has no weight class, without querying cages', async () => {
+      queueFromResults({
+        data: { weight_class: null, pet_type: 'Dog' },
+        error: null,
+      });
+
+      await expect(suggestCage('pet-1', 'branch-1')).rejects.toMatchObject({
+        statusCode: 409,
+        message: expect.stringContaining("hasn't been assessed yet"),
+      });
+      expect(supabase.from).toHaveBeenCalledTimes(1);
+    });
+
     it("AC-2: returns the pet weight-class-matching size and its Available cages of the pet's own pet_type", async () => {
       queueFromResults(
         { data: { weight_class: 'M', pet_type: 'Dog' }, error: null },

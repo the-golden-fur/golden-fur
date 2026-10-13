@@ -34,7 +34,17 @@ export interface CustomerProfileUpdatePayload {
 export type PetType = string;
 export type PetGender = 'Male' | 'Female';
 export type PetWeightClass = 'S' | 'M' | 'L' | 'XL';
-export type PetCoatType = 'SC' | 'LC';
+export type PetCoatType = 'SC' | 'LC' | 'XLC';
+
+/** Every coat type staff can record, in display order - the one list the
+ * pet and assessment forms all offer. */
+export const PET_COAT_TYPES: PetCoatType[] = ['SC', 'LC', 'XLC'];
+
+export const PET_COAT_TYPE_LABEL: Record<PetCoatType, string> = {
+  SC: 'Short coat',
+  LC: 'Long coat',
+  XLC: 'Extra long coat',
+};
 
 export interface Breed {
   id: string;

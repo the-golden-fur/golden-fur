@@ -19,6 +19,7 @@ import {
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import {
   isPricedByPetCell,
+  packageFixedPriceForPet,
   packagePriceForPet,
   withLongStayPrice,
   servicePriceForPet,
@@ -42,6 +43,7 @@ import {
 } from '../../components/BookingSummaryPanel/BookingSummaryPanel';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StorePoliciesModal } from '../../components/StorePoliciesModal/StorePoliciesModal';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
 import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
@@ -134,6 +136,7 @@ const WEIGHT_CLASS_LABEL: Record<NonNullable<Pet['weight_class']>, string> = {
 const COAT_TYPE_LABEL: Record<NonNullable<Pet['coat_type']>, string> = {
   SC: 'Short coat',
   LC: 'Long coat',
+  XLC: 'Extra long coat',
 };
 
 /**
@@ -269,6 +272,11 @@ interface SubBookingDraft {
    * `itemsTotal` at commit time. Summed across every entry for the shared
    * Review step's group pricing. */
   itemsSubtotal: number;
+  /** Book before assessment: this booking is for a pet staff have not
+   * assessed yet and includes something priced by size/coat, so
+   * itemsSubtotal is only an estimate - nothing is paid online and it is
+   * submitted on its own. Absent on a draft saved before this existed. */
+  awaitingAssessment?: boolean;
 }
 
 const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
@@ -977,6 +985,12 @@ export function CustomerBookingFlowPage() {
   );
 
   const [showStorePolicies, setShowStorePolicies] = useState(false);
+  // Book before assessment: the notice shown when leaving the Pet step with
+  // a pet staff have not assessed yet. Acknowledged once per pet, so going
+  // Back and Next again doesn't nag.
+  const [showUnassessedNotice, setShowUnassessedNotice] = useState(false);
+  const [acknowledgedUnassessedPetIds, setAcknowledgedUnassessedPetIds] =
+    useState<string[]>([]);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1451,6 +1465,13 @@ export function CustomerBookingFlowPage() {
   const isSelectedPetAssessed = Boolean(
     selectedPet?.weight_class && selectedPet.coat_type
   );
+  // Custom change (book before assessment): a CUSTOMER may now book anything
+  // for a pet that hasn't been assessed yet - at an estimated price, paid at
+  // the counter once the pet is assessed on arrival. Staff booking on a
+  // customer's behalf keep the old rule (Initial Assessment only): the pet is
+  // usually in front of them, so they assess it first - and the server
+  // refuses a Walk-in for an unassessed pet anyway.
+  const restrictedToAssessment = !isSelectedPetAssessed && isReceptionistMode;
 
   const selectedBranch = useMemo(
     () => branches.find((branch) => branch.id === selectedBranchId) ?? null,
@@ -1480,7 +1501,7 @@ export function CustomerBookingFlowPage() {
     // requires_assessed_pet=false (Initial Assessment) - Grooming/Hotel/
     // Daycare/Veterinary are always dead ends for it, so don't even offer
     // those tabs.
-    if (!isSelectedPetAssessed) {
+    if (restrictedToAssessment) {
       return ['Assessment'] as ServiceCategory[];
     }
 
@@ -1511,7 +1532,7 @@ export function CustomerBookingFlowPage() {
       .map((type) => type.key as ServiceCategory);
 
     return [...seeded, ...custom];
-  }, [selectedBranch, isSelectedPetAssessed, serviceTypeByKey, serviceTypes]);
+  }, [selectedBranch, restrictedToAssessment, serviceTypeByKey, serviceTypes]);
 
   // For an unassessed pet, Initial Assessment is the only thing bookable at
   // all (see availableCategories above) - once the branch's catalog has
@@ -1519,7 +1540,7 @@ export function CustomerBookingFlowPage() {
   // and click the one option in an otherwise-empty-looking Service step.
   useEffect(() => {
     if (
-      isSelectedPetAssessed ||
+      !restrictedToAssessment ||
       !selectedBranchId ||
       allServices.length === 0
     ) {
@@ -1548,7 +1569,7 @@ export function CustomerBookingFlowPage() {
     // would re-run this effect on every render instead of only when the
     // pet/branch/catalog actually change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSelectedPetAssessed, selectedPetId, selectedBranchId, allServices]);
+  }, [restrictedToAssessment, selectedPetId, selectedBranchId, allServices]);
 
   // Every service bookable for this pet (requires_assessed_pet=false ones -
   // Initial Assessment - exist ONLY for an unassessed pet; once assessed
@@ -1559,13 +1580,19 @@ export function CustomerBookingFlowPage() {
   const bookableServicesByCategory = useMemo(() => {
     const byCategory = new Map<string, Service[]>();
     for (const service of allServices) {
-      if (service.requires_assessed_pet !== isSelectedPetAssessed) continue;
+      // An assessed pet never sees Initial Assessment (already done); a
+      // staff-booked unassessed pet sees ONLY it. A customer's unassessed
+      // pet sees everything (book before assessment).
+      const hidden = isSelectedPetAssessed
+        ? !service.requires_assessed_pet
+        : restrictedToAssessment && service.requires_assessed_pet;
+      if (hidden) continue;
       const list = byCategory.get(service.category) ?? [];
       list.push(service);
       byCategory.set(service.category, list);
     }
     return byCategory;
-  }, [allServices, isSelectedPetAssessed]);
+  }, [allServices, isSelectedPetAssessed, restrictedToAssessment]);
 
   // The selected category's own slice of the map above - the single source
   // of truth for "what can this pet book here" so the Services step and the
@@ -1706,6 +1733,18 @@ export function CustomerBookingFlowPage() {
         : packagesForCategory,
     [packagesForCategory, itemSearchQuery]
   );
+
+  // Book before assessment: the booking being configured is only an
+  // ESTIMATE when the pet is unassessed and something picked is priced by
+  // its size/coat (any package, or a service that needs an assessed pet).
+  // Initial Assessment alone is an ordinary booking, as before. Mirrors
+  // createBooking's own awaitingAssessment.
+  const currentBookingAwaitsAssessment =
+    Boolean(selectedPet) &&
+    !isSelectedPetAssessed &&
+    !isReceptionistMode &&
+    (selectedPackageIds.length > 0 ||
+      selectedServices.some((service) => service.requires_assessed_pet));
 
   // Hotel (one cage) and Daycare (one session) only ever hold a single item;
   // Grooming/Veterinary stay multi-select.
@@ -1856,21 +1895,35 @@ export function CustomerBookingFlowPage() {
   // selectedServices/selectedPackages themselves are left untouched above -
   // the 'items' step still shows a running total for whichever booking is
   // currently being configured, which is exactly what those describe.
-  const groupServiceIds = useMemo(
-    () => bookingsList.flatMap((entry) => entry.selectedServiceIds),
+  // Book before assessment: a booking made for a pet staff have not
+  // assessed yet has only an estimated price and is paid at the counter, so
+  // it takes no part in this checkout's pricing - no promo, discount, down
+  // payment or payment scheme. Everything below prices `payableBookings`
+  // only; the awaiting ones are listed with their estimate and submitted on
+  // their own (handleSubmit).
+  const payableBookings = useMemo(
+    () => bookingsList.filter((entry) => !entry.awaitingAssessment),
     [bookingsList]
+  );
+  const awaitingAssessmentBookings = useMemo(
+    () => bookingsList.filter((entry) => entry.awaitingAssessment),
+    [bookingsList]
+  );
+  const groupServiceIds = useMemo(
+    () => payableBookings.flatMap((entry) => entry.selectedServiceIds),
+    [payableBookings]
   );
   const groupPackageIds = useMemo(
-    () => bookingsList.flatMap((entry) => entry.selectedPackageIds),
-    [bookingsList]
+    () => payableBookings.flatMap((entry) => entry.selectedPackageIds),
+    [payableBookings]
   );
   const groupCategories = useMemo(
-    () => new Set(bookingsList.map((entry) => entry.category)),
-    [bookingsList]
+    () => new Set(payableBookings.map((entry) => entry.category)),
+    [payableBookings]
   );
   const groupSubtotal = useMemo(
-    () => bookingsList.reduce((sum, entry) => sum + entry.itemsSubtotal, 0),
-    [bookingsList]
+    () => payableBookings.reduce((sum, entry) => sum + entry.itemsSubtotal, 0),
+    [payableBookings]
   );
 
   // Selectable at the payment step (booking-time discount/promo revision) -
@@ -2056,7 +2109,7 @@ export function CustomerBookingFlowPage() {
   // shows/collects a shared charge even though a Veterinary entry's own
   // share is excluded server-side - see createBookingGroup's
   // requiresUpfrontCharge handling).
-  const requiresPayment = bookingsList.some(
+  const requiresPayment = payableBookings.some(
     (entry) => entry.category !== 'Veterinary'
   );
 
@@ -2078,7 +2131,7 @@ export function CustomerBookingFlowPage() {
   // here as "skip only if EVERY booking in the list is Walk-in" - a group
   // with even one Online booking still needs the down-payment decision.
   const downpaymentRequired =
-    bookingsList.some((entry) => entry.bookingSource !== 'Walk-in') &&
+    payableBookings.some((entry) => entry.bookingSource !== 'Walk-in') &&
     (downpaymentStatus?.downpayment_enabled ?? false);
   const downpaymentAmount = downpaymentRequired
     ? downpaymentStatus?.downpayment_type === 'Percentage'
@@ -2098,14 +2151,14 @@ export function CustomerBookingFlowPage() {
   const payAtCheckoutAvailable = isPayAtCheckoutAvailable({
     isStaff: isReceptionistMode,
     enabled: downpaymentStatus?.pay_at_checkout_enabled ?? false,
-    bookings: bookingsList,
+    bookings: payableBookings,
   });
   // An Initial Assessment has no payment scheme to choose - it's the pet's
   // onsite first check, not a slot held by a down payment. Only when EVERY
   // booking in the list is one: a mixed group still needs the decision.
   const isAssessmentOnly =
-    bookingsList.length > 0 &&
-    bookingsList.every((entry) => entry.category === 'Assessment');
+    payableBookings.length > 0 &&
+    payableBookings.every((entry) => entry.category === 'Assessment');
   const showPaymentChoice =
     !isAssessmentOnly && (downpaymentRequired || payAtCheckoutAvailable);
   const effectivePaymentChoice = resolvePaymentChoice(paymentChoice, {
@@ -2293,6 +2346,20 @@ export function CustomerBookingFlowPage() {
       return;
     }
 
+    // Book before assessment: leaving the Pet step with a pet staff have not
+    // assessed yet stops on a notice first - handleUnassessedNoticeAgree does
+    // the actual advance.
+    if (
+      !isReceptionistMode &&
+      currentStep.key === 'pet' &&
+      selectedPet &&
+      !isSelectedPetAssessed &&
+      !acknowledgedUnassessedPetIds.includes(selectedPet.id)
+    ) {
+      setShowUnassessedNotice(true);
+      return;
+    }
+
     // Multi-booking checkout: leaving this booking's LAST configured step
     // ('availability' for Grooming/Veterinary/Assessment, 'hotelDetails' for
     // Hotel/Daycare) commits it into bookingsList right here, before
@@ -2313,6 +2380,14 @@ export function CustomerBookingFlowPage() {
 
   function handleStorePoliciesAgree() {
     setShowStorePolicies(false);
+    advanceTo(currentStepIndex + 1);
+  }
+
+  function handleUnassessedNoticeAgree() {
+    if (selectedPet) {
+      setAcknowledgedUnassessedPetIds((prev) => [...prev, selectedPet.id]);
+    }
+    setShowUnassessedNotice(false);
     advanceTo(currentStepIndex + 1);
   }
 
@@ -2794,6 +2869,7 @@ export function CustomerBookingFlowPage() {
       hotelUniformInstructions,
       hotelPreferencesPayload,
       itemsSubtotal: itemsTotal,
+      awaitingAssessment: currentBookingAwaitsAssessment,
     };
 
     setBookingsList((prev) => [...prev, entry]);
@@ -2938,40 +3014,88 @@ export function CustomerBookingFlowPage() {
           : {}),
       };
 
-      // A list of exactly one booking (nobody clicked "Add another
-      // booking") still goes through the plain single-booking endpoint,
-      // unchanged - see the "group-of-1 bypasses booking_groups entirely"
-      // decision.
-      if (bookingsList.length === 1) {
+      const created: Booking[] = [];
+      const submittedEntryIds: string[] = [];
+      let createdGroup: BookingGroup | null = null;
+
+      /** One request failed part-way through. Whatever was already created
+       * stays created, so those entries leave the list - a retry then sends
+       * only what is still outstanding, never a duplicate. */
+      const stopWithError = (error: string | null) => {
+        if (submittedEntryIds.length > 0) {
+          setBookingsList((prev) =>
+            prev.filter((entry) => !submittedEntryIds.includes(entry.id))
+          );
+        }
+        const reason = friendlyBookingError(error);
+        setSubmitError(
+          created.length > 0
+            ? `${created.length} booking${created.length === 1 ? ' was' : 's were'} created, but another could not be: ${reason} The rest are still listed here - you can try again.`
+            : reason
+        );
+      };
+
+      // The bookings paid for online, exactly as before: a list of exactly
+      // one (nobody clicked "Add another booking") still goes through the
+      // plain single-booking endpoint, unchanged - see the "group-of-1
+      // bypasses booking_groups entirely" decision.
+      if (payableBookings.length === 1) {
         const result = await createBooking(accessToken, {
           ...sharedFields,
           branch_id: selectedBranchId,
-          ...subBookingDraftToPayload(bookingsList[0]),
+          ...subBookingDraftToPayload(payableBookings[0]),
         });
 
         if (result.error || !result.data) {
-          setSubmitError(friendlyBookingError(result.error));
+          stopWithError(result.error);
           return;
         }
 
-        setConfirmedBookings([result.data]);
-      } else {
+        created.push(result.data);
+        submittedEntryIds.push(payableBookings[0].id);
+      } else if (payableBookings.length > 1) {
         const groupPayload: CreateBookingGroupPayload = {
           ...sharedFields,
           branch_id: selectedBranchId,
-          bookings: bookingsList.map(subBookingDraftToPayload),
+          bookings: payableBookings.map(subBookingDraftToPayload),
         };
 
         const result = await createBookingGroup(accessToken, groupPayload);
 
         if (result.error || !result.data) {
-          setSubmitError(friendlyBookingError(result.error));
+          stopWithError(result.error);
           return;
         }
 
-        setConfirmedBookings(result.data.bookings);
-        setConfirmedBookingGroup(result.data.booking_group);
+        created.push(...result.data.bookings);
+        createdGroup = result.data.booking_group;
+        submittedEntryIds.push(...payableBookings.map((entry) => entry.id));
       }
+
+      // Book before assessment: each booking for a not-yet-assessed pet is
+      // its own booking - no shared payment to group it under, since nothing
+      // is paid online. No payment scheme, discount, promo or coupon either:
+      // its price is only an estimate until the pet is assessed.
+      for (const entry of awaitingAssessmentBookings) {
+        const result = await createBooking(accessToken, {
+          ...(isReceptionistMode && walkInCustomer
+            ? { customer_id: walkInCustomer.id }
+            : {}),
+          branch_id: selectedBranchId,
+          ...subBookingDraftToPayload(entry),
+        });
+
+        if (result.error || !result.data) {
+          stopWithError(result.error);
+          return;
+        }
+
+        created.push(result.data);
+        submittedEntryIds.push(entry.id);
+      }
+
+      setConfirmedBookings(created);
+      setConfirmedBookingGroup(createdGroup);
 
       if (draftStorageKey) clearBookingDraft(draftStorageKey);
     } catch {
@@ -3017,15 +3141,17 @@ export function CustomerBookingFlowPage() {
               timeStyle: 'short',
             })}
             .{' '}
-            {!isGroup
-              ? booking.pay_at_checkout
-                ? 'Nothing is charged yet - the bill goes to the cashier at checkout.'
-                : requiresPayment
-                  ? booking.payment_status === 'Fully Paid'
-                    ? 'Your payment has been received.'
-                    : 'Payment is due at the counter.'
-                  : "You're all set!"
-              : null}
+            {booking.awaiting_assessment
+              ? 'Nothing is charged yet. Your pet will be assessed when you arrive, and you pay the final price at the counter.'
+              : !isGroup
+                ? booking.pay_at_checkout
+                  ? 'Nothing is charged yet - the bill goes to the cashier at checkout.'
+                  : requiresPayment
+                    ? booking.payment_status === 'Fully Paid'
+                      ? 'Your payment has been received.'
+                      : 'Payment is due at the counter.'
+                    : "You're all set!"
+                : null}
           </p>
         ))}
         {isGroup ? (
@@ -3599,9 +3725,9 @@ export function CustomerBookingFlowPage() {
 
                 {selectedPet && !isSelectedPetAssessed ? (
                   <p className={styles.copy}>
-                    {selectedPet.name} hasn&apos;t been assessed by staff yet
-                    (weight class and coat type are recorded onsite). Only
-                    Initial Assessment can be booked for this pet until then.
+                    {restrictedToAssessment
+                      ? `${selectedPet.name} hasn't been assessed by staff yet (weight class and coat type are recorded onsite). Only Initial Assessment can be booked for this pet until then.`
+                      : `${selectedPet.name} hasn't been assessed yet, so the prices shown are estimates. The final price is set when ${selectedPet.name} is assessed at the branch, and you pay at the counter.`}
                   </p>
                 ) : null}
 
@@ -3624,7 +3750,7 @@ export function CustomerBookingFlowPage() {
                 >
                   Individual service
                 </button>
-                {packagesForCategory.length > 0 && isSelectedPetAssessed ? (
+                {packagesForCategory.length > 0 && !restrictedToAssessment ? (
                   <button
                     type="button"
                     className={`${styles.tab} ${
@@ -3801,7 +3927,13 @@ export function CustomerBookingFlowPage() {
                           cells: pkg.pricing_tiers,
                         },
                         selectedPet,
-                        catalogFixedPrice
+                        // A package's own cat price is flat too - no "price
+                        // for Large, long coat" hint for a cat on it.
+                        packageFixedPriceForPet(
+                          pkg,
+                          selectedPet,
+                          catalogFixedPrice
+                        )
                       ) ? (
                         <span className={styles.optionMeta}>
                           {petCellHint(selectedPet)}
@@ -3821,6 +3953,11 @@ export function CustomerBookingFlowPage() {
                             {serviceNameById.get(entry.service_id) ?? 'Service'}
                           </li>
                         ))}
+                        {/* Package extras: inclusions that are not
+                            individual services, named in Config > Packages. */}
+                        {(pkg.extras ?? []).map((extra) => (
+                          <li key={`extra:${extra}`}>{extra}</li>
+                        ))}
                       </ul>
                     </button>
                   );
@@ -3831,7 +3968,9 @@ export function CustomerBookingFlowPage() {
             {category ? (
               <div className={styles.pricingRowTotal}>
                 <span>
-                  Running total (before promos/discounts)
+                  {currentBookingAwaitsAssessment
+                    ? 'Estimated total (final price after assessment)'
+                    : 'Running total (before promos/discounts)'}
                   {category === 'Hotel' && hotelNightsMultiplier > 1
                     ? ` × ${hotelNightsMultiplier} nights`
                     : category === 'Daycare' && daycareHours > 1
@@ -4510,10 +4649,21 @@ export function CustomerBookingFlowPage() {
                     </div>
                   ))}
                   <div className={styles.pricingRow}>
-                    <span>Subtotal</span>
+                    <span>
+                      {entry.awaitingAssessment ? 'Estimate' : 'Subtotal'}
+                    </span>
                     <span>PHP {entry.itemsSubtotal.toFixed(2)}</span>
                   </div>
-                  {entry.category === 'Grooming' &&
+                  {entry.awaitingAssessment ? (
+                    <p className={styles.copy}>
+                      {entry.petName} hasn&apos;t been assessed yet. This is an
+                      estimate - the final price is set at the branch after
+                      assessment, and it is paid at the counter. It is not part
+                      of the total below.
+                    </p>
+                  ) : null}
+                  {!entry.awaitingAssessment &&
+                  entry.category === 'Grooming' &&
                   entry.selectedServiceNames.length > 0 ? (
                     <p className={styles.copy}>
                       Grooming price may be adjusted for your pet's size and
@@ -4544,10 +4694,23 @@ export function CustomerBookingFlowPage() {
                   </div>
                 );
               })}
-              <div className={styles.pricingRowTotal}>
-                <span>Estimated total</span>
-                <span>PHP {estimatedTotal.toFixed(2)}</span>
-              </div>
+              {payableBookings.length > 0 ? (
+                <div className={styles.pricingRowTotal}>
+                  <span>Estimated total</span>
+                  <span>PHP {estimatedTotal.toFixed(2)}</span>
+                </div>
+              ) : null}
+              {awaitingAssessmentBookings.length > 0 ? (
+                <div className={styles.pricingRowTotal}>
+                  <span>Pay at the counter after assessment</span>
+                  <span>
+                    from PHP{' '}
+                    {awaitingAssessmentBookings
+                      .reduce((sum, entry) => sum + entry.itemsSubtotal, 0)
+                      .toFixed(2)}
+                  </span>
+                </div>
+              ) : null}
               {showPaymentChoice &&
               effectivePaymentChoice === 'downpayment' &&
               downpaymentAmount !== null ? (
@@ -4962,6 +5125,51 @@ export function CustomerBookingFlowPage() {
               onAgree={handleStorePoliciesAgree}
             />
           ) : null}
+
+          <Modal
+            isOpen={showUnassessedNotice}
+            title={`${selectedPet?.name ?? 'This pet'} hasn't been assessed yet`}
+            onClose={() => setShowUnassessedNotice(false)}
+          >
+            <div className={styles.unassessedNotice}>
+              <p className={styles.copy}>
+                You can still book now. Here is what to expect:
+              </p>
+              <ul className={styles.unassessedNoticeList}>
+                <li>
+                  <strong>Prices may be different.</strong> Some services are
+                  priced by your pet&apos;s size and coat, so what you see while
+                  booking is an estimate.
+                </li>
+                <li>
+                  <strong>Assessment comes first.</strong> When you first arrive
+                  at the branch, our staff will weigh your pet and check its
+                  coat before the service starts.
+                </li>
+                <li>
+                  <strong>You pay at the counter.</strong> Nothing is charged
+                  online. The final price is confirmed after the assessment, and
+                  payment is made at the front desk.
+                </li>
+              </ul>
+              <div className={styles.unassessedNoticeActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setShowUnassessedNotice(false)}
+                >
+                  Go back
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={handleUnassessedNoticeAgree}
+                >
+                  I understand
+                </button>
+              </div>
+            </div>
+          </Modal>
         </section>
 
         <div className={styles.summaryColumn}>

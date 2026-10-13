@@ -236,6 +236,48 @@ describe('consultation.service (#66)', () => {
       ).toBe(true);
     });
 
+    // Custom change (book before assessment, 20261013264): such a booking
+    // cannot be paid until the pet arrives and is assessed - it is still
+    // listed, so the vet sees the appointment coming.
+    it('includes an unpaid Pending booking that is awaiting assessment', async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              pet_id: 'pet-1',
+              branch_id: MAKATI.id,
+              assigned_staff_id: VET_ID,
+              special_instructions: null,
+              status: 'Pending',
+              payment_status: 'Pending',
+              awaiting_assessment: true,
+            },
+          ],
+          error: null,
+        }, // bookings
+        { data: [], error: null }, // existing consultations
+        { data: MAKATI, error: null }, // branch eligibility
+        { data: null, error: null }, // insert
+        {
+          data: [
+            {
+              ...consultationRow(),
+              booking: {
+                scheduled_start: '2026-07-19T02:00:00.000Z',
+                awaiting_assessment: true,
+              },
+            },
+          ],
+          error: null,
+        } // consultations select
+      );
+
+      const result = await listConsultationQueue();
+
+      expect(result).toHaveLength(1);
+    });
+
     it('leaves out a Pending booking that has not been paid for - not a secured appointment yet', async () => {
       queueFromResults({
         data: [

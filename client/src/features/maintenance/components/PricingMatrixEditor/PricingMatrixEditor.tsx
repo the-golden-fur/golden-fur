@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { deriveGroomingMatrix } from '../../utils/deriveGroomingMatrix';
 import {
   COAT_TYPES,
@@ -19,6 +20,7 @@ const WEIGHT_LABELS: Record<WeightClass, string> = {
 const COAT_LABELS: Record<CoatType, string> = {
   SC: 'Short coat',
   LC: 'Long coat',
+  XLC: 'Extra long coat',
 };
 
 interface PricingMatrixEditorProps {
@@ -75,7 +77,10 @@ export function PricingMatrixEditor({
           : 'Each price starts from the Pricing Configuration formula. Type over any of them to give this item its own price.'}
       </p>
 
-      <div className={styles.grid}>
+      <div
+        className={styles.grid}
+        style={{ '--coat-columns': COAT_TYPES.length } as CSSProperties}
+      >
         <span aria-hidden="true" />
         {COAT_TYPES.map((coatType) => (
           <span key={coatType} className={styles.headerCell}>

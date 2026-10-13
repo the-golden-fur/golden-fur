@@ -18,7 +18,11 @@
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(120px, auto) 1fr 1fr;
+  /* One column for the weight label, then one equal column per coat type -
+     --coat-columns comes from COAT_TYPES.length (see the component). */
+  grid-template-columns:
+    minmax(6.5rem, max-content)
+    repeat(var(--coat-columns, 3), minmax(0, 1fr));
   gap: var(--space-2);
   align-items: center;
 }

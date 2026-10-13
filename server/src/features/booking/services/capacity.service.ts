@@ -38,6 +38,8 @@ const DEFAULT_HOTEL_CAGE_CAPACITY: Record<WeightClass, number> = {
   XL: 4,
 };
 
+const HOTEL_CAGE_SIZES: WeightClass[] = ['S', 'M', 'L', 'XL'];
+
 const DEFAULT_DAYCARE_SESSION_CAPACITY = 15;
 
 function parseJsonEnv(name: string): unknown {
@@ -96,6 +98,22 @@ export async function getHotelCageCapacity(
   if (error) throwWithStatus(400, error.message);
 
   return count ?? DEFAULT_HOTEL_CAGE_CAPACITY[weightClass];
+}
+
+/**
+ * Custom change (book before assessment, 20261013264): every cage the branch
+ * has, of any size. What Hotel capacity is measured against for a pet staff
+ * have not assessed yet - with no weight class there is no size to reserve,
+ * only "is there a cage free at all".
+ */
+export async function getHotelTotalCageCapacity(
+  branchId: string
+): Promise<number> {
+  const capacities = await Promise.all(
+    HOTEL_CAGE_SIZES.map((size) => getHotelCageCapacity(branchId, size))
+  );
+
+  return capacities.reduce((sum, count) => sum + count, 0);
 }
 
 export function getDaycareSessionCapacity(branchId: string): number {
@@ -183,6 +201,13 @@ export async function filterSameSizeRows(
 ): Promise<OverlappingBookingRow[]> {
   if (rows.length === 0) return [];
 
+  // Book before assessment (20261013264): a pet may now reach Hotel with no
+  // weight class. With no size there is nothing to narrow by - and a null
+  // one must never be sent to the pet_weight_class enum - so every row
+  // stands. Callers type this as WeightClass, but it is read off a nullable
+  // column at runtime.
+  if (!weightClass) return rows;
+
   const { data, error } = await supabase
     .from('pets')
     .select('id')
@@ -238,11 +263,25 @@ export async function checkCapacity(
   }
 
   if (serviceCategory === 'Hotel') {
+    const overlapping = await listOverlappingActiveBookings(params);
+
+    // Custom change (book before assessment, 20261013264): a pet staff have
+    // not assessed yet has no weight class, so no cage SIZE can be reserved
+    // for it. The best that can be said up front is whether the branch has a
+    // cage free at all - every overlapping stay, of any size, against every
+    // cage of any size. The size is settled when the pet is assessed on
+    // arrival (assessmentReprice.service.ts re-runs this check with it).
     if (!params.petWeightClass) {
-      throwWithStatus(400, 'Pet weight class is required for Hotel capacity');
+      const totalCages = await getHotelTotalCageCapacity(params.branchId);
+
+      return overlapping.length < totalCages
+        ? { available: true }
+        : {
+            available: false,
+            reason: 'No cages available for the requested dates',
+          };
     }
 
-    const overlapping = await listOverlappingActiveBookings(params);
     const sameSize = await filterSameSizeRows(
       overlapping,
       params.petWeightClass
@@ -396,8 +435,19 @@ export async function confirmCapacityAfterInsert(
     if (error) throwWithStatus(400, error.message);
     if (!pet) throwWithStatus(404, 'Pet not found');
 
-    const weightClass = pet.weight_class as WeightClass;
+    const weightClass = pet.weight_class as WeightClass | null;
     const overlapping = await listOverlappingActiveBookings(baseParams);
+
+    // Book before assessment: with no weight class there is no size to rank
+    // within - same "any cage at all" rule as checkCapacity.
+    if (!weightClass) {
+      const totalCages = await getHotelTotalCageCapacity(booking.branch_id);
+
+      return overlapping
+        .slice(0, totalCages)
+        .some((row) => row.id === booking.id);
+    }
+
     const sameSize = await filterSameSizeRows(overlapping, weightClass);
     const capacity = await getHotelCageCapacity(booking.branch_id, weightClass);
 

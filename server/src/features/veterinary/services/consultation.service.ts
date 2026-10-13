@@ -161,7 +161,7 @@ export async function listConsultationQueue({
   const { data: bookings, error: bookingsError } = await supabase
     .from('bookings')
     .select(
-      'id, pet_id, branch_id, assigned_staff_id, special_instructions, status, payment_status'
+      'id, pet_id, branch_id, assigned_staff_id, special_instructions, status, payment_status, awaiting_assessment'
     )
     .eq('service_category', 'Veterinary')
     .in('status', LIST_BOOKING_STATUSES)
@@ -182,11 +182,17 @@ export async function listConsultationQueue({
       special_instructions: string | null;
       status: BookingStatus;
       payment_status?: string;
+      awaiting_assessment?: boolean;
     }>
   )
-    // A Pending booking only belongs here once something has been paid.
+    // A Pending booking only belongs here once something has been paid -
+    // except one made before the pet was assessed (20261013264), same as
+    // grooming.service.ts's listGroomingQueue: listed and flagged so the vet
+    // sees it coming, still not startable until assessed and paid.
     .filter(
-      (row) => !(row.status === 'Pending' && row.payment_status === 'Pending')
+      (row) =>
+        row.awaiting_assessment ||
+        !(row.status === 'Pending' && row.payment_status === 'Pending')
     );
 
   if (bookingRows.length === 0) return [];

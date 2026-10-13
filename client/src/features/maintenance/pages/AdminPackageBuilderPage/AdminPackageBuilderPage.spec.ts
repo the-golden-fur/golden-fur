@@ -63,6 +63,8 @@ const PRICING_CONFIGURATION: PricingConfiguration = {
   size_xl_rule_value: 1.5,
   coat_long_rule_type: 'flat',
   coat_long_rule_value: 50,
+  coat_extra_long_rule_type: 'flat',
+  coat_extra_long_rule_value: 50,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -447,6 +449,221 @@ describe('AdminPackageBuilderPage', () => {
 
     expect(await screen.findByText('PHP 450.00')).toBeInTheDocument();
     expect(screen.getByText('2 services')).toBeInTheDocument();
+  });
+
+  // Custom change (package extras): named inclusions that are not individual
+  // services, typed in by name.
+  describe('adding a service that is not in the list', () => {
+    async function openConfigure(user: ReturnType<typeof userEvent.setup>) {
+      const row = (await screen.findByText('Golden Package')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Golden Package' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+    }
+
+    const ADD_BOX = 'Add a service that is not in the list';
+
+    it('adds typed names to the package and saves them with it', async () => {
+      vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+        data: buildPackage({ extras: ['Free bandana', 'Cologne spritz'] }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      await user.type(screen.getByLabelText(ADD_BOX), 'Free bandana');
+      await user.click(screen.getByRole('button', { name: 'Add' }));
+      // Enter adds too, without submitting the package form.
+      await user.type(screen.getByLabelText(ADD_BOX), 'Cologne spritz{Enter}');
+
+      const added = screen.getByRole('list', { name: 'Added services' });
+      expect(within(added).getByText('Free bandana')).toBeInTheDocument();
+      expect(within(added).getByText('Cologne spritz')).toBeInTheDocument();
+      expect(screen.getByLabelText(ADD_BOX)).toHaveValue('');
+      expect(maintenanceApi.updatePackage).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() => {
+        expect(maintenanceApi.updatePackage).toHaveBeenCalledWith(
+          'package-1',
+          'token',
+          expect.objectContaining({
+            extras: ['Free bandana', 'Cologne spritz'],
+          })
+        );
+      });
+
+      // ...and the list then shows them on the package's row.
+      expect(
+        await screen.findByText('+ Free bandana, Cologne spritz')
+      ).toBeInTheDocument();
+    });
+
+    it('shows the names already saved, and removing one saves the shorter list', async () => {
+      vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+        data: [buildPackage({ extras: ['Free bandana', 'Cologne spritz'] })],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+        data: buildPackage({ extras: ['Cologne spritz'] }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      await user.click(
+        screen.getByRole('button', { name: 'Remove Free bandana' })
+      );
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() => {
+        expect(maintenanceApi.updatePackage).toHaveBeenCalledWith(
+          'package-1',
+          'token',
+          expect.objectContaining({ extras: ['Cologne spritz'] })
+        );
+      });
+    });
+
+    it('ignores a blank name and a name already listed', async () => {
+      vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+        data: [buildPackage({ extras: ['Free bandana'] })],
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+
+      await user.type(screen.getByLabelText(ADD_BOX), 'free BANDANA{Enter}');
+
+      const added = screen.getByRole('list', { name: 'Added services' });
+      expect(within(added).getAllByRole('listitem')).toHaveLength(1);
+    });
+
+    it('leaves the names out of the save entirely when they were not changed', async () => {
+      vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+        data: [buildPackage({ extras: ['Free bandana'] })],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+        data: buildPackage({ extras: ['Free bandana'] }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.updatePackage).toHaveBeenCalled()
+      );
+      expect(
+        vi.mocked(maintenanceApi.updatePackage).mock.calls[0][2]
+      ).not.toHaveProperty('extras');
+    });
+  });
+
+  // Custom change (package cat price): one separate price for a cat.
+  describe('price for cats', () => {
+    const CAT_PRICE_BOX = 'Price for cats (PHP, optional)';
+
+    async function openConfigure(user: ReturnType<typeof userEvent.setup>) {
+      const row = (await screen.findByText('Golden Package')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Golden Package' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+    }
+
+    it('saves a cat price with the package and shows it on the row', async () => {
+      vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+        data: buildPackage({ cat_price: 650 }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      const box = screen.getByLabelText(CAT_PRICE_BOX);
+      expect(box).toHaveValue(null);
+      await user.type(box, '650');
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() => {
+        expect(maintenanceApi.updatePackage).toHaveBeenCalledWith(
+          'package-1',
+          'token',
+          expect.objectContaining({ cat_price: 650 })
+        );
+      });
+      expect(await screen.findByText('Cats: PHP 650.00')).toBeInTheDocument();
+    });
+
+    it('shows the saved cat price, and emptying the box clears it with null', async () => {
+      vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+        data: [buildPackage({ cat_price: 650 })],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+        data: buildPackage({ cat_price: null }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      const box = screen.getByLabelText(CAT_PRICE_BOX);
+      expect(box).toHaveValue(650);
+      await user.clear(box);
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() => {
+        expect(maintenanceApi.updatePackage).toHaveBeenCalledWith(
+          'package-1',
+          'token',
+          expect.objectContaining({ cat_price: null })
+        );
+      });
+    });
+
+    it('leaves the cat price out of the save when it was not changed', async () => {
+      vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+        data: [buildPackage({ cat_price: 650 })],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+        data: buildPackage({ cat_price: 650 }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.updatePackage).toHaveBeenCalled()
+      );
+      expect(
+        vi.mocked(maintenanceApi.updatePackage).mock.calls[0][2]
+      ).not.toHaveProperty('cat_price');
+    });
   });
 
   it('custom change: the bundle discount % has no separate "read-only"/Save button - it saves together with the package via the main Save button', async () => {

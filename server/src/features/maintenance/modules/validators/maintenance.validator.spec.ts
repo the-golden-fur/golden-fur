@@ -281,6 +281,81 @@ describe('createPackageValidator', () => {
   });
 });
 
+// Custom change (package extras, 20261013262): named inclusions that are not
+// individual services.
+describe('package extras', () => {
+  const PACKAGE = {
+    branch_ids: [BRANCH_ID],
+    name: 'Golden Package',
+    service_ids: [SERVICE_ID, SERVICE_ID_2],
+  };
+
+  it('accepts a list of names on create and on update, trimming each', () => {
+    const created = createPackageValidator.safeParse({
+      ...PACKAGE,
+      extras: ['  Free bandana ', 'Cologne spritz'],
+    });
+
+    expect(created.success).toBe(true);
+    expect(created.data?.extras).toEqual(['Free bandana', 'Cologne spritz']);
+    expect(
+      updatePackageValidator.safeParse({ extras: ['Free bandana'] }).success
+    ).toBe(true);
+  });
+
+  it('accepts an empty list on update, which clears them', () => {
+    expect(updatePackageValidator.safeParse({ extras: [] }).success).toBe(true);
+  });
+
+  it('a package still needs two real services - extras do not count toward that', () => {
+    expect(
+      createPackageValidator.safeParse({
+        ...PACKAGE,
+        service_ids: [SERVICE_ID],
+        extras: ['Free bandana', 'Cologne spritz'],
+      }).success
+    ).toBe(false);
+  });
+
+  it.each([
+    ['a blank name', ['   ']],
+    ['a name over 80 characters', ['x'.repeat(81)]],
+    ['the same name twice, whatever its capitals', ['Bandana', 'bandana']],
+    ['more than 20', Array.from({ length: 21 }, (_, i) => `Extra ${i}`)],
+  ])('rejects %s', (_label, extras) => {
+    expect(updatePackageValidator.safeParse({ extras }).success).toBe(false);
+  });
+});
+
+// Custom change (package cat price, 20261013263).
+describe('package cat price', () => {
+  it('accepts a cat price on create and update, and null on update to clear it', () => {
+    expect(
+      createPackageValidator.safeParse({
+        branch_ids: [BRANCH_ID],
+        name: 'Golden Package',
+        service_ids: [SERVICE_ID, SERVICE_ID_2],
+        cat_price: 650,
+      }).success
+    ).toBe(true);
+    expect(updatePackageValidator.safeParse({ cat_price: 650 }).success).toBe(
+      true
+    );
+    expect(updatePackageValidator.safeParse({ cat_price: null }).success).toBe(
+      true
+    );
+  });
+
+  it('accepts a cat price of zero, and rejects a negative one', () => {
+    expect(updatePackageValidator.safeParse({ cat_price: 0 }).success).toBe(
+      true
+    );
+    expect(updatePackageValidator.safeParse({ cat_price: -1 }).success).toBe(
+      false
+    );
+  });
+});
+
 describe('updatePackageValidator', () => {
   it('accepts a bundle replacement alone', () => {
     const result = updatePackageValidator.safeParse({
@@ -684,6 +759,21 @@ describe('updatePricingConfigurationValidator (Epic B #80; custom change: config
     ).toBe(false);
   });
 
+  it('accepts the Extra Long Coat rule, and rejects a zero multiplier for it', () => {
+    expect(
+      updatePricingConfigurationValidator.safeParse({
+        coat_extra_long_rule_type: 'percentage',
+        coat_extra_long_rule_value: 25,
+      }).success
+    ).toBe(true);
+    expect(
+      updatePricingConfigurationValidator.safeParse({
+        coat_extra_long_rule_type: 'multiplier',
+        coat_extra_long_rule_value: 0,
+      }).success
+    ).toBe(false);
+  });
+
   it('rejects a negative rule value', () => {
     expect(
       updatePricingConfigurationValidator.safeParse({
@@ -786,6 +876,33 @@ describe('upsertPromoCapConfigurationValidator (Epic B #84)', () => {
 });
 
 describe('pricingCellsValidator (per-item weight x coat pricing)', () => {
+  it('accepts an Extra Long Coat cell, and all 12 cells of the grid at once', () => {
+    expect(
+      pricingCellsValidator.safeParse({
+        cells: [{ weight_class: 'L', coat_type: 'XLC', price: 800 }],
+      }).success
+    ).toBe(true);
+
+    const everyCell = ['S', 'M', 'L', 'XL'].flatMap((weight_class) =>
+      ['SC', 'LC', 'XLC'].map((coat_type) => ({
+        weight_class,
+        coat_type,
+        price: 500,
+      }))
+    );
+    expect(pricingCellsValidator.safeParse({ cells: everyCell }).success).toBe(
+      true
+    );
+  });
+
+  it('rejects a coat type that does not exist', () => {
+    expect(
+      pricingCellsValidator.safeParse({
+        cells: [{ weight_class: 'L', coat_type: 'XXL', price: 800 }],
+      }).success
+    ).toBe(false);
+  });
+
   it('accepts a price, or null to go back to the formula', () => {
     expect(
       pricingCellsValidator.safeParse({

@@ -71,6 +71,19 @@ describe('AssessmentModal', () => {
     expect(save).toBeEnabled();
   });
 
+  it('offers Extra long coat alongside Short and Long, stored as XLC', async () => {
+    const user = userEvent.setup();
+    render(createElement(Harness, { onConfirm: vi.fn() }));
+
+    const extraLong = screen.getByRole('option', {
+      name: 'Extra long coat',
+    }) as HTMLOptionElement;
+    expect(extraLong.value).toBe('XLC');
+
+    await user.selectOptions(screen.getByLabelText('Coat type'), 'XLC');
+    expect(screen.getByLabelText('Coat type')).toHaveValue('XLC');
+  });
+
   it('shows weight class and coat type as words while keeping the stored codes as values', () => {
     render(createElement(Harness, { onConfirm: vi.fn() }));
 

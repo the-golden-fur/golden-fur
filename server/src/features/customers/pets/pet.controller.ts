@@ -13,6 +13,10 @@ import {
   updatePetValidatorStaff,
 } from './modules/validators/pet.validator.ts';
 import type { PetWeightClass } from './pet.types.ts';
+import {
+  repriceBookingsAwaitingAssessment,
+  type AssessmentRepriceResult,
+} from '../../booking/services/assessmentReprice.service.ts';
 import { getPetWeightClassConfiguration } from '../../maintenance/services/petWeightClassConfiguration.service.ts';
 import { deriveWeightClass } from '../../maintenance/utils/deriveWeightClass.ts';
 import {
@@ -385,6 +389,34 @@ export async function updatePetController(
 
     if (error) {
       return sendPetWriteError(res, error);
+    }
+
+    // Custom change (book before assessment, 20261013264): a staff save that
+    // sets or changes the pet's weight class / coat is the moment any booking
+    // made for it while unassessed gets its real price and its bill. Only
+    // then - an unrelated edit (name, photo) reprices nothing. The pet is
+    // already saved: a reprice problem is reported, never rolled back.
+    if (isStaff && (weightClassChanged || coatTypeChanged)) {
+      let assessmentReprice: AssessmentRepriceResult = {
+        repriced: [],
+        failed: [],
+      };
+
+      try {
+        assessmentReprice = await repriceBookingsAwaitingAssessment(
+          petId as string
+        );
+      } catch (repriceError) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `repriceBookingsAwaitingAssessment failed for pet ${petId}:`,
+          repriceError
+        );
+      }
+
+      return res
+        .status(200)
+        .json({ pet: data, assessment_reprice: assessmentReprice });
     }
 
     return res.status(200).json({ pet: data });

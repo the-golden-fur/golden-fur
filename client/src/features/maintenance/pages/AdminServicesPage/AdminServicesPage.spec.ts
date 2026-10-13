@@ -51,6 +51,8 @@ const PRICING_CONFIGURATION: PricingConfiguration = {
   size_xl_rule_value: 1.5,
   coat_long_rule_type: 'flat',
   coat_long_rule_value: 50,
+  coat_extra_long_rule_type: 'flat',
+  coat_extra_long_rule_value: 50,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -364,7 +366,7 @@ describe('AdminServicesPage', () => {
     // Every cell starts at the formula's price for the base price.
     const smallShort = screen.getByLabelText('Small (S), short coat price');
     expect(smallShort).toHaveValue(350);
-    expect(screen.getAllByText('Formula')).toHaveLength(8);
+    expect(screen.getAllByText('Formula')).toHaveLength(12);
 
     const largeLong = screen.getByLabelText('Large (L), long coat price');
     await user.clear(largeLong);

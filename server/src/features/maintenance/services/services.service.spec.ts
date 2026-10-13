@@ -76,6 +76,8 @@ const PRICING_CONFIGURATION = {
   size_xl_rule_value: 1.5,
   coat_long_rule_type: 'flat',
   coat_long_rule_value: 50,
+  coat_extra_long_rule_type: 'flat',
+  coat_extra_long_rule_value: 50,
 };
 
 const GROOMING_SERVICE = {
@@ -329,7 +331,7 @@ describe('services.service', () => {
       const result = await listServices({});
 
       expect(result).toHaveLength(1);
-      expect(result[0].service_pricing_tiers).toHaveLength(8);
+      expect(result[0].service_pricing_tiers).toHaveLength(12);
       const smallShortCoat = result[0].service_pricing_tiers?.find(
         (tier) => tier.weight_class === 'S' && tier.coat_type === 'SC'
       );

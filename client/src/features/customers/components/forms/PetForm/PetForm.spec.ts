@@ -231,6 +231,29 @@ describe('PetForm', () => {
     );
   });
 
+  it('staff can record every coat type, Extra Long Coat (XLC) included', () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-2',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+        isStaff: true,
+      })
+    );
+
+    const coatSelect = screen.getByLabelText(/Coat type/) as HTMLSelectElement;
+
+    expect([...coatSelect.options].map((option) => option.value)).toEqual([
+      '',
+      'SC',
+      'LC',
+      'XLC',
+    ]);
+
+    fireEvent.change(coatSelect, { target: { value: 'XLC' } });
+    expect(coatSelect).toHaveValue('XLC');
+  });
+
   it('shows the age under Date of birth as soon as a date is entered', async () => {
     render(
       createElement(PetForm, {

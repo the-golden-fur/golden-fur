@@ -234,6 +234,8 @@ export const updatePricingConfigurationValidator = z
     size_xl_rule_value: z.number().nonnegative().optional(),
     coat_long_rule_type: z.enum(PRICING_RULE_TYPES).optional(),
     coat_long_rule_value: z.number().nonnegative().optional(),
+    coat_extra_long_rule_type: z.enum(PRICING_RULE_TYPES).optional(),
+    coat_extra_long_rule_value: z.number().nonnegative().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -265,6 +267,12 @@ export const updatePricingConfigurationValidator = z
       input.coat_long_rule_type,
       input.coat_long_rule_value,
       'coat_long_rule_value',
+      ctx
+    );
+    rejectZeroMultiplier(
+      input.coat_extra_long_rule_type,
+      input.coat_extra_long_rule_value,
+      'coat_extra_long_rule_value',
       ctx
     );
   });
@@ -387,13 +395,14 @@ export const pricingCellsValidator = z
         z
           .object({
             weight_class: z.enum(['S', 'M', 'L', 'XL']),
-            coat_type: z.enum(['SC', 'LC']),
+            coat_type: z.enum(['SC', 'LC', 'XLC']),
             price: z.number().min(0).max(99999999.99).nullable(),
           })
           .strict()
       )
       .min(1)
-      .max(8)
+      // The whole grid: 4 sizes x 3 coats.
+      .max(12)
       .refine(
         (cells) =>
           new Set(cells.map((cell) => `${cell.weight_class}:${cell.coat_type}`))
@@ -415,6 +424,29 @@ export type PricingCellsInput = z.infer<typeof pricingCellsValidator>;
  * - it is derived from the included services' base_price and
  * package_pricing_configuration.
  */
+/**
+ * Custom change (package extras, 20261013262): a package's named inclusions
+ * that are not individual services - a short list of names, nothing else.
+ * Trimmed; the same name twice (whatever its capitals) is refused, so the
+ * list a customer reads never repeats itself. The 20 cap matches the
+ * column's own CHECK.
+ */
+const packageExtrasField = z
+  .array(
+    z
+      .string()
+      .trim()
+      .min(1, 'An extra needs a name')
+      .max(80, 'An extra can be at most 80 characters')
+  )
+  .max(20, 'A package can list at most 20 extras')
+  .refine(
+    (extras) =>
+      new Set(extras.map((extra) => extra.toLowerCase())).size ===
+      extras.length,
+    'Each extra can only be listed once'
+  );
+
 export const createPackageValidator = z
   .object({
     branch_ids: z.array(z.uuid()).min(1, 'Select at least one branch'),
@@ -422,6 +454,10 @@ export const createPackageValidator = z
     service_ids: z
       .array(z.uuid())
       .min(2, 'A package bundles two or more services'),
+    extras: packageExtrasField.optional(),
+    // Custom change (package cat price, 20261013263): one separate price for
+    // a Cat pet. Left out = cats are priced like any other pet type.
+    cat_price: z.number().min(0).max(99999999.99).optional(),
     // Custom change (pricing matrix fix): opt-in weight/coat-derived
     // pricing for this package (sum of included services' own per-pet
     // price, bundle-discounted) instead of the flat bundled_price.
@@ -439,6 +475,10 @@ export const updatePackageValidator = z
     name: z.string().trim().min(1).optional(),
     /** Full replacement of the included-services set when provided. */
     service_ids: z.array(z.uuid()).min(2).optional(),
+    /** Full replacement of the extras list when provided ([] clears it). */
+    extras: packageExtrasField.optional(),
+    /** null clears it - cats go back to the pet type's own pricing. */
+    cat_price: z.number().min(0).max(99999999.99).nullable().optional(),
     use_pricing_matrix: z.boolean().optional(),
     icon: iconField,
     image_url: imageUrlField,
