@@ -10,3 +10,15 @@ export const HOTEL_QUEUE_VIEWER_ROLES = new Set([
   'Groomer',
   'Pet Assistant',
 ]);
+
+/** Who can open the routed Hotel check-in form - everyone above, plus
+ * Receptionist/Front Desk: the front desk checks its own Hotel bookings in
+ * from the Bookings Queue ("Check In" on a Hotel row opens this form),
+ * without needing the Hotel Queue page itself. The server's
+ * HOTEL_ADVANCE_ROLES has always allowed both roles. Mirrors
+ * DAYCARE_CHECK_IN_FORM_ROLES. */
+export const HOTEL_CHECK_IN_FORM_ROLES = new Set([
+  ...HOTEL_QUEUE_VIEWER_ROLES,
+  'Receptionist',
+  'Front Desk',
+]);

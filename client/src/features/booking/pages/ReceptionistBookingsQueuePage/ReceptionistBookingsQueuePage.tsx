@@ -35,6 +35,7 @@ import {
   startBooking,
 } from '../../api/booking.api';
 import { listDaycareSessions } from '../../../daycare/api/daycare.api';
+import { listHotelStays } from '../../../hotel/api/hotel.api';
 import { DaycareCheckoutPanel } from '../../../daycare/pages/DaycareQueuePage/DaycareCheckoutPanel';
 import {
   listPolicyConfigurations,
@@ -349,6 +350,12 @@ export function ReceptionistBookingsQueuePage() {
   // Daycare booking then gets neither extra button, exactly as before.
   const [daycareSessionIdByBookingId, setDaycareSessionIdByBookingId] =
     useState<Map<string, string> | null>(null);
+  // Hotel check-in from this queue: the ids of bookings that already have a
+  // Hotel stay (i.e. have been through the check-in form and hold a cage).
+  // Null until that lookup first succeeds - an In Progress Hotel booking
+  // then gets no Check In button, exactly as before.
+  const [hotelStayBookingIds, setHotelStayBookingIds] =
+    useState<Set<string> | null>(null);
   // The Daycare booking whose check-out panel is open, with the session id
   // captured when it was opened - the session drops out of the Active list
   // above the moment it's checked out, but the panel (showing the bill)
@@ -479,6 +486,18 @@ export function ReceptionistBookingsQueuePage() {
             result.data
               .filter((session) => session.booking_id !== null)
               .map((session) => [session.booking_id as string, session.id])
+          )
+        );
+      });
+
+      void listHotelStays(token).then((result) => {
+        if (!isMounted || !result.data) return;
+
+        setHotelStayBookingIds(
+          new Set(
+            result.data
+              .map((stay) => stay.booking_id)
+              .filter((id): id is string => id !== null)
           )
         );
       });
@@ -813,6 +832,18 @@ export function ReceptionistBookingsQueuePage() {
     );
   }
 
+  /** Same as daycareNeedsCheckIn, for Hotel: a walk-in Hotel booking is
+   * created already In Progress, but has no stay and holds no cage until it
+   * goes through the check-in form. */
+  function hotelNeedsCheckIn(booking: Booking): boolean {
+    return (
+      booking.service_category === 'Hotel' &&
+      booking.status === 'In Progress' &&
+      hotelStayBookingIds !== null &&
+      !hotelStayBookingIds.has(booking.id)
+    );
+  }
+
   /** The Active session of a checked-in Daycare booking - what Check Out
    * acts on - or null when there's nothing to check out. */
   function daycareSessionToCheckOut(booking: Booking): string | null {
@@ -830,16 +861,22 @@ export function ReceptionistBookingsQueuePage() {
    * /bookings/:id/start endpoint the old Start action used
    * (startBookingController, unchanged server-side) - no new endpoint.
    *
-   * Daycare is the exception: checking a Daycare pet in means assigning its
-   * cage and care instructions, so Check In opens the Daycare check-in form
-   * instead (which itself moves a Pending booking to In Progress on
-   * submit). `from=bookings` brings the receptionist back here afterwards
-   * rather than to the Daycare Queue. */
+   * Daycare and Hotel are the exceptions: checking one of those pets in
+   * means assigning its cage and care instructions, so Check In opens that
+   * category's check-in form instead (which itself moves a Pending booking
+   * to In Progress on submit, and is what marks the cage Occupied).
+   * `from=bookings` brings the receptionist back here afterwards rather
+   * than to the Daycare/Hotel Queue. */
   async function handleCheckIn(booking: Booking) {
     if (!accessToken) return;
 
     if (booking.service_category === 'Daycare') {
       navigate(`/staff/daycare/queue/check-in/${booking.id}?from=bookings`);
+      return;
+    }
+
+    if (booking.service_category === 'Hotel') {
+      navigate(`/staff/hotel/queue/check-in/${booking.id}?from=bookings`);
       return;
     }
 
@@ -1285,7 +1322,8 @@ export function ReceptionistBookingsQueuePage() {
                           that page's Start does. */}
                       {(confirmationState === 'Confirmed' &&
                         booking.service_category !== 'Assessment') ||
-                      daycareNeedsCheckIn(booking) ? (
+                      daycareNeedsCheckIn(booking) ||
+                      hotelNeedsCheckIn(booking) ? (
                         <button
                           type="button"
                           className={styles.secondaryButton}

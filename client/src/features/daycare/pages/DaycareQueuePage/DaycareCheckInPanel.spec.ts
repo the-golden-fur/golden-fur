@@ -16,16 +16,35 @@ vi.mock('../../../hotel/api/hotel.api', () => ({
 // Custom change (Daycare/Hotel parity): DaycareCheckInPanel assigns a cage
 // the same way HotelCheckInPanel does - CageStatusGrid's own fetch behavior
 // is already covered by its own tests, mirrors HotelCheckInPanel.spec.ts's
-// identical stub.
+// identical stub (one differently-sized L cage to pick).
 vi.mock('../../../hotel/components/CageStatusGrid/CageStatusGrid', () => ({
-  CageStatusGrid: () => null,
+  CageStatusGrid: ({
+    onSelectCage,
+  }: {
+    onSelectCage?: (cage: unknown) => void;
+  }) =>
+    onSelectCage
+      ? createElement(
+          'button',
+          {
+            type: 'button',
+            onClick: () =>
+              onSelectCage({
+                id: 'cage-l',
+                cage_label: 'Makati-L-01',
+                size: 'L',
+              }),
+          },
+          'Pick L cage'
+        )
+      : null,
 }));
 
 function setupCageSuggestion() {
   vi.mocked(getCageSuggestion).mockResolvedValue({
     data: {
       suggestedSize: 'M',
-      availableCages: [{ id: 'cage-1', cage_label: 'Makati-M-01' }],
+      availableCages: [{ id: 'cage-1', cage_label: 'Makati-M-01', size: 'M' }],
     },
     error: null,
   } as never);
@@ -158,5 +177,41 @@ describe('DaycareCheckInPanel (#69)', () => {
 
     expect(await screen.findByDisplayValue('Kibble')).toBeInTheDocument();
     expect(screen.getByDisplayValue('1 cup')).toBeInTheDocument();
+  });
+
+  it('warns before checking in to a cage of a different size; "Check in anyway" proceeds', async () => {
+    setupCageSuggestion();
+    vi.mocked(daycareApi.checkInDaycareSession).mockClear();
+    vi.mocked(daycareApi.checkInDaycareSession).mockResolvedValue({
+      data: { id: 'session-1' },
+      error: null,
+    } as never);
+
+    renderPanel();
+
+    await screen.findByText(/Suggested size: M/);
+    await userEvent.click(screen.getByRole('button', { name: 'Pick L cage' }));
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Cage Makati-L-01 is size L, but this pet is size M.'
+    );
+    expect(daycareApi.checkInDaycareSession).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Choose another cage' })
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(daycareApi.checkInDaycareSession).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Check in anyway' })
+    );
+
+    expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({ cage_id: 'cage-l' })
+    );
   });
 });

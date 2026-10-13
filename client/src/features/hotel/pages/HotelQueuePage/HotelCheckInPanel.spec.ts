@@ -21,9 +21,29 @@ vi.mock('../../../catalog/api/catalog.api', () => ({
 }));
 
 // Isolates this panel's own validation/pricing logic from
-// CageStatusGrid's already-tested internals - swapped for a minimal stub.
+// CageStatusGrid's already-tested internals - swapped for a minimal stub
+// that offers one differently-sized (L) cage to pick when selection is on.
 vi.mock('../../components/CageStatusGrid/CageStatusGrid', () => ({
-  CageStatusGrid: () => null,
+  CageStatusGrid: ({
+    onSelectCage,
+  }: {
+    onSelectCage?: (cage: unknown) => void;
+  }) =>
+    onSelectCage
+      ? createElement(
+          'button',
+          {
+            type: 'button',
+            onClick: () =>
+              onSelectCage({
+                id: 'cage-l',
+                cage_label: 'Makati-L-01',
+                size: 'L',
+              }),
+          },
+          'Pick L cage'
+        )
+      : null,
 }));
 
 const BOOKING = {
@@ -77,7 +97,7 @@ function setupMocks() {
   vi.mocked(getCageSuggestion).mockResolvedValue({
     data: {
       suggestedSize: 'S',
-      availableCages: [{ id: 'cage-1', cage_label: 'Makati-S-01' }],
+      availableCages: [{ id: 'cage-1', cage_label: 'Makati-S-01', size: 'S' }],
     },
     error: null,
   } as never);
@@ -208,5 +228,69 @@ describe('HotelCheckInPanel', () => {
     const feedingPayload = vi.mocked(checkInHotelStay).mock.calls[0][1]
       .feeding[0] as Record<string, unknown>;
     expect(feedingPayload).not.toHaveProperty('brought_by_customer');
+  });
+
+  it('warns before checking in to a cage of a different size, and lets staff go back', async () => {
+    setupMocks();
+    vi.mocked(checkInHotelStay).mockClear();
+    renderPanel();
+
+    await screen.findByText(/Suggested size: S/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pick L cage' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check in' }));
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Cage Makati-L-01 is size L, but this pet is size S.'
+    );
+    expect(checkInHotelStay).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Choose another cage' })
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(checkInHotelStay).not.toHaveBeenCalled();
+  });
+
+  it('"Check in anyway" checks the pet in to the different-size cage', async () => {
+    setupMocks();
+    vi.mocked(checkInHotelStay).mockClear();
+    vi.mocked(checkInHotelStay).mockResolvedValue({
+      data: { stay: { id: 'stay-1' } },
+      error: null,
+    } as never);
+    const { onCheckedIn } = renderPanel();
+
+    await screen.findByText(/Suggested size: S/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pick L cage' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check in' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check in anyway' }));
+
+    await waitFor(() => expect(onCheckedIn).toHaveBeenCalledWith('stay-1'));
+    expect(checkInHotelStay).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({ cage_id: 'cage-l' })
+    );
+  });
+
+  it('checks in with no warning when the cage matches the pet size', async () => {
+    setupMocks();
+    vi.mocked(checkInHotelStay).mockClear();
+    vi.mocked(checkInHotelStay).mockResolvedValue({
+      data: { stay: { id: 'stay-1' } },
+      error: null,
+    } as never);
+    const { onCheckedIn } = renderPanel();
+
+    await screen.findByText(/Suggested size: S/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check in' }));
+
+    await waitFor(() => expect(onCheckedIn).toHaveBeenCalledWith('stay-1'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

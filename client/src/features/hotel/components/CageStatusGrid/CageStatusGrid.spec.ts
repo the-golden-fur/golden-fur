@@ -84,3 +84,75 @@ describe('CageStatusGrid - cage maintenance overflow menu', () => {
     );
   });
 });
+
+describe('CageStatusGrid - cage size warning', () => {
+  const SIZED_GRID = {
+    S: [
+      {
+        id: 'cage-s',
+        cage_label: 'Makati-S-01',
+        size: 'S',
+        status: 'Available',
+      },
+    ],
+    M: [],
+    L: [
+      {
+        id: 'cage-l',
+        cage_label: 'Makati-L-01',
+        size: 'L',
+        status: 'Available',
+      },
+    ],
+    XL: [],
+  };
+
+  function renderSizedGrid(selectedCageId: string, petSize?: string) {
+    vi.mocked(getCageGrid).mockResolvedValue({
+      data: SIZED_GRID as never,
+      error: null,
+    });
+
+    return render(
+      createElement(CageStatusGrid, {
+        accessToken: 'token',
+        viewerRole: 'Front Desk',
+        selectedCageId,
+        petSize,
+      })
+    );
+  }
+
+  it('warns when the selected cage is smaller than the pet', async () => {
+    renderSizedGrid('cage-s', 'L');
+
+    expect(await screen.findByText('Too small')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Cage Makati-S-01 is size S, but this pet is size L.'
+    );
+  });
+
+  it('warns when the selected cage is bigger than the pet', async () => {
+    renderSizedGrid('cage-l', 'S');
+
+    expect(await screen.findByText('Too large')).toBeInTheDocument();
+  });
+
+  it('shows no warning when the selected cage matches the pet size', async () => {
+    renderSizedGrid('cage-l', 'L');
+
+    await screen.findByText('Makati-L-01');
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText('Too small')).not.toBeInTheDocument();
+    expect(screen.queryByText('Too large')).not.toBeInTheDocument();
+  });
+
+  it('shows no warning when no pet size is given (browse-only pages)', async () => {
+    renderSizedGrid('cage-s');
+
+    await screen.findByText('Makati-S-01');
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+});
