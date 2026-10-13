@@ -4,6 +4,12 @@ import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/M
 import type { Cage, CageSize, CageStatus } from '../../hotel.types';
 import styles from './CageStatusGrid.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { CageSizeWarningBadge } from '../../../../shared/components/CageSizeWarningBadge/CageSizeWarningBadge';
+import {
+  describeCageSizeMismatch,
+  getCageSizeFit,
+  isCageSizeMismatch,
+} from '../../../../shared/utils/cageSizeFit';
 
 const SIZE_ORDER: CageSize[] = ['S', 'M', 'L', 'XL'];
 
@@ -26,6 +32,11 @@ interface CageStatusGridProps {
    * with a "Recommended" badge so the grid alone can replace a separate
    * suggested-cage list, instead of showing the same cages twice. */
   suggestedCageIds?: string[];
+  /** The pet's own size (pets.weight_class) when this grid is used to pick
+   * a cage at check-in - a selected cage of any other size gets a warning
+   * badge plus a line under the grid saying why. Omitted on pages that only
+   * browse cages, which show no size warning at all. */
+  petSize?: string | null;
 }
 
 /**
@@ -40,6 +51,7 @@ export function CageStatusGrid({
   onSelectCage,
   selectedCageId,
   suggestedCageIds,
+  petSize,
 }: CageStatusGridProps) {
   const [grid, setGrid] = useState<Record<CageSize, Cage[]> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,8 +101,27 @@ export function CageStatusGrid({
     );
   }
 
+  const selectedCage = SIZE_ORDER.flatMap((size) => grid[size]).find(
+    (cage) => cage.id === selectedCageId
+  );
+  const selectedFit = getCageSizeFit(petSize, selectedCage?.size);
+  const sizeWarning =
+    selectedCage && petSize && isCageSizeMismatch(selectedFit)
+      ? { cageId: selectedCage.id, fit: selectedFit }
+      : null;
+
   return (
     <div className={styles.grid}>
+      {selectedCage && petSize && sizeWarning ? (
+        <p className={styles.sizeWarning} role="status">
+          {describeCageSizeMismatch(
+            sizeWarning.fit,
+            petSize,
+            selectedCage.cage_label,
+            selectedCage.size
+          )}
+        </p>
+      ) : null}
       {SIZE_ORDER.map((size) => (
         <div key={size} className={styles.sizeGroup}>
           <h3 className={styles.sizeTitle}>Size {size}</h3>
@@ -119,6 +150,9 @@ export function CageStatusGrid({
                       <span className={styles.recommendedBadge}>
                         Recommended
                       </span>
+                    ) : null}
+                    {sizeWarning?.cageId === cage.id ? (
+                      <CageSizeWarningBadge fit={sizeWarning.fit} />
                     ) : null}
                     {isAdmin &&
                     (cage.status === 'Available' ||

@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router';
+import {
+  Link,
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import { getBooking } from '../../../booking/api/booking.api';
 import type { Booking } from '../../../booking/booking.types';
-import { HOTEL_QUEUE_VIEWER_ROLES } from '../HotelQueuePage/hotelQueueRoles';
+import { HOTEL_CHECK_IN_FORM_ROLES } from '../HotelQueuePage/hotelQueueRoles';
 import { HotelCheckInPanel } from '../HotelQueuePage/HotelCheckInPanel';
 import styles from './HotelCheckInFormPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
@@ -17,19 +23,35 @@ import { LoadingState } from '../../../../shared/components/LoadingState/Loading
  * instructions (Edit toggle at the bottom) before checking in. Checking in
  * from here redirects back to the queue with `?checkedIn=success` so the
  * queue shows the same success modal the one-click path does - no "go to
- * checkout / check in another pet" landing page. Re-runs the same role gate
- * HotelQueuePage does (HOTEL_QUEUE_VIEWER_ROLES) rather than inheriting
- * one, since this is its own route now, not a tab panel.
+ * checkout / check in another pet" landing page. Runs its own role gate
+ * (HOTEL_CHECK_IN_FORM_ROLES) rather than inheriting one, since this is its
+ * own route now, not a tab panel - wider than the Hotel Queue's, because
+ * the front desk also reaches this form from the Bookings Queue.
  */
 export function HotelCheckInFormPage() {
   const { bookingId } = useParams<{ bookingId: string }>();
   const { user, accessToken } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
   );
   const [role, setRole] = useState<string | null>(null);
+  // Reached from the front desk's Bookings Queue ("Check In" on a Hotel
+  // row) rather than the Hotel Queue - go back there, not to a queue the
+  // viewer didn't come from. A Receptionist/Front Desk always goes back
+  // there: the Hotel Queue page isn't open to those roles.
+  const cameFromBookingsQueue =
+    searchParams.get('from') === 'bookings' ||
+    role === 'Receptionist' ||
+    role === 'Front Desk';
+  const backTo = cameFromBookingsQueue
+    ? '/staff/bookings/queue'
+    : '/staff/hotel/queue';
+  const backLabel = cameFromBookingsQueue
+    ? 'Back to Bookings Queue'
+    : 'Back to Hotel Queue';
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [isLoadingBooking, setIsLoadingBooking] = useState(true);
@@ -45,7 +67,7 @@ export function HotelCheckInFormPage() {
 
       if (result.data) {
         setRoleStatus(
-          HOTEL_QUEUE_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
+          HOTEL_CHECK_IN_FORM_ROLES.has(result.data.role) ? 'ok' : 'denied'
         );
         setRole(result.data.role);
       } else {
@@ -114,8 +136,8 @@ export function HotelCheckInFormPage() {
           <p className={styles.errorBanner} role="alert">
             {loadError ?? 'Booking not found.'}
           </p>
-          <Link className={styles.backLink} to="/staff/hotel/queue">
-            &larr; Back to Hotel Queue
+          <Link className={styles.backLink} to={backTo}>
+            &larr; {backLabel}
           </Link>
         </div>
       </main>
@@ -125,8 +147,8 @@ export function HotelCheckInFormPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <Link className={styles.backLink} to="/staff/hotel/queue">
-          &larr; Back to Hotel Queue
+        <Link className={styles.backLink} to={backTo}>
+          &larr; {backLabel}
         </Link>
         <h1 className={styles.title}>Booking details</h1>
 
@@ -135,7 +157,13 @@ export function HotelCheckInFormPage() {
           accessToken={accessToken}
           role={role ?? ''}
           booking={booking}
-          onCheckedIn={() => navigate('/staff/hotel/queue?checkedIn=success')}
+          onCheckedIn={() =>
+            navigate(
+              cameFromBookingsQueue
+                ? '/staff/bookings/queue'
+                : '/staff/hotel/queue?checkedIn=success'
+            )
+          }
         />
       </div>
     </main>

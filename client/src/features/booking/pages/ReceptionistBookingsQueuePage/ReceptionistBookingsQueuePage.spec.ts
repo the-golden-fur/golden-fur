@@ -12,6 +12,7 @@ import * as customerApi from '../../../customers/api/customer.api';
 import * as bookingApi from '../../api/booking.api';
 import * as policyApi from '../../api/policy.api';
 import * as daycareApi from '../../../daycare/api/daycare.api';
+import * as hotelApi from '../../../hotel/api/hotel.api';
 import type { Booking } from '../../booking.types';
 import { ReceptionistBookingsQueuePage } from './ReceptionistBookingsQueuePage';
 
@@ -39,6 +40,9 @@ vi.mock('../../api/booking.api', () => ({
 // Reschedule button gating (#24) reads policy_configurations - only the
 // fetch is mocked; resolveEffectivePolicy stays the real pure function so
 // its default-vs-branch-override precedence is still exercised as written.
+vi.mock('../../../hotel/api/hotel.api', () => ({
+  listHotelStays: vi.fn().mockResolvedValue({ data: [], error: null }),
+}));
 vi.mock('../../../daycare/api/daycare.api', () => ({
   listDaycareSessions: vi.fn().mockResolvedValue({ data: [], error: null }),
   checkOutDaycareSession: vi.fn(),
@@ -1023,6 +1027,88 @@ describe('ReceptionistBookingsQueuePage', () => {
         await waitFor(() =>
           expect(daycareApi.listDaycareSessions).toHaveBeenCalled()
         );
+        expect(screen.queryByText('Check In')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Hotel: Check In opens the check-in form (cage + care instructions)', () => {
+      beforeEach(() => {
+        vi.mocked(staffApi.listStaff).mockResolvedValue({
+          data: [buildViewer('Front Desk')],
+          error: null,
+        });
+        vi.mocked(hotelApi.listHotelStays).mockResolvedValue({
+          data: [],
+          error: null,
+        });
+      });
+
+      it('a confirmed Pending Hotel booking goes to the form instead of being started here', async () => {
+        const user = userEvent.setup();
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Hotel',
+              status: 'Pending',
+              payment_status: 'Fully Paid',
+            }),
+          ],
+          error: null,
+        });
+
+        renderPage();
+
+        await user.click(await screen.findByText('Check In'));
+
+        expect(navigateMock).toHaveBeenCalledWith(
+          '/staff/hotel/queue/check-in/booking-1?from=bookings'
+        );
+        expect(bookingApi.startBooking).not.toHaveBeenCalled();
+      });
+
+      it('a walk-in Hotel booking (already In Progress, not checked in yet) still offers Check In', async () => {
+        const user = userEvent.setup();
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Hotel',
+              booking_source: 'Walk-in',
+              status: 'In Progress',
+            }),
+          ],
+          error: null,
+        });
+
+        renderPage();
+
+        await user.click(await screen.findByText('Check In'));
+
+        expect(navigateMock).toHaveBeenCalledWith(
+          '/staff/hotel/queue/check-in/booking-1?from=bookings'
+        );
+      });
+
+      it('no Check In once the Hotel pet has a stay', async () => {
+        vi.mocked(hotelApi.listHotelStays).mockResolvedValue({
+          data: [{ id: 'stay-1', booking_id: 'booking-1' }] as never,
+          error: null,
+        });
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Hotel',
+              status: 'In Progress',
+            }),
+          ],
+          error: null,
+        });
+
+        renderPage();
+
+        await waitFor(() =>
+          expect(screen.getByText(/Buddy/)).toBeInTheDocument()
+        );
+        await waitFor(() => expect(hotelApi.listHotelStays).toHaveBeenCalled());
         expect(screen.queryByText('Check In')).not.toBeInTheDocument();
       });
     });
