@@ -20,6 +20,7 @@ import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import {
   isPricedByPetCell,
   packagePriceForPet,
+  withLongStayPrice,
   servicePriceForPet,
 } from '../../utils/petMatrixPrice';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
@@ -1616,7 +1617,11 @@ export function CustomerBookingFlowPage() {
         price:
           category === 'Daycare'
             ? daycareBookingPrice(service, daycareHours)
-            : servicePriceForPet(service, selectedPet, serviceFixedPrice),
+            : servicePriceForPet(
+                withLongStayPrice(service, hotelNights),
+                selectedPet,
+                serviceFixedPrice
+              ),
       })),
       ...selectedPackages.map((pkg) => ({
         id: pkg.id,
@@ -1631,9 +1636,31 @@ export function CustomerBookingFlowPage() {
       serviceFixedPrice,
       category,
       daycareHours,
+      hotelNights,
       selectedPet,
     ]
   );
+
+  /** What a Hotel service card says about a long stay, e.g. "5+ nights:
+   * PHP 750.00/night + free Golden Package" - the cheaper nightly rate
+   * and/or the free package, whichever the service has. The rate is left
+   * out for a pet type on a fixed price, which the long-stay rate never
+   * replaces. null = nothing to say. */
+  function longStayNote(service: Service): string | null {
+    const minNights = service.min_nights_for_free_package;
+    if (!minNights) return null;
+
+    const perks = [
+      service.long_stay_nightly_price != null && serviceFixedPrice == null
+        ? `PHP ${Number(service.long_stay_nightly_price).toFixed(2)}/night`
+        : null,
+      service.free_package_name ? `free ${service.free_package_name}` : null,
+    ].filter(Boolean);
+
+    return perks.length > 0
+      ? `${minNights}+ nights: ${perks.join(' + ')}`
+      : null;
+  }
 
   const serviceNameById = useMemo(
     () => new Map(allServices.map((service) => [service.id, service.name])),
@@ -1792,13 +1819,21 @@ export function CustomerBookingFlowPage() {
   // Per-item weight x coat pricing: an item that varies by weight and coat
   // costs the pet's own cell (servicePriceForPet / packagePriceForPet), the
   // same price the server charges.
+  //
+  // Hotel long-stay rate: once enough nights are chosen the Hotel service's
+  // nightly price drops to its long-stay price (withLongStayPrice), again
+  // exactly as the server does.
   const itemsTotal =
     (selectedServices.reduce(
       (sum, service) =>
         sum +
         (category === 'Daycare'
           ? daycareBookingPrice(service, daycareHours)
-          : servicePriceForPet(service, selectedPet, serviceFixedPrice)),
+          : servicePriceForPet(
+              withLongStayPrice(service, hotelNights),
+              selectedPet,
+              serviceFixedPrice
+            )),
       0
     ) +
       selectedPackages.reduce(
@@ -3705,6 +3740,11 @@ export function CustomerBookingFlowPage() {
                       ) ? (
                         <span className={styles.optionMeta}>
                           {petCellHint(selectedPet)}
+                        </span>
+                      ) : null}
+                      {category === 'Hotel' && longStayNote(service) ? (
+                        <span className={styles.optionMeta}>
+                          {longStayNote(service)}
                         </span>
                       ) : null}
                       {category === 'Daycare' ? (

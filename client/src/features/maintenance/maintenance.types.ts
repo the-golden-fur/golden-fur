@@ -163,6 +163,10 @@ export interface ServiceBranchAvailability {
   /** This branch's own price for the service, replacing base_price there.
    * null (or absent) = the branch charges base_price. Superadmin-set. */
   price_override?: number | null;
+  /** This branch's own Hotel long-stay nightly price, replacing the
+   * service's long_stay_nightly_price there. null (or absent) = the branch
+   * uses long_stay_nightly_price. Superadmin-set. */
+  long_stay_price_override?: number | null;
 }
 
 export interface Service {
@@ -193,6 +197,12 @@ export interface Service {
   /** Hotel-only: matched against a package's name at the booking's own
    * branch (packages are branch-scoped; this services row is not). */
   free_package_name: string | null;
+  /** Hotel-only: the per-night price once min_nights_for_free_package or
+   * more nights are booked - the long-stay rate, applied automatically.
+   * NULL = no long-stay rate. In the booking catalog this is already the
+   * booking branch's own long-stay price. Nights added after booking are
+   * always the regular price. Superadmin-set. */
+  long_stay_nightly_price?: number | null;
   /** Whether this service's price varies by the pet's weight_class/
    * coat_type (Grooming only). Ignored for a Cat pet regardless (flat
    * base_price always). */
@@ -351,6 +361,7 @@ export interface CreateServicePayload {
   captures_pet_assessment?: boolean;
   min_nights_for_free_package?: number;
   free_package_name?: string;
+  long_stay_nightly_price?: number;
   use_pricing_matrix?: boolean;
   first_hour_fee?: number;
   succeeding_hour_fee?: number;
@@ -370,6 +381,7 @@ export interface UpdateServicePayload {
   captures_pet_assessment?: boolean;
   min_nights_for_free_package?: number | null;
   free_package_name?: string | null;
+  long_stay_nightly_price?: number | null;
   use_pricing_matrix?: boolean;
   first_hour_fee?: number | null;
   succeeding_hour_fee?: number | null;
@@ -383,10 +395,13 @@ export interface BranchAvailabilityPayload {
   is_available: boolean;
 }
 
-/** null clears the branch's own price, back to the service's base price. */
+/** null clears the branch's own price, back to the service's base price.
+ * long_stay_price_override is the same for the Hotel long-stay rate; left
+ * out, the server doesn't touch it. */
 export interface BranchPricePayload {
   branch_id: string;
   price_override: number | null;
+  long_stay_price_override?: number | null;
 }
 
 /** Epic B (#83): bundled_price is derived, not accepted as input. Custom

@@ -53,6 +53,35 @@ export function servicePriceForPet(
   return service.base_price;
 }
 
+/**
+ * Custom change (Hotel long-stay rate, 20261013260): a Hotel service booked
+ * for its long-stay night count or more is cheaper per night, automatically.
+ * Returns the service with that long-stay price standing in for base_price
+ * when it applies - exactly what the server does (nightlyPriceAtBranch) - so
+ * it can be handed straight to servicePriceForPet, where a pet type's fixed
+ * price still wins. Any other service, or a shorter stay, comes back as is.
+ */
+export function withLongStayPrice<
+  T extends Pick<
+    Service,
+    | 'category'
+    | 'base_price'
+    | 'long_stay_nightly_price'
+    | 'min_nights_for_free_package'
+  >,
+>(service: T, nights: number): T {
+  if (
+    service.category !== 'Hotel' ||
+    service.long_stay_nightly_price == null ||
+    !service.min_nights_for_free_package ||
+    nights < service.min_nights_for_free_package
+  ) {
+    return service;
+  }
+
+  return { ...service, base_price: Number(service.long_stay_nightly_price) };
+}
+
 /** Same for a package (resolvePackagePrice): fixed price, else the pet's
  * own cell when the package varies by weight and coat, else bundled_price. */
 export function packagePriceForPet(

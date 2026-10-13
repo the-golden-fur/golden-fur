@@ -3,6 +3,7 @@ import {
   isPricedByPetCell,
   packagePriceForPet,
   servicePriceForPet,
+  withLongStayPrice,
 } from './petMatrixPrice';
 
 const CELLS = [
@@ -97,5 +98,38 @@ describe('isPricedByPetCell', () => {
         null
       )
     ).toBe(false);
+  });
+});
+
+describe('withLongStayPrice (Hotel long-stay rate)', () => {
+  const HOTEL = {
+    category: 'Hotel' as const,
+    base_price: 850,
+    long_stay_nightly_price: 750,
+    min_nights_for_free_package: 5,
+  };
+
+  it('keeps the regular price under the long-stay night count', () => {
+    expect(withLongStayPrice(HOTEL, 4).base_price).toBe(850);
+  });
+
+  it('swaps in the long-stay price from that night count up', () => {
+    expect(withLongStayPrice(HOTEL, 5).base_price).toBe(750);
+    expect(withLongStayPrice(HOTEL, 9).base_price).toBe(750);
+  });
+
+  it('leaves a service alone when it has no long-stay price, no night count, or is not Hotel', () => {
+    expect(
+      withLongStayPrice({ ...HOTEL, long_stay_nightly_price: null }, 9)
+        .base_price
+    ).toBe(850);
+    expect(
+      withLongStayPrice({ ...HOTEL, min_nights_for_free_package: null }, 9)
+        .base_price
+    ).toBe(850);
+    expect(
+      withLongStayPrice({ ...HOTEL, category: 'Grooming' as const }, 9)
+        .base_price
+    ).toBe(850);
   });
 });

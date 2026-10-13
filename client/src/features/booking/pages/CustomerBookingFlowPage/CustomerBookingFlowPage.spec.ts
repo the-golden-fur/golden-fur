@@ -1711,6 +1711,95 @@ describe('CustomerBookingFlowPage', () => {
     expect(bookingForm().getByText('PHP 2400.00')).toBeInTheDocument();
   });
 
+  // Custom change (Hotel long-stay rate, 20261013260): the Hotel service is
+  // cheaper per night, automatically, once 5 nights or more are chosen - and
+  // the pet gets a free package.
+  describe('Hotel long-stay rate (automatic at 5+ nights)', () => {
+    const LONG_STAY_HOTEL = {
+      ...HOTEL_SERVICE,
+      base_price: 850,
+      long_stay_nightly_price: 750,
+      min_nights_for_free_package: 5,
+      free_package_name: 'Golden Package',
+    };
+
+    beforeEach(() => {
+      vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+        data: {
+          services: [GROOMING_SERVICE, LONG_STAY_HOTEL],
+          packages: [],
+          promos: [],
+        },
+        error: null,
+      });
+    });
+
+    async function pickHotelAndGoToNights(
+      user: ReturnType<typeof userEvent.setup>
+    ) {
+      renderPage();
+      await goToServicesStep(user);
+      await user.click(bookingForm().getByText('Hotel'));
+
+      const card = await bookingForm().findByText('Hotel Stay - Medium Cage');
+      await user.click(card);
+      await user.click(bookingForm().getByText('Next'));
+
+      return screen.findByLabelText('Number of nights');
+    }
+
+    /** Set the nights, pick a slot, and go back to Services, where the
+     * running total is shown. */
+    async function totalFor(
+      user: ReturnType<typeof userEvent.setup>,
+      nights: number
+    ) {
+      const nightsInput = await pickHotelAndGoToNights(user);
+      fireEvent.change(nightsInput, { target: { value: String(nights) } });
+      await user.click(bookingForm().getByText('Select slot'));
+      await user.click(bookingForm().getByText('Back'));
+    }
+
+    it('tells the customer about the long-stay price and free package on the Hotel card', async () => {
+      const user = userEvent.setup();
+      renderPage();
+      await goToServicesStep(user);
+      await user.click(bookingForm().getByText('Hotel'));
+
+      const card = (
+        await bookingForm().findByText('Hotel Stay - Medium Cage')
+      ).closest('button')!;
+
+      expect(card).toHaveTextContent('PHP 850.00/night');
+      expect(card).toHaveTextContent(
+        '5+ nights: PHP 750.00/night + free Golden Package'
+      );
+    });
+
+    it('4 nights is the regular rate: 4 x 850', async () => {
+      const user = userEvent.setup();
+      await totalFor(user, 4);
+
+      expect(bookingForm().getByText('PHP 3400.00')).toBeInTheDocument();
+    });
+
+    it('5 nights switches to the long-stay rate by itself: 5 x 750', async () => {
+      const user = userEvent.setup();
+      await totalFor(user, 5);
+
+      expect(bookingForm().getByText('PHP 3750.00')).toBeInTheDocument();
+    });
+
+    it('any number of nights can still be chosen - there is no minimum stay', async () => {
+      const user = userEvent.setup();
+      const nightsInput = await pickHotelAndGoToNights(user);
+
+      expect(nightsInput).toHaveValue(1);
+      expect(nightsInput).toHaveAttribute('min', '1');
+      expect(screen.getByRole('button', { name: '3 nights' })).toBeEnabled();
+    });
+  });
+
   it('Hotel: number of nights survives browsing away to another category and back', async () => {
     const user = userEvent.setup();
     renderPage();

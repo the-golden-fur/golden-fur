@@ -134,6 +134,10 @@ export interface ServiceBranchAvailability {
   /** This branch's own price for the service (20261006245), replacing
    * base_price there - see servicePriceAtBranch. NULL = use base_price. */
   price_override: number | null;
+  /** This branch's own long-stay nightly price (20261013260), replacing
+   * the service's long_stay_nightly_price there - see
+   * longStayPriceAtBranch. NULL = use long_stay_nightly_price. */
+  long_stay_price_override: number | null;
 }
 
 export interface Service {
@@ -164,6 +168,12 @@ export interface Service {
    * available at the booking's own branch via package_branch_availability)
    * when min_nights_for_free_package is met - not a direct FK. */
   free_package_name: string | null;
+  /** Hotel-only (20261013260): the per-night price once
+   * min_nights_for_free_package or more nights are booked - the long-stay
+   * rate, applied automatically. NULL = no long-stay rate. A branch may
+   * carry its own (service_branch_availability.long_stay_price_override).
+   * Nights added after booking are always the regular price. */
+  long_stay_nightly_price: number | null;
   /** Custom change (pricing matrix fix): whether this service's price
    * varies by the pet's weight_class/coat_type (Grooming only -
    * meaningless elsewhere). Off by default for new services - only

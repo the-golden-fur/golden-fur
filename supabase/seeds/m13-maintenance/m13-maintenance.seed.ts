@@ -5,7 +5,8 @@
 // once m01's seed has run:
 //   - public.service_branch_availability: every base service (migration
 //     20260715034) available at every branch. The Hotel service's Southwoods
-//     row is created with its own PHP 500 price (migration 20261006245).
+//     row is created with its own prices: PHP 500 a night (migration
+//     20261006245), PHP 450 a night for a long stay (migration 20261013260).
 //   - public.packages / package_services / package_branch_availability: the
 //     Golden Package, one shared row available at every branch.
 //   - public.promos (+ promo_branch_availability): two always-on,
@@ -99,18 +100,20 @@ async function getBranches(supabase: ReturnType<typeof createClient>) {
 /** "Overnight Stay (Aircon Room)" - migration 20260807105. */
 export const HOTEL_SERVICE_ID = 'a1300000-0000-4000-a000-000000000024';
 
-/** Per-branch service price (migration 20261006245): Hotel is PHP 500 a
- * night at Southwoods, the base price everywhere else. On a fresh database
- * that migration's own UPDATE runs before these rows exist, so the price is
- * set here instead - only when the row is created, never on a row already
- * there, so a price a Superadmin later changes or clears is left alone. */
-function seededPriceOverride(
+/** Per-branch service price: Hotel is PHP 500 a night at Southwoods, the
+ * base price everywhere else (migration 20261006245), and PHP 450 a night
+ * there once a long stay is booked (migration 20261013260). On a fresh
+ * database those migrations' own UPDATEs run before these rows exist, so the
+ * prices are set here instead - only when the row is created, never on a row
+ * already there, so a price a Superadmin later changes or clears is left
+ * alone. */
+function seededPrices(
   serviceId: string,
   branchName: string
-): number | null {
+): { price_override: number | null; long_stay_price_override: number | null } {
   return serviceId === HOTEL_SERVICE_ID && branchName === 'Southwoods'
-    ? 500
-    : null;
+    ? { price_override: 500, long_stay_price_override: 450 }
+    : { price_override: null, long_stay_price_override: null };
 }
 
 /** Every base service (migration 20260715034) available at every branch. */
@@ -151,7 +154,7 @@ export async function seedServiceBranchAvailability(
           service_id: service.id,
           branch_id: branch.id,
           is_available: true,
-          price_override: seededPriceOverride(service.id, branch.name),
+          ...seededPrices(service.id, branch.name),
         });
 
       if (error) {

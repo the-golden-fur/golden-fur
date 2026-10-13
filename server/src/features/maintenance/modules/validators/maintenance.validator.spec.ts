@@ -99,6 +99,22 @@ describe('createServiceValidator', () => {
 });
 
 describe('updateServiceValidator', () => {
+  it('accepts a Hotel long-stay nightly price, and clearing it with null', () => {
+    expect(
+      updateServiceValidator.safeParse({ long_stay_nightly_price: 750 }).success
+    ).toBe(true);
+    expect(
+      updateServiceValidator.safeParse({ long_stay_nightly_price: null })
+        .success
+    ).toBe(true);
+  });
+
+  it('rejects a negative long-stay nightly price', () => {
+    expect(
+      updateServiceValidator.safeParse({ long_stay_nightly_price: -1 }).success
+    ).toBe(false);
+  });
+
   it('custom change (unify active/available): rejects is_active - it is derived from branch availability, not independently settable', () => {
     expect(updateServiceValidator.safeParse({ is_active: false }).success).toBe(
       false

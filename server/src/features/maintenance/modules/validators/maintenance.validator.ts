@@ -149,6 +149,9 @@ export const createServiceValidator = z
     // duration_minutes' own "accepted, just unused elsewhere" convention.
     min_nights_for_free_package: z.number().int().positive().optional(),
     free_package_name: z.string().trim().min(1).optional(),
+    // Hotel-only (long-stay rate, 20261013260) - same "accepted, just unused
+    // elsewhere" convention as the two fields above.
+    long_stay_nightly_price: z.number().nonnegative().optional(),
     // Custom change (pricing matrix fix): opt-in per service - meaningful
     // for Grooming only, but not category-gated here, same convention as
     // duration_minutes.
@@ -185,6 +188,7 @@ export const updateServiceValidator = z
       .nullable()
       .optional(),
     free_package_name: z.string().trim().min(1).nullable().optional(),
+    long_stay_nightly_price: z.number().nonnegative().nullable().optional(),
     use_pricing_matrix: z.boolean().optional(),
     first_hour_fee: z.number().nonnegative().nullable().optional(),
     succeeding_hour_fee: z.number().nonnegative().nullable().optional(),
@@ -355,11 +359,18 @@ export const branchAvailabilityValidator = z
   .strict();
 
 /** A branch's own price for a service (20261006245). null clears it, back
- * to the service's base_price. */
+ * to the service's base_price. long_stay_price_override (20261013260) is the
+ * same for the Hotel long-stay rate; left out, it isn't touched. */
 export const branchPriceValidator = z
   .object({
     branch_id: z.uuid(),
     price_override: z.number().min(0).max(99999999.99).nullable(),
+    long_stay_price_override: z
+      .number()
+      .min(0)
+      .max(99999999.99)
+      .nullable()
+      .optional(),
   })
   .strict();
 

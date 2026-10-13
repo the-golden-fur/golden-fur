@@ -272,6 +272,33 @@ describe('daycareBilling.service (#65)', () => {
         );
       });
 
+      // Hotel long-stay rate (20261013260): an unplanned night is never a
+      // long stay, so the Hotel service's cheaper long-stay price must not
+      // lower this charge - it stays the regular nightly rate.
+      it("stays on the Hotel service's regular price when it also has a long-stay price", async () => {
+        queueFromResults(branchWithHours, {
+          data: [
+            {
+              base_price: 850,
+              long_stay_nightly_price: 750,
+              min_nights_for_free_package: 5,
+              service_branch_availability: [
+                {
+                  branch_id: 'branch-1',
+                  price_override: null,
+                  long_stay_price_override: 700,
+                },
+              ],
+            },
+          ],
+          error: null,
+        });
+
+        expect(await computeDaycareCharge(start, end, 'branch-1')).toBe(
+          150 + 2 * 850
+        );
+      });
+
       it("falls back to the Daycare service's own overnight fee when the branch has no Hotel service", async () => {
         queueFromResults(branchWithHours, hotelServices());
 

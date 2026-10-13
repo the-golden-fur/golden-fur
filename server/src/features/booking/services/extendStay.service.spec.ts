@@ -24,7 +24,15 @@ vi.mock('./booking.service.ts', async (importOriginal) => {
   };
 });
 
+// Covered by its own spec. Mocked so its service/pet lookups stay out of
+// this file's sequential mock queues; null = "no long-stay deal", which is
+// any stay not on a Hotel service with a long-stay rate.
+vi.mock('./longStayTerms.service.ts', () => ({
+  resolveLongStayTerms: vi.fn(),
+}));
+
 import { recomputeBookingPaymentStatus } from './booking.service.ts';
+import { resolveLongStayTerms } from './longStayTerms.service.ts';
 
 interface QueryResult {
   data: unknown;
@@ -101,6 +109,103 @@ describe('extendHotelStay (extend-hotel-stay custom change)', () => {
     vi.mocked(recomputeBookingPaymentStatus).mockResolvedValue(
       UPDATED_BOOKING as never
     );
+    vi.mocked(resolveLongStayTerms).mockResolvedValue(null);
+  });
+
+  // Custom change (Hotel long-stay rate, 20261013260): the cheaper nightly
+  // rate covers only the nights booked up front - a night added afterwards
+  // is the regular price at the booking's branch.
+  describe('a stay on a service with a long-stay rate', () => {
+    const MAKATI = { minNights: 5, longStayRate: 750, regularRate: 850 };
+    const SOUTHWOODS = { minNights: 5, longStayRate: 450, regularRate: 500 };
+    const LONG_STAY_BOOKING = {
+      ...BOOKING,
+      scheduled_end: '2026-08-07T00:00:00.000Z', // 6 nights
+      total_price: 4500,
+    };
+    const LONG_STAY_ITEM = { ...ITEM, price_at_booking: 4500 }; // 6 x 750
+
+    function queueExtension(booking: object, item: object) {
+      queueFromResults(
+        { data: booking, error: null },
+        { data: [item], error: null },
+        { data: PET, error: null },
+        { data: null, error: null }, // bookings update
+        { data: null, error: null }, // booking_items update
+        { data: null, error: null }, // stays select
+        { data: null, error: null }, // transactions select
+        { data: { id: 'txn-new' }, error: null }, // transactions insert
+        { data: null, error: null } // transaction_line_items insert
+      );
+    }
+
+    function extend(additionalNights: number) {
+      return extendHotelStay({
+        requesterId: 'staff-1',
+        bookingId: 'booking-1',
+        additionalNights,
+      });
+    }
+
+    it('charges a night added to a long stay at the regular rate, not the long-stay one', async () => {
+      vi.mocked(resolveLongStayTerms).mockResolvedValue(MAKATI);
+      queueExtension(LONG_STAY_BOOKING, LONG_STAY_ITEM);
+
+      const result = await extend(1);
+
+      expect(resolveLongStayTerms).toHaveBeenCalledWith(
+        'service-hotel',
+        'branch-1',
+        'pet-1'
+      );
+      expect(result.added_amount).toBe(850);
+      expect(
+        recordedWrites.find(
+          (w) => w.table === 'booking_items' && w.method === 'update'
+        )?.payload
+      ).toMatchObject({ price_at_booking: 5350 }); // 6 x 750 + 850
+      expect(
+        recordedWrites.find(
+          (w) => w.table === 'bookings' && w.method === 'update'
+        )?.payload
+      ).toMatchObject({ total_price: 5350 });
+    });
+
+    it("uses the branch's own regular rate (Southwoods: 500)", async () => {
+      vi.mocked(resolveLongStayTerms).mockResolvedValue(SOUTHWOODS);
+      queueExtension(
+        { ...LONG_STAY_BOOKING, total_price: 2700 },
+        { ...LONG_STAY_ITEM, price_at_booking: 2700 } // 6 x 450
+      );
+
+      expect((await extend(2)).added_amount).toBe(1000);
+    });
+
+    it('a second extension adds the regular rate again, unskewed by the first', async () => {
+      vi.mocked(resolveLongStayTerms).mockResolvedValue(MAKATI);
+      // Already extended once: 7 nights, 6 x 750 + 850.
+      queueExtension(
+        {
+          ...LONG_STAY_BOOKING,
+          scheduled_end: '2026-08-08T00:00:00.000Z',
+          total_price: 5350,
+        },
+        { ...LONG_STAY_ITEM, price_at_booking: 5350 }
+      );
+
+      expect((await extend(1)).added_amount).toBe(850);
+    });
+
+    it('a short stay extended past 5 nights does not become discounted', async () => {
+      vi.mocked(resolveLongStayTerms).mockResolvedValue(MAKATI);
+      // 2 nights at 850, extended by 4 to 6 nights.
+      queueExtension(
+        { ...BOOKING, total_price: 1700 },
+        { ...ITEM, price_at_booking: 1700 }
+      );
+
+      expect((await extend(4)).added_amount).toBe(3400); // 4 x 850
+    });
   });
 
   it('adds nights, bumps the price proportionally, and creates a new Pending balance transaction when none is open', async () => {

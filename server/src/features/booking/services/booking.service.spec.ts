@@ -554,6 +554,91 @@ describe('booking.service (#51)', () => {
     });
   });
 
+  // Custom change (Hotel long-stay rate, 20261013260): the Hotel service is
+  // cheaper per night, automatically, once 5 nights or more are booked.
+  describe('Hotel long-stay rate (automatic at 5+ nights)', () => {
+    const OVERNIGHT = {
+      id: 'service-hotel',
+      category: 'Hotel',
+      name: 'Overnight Stay (Aircon Room)',
+      base_price: 850,
+      long_stay_nightly_price: 750,
+      duration_minutes: 1440,
+      min_nights_for_free_package: 5,
+      free_package_name: 'Golden Package',
+      is_active: true,
+      requires_assessed_pet: false,
+      service_pricing_tiers: [],
+      service_branch_availability: [
+        {
+          branch_id: 'branch-makati',
+          price_override: null,
+          long_stay_price_override: null,
+        },
+        {
+          branch_id: 'branch-southwoods',
+          price_override: 500,
+          long_stay_price_override: 450,
+        },
+      ],
+    } as never;
+    const START = '2026-08-03T01:00:00.000Z';
+
+    function priceFor(nights: number, branchId = 'branch-makati') {
+      const end = new Date(
+        new Date(START).getTime() + nights * 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      return resolveBookingItems(
+        [{ service_id: 'service-hotel' }],
+        PET as never,
+        true,
+        'Hotel' as never,
+        branchId,
+        START,
+        end
+      ).then((items) => items[0].price_at_booking);
+    }
+
+    beforeEach(() => {
+      vi.mocked(getFixedPrice).mockResolvedValue(null);
+      vi.mocked(getServiceById).mockResolvedValue(OVERNIGHT);
+    });
+
+    it('under 5 nights is the regular rate: 4 x 850 in Makati', async () => {
+      expect(await priceFor(4)).toBe(3400);
+    });
+
+    it('5 nights is already the long-stay rate: 5 x 750', async () => {
+      expect(await priceFor(5)).toBe(3750);
+    });
+
+    it('6 nights in Makati is 6 x 750', async () => {
+      expect(await priceFor(6)).toBe(4500);
+    });
+
+    it('Southwoods uses its own prices: 4 x 500, and 6 x 450 for a long stay', async () => {
+      expect(await priceFor(4, 'branch-southwoods')).toBe(2000);
+      expect(await priceFor(6, 'branch-southwoods')).toBe(2700);
+    });
+
+    it("a pet type's fixed price still wins over the long-stay rate", async () => {
+      vi.mocked(getFixedPrice).mockResolvedValue(400);
+
+      expect(await priceFor(6)).toBe(2400);
+    });
+
+    it('a Hotel service with no long-stay price stays on its regular rate at any length', async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(OVERNIGHT as object),
+        long_stay_nightly_price: null,
+        service_branch_availability: [],
+      } as never);
+
+      expect(await priceFor(9)).toBe(7650);
+    });
+  });
+
   it('AC-4: a Daycare booking starts Pending and holds its capacity slot immediately', async () => {
     vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
     queueFromResults(

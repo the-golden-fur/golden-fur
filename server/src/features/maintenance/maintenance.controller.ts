@@ -354,6 +354,7 @@ export async function setServiceBranchPriceController(
       serviceId: paramId(req, 'id'),
       branchId: parsed.data.branch_id,
       priceOverride: parsed.data.price_override,
+      longStayPriceOverride: parsed.data.long_stay_price_override,
       requesterRole,
     });
 
