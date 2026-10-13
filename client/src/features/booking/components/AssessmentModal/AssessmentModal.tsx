@@ -3,6 +3,10 @@ import type {
   PetCoatType,
   PetWeightClass,
 } from '../../../customers/customer.types';
+import {
+  PET_COAT_TYPES,
+  PET_COAT_TYPE_LABEL,
+} from '../../../customers/customer.types';
 import type { WeightUnitPreference } from '../../../../shared/providers/ThemeProvider/themeContext';
 import {
   deriveWeightClass,
@@ -19,7 +23,7 @@ import styles from './AssessmentModal.module.css';
 // fields - kept local rather than centralized, matching that established
 // precedent (see PetDetailPanel.tsx/PetForm.tsx).
 const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
-const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
+const COAT_TYPE_OPTIONS: PetCoatType[] = PET_COAT_TYPES;
 
 // Display labels only - the option values (and what's saved) stay the
 // short codes the database stores.
@@ -29,10 +33,7 @@ const WEIGHT_CLASS_LABEL: Record<PetWeightClass, string> = {
   L: 'Large',
   XL: 'Extra large',
 };
-const COAT_TYPE_LABEL: Record<PetCoatType, string> = {
-  SC: 'Short coat',
-  LC: 'Long coat',
-};
+const COAT_TYPE_LABEL = PET_COAT_TYPE_LABEL;
 const ENTRY_UNITS: WeightUnitPreference[] = ['kg', 'lbs'];
 
 export interface AssessmentModalProps {

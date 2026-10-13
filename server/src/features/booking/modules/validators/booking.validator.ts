@@ -675,16 +675,10 @@ export const availabilityQueryValidator = z
     // notice_period_days (default 3). Omitted = new_booking.
     intent: z.enum(BOOKING_INTENTS).optional(),
   })
-  .strict()
-  .superRefine((input, ctx) => {
-    if (input.service_category === 'Hotel' && !input.pet_weight_class) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['pet_weight_class'],
-        message: 'pet_weight_class is required for Hotel availability',
-      });
-    }
-  });
+  // pet_weight_class is no longer required for Hotel (book before
+  // assessment, 20261013264): a pet staff have not assessed yet has none, and
+  // availability is then measured against every cage rather than one size.
+  .strict();
 
 /**
  * #22: which Morning/Afternoon/Evening walk/play blocks the hotel Care

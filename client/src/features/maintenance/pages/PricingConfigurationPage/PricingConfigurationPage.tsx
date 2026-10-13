@@ -36,6 +36,7 @@ interface FormState {
   sizeLarge: RuleFormState;
   sizeExtraLarge: RuleFormState;
   coatLong: RuleFormState;
+  coatExtraLong: RuleFormState;
 }
 
 function formStateFromConfiguration(config: PricingConfiguration): FormState {
@@ -59,6 +60,10 @@ function formStateFromConfiguration(config: PricingConfiguration): FormState {
     coatLong: {
       type: config.coat_long_rule_type,
       value: String(config.coat_long_rule_value),
+    },
+    coatExtraLong: {
+      type: config.coat_extra_long_rule_type,
+      value: String(config.coat_extra_long_rule_value),
     },
   };
 }
@@ -200,6 +205,7 @@ export function PricingConfigurationPage() {
       { label: 'Large size', rule: form.sizeLarge },
       { label: 'Extra Large size', rule: form.sizeExtraLarge },
       { label: 'Long coat', rule: form.coatLong },
+      { label: 'Extra long coat', rule: form.coatExtraLong },
     ];
 
     for (const { label, rule } of rules) {
@@ -229,6 +235,8 @@ export function PricingConfigurationPage() {
       size_xl_rule_value: Number(form.sizeExtraLarge.value),
       coat_long_rule_type: form.coatLong.type,
       coat_long_rule_value: Number(form.coatLong.value),
+      coat_extra_long_rule_type: form.coatExtraLong.type,
+      coat_extra_long_rule_value: Number(form.coatExtraLong.value),
     });
 
     setIsSubmitting(false);
@@ -325,11 +333,13 @@ export function PricingConfigurationPage() {
         <h1 className={styles.title}>Pricing Configuration</h1>
         <p className={styles.copy}>
           One shared calculation drives every Grooming service&apos;s size/coat
-          matrix. Each size, and Long coat, has its own independently
-          configurable rule - a Multiplier scales the price, a Flat add-on adds
-          a fixed peso amount, and a Percentage add-on adds a percentage of the
-          service&apos;s own base price. Changing a rule here updates the
-          derived matrix everywhere it is shown, not just one service.
+          matrix. Each size, Long coat and Extra long coat has its own
+          independently configurable rule - a Multiplier scales the price, a
+          Flat add-on adds a fixed peso amount, and a Percentage add-on adds a
+          percentage of the service&apos;s own base price. A coat rule applies
+          on top of the size price; Extra long coat uses its own rule instead of
+          the Long coat one, not both. Changing a rule here updates the derived
+          matrix everywhere it is shown, not just one service.
         </p>
 
         {message ? (
@@ -380,6 +390,13 @@ export function PricingConfigurationPage() {
             rule={form.coatLong}
             onChange={(rule) =>
               setForm((prev) => prev && { ...prev, coatLong: rule })
+            }
+          />
+          <RuleField
+            legend="Extra long coat"
+            rule={form.coatExtraLong}
+            onChange={(rule) =>
+              setForm((prev) => prev && { ...prev, coatExtraLong: rule })
             }
           />
 
@@ -439,6 +456,11 @@ export function PricingConfigurationPage() {
                 form.coatLong.value === ''
                   ? configuration.coat_long_rule_value
                   : Number(form.coatLong.value),
+              coat_extra_long_rule_type: form.coatExtraLong.type,
+              coat_extra_long_rule_value:
+                form.coatExtraLong.value === ''
+                  ? configuration.coat_extra_long_rule_value
+                  : Number(form.coatExtraLong.value),
             }}
           />
         </section>

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { deriveGroomingMatrix } from '../../utils/deriveGroomingMatrix';
 import {
   COAT_TYPES,
@@ -18,6 +19,7 @@ const WEIGHT_LABELS: Record<WeightClass, string> = {
 const COAT_LABELS: Record<CoatType, string> = {
   SC: 'Short Coat (SC)',
   LC: 'Long Coat (LC)',
+  XLC: 'Extra Long Coat (XLC)',
 };
 
 interface PricingMatrixPreviewProps {
@@ -50,7 +52,11 @@ export function PricingMatrixPreview({
       <legend className={styles.legend}>
         Size &amp; coat pricing matrix - derived, read-only
       </legend>
-      <div className={styles.grid} role="grid">
+      <div
+        className={styles.grid}
+        role="grid"
+        style={{ '--coat-columns': COAT_TYPES.length } as CSSProperties}
+      >
         <span className={styles.cornerCell} aria-hidden="true" />
         {COAT_TYPES.map((coatType) => (
           <span key={coatType} className={styles.headerCell}>

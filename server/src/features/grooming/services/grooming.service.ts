@@ -112,7 +112,9 @@ export async function listGroomingQueue({
 
   let bookingQuery = supabase
     .from('bookings')
-    .select('id, assigned_staff_id, branch_id, status, payment_status')
+    .select(
+      'id, assigned_staff_id, branch_id, status, payment_status, awaiting_assessment'
+    )
     .eq('service_category', 'Grooming')
     .in(
       'status',
@@ -149,11 +151,18 @@ export async function listGroomingQueue({
       assigned_staff_id: string;
       status: string;
       payment_status: string;
+      awaiting_assessment?: boolean;
     }>
   )
-    // A Pending booking only belongs here once something has been paid.
+    // A Pending booking only belongs here once something has been paid -
+    // except one made before the pet was assessed (20261013264): it cannot
+    // be paid until the pet arrives and is assessed, so hiding it would hide
+    // the appointment from its groomer altogether. It is listed, flagged, and
+    // still cannot be started (startBooking refuses it).
     .filter(
-      (row) => !(row.status === 'Pending' && row.payment_status === 'Pending')
+      (row) =>
+        row.awaiting_assessment ||
+        !(row.status === 'Pending' && row.payment_status === 'Pending')
     );
 
   if (bookingRows.length === 0) return [];

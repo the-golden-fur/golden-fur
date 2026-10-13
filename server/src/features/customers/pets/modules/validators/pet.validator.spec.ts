@@ -99,6 +99,28 @@ describe('createPetValidatorStaff', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts every coat type, Extra Long Coat included, and rejects an unknown one', () => {
+    for (const coat_type of ['SC', 'LC', 'XLC']) {
+      expect(
+        createPetValidatorStaff.safeParse({
+          name: 'Buddy',
+          pet_type: 'Dog',
+          weight_class: 'M',
+          coat_type,
+        }).success
+      ).toBe(true);
+    }
+
+    expect(
+      createPetValidatorStaff.safeParse({
+        name: 'Buddy',
+        pet_type: 'Dog',
+        weight_class: 'M',
+        coat_type: 'XXL',
+      }).success
+    ).toBe(false);
+  });
+
   it('still accepts a payload without weight_class/coat_type (unassessed pet)', () => {
     const result = createPetValidatorStaff.safeParse({
       name: 'Buddy',

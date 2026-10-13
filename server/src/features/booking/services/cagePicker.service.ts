@@ -189,12 +189,21 @@ export async function getCageAssignmentStatus(
   if (petError) throwWithStatus(400, petError.message);
   const { weight_class, pet_type } = throwIfPetNotFound(pet);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('cages')
     .select('id, cage_label, cage_pet_types!inner(pet_type)')
     .eq('branch_id', branchId)
-    .is('archived_at', null)
-    .eq('size', weight_class as string)
+    .is('archived_at', null);
+
+  // Book before assessment (20261013264): a pet staff have not assessed yet
+  // has no weight class, so there is no size to match - never send a null
+  // one to the cage_size enum. The question then becomes "is any cage for
+  // this pet type free at all".
+  if (weight_class) {
+    query = query.eq('size', weight_class as string);
+  }
+
+  const { data, error } = await query
     .eq('status', 'Available')
     .eq('cage_pet_types.pet_type', pet_type as string)
     .limit(1)
@@ -204,6 +213,11 @@ export async function getCageAssignmentStatus(
 
   return {
     matched: !!data,
-    cage: data ? { id: data.id, cage_label: data.cage_label } : null,
+    // Without a size, whichever cage came back is not one this pet is known
+    // to fit - say a cage exists, but don't name one.
+    cage:
+      data && weight_class
+        ? { id: data.id, cage_label: data.cage_label }
+        : null,
   };
 }

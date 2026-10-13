@@ -297,6 +297,47 @@ describe('grooming.service (#64, booking-status revision)', () => {
       ).toBe(true);
     });
 
+    // Custom change (book before assessment, 20261013264): such a booking
+    // cannot be paid until the pet arrives and is assessed - it is still
+    // listed, so its groomer sees the appointment coming.
+    it('includes an unpaid Pending booking that is awaiting assessment', async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              assigned_staff_id: GROOMER_ID,
+              status: 'Pending',
+              payment_status: 'Pending',
+              awaiting_assessment: true,
+            },
+          ],
+          error: null,
+        }, // bookings
+        { data: [], error: null }, // existing sessions
+        { data: null, error: null }, // insert
+        {
+          data: [
+            {
+              ...sessionRow(),
+              booking: bookingRow({
+                scheduled_start: '2026-07-19T02:00:00.000Z',
+              }),
+            },
+          ],
+          error: null,
+        } // sessions select
+      );
+
+      const result = await listGroomingQueue({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      });
+
+      expect(result).toHaveLength(1);
+    });
+
     it('leaves out a Pending booking that has not been paid for - not a secured appointment yet', async () => {
       queueFromResults({
         data: [

@@ -169,10 +169,46 @@ describe('capacity.service (#51)', () => {
       expect(result.available).toBe(true);
     });
 
-    it('requires the pet weight class', async () => {
-      await expect(
-        checkCapacity({ ...WINDOW, serviceCategory: 'Hotel' })
-      ).rejects.toMatchObject({ statusCode: 400 });
+    // Custom change (book before assessment, 20261013264): a pet staff have
+    // not assessed yet has no weight class, so no cage size can be reserved -
+    // the check is "does the branch have any cage free at all".
+    describe('a pet with no weight class yet', () => {
+      beforeEach(() => {
+        // 2 + 1 + 0 + 0 = 3 cages in total.
+        vi.stubEnv('HOTEL_CAGE_CAPACITY', '{"S":2,"M":1,"L":0,"XL":0}');
+      });
+
+      it('is available while overlapping stays of any size are fewer than all the cages', async () => {
+        queueFromResults({
+          data: [
+            { id: 'b1', pet_id: 'p1', created_at: '' },
+            { id: 'b2', pet_id: 'p2', created_at: '' },
+          ],
+          error: null,
+        });
+
+        expect(
+          await checkCapacity({ ...WINDOW, serviceCategory: 'Hotel' })
+        ).toEqual({ available: true });
+      });
+
+      it('is refused once every cage, whatever its size, is taken', async () => {
+        queueFromResults({
+          data: [
+            { id: 'b1', pet_id: 'p1', created_at: '' },
+            { id: 'b2', pet_id: 'p2', created_at: '' },
+            { id: 'b3', pet_id: 'p3', created_at: '' },
+          ],
+          error: null,
+        });
+
+        expect(
+          await checkCapacity({ ...WINDOW, serviceCategory: 'Hotel' })
+        ).toEqual({
+          available: false,
+          reason: 'No cages available for the requested dates',
+        });
+      });
     });
 
     it('#78 (Sprint 4, M05): with no env override, capacity is the real count of cages of that size at the branch', async () => {

@@ -22,10 +22,11 @@ import type {
   PetTypeRow,
   PetWeightClass,
 } from '../../../customer.types';
+import { PET_COAT_TYPES } from '../../../customer.types';
 import styles from './PetDetailPanel.module.css';
 
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
-const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
+const COAT_TYPE_OPTIONS: PetCoatType[] = PET_COAT_TYPES;
 
 interface PetDetailPanelProps {
   pet: Pet;

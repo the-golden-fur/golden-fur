@@ -7,7 +7,7 @@ import {
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
-import { servicePriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
+import { nightlyPriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
@@ -92,7 +92,7 @@ export interface PetRow {
    * FK against the admin-managed pet_types table (20260912191). */
   pet_type: string;
   weight_class: 'S' | 'M' | 'L' | 'XL' | null;
-  coat_type: 'SC' | 'LC' | null;
+  coat_type: 'SC' | 'LC' | 'XLC' | null;
 }
 
 /** Client interview finding: weight_class/coat_type are staff-only-set
@@ -161,11 +161,20 @@ export function resolveServicePrice(
   return Number(service.base_price);
 }
 
+/** pets.pet_type for a cat - the seeded pet type key a package's
+ * cat_price applies to (packages.cat_price, 20261013263). */
+const CAT_PET_TYPE = 'Cat';
+
 export interface ResolvedBookingItem {
   service_id: string | null;
   package_id: string | null;
   price_at_booking: number;
   duration_minutes_at_booking: number;
+  /** Whether this item's real price depends on the pet being assessed (a
+   * service flagged requires_assessed_pet, or any package). Not a
+   * booking_items column - createBooking reads it to decide whether an
+   * unassessed pet's booking is "awaiting assessment". */
+  needs_assessed_pet?: boolean;
 }
 
 /**
@@ -209,7 +218,8 @@ async function resolveBookingItem(
   branchId: string,
   scheduledStart: string,
   scheduledEnd: string,
-  fixedPriceOverride: number | null
+  fixedPriceOverride: number | null,
+  enforceAssessmentGate: boolean
 ): Promise<ResolvedBookingItem> {
   if ('service_id' in itemInput) {
     const service = await getServiceById(itemInput.service_id);
@@ -225,7 +235,11 @@ async function resolveBookingItem(
       );
     }
 
-    if (!petAssessed && service.requires_assessed_pet) {
+    if (
+      enforceAssessmentGate &&
+      !petAssessed &&
+      service.requires_assessed_pet
+    ) {
       throwWithStatus(
         403,
         `This pet must be assessed by staff (weight class and coat type recorded onsite) before booking "${service.name}"`
@@ -261,6 +275,7 @@ async function resolveBookingItem(
           ).charge
         ),
         duration_minutes_at_booking: durationMinutes,
+        needs_assessed_pet: service.requires_assessed_pet,
       };
     }
 
@@ -282,21 +297,28 @@ async function resolveBookingItem(
     return {
       service_id: service.id,
       package_id: null,
-      // The booking branch may charge its own price for this service
-      // (servicePriceAtBranch) - it stands in for base_price, so a pet-type
-      // fixed price and the Grooming matrix still take precedence as before.
+      // The booking branch may charge its own price for this service, and
+      // a Hotel service booked for a long stay has a cheaper nightly rate
+      // (nightlyPriceAtBranch - for every other category `quantity` is 1 and
+      // there is no long-stay rate, so this is just the branch's price). It
+      // stands in for base_price, so a pet-type fixed price and the Grooming
+      // matrix still take precedence as before.
       price_at_booking: round2(
         resolveServicePrice(
-          { ...service, base_price: servicePriceAtBranch(service, branchId) },
+          {
+            ...service,
+            base_price: nightlyPriceAtBranch(service, branchId, quantity),
+          },
           pet,
           serviceFixedPrice
         ) * quantity
       ),
       duration_minutes_at_booking: durationMinutes,
+      needs_assessed_pet: service.requires_assessed_pet,
     };
   }
 
-  if (!petAssessed) {
+  if (enforceAssessmentGate && !petAssessed) {
     throwWithStatus(
       403,
       'This pet must be assessed by staff (weight class and coat type recorded onsite) before booking a package'
@@ -369,6 +391,8 @@ async function resolveBookingItem(
     package_id: pkg.id,
     price_at_booking: round2(packagePrice * packageQuantity),
     duration_minutes_at_booking: packageDurationMinutes,
+    // A package is always priced for an assessed pet.
+    needs_assessed_pet: true,
   };
 }
 
@@ -396,10 +420,18 @@ export async function resolvePackagePrice(
   pkg: Pick<
     Awaited<ReturnType<typeof getPackageById>>,
     'bundled_price' | 'use_pricing_matrix' | 'pricing_tiers'
-  >,
+  > & { cat_price?: number | null },
   pet: PetRow,
   fixedPriceOverride: number | null = null
 ): Promise<number> {
+  // Custom change (package cat price, 20261013263): a package may name its
+  // own price for a cat. It is the most specific price there is - this
+  // package, this pet type - so it wins ahead of the pet type's fixed price
+  // (one figure for every package) and the weight x coat grid.
+  if (pet.pet_type === CAT_PET_TYPE && pkg.cat_price != null) {
+    return Number(pkg.cat_price);
+  }
+
   if (fixedPriceOverride !== null) return fixedPriceOverride;
 
   if (!pkg.use_pricing_matrix) {
@@ -423,7 +455,16 @@ export async function resolveBookingItems(
   serviceCategory: ServiceCategory,
   branchId: string,
   scheduledStart: string,
-  scheduledEnd: string
+  scheduledEnd: string,
+  /**
+   * Whether an unassessed pet is refused the items that need an assessed one
+   * (403). On by default - every caller keeps the old rule unless it opts
+   * out. createBooking opts out for an Online booking (book before
+   * assessment, 20261013264): the pet is then priced at the estimate the
+   * price functions fall back to anyway (base/package price, no size or coat
+   * cell) and the booking is marked awaiting assessment.
+   */
+  enforceAssessmentGate = true
 ): Promise<ResolvedBookingItem[]> {
   const resolved: ResolvedBookingItem[] = [];
 
@@ -450,7 +491,8 @@ export async function resolveBookingItems(
         branchId,
         scheduledStart,
         scheduledEnd,
-        fixedPriceOverride
+        fixedPriceOverride,
+        enforceAssessmentGate
       )
     );
   }
@@ -1049,8 +1091,22 @@ export async function createBooking({
     input.service_category,
     input.branch_id,
     input.scheduled_start,
-    input.scheduled_end
+    input.scheduled_end,
+    // Book before assessment (20261013264): an Online booking may be made
+    // for a pet staff have not assessed yet. A Walk-in still may not - the
+    // pet is at the counter, so staff assess it first.
+    bookingSource !== 'Online'
   );
+
+  // The booking is "awaiting assessment" when the pet is unassessed AND at
+  // least one item's real price depends on its size/coat. Its price is then
+  // only an estimate: no discount/promo, no down payment and no charge now -
+  // all settled at the counter once the pet is assessed
+  // (assessmentReprice.service.ts). An unassessed pet booking only items
+  // that never needed an assessment (the seeded "Initial Assessment") is an
+  // ordinary booking, exactly as before.
+  const awaitingAssessment =
+    !petAssessed && resolvedItems.some((item) => item.needs_assessed_pet);
 
   const freePackageAward = await resolveFreePackageAward(input);
 
@@ -1073,14 +1129,25 @@ export async function createBooking({
   // downpayment is calculated"). resolveDiscountAndPromos doesn't depend on
   // the down payment, so it runs first and the down payment is taken
   // against the discounted net total, not the gross sum of items.
+  //
+  // Skipped entirely while awaiting assessment: the real price isn't known
+  // yet, so there is nothing to take a discount or promo off (and a coupon
+  // must not be spent against an estimate).
   const { selectedDiscountId, discountAmount, promoSelections, promoAmount } =
-    await resolveDiscountAndPromos(
-      input,
-      staffRole,
-      resolvedItems,
-      totalPrice,
-      customerId
-    );
+    awaitingAssessment
+      ? {
+          selectedDiscountId: null,
+          discountAmount: 0,
+          promoSelections: [],
+          promoAmount: 0,
+        }
+      : await resolveDiscountAndPromos(
+          input,
+          staffRole,
+          resolvedItems,
+          totalPrice,
+          customerId
+        );
 
   const netTotal = round2(totalPrice - discountAmount - promoAmount);
 
@@ -1158,7 +1225,10 @@ export async function createBooking({
       input.branch_id
     );
 
-    downpaymentRequired = policy.downpayment_enabled;
+    // Never for a booking awaiting assessment: nothing is paid online, the
+    // whole (real) amount is paid at the counter. It therefore holds its slot
+    // unpaid, like any booking with no down payment.
+    downpaymentRequired = !awaitingAssessment && policy.downpayment_enabled;
     downpaymentHoldHours = policy.downpayment_hold_hours ?? 24;
     downpaymentAmount = downpaymentRequired
       ? round2(
@@ -1213,7 +1283,8 @@ export async function createBooking({
   // add_booking_payment both refuse a zero-owed booking). Never true for a
   // pay-at-checkout booking: its total is only an estimate until checkout,
   // which decides for itself whether anything is owed.
-  const nothingOwed = !payAtCheckout && netTotal <= 0;
+  // Nor for one awaiting assessment: its total is an estimate too.
+  const nothingOwed = !payAtCheckout && !awaitingAssessment && netTotal <= 0;
 
   // Whether this booking reserves its capacity/staff-time slot. A
   // down-payment-required Online booking holds no slot until a payment lands
@@ -1279,7 +1350,9 @@ export async function createBooking({
       serviceCategory: input.service_category,
       scheduledStart: input.scheduled_start,
       scheduledEnd: input.scheduled_end,
-      petWeightClass: (pet as PetRow).weight_class!,
+      // Undefined for a pet not assessed yet - checkCapacity then asks
+      // whether the branch has any cage free at all (no size to reserve).
+      petWeightClass: (pet as PetRow).weight_class ?? undefined,
     });
 
     if (!capacity.available) {
@@ -1312,6 +1385,7 @@ export async function createBooking({
       downpayment_required: downpaymentRequired,
       downpayment_due_at: downpaymentDueAt,
       pay_at_checkout: payAtCheckout,
+      awaiting_assessment: awaitingAssessment,
       payment_status: nothingOwed ? 'Fully Paid' : 'Pending',
       ...(nothingOwed ? { paid_at: new Date().toISOString() } : {}),
       payment_method: null,
@@ -1450,7 +1524,14 @@ export async function createBooking({
   // not undo the booking; the cashier can add the charge manually). A
   // fully-discounted booking (nothingOwed) owes nothing, and a
   // pay-at-checkout booking is billed at checkout instead.
-  if (paymentScheme !== 'pay_at_checkout' && !nothingOwed && netTotal > 0) {
+  // Nor a booking awaiting assessment - its bill is posted when the pet is
+  // assessed, at the real price.
+  if (
+    paymentScheme !== 'pay_at_checkout' &&
+    !awaitingAssessment &&
+    !nothingOwed &&
+    netTotal > 0
+  ) {
     try {
       const { error: chargeRpcError } = await supabase.rpc(
         'create_initial_booking_charge',
@@ -2086,6 +2167,15 @@ export async function startBooking({
 
   if (booking.status !== 'Pending') {
     throwWithStatus(409, `A ${booking.status} booking cannot be started`);
+  }
+
+  // Book before assessment: said first, since it is the actual next step -
+  // there is no bill to pay until the pet has been assessed.
+  if (booking.awaiting_assessment) {
+    throwWithStatus(
+      409,
+      "This pet hasn't been assessed yet. Record its weight and coat type first - that sets the final price and sends the bill to the cashier."
+    );
   }
 
   if (

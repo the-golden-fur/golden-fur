@@ -16,12 +16,14 @@ const CONFIGURATION: PricingConfiguration = {
   size_xl_rule_value: 1.5,
   coat_long_rule_type: 'flat',
   coat_long_rule_value: 50,
+  coat_extra_long_rule_type: 'flat',
+  coat_extra_long_rule_value: 120,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
 
 describe('PricingMatrixPreview', () => {
-  it('#81: renders all 8 derived cells, read-only', () => {
+  it('#81: renders all 12 derived cells (4 sizes x 3 coats), read-only', () => {
     render(
       createElement(PricingMatrixPreview, {
         basePrice: 300,
@@ -33,6 +35,19 @@ describe('PricingMatrixPreview', () => {
     expect(screen.getByText('PHP 350.00')).toBeInTheDocument();
     expect(screen.getByText('PHP 500.00')).toBeInTheDocument();
     expect(screen.queryAllByRole('spinbutton')).toHaveLength(0);
+  });
+
+  it('shows an Extra Long Coat column, priced by its own rule', () => {
+    render(
+      createElement(PricingMatrixPreview, {
+        basePrice: 300,
+        configuration: CONFIGURATION,
+      })
+    );
+
+    expect(screen.getByText('Extra Long Coat (XLC)')).toBeInTheDocument();
+    // Small: 300 + this fixture's 120 extra long coat add-on.
+    expect(screen.getByText('PHP 420.00')).toBeInTheDocument();
   });
 
   it('recomputes when base_price changes', () => {

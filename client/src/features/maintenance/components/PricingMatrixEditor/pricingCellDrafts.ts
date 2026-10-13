@@ -64,7 +64,7 @@ export function pricingCellsChanges(
 
     const price = Number(draft);
     if (!Number.isFinite(price) || price < 0) {
-      const coat = coatType === 'SC' ? 'short' : 'long';
+      const coat = { SC: 'short', LC: 'long', XLC: 'extra long' }[coatType];
       return {
         cells: [],
         error: `Enter a valid price (0 or more) for ${weightClass}, ${coat} coat.`,

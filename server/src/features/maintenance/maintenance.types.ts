@@ -32,7 +32,7 @@ export type DiscountValueType = 'Percentage' | 'Flat';
 
 /** Same vocabulary as M02 pets.weight_class / pets.coat_type. */
 export type WeightClass = 'S' | 'M' | 'L' | 'XL';
-export type CoatType = 'SC' | 'LC';
+export type CoatType = 'SC' | 'LC' | 'XLC';
 
 /**
  * One cell of the Grooming size x coat matrix, as returned by the API.
@@ -87,6 +87,10 @@ export interface PricingConfiguration {
   size_xl_rule_value: number;
   coat_long_rule_type: PricingRuleType;
   coat_long_rule_value: number;
+  /** Extra Long Coat's own rule (20261013261) - used in place of the Long
+   * Coat rule for an XLC pet, never on top of it. */
+  coat_extra_long_rule_type: PricingRuleType;
+  coat_extra_long_rule_value: number;
   updated_by_staff_id: string | null;
   updated_at: string;
 }
@@ -134,6 +138,10 @@ export interface ServiceBranchAvailability {
   /** This branch's own price for the service (20261006245), replacing
    * base_price there - see servicePriceAtBranch. NULL = use base_price. */
   price_override: number | null;
+  /** This branch's own long-stay nightly price (20261013260), replacing
+   * the service's long_stay_nightly_price there - see
+   * longStayPriceAtBranch. NULL = use long_stay_nightly_price. */
+  long_stay_price_override: number | null;
 }
 
 export interface Service {
@@ -164,6 +172,12 @@ export interface Service {
    * available at the booking's own branch via package_branch_availability)
    * when min_nights_for_free_package is met - not a direct FK. */
   free_package_name: string | null;
+  /** Hotel-only (20261013260): the per-night price once
+   * min_nights_for_free_package or more nights are booked - the long-stay
+   * rate, applied automatically. NULL = no long-stay rate. A branch may
+   * carry its own (service_branch_availability.long_stay_price_override).
+   * Nights added after booking are always the regular price. */
+  long_stay_nightly_price: number | null;
   /** Custom change (pricing matrix fix): whether this service's price
    * varies by the pet's weight_class/coat_type (Grooming only -
    * meaningless elsewhere). Off by default for new services - only
@@ -225,6 +239,15 @@ export interface PackageBranchAvailability {
 export interface Package {
   id: string;
   name: string;
+  /** Custom change (package extras, 20261013262): named inclusions that are
+   * NOT individual services (e.g. "Free bandana") - names only, no price or
+   * duration, so they never affect bundled_price or the appointment length.
+   * In the order they were added. */
+  extras: string[];
+  /** Custom change (package cat price, 20261013263): what this package
+   * costs for a Cat pet - ahead of the pet type's fixed price and the weight
+   * x coat grid. NULL = cats are priced like any other pet type. */
+  cat_price: number | null;
   /**
    * Epic B (#82/#83): derived on read from included services' base_price and
    * package_pricing_configuration via deriveBundledPrice, no longer a stored

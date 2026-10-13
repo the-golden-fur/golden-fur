@@ -167,15 +167,71 @@ describe('availability.service (#56/#60 supporting infra)', () => {
     expect(slots.every((slot) => slot.available === false)).toBe(true);
   });
 
-  it('requires pet_weight_class for Hotel', async () => {
-    await expect(
-      getDaySlots({
+  // Custom change (book before assessment, 20261013264): a pet staff have
+  // not assessed yet has no weight class - Hotel availability is then "any
+  // cage at all" rather than a refusal.
+  describe('Hotel without a pet weight class', () => {
+    const ONE_STAY = {
+      data: [{ id: 'b1', pet_id: 'p1', created_at: '' }],
+      error: null,
+    };
+    const TWO_STAYS = {
+      data: [
+        { id: 'b1', pet_id: 'p1', created_at: '' },
+        { id: 'b2', pet_id: 'p2', created_at: '' },
+      ],
+      error: null,
+    };
+
+    function slotsWith(overlapping: typeof ONE_STAY) {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // 08:00 Asia/Manila
+      // 1 + 1 + 0 + 0 = 2 cages in total, of any size.
+      vi.stubEnv('HOTEL_CAGE_CAPACITY', '{"S":1,"M":1,"L":0,"XL":0}');
+
+      queueFromResults(
+        BRANCH_ROW, // branch lookup
+        POLICY_ROW_LUNCH_DISABLED, // lunch-break policy lookup
+        // The same overlap answer for every arrival candidate.
+        overlapping,
+        overlapping,
+        overlapping,
+        overlapping
+      );
+
+      return getDaySlots({
         branchId: 'branch-1',
         serviceCategory: 'Hotel',
         date: '2026-08-03',
-        slotDurationMinutes: 60,
-      })
-    ).rejects.toMatchObject({ statusCode: 400 });
+        slotDurationMinutes: 180,
+      });
+    }
+
+    it('is no longer refused, and is available while any cage of any size is free', async () => {
+      const slots = await slotsWith(ONE_STAY);
+
+      expect(slots.length).toBeGreaterThan(0);
+      for (const slot of slots) {
+        expect(slot).toMatchObject({
+          available: true,
+          cage_capacity_remaining: 1,
+          cage_capacity_total: 2,
+        });
+      }
+    });
+
+    it('is full once every cage, whatever its size, is taken', async () => {
+      const slots = await slotsWith(TWO_STAYS);
+
+      expect(slots.length).toBeGreaterThan(0);
+      for (const slot of slots) {
+        expect(slot).toMatchObject({
+          available: false,
+          cage_capacity_remaining: 0,
+          cage_capacity_total: 2,
+        });
+      }
+    });
   });
 
   it('marks every Hotel arrival candidate "available" when no overlapping same-size bookings exist', async () => {

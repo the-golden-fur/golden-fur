@@ -12,7 +12,22 @@ export interface GroomingMatrixCell {
 }
 
 const WEIGHT_CLASSES: WeightClass[] = ['S', 'M', 'L', 'XL'];
-const COAT_TYPES: CoatType[] = ['SC', 'LC'];
+const COAT_TYPES: CoatType[] = ['SC', 'LC', 'XLC'];
+
+/** The rule each coat adds on top of the size-adjusted price. Short Coat is
+ * the base, so it has none. Each other coat has its OWN rule - Extra Long
+ * Coat uses coat_extra_long in place of coat_long, never on top of it. */
+const COAT_RULE_FIELDS: Record<
+  CoatType,
+  { type: keyof PricingConfiguration; value: keyof PricingConfiguration } | null
+> = {
+  SC: null,
+  LC: { type: 'coat_long_rule_type', value: 'coat_long_rule_value' },
+  XLC: {
+    type: 'coat_extra_long_rule_type',
+    value: 'coat_extra_long_rule_value',
+  },
+};
 
 const SIZE_RULE_FIELDS: Record<
   WeightClass,
@@ -69,19 +84,23 @@ export function deriveGroomingMatrix(
     const sizeValue = config[fields.value] as number;
     const sizeAdjusted = applyRule(basePrice, basePrice, sizeType, sizeValue);
 
-    return COAT_TYPES.map((coatType) => ({
-      weight_class: weightClass,
-      coat_type: coatType,
-      price: round2(
-        coatType === 'LC'
-          ? applyRule(
-              sizeAdjusted,
-              basePrice,
-              config.coat_long_rule_type,
-              config.coat_long_rule_value
-            )
-          : sizeAdjusted
-      ),
-    }));
+    return COAT_TYPES.map((coatType) => {
+      const coatRule = COAT_RULE_FIELDS[coatType];
+
+      return {
+        weight_class: weightClass,
+        coat_type: coatType,
+        price: round2(
+          coatRule
+            ? applyRule(
+                sizeAdjusted,
+                basePrice,
+                config[coatRule.type] as PricingRuleType,
+                config[coatRule.value] as number
+              )
+            : sizeAdjusted
+        ),
+      };
+    });
   });
 }

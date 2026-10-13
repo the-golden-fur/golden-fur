@@ -32,7 +32,11 @@ function createMockSupabase() {
     ],
     availability: new Map<
       string,
-      { is_available: boolean; price_override?: number | null }
+      {
+        is_available: boolean;
+        price_override?: number | null;
+        long_stay_price_override?: number | null;
+      }
     >(),
     packages: new Map<string, { id: string; name: string; icon?: string }>(),
     packageBranchAvailability: new Map<string, Set<string>>(),
@@ -84,10 +88,12 @@ function createMockSupabase() {
             branch_id: string;
             is_available: boolean;
             price_override?: number | null;
+            long_stay_price_override?: number | null;
           }) => {
             state.availability.set(`${row.service_id}:${row.branch_id}`, {
               is_available: row.is_available,
               price_override: row.price_override ?? null,
+              long_stay_price_override: row.long_stay_price_override ?? null,
             });
             return Promise.resolve({ error: null });
           },
@@ -280,20 +286,30 @@ describe('m13-maintenance seed', () => {
           supabase.state.availability.get(
             `${HOTEL_SERVICE_ID}:branch-southwoods`
           )
-        ).toEqual({ is_available: true, price_override: 500 });
+        ).toEqual({
+          is_available: true,
+          price_override: 500,
+          // Long-stay rate (migration 20261013260): PHP 450 a night there.
+          long_stay_price_override: 450,
+        });
 
         const others = [...supabase.state.availability.entries()].filter(
           ([key]) => key !== `${HOTEL_SERVICE_ID}:branch-southwoods`
         );
         for (const [, row] of others) {
           expect(row.price_override).toBeNull();
+          expect(row.long_stay_price_override).toBeNull();
         }
       });
 
       it('never overwrites a row that already exists, so a price a Superadmin changed or cleared stays', async () => {
         supabase.state.availability.set(
           `${HOTEL_SERVICE_ID}:branch-southwoods`,
-          { is_available: true, price_override: null }
+          {
+            is_available: true,
+            price_override: null,
+            long_stay_price_override: 480,
+          }
         );
 
         await seedServiceBranchAvailability(supabase as never);
@@ -302,7 +318,11 @@ describe('m13-maintenance seed', () => {
           supabase.state.availability.get(
             `${HOTEL_SERVICE_ID}:branch-southwoods`
           )
-        ).toEqual({ is_available: true, price_override: null });
+        ).toEqual({
+          is_available: true,
+          price_override: null,
+          long_stay_price_override: 480,
+        });
       });
     });
   });

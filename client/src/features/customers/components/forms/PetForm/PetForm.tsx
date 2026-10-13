@@ -13,13 +13,14 @@ import type {
   PetTypeRow,
   PetWeightClass,
 } from '../../../customer.types';
+import { PET_COAT_TYPES } from '../../../customer.types';
 import { formatPetAge } from '../../../../../shared/utils/formatPetAge';
 import { BreedSelect } from '../BreedSelect/BreedSelect';
 import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import styles from './PetForm.module.css';
 
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
-const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
+const COAT_TYPE_OPTIONS: PetCoatType[] = PET_COAT_TYPES;
 
 interface PetFormProps {
   /**

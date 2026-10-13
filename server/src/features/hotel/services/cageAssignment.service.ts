@@ -37,6 +37,17 @@ export async function suggestCage(
   if (petError) throwWithStatus(400, petError.message);
   if (!pet) throwWithStatus(404, 'Pet not found');
 
+  // Book before assessment (20261013264): a Hotel stay can now be booked for
+  // a pet staff have not assessed yet. There is no size to suggest until it
+  // has been - say so plainly rather than sending a null size to the
+  // cage_size enum ("invalid input value for enum cage_size").
+  if (!pet.weight_class) {
+    throwWithStatus(
+      409,
+      "This pet hasn't been assessed yet. Record its weight and coat type first - a cage is suggested from its size."
+    );
+  }
+
   const suggestedSize = pet.weight_class as CageSize;
 
   const { data: cages, error: cagesError } = await supabase

@@ -1,6 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
 import { resolveQuantity } from '../../booking/services/extendStay.service.ts';
+import { resolveBookingLongStayTerms } from '../../booking/services/longStayTerms.service.ts';
+import type { LongStayTerms } from '../../maintenance/utils/branchServicePrice.ts';
 import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
 import { assertChecklistComplete } from './careLogCompletion.service.ts';
 import { recordActivity } from './activityLog.service.ts';
@@ -18,6 +20,10 @@ function throwWithStatus(statusCode: number, message: string): never {
  * Configuration screen for it is Sprint 5 scope (Guide's Out of Scope) - this
  * is a placeholder judgment call, flagged in the verification doc, standing
  * in until a real settings-driven rate exists.
+ *
+ * A stay on a Hotel service with a long-stay rate (20261013260) is charged
+ * that service's regular nightly price per late day instead - a night past
+ * the booking always costs the regular rate (resolveBookingLongStayTerms).
  */
 const EXTENSION_FEE_PER_DAY = 500;
 
@@ -78,16 +84,25 @@ interface PayAtCheckoutBooking {
  * they were booked for to the nights actually stayed, each item keeping its
  * own per-night rate (the same math extendHotelStay uses), and returns the
  * new total. An item that isn't priced per night is left as it is.
+ *
+ * Hotel long-stay rate (20261013260), for the booking's service item when
+ * `longStay` applies:
+ * - nights past the ones booked are the regular rate, added on top of the
+ *   booked price - the long-stay rate never stretches over nights that were
+ *   not booked;
+ * - a stay booked as a long one that ends before the threshold no longer
+ *   qualifies, so every night actually stayed is the regular rate.
  */
 async function repriceItemsForNights(
   bookingId: string,
   booking: PayAtCheckoutBooking,
   checkInAt: Date,
-  nights: number
+  nights: number,
+  longStay: LongStayTerms | null
 ): Promise<number> {
   const { data: itemRows, error: itemsError } = await supabase
     .from('booking_items')
-    .select('id, price_at_booking, duration_minutes_at_booking')
+    .select('id, service_id, price_at_booking, duration_minutes_at_booking')
     .eq('booking_id', bookingId);
 
   if (itemsError) throwWithStatus(400, itemsError.message);
@@ -99,6 +114,7 @@ async function repriceItemsForNights(
 
   for (const item of (itemRows ?? []) as Array<{
     id: string;
+    service_id?: string | null;
     price_at_booking: number;
     duration_minutes_at_booking: number;
   }>) {
@@ -112,9 +128,21 @@ async function repriceItemsForNights(
       actualEndIso,
       item.duration_minutes_at_booking
     );
-    const price = round2(
-      (Number(item.price_at_booking) / bookedQuantity) * actualQuantity
-    );
+    const bookedPrice = Number(item.price_at_booking);
+    const terms = item.service_id ? longStay : null;
+    let price = round2((bookedPrice / bookedQuantity) * actualQuantity);
+
+    if (terms && actualQuantity > bookedQuantity) {
+      price = round2(
+        bookedPrice + terms.regularRate * (actualQuantity - bookedQuantity)
+      );
+    } else if (
+      terms &&
+      bookedQuantity >= terms.minNights &&
+      actualQuantity < terms.minNights
+    ) {
+      price = round2(terms.regularRate * actualQuantity);
+    }
 
     total = round2(total + price);
 
@@ -233,7 +261,14 @@ export async function checkOutHotelStay({
   const days = payAtCheckout
     ? 0
     : extensionDays(stay.scheduled_check_out_date, now);
-  const extensionFee = days > 0 ? days * EXTENSION_FEE_PER_DAY : null;
+  // Looked up only when it can matter: a late day, or a pay-at-checkout
+  // bill to reprice.
+  const longStay =
+    days > 0 || payAtCheckout
+      ? await resolveBookingLongStayTerms(stay.booking_id, branchId)
+      : null;
+  const extensionFee =
+    days > 0 ? days * (longStay?.regularRate ?? EXTENSION_FEE_PER_DAY) : null;
 
   const totalPrice = booking.total_price;
   const remainingBalance =
@@ -285,7 +320,8 @@ export async function checkOutHotelStay({
         stay.booking_id,
         booking,
         checkInAt,
-        nights
+        nights,
+        longStay
       );
       const transaction = await postPayAtCheckoutCharge({
         bookingId: stay.booking_id,

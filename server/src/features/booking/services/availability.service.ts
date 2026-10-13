@@ -4,6 +4,7 @@ import {
   filterSameSizeRows,
   getDaycareSessionCapacity,
   getHotelCageCapacity,
+  getHotelTotalCageCapacity,
   listOverlappingActiveBookings,
   type WeightClass,
 } from './capacity.service.ts';
@@ -378,10 +379,6 @@ export async function getDaySlots({
   petWeightClass,
   intent = 'new_booking',
 }: GetDaySlotsParams): Promise<SlotAvailability[]> {
-  if (serviceCategory === 'Hotel' && !petWeightClass) {
-    throwWithStatus(400, 'pet_weight_class is required for Hotel availability');
-  }
-
   const { data: branch, error: branchError } = await supabase
     .from('branches')
     .select(
@@ -582,8 +579,15 @@ export async function getDaySlots({
       const overlapping = await listOverlappingActiveBookings(params);
 
       if (serviceCategory === 'Hotel') {
-        const sameSize = await filterSameSizeRows(overlapping, petWeightClass!);
-        const capacity = await getHotelCageCapacity(branchId, petWeightClass!);
+        // Book before assessment: a pet with no weight class yet has no cage
+        // size to count within - every overlapping stay against every cage,
+        // mirroring checkCapacity's own no-weight rule.
+        const sameSize = petWeightClass
+          ? await filterSameSizeRows(overlapping, petWeightClass)
+          : overlapping;
+        const capacity = petWeightClass
+          ? await getHotelCageCapacity(branchId, petWeightClass)
+          : await getHotelTotalCageCapacity(branchId);
 
         return {
           start: start.toISOString(),

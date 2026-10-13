@@ -76,6 +76,8 @@ const PRICING_CONFIGURATION = {
   size_xl_rule_value: 1.5,
   coat_long_rule_type: 'flat',
   coat_long_rule_value: 50,
+  coat_extra_long_rule_type: 'flat',
+  coat_extra_long_rule_value: 50,
 };
 
 const GROOMING_SERVICE = {
@@ -176,6 +178,90 @@ describe('services.service', () => {
       expect(result.id).toBe('service-1');
     });
 
+    // Custom change (Hotel long-stay rate, 20261013260): which package a long
+    // stay gives away, and what a long-stay night costs, are Superadmin-only.
+    describe('long-stay deal (free package + long-stay price)', () => {
+      const EXISTING = {
+        id: 'service-1',
+        category: 'Hotel',
+        free_package_name: 'Golden Package',
+        long_stay_nightly_price: 750,
+      };
+
+      it.each([
+        ['the free package', { free_package_name: 'Silver Package' }],
+        ['the long-stay price', { long_stay_nightly_price: 700 }],
+        ['clearing the free package', { free_package_name: null }],
+      ])('refuses an Admin changing %s', async (_label, updates) => {
+        queueFromResults({ data: EXISTING, error: null });
+
+        await expect(
+          updateService({
+            requesterId: 'admin-1',
+            requesterRole: 'Admin',
+            serviceId: 'service-1',
+            updates,
+          })
+        ).rejects.toMatchObject({ statusCode: 403 });
+        expect(
+          recordedWrites.filter((write) => write.table === 'services')
+        ).toEqual([]);
+      });
+
+      it('lets an Admin save other fields while resending both exactly as they were (numeric columns come back as strings)', async () => {
+        queueFromResults(
+          {
+            data: { ...EXISTING, long_stay_nightly_price: '750.00' },
+            error: null,
+          },
+          { data: null, error: null }, // update
+          { data: GROOMING_SERVICE, error: null }, // final fetch
+          { data: PRICING_CONFIGURATION, error: null }
+        );
+
+        await expect(
+          updateService({
+            requesterId: 'admin-1',
+            requesterRole: 'Admin',
+            serviceId: 'service-1',
+            updates: {
+              name: 'Overnight Stay',
+              free_package_name: 'Golden Package',
+              long_stay_nightly_price: 750,
+            },
+          })
+        ).resolves.toBeDefined();
+      });
+
+      it('lets a Superadmin change both', async () => {
+        queueFromResults(
+          { data: EXISTING, error: null },
+          { data: null, error: null }, // update
+          { data: GROOMING_SERVICE, error: null }, // final fetch
+          { data: PRICING_CONFIGURATION, error: null }
+        );
+
+        await updateService({
+          requesterId: 'super-1',
+          requesterRole: 'Superadmin',
+          serviceId: 'service-1',
+          updates: {
+            free_package_name: 'Silver Package',
+            long_stay_nightly_price: 700,
+          },
+        });
+
+        expect(
+          recordedWrites.find(
+            (write) => write.table === 'services' && write.method === 'update'
+          )?.payload
+        ).toMatchObject({
+          free_package_name: 'Silver Package',
+          long_stay_nightly_price: 700,
+        });
+      });
+    });
+
     it('AC-3: soft-deletes via is_active = false (no hard DELETE path exists)', async () => {
       queueFromResults(
         { data: { id: 'service-1', category: 'Grooming' }, error: null },
@@ -245,7 +331,7 @@ describe('services.service', () => {
       const result = await listServices({});
 
       expect(result).toHaveLength(1);
-      expect(result[0].service_pricing_tiers).toHaveLength(8);
+      expect(result[0].service_pricing_tiers).toHaveLength(12);
       const smallShortCoat = result[0].service_pricing_tiers?.find(
         (tier) => tier.weight_class === 'S' && tier.coat_type === 'SC'
       );
@@ -367,6 +453,43 @@ describe('services.service', () => {
           table: 'service_branch_availability',
           method: 'update',
           payload: { price_override: 500 },
+        },
+      ]);
+    });
+
+    it("also sets the branch's own long-stay price when one is sent, and leaves it alone otherwise", async () => {
+      queueFromResults(
+        { data: { id: 'service-1', archived_at: null }, error: null },
+        {
+          data: {
+            service_id: 'service-1',
+            branch_id: 'branch-south',
+            is_available: true,
+            price_override: 500,
+            long_stay_price_override: 450,
+          },
+          error: null,
+        }
+      );
+
+      const result = await setServiceBranchPrice({
+        serviceId: 'service-1',
+        branchId: 'branch-south',
+        priceOverride: 500,
+        longStayPriceOverride: 450,
+        requesterRole: 'Superadmin',
+      });
+
+      expect(result.long_stay_price_override).toBe(450);
+      expect(
+        recordedWrites.filter(
+          (write) => write.table === 'service_branch_availability'
+        )
+      ).toEqual([
+        {
+          table: 'service_branch_availability',
+          method: 'update',
+          payload: { price_override: 500, long_stay_price_override: 450 },
         },
       ]);
     });

@@ -1,7 +1,7 @@
 export type PetType = 'Dog' | 'Cat';
 export type PetGender = 'Male' | 'Female';
 export type PetWeightClass = 'S' | 'M' | 'L' | 'XL';
-export type PetCoatType = 'SC' | 'LC';
+export type PetCoatType = 'SC' | 'LC' | 'XLC';
 
 export interface Breed {
   id: string;

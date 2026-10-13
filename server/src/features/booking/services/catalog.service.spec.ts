@@ -52,7 +52,9 @@ describe('catalog.service (#55/#58 supporting infra)', () => {
     expect(listPromos).toHaveBeenCalledWith({});
     expect(getFixedPrice).not.toHaveBeenCalled();
     expect(result).toEqual({
-      services: [{ id: 'service-1', base_price: 300 }],
+      services: [
+        { id: 'service-1', base_price: 300, long_stay_nightly_price: null },
+      ],
       packages: [{ id: 'package-1' }],
       promos: [{ id: 'promo-1' }],
       fixedPrice: null,
@@ -123,5 +125,45 @@ describe('catalog.service (#55/#58 supporting infra)', () => {
     expect(makati.services.map((service) => service.base_price)).toEqual([
       850, 300,
     ]);
+  });
+
+  it("shows the Hotel long-stay price at the branch's own, and null for a service without one", async () => {
+    vi.mocked(listServices).mockResolvedValue([
+      {
+        id: 'service-hotel',
+        base_price: 850,
+        long_stay_nightly_price: 750,
+        service_branch_availability: [
+          {
+            branch_id: 'branch-makati',
+            price_override: null,
+            long_stay_price_override: null,
+          },
+          {
+            branch_id: 'branch-southwoods',
+            price_override: 500,
+            long_stay_price_override: 450,
+          },
+        ],
+      } as never,
+      { id: 'service-groom', base_price: 300 } as never,
+    ]);
+    vi.mocked(listPackages).mockResolvedValue([]);
+    vi.mocked(listPromos).mockResolvedValue([]);
+    vi.mocked(listPromoCapConfigurations).mockResolvedValue([
+      DEFAULT_CAP_ROW as never,
+    ]);
+
+    const southwoods = await getBookingCatalog({
+      branchId: 'branch-southwoods',
+    });
+    const makati = await getBookingCatalog({ branchId: 'branch-makati' });
+
+    expect(
+      southwoods.services.map((service) => service.long_stay_nightly_price)
+    ).toEqual([450, null]);
+    expect(
+      makati.services.map((service) => service.long_stay_nightly_price)
+    ).toEqual([750, null]);
   });
 });

@@ -32,6 +32,8 @@ const CONFIGURATION: PricingConfiguration = {
   size_xl_rule_value: 1.5,
   coat_long_rule_type: 'flat',
   coat_long_rule_value: 0,
+  coat_extra_long_rule_type: 'flat',
+  coat_extra_long_rule_value: 0,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -160,6 +162,8 @@ describe('PricingConfigurationPage', () => {
           size_xl_rule_value: 1.5,
           coat_long_rule_type: 'flat',
           coat_long_rule_value: 50,
+          coat_extra_long_rule_type: 'flat',
+          coat_extra_long_rule_value: 0,
         }
       );
     });
@@ -167,6 +171,70 @@ describe('PricingConfigurationPage', () => {
     expect(
       await screen.findByText('Pricing configuration updated.')
     ).toBeInTheDocument();
+  });
+
+  // Custom change (Extra Long Coat).
+  it('Extra long coat has its own rule, loaded and saved separately from Long coat', async () => {
+    vi.mocked(maintenanceApi.getPricingConfiguration).mockResolvedValue({
+      data: {
+        ...CONFIGURATION,
+        coat_long_rule_value: 50,
+        coat_extra_long_rule_value: 50,
+      },
+      error: null,
+    });
+    vi.mocked(maintenanceApi.updatePricingConfiguration).mockResolvedValue({
+      data: {
+        ...CONFIGURATION,
+        coat_long_rule_value: 50,
+        coat_extra_long_rule_value: 120,
+      },
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByLabelText('Extra long coat type')).toHaveValue(
+      'flat'
+    );
+    const value = screen.getByLabelText('Extra long coat value');
+    expect(value).toHaveValue(50);
+
+    await user.clear(value);
+    await user.type(value, '120');
+    await user.click(
+      screen.getByRole('button', { name: 'Save pricing configuration' })
+    );
+
+    await waitFor(() => {
+      expect(maintenanceApi.updatePricingConfiguration).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({
+          coat_long_rule_value: 50,
+          coat_extra_long_rule_type: 'flat',
+          coat_extra_long_rule_value: 120,
+        })
+      );
+    });
+  });
+
+  it('refuses a zero multiplier for Extra long coat, without saving', async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.selectOptions(
+      await screen.findByLabelText('Extra long coat type'),
+      'multiplier'
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Save pricing configuration' })
+    );
+
+    // The value box's own minimum (0.01 for a multiplier) stops the form
+    // from submitting at all.
+    expect(screen.getByLabelText('Extra long coat value')).toBeInvalid();
+    expect(maintenanceApi.updatePricingConfiguration).not.toHaveBeenCalled();
   });
 
   it('Custom change (configurable pricing rules): changing a rule type to Percentage still saves a valid (zero-allowed) value', async () => {

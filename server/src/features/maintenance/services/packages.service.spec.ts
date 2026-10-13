@@ -70,6 +70,8 @@ const GROOMING_PRICING_CONFIGURATION = {
   size_xl_rule_value: 2,
   coat_long_rule_type: 'flat',
   coat_long_rule_value: 100,
+  coat_extra_long_rule_type: 'flat',
+  coat_extra_long_rule_value: 100,
 };
 
 const RAW_GOLDEN_PACKAGE = {
@@ -129,6 +131,43 @@ describe('packages.service', () => {
         { service_id: 'service-blowdry' },
         { service_id: 'service-brush' },
       ]);
+    });
+
+    // Custom change (package extras, 20261013262).
+    it('saves the named extras on the package row itself', async () => {
+      queueFromResults(
+        {
+          data: [{ id: 'service-bath' }, { id: 'service-blowdry' }],
+          error: null,
+        }, // active-services check
+        { data: { id: 'package-1' }, error: null }, // insert package
+        { data: null, error: null }, // insert package_services
+        { data: null, error: null }, // insert package_branch_availability
+        {
+          data: { ...RAW_GOLDEN_PACKAGE, extras: ['Free bandana'] },
+          error: null,
+        }, // final fetch
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null },
+        { data: GROOMING_PRICING_CONFIGURATION, error: null }
+      );
+
+      const result = await createPackage({
+        requesterId: 'admin-1',
+        input: {
+          branch_ids: ['branch-makati'],
+          name: 'Golden Package',
+          service_ids: ['service-bath', 'service-blowdry'],
+          extras: ['Free bandana'],
+        },
+      });
+
+      expect(builders[1].insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Golden Package',
+          extras: ['Free bandana'],
+        })
+      );
+      expect(result.extras).toEqual(['Free bandana']);
     });
 
     it('rejects unknown or inactive service ids with 400', async () => {

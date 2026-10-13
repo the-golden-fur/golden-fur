@@ -3,6 +3,7 @@ import type { BookingDetails } from '../../booking.types';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import { BookingStatusBadge } from '../shared/BookingStatusBadge/BookingStatusBadge';
 import { PaymentStatusBadge } from '../shared/PaymentStatusBadge/PaymentStatusBadge';
+import { AwaitingAssessmentBadge } from '../shared/AwaitingAssessmentBadge/AwaitingAssessmentBadge';
 import { NightTabs } from '../NightTabs/NightTabs';
 import { getHotelNightDates } from '../../utils/hotelNights';
 import styles from './BookingDetailsView.module.css';
@@ -117,6 +118,7 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
         <div className={styles.badgeGroup}>
           <BookingStatusBadge status={booking.status} />
           <PaymentStatusBadge status={booking.payment_status} />
+          {booking.awaiting_assessment ? <AwaitingAssessmentBadge /> : null}
         </div>
       </div>
 
@@ -224,6 +226,14 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
           <p className={styles.copy}>
             Part of a bundled booking — the discount, promo, total and payments
             below are shared across every booking in the group.
+          </p>
+        ) : null}
+        {booking.awaiting_assessment ? (
+          <p className={styles.copy}>
+            This pet has not been assessed yet, so nothing has been charged and
+            the amounts below are an estimate. The final price is set when staff
+            record the pet&apos;s weight and coat, and it is paid at the
+            counter.
           </p>
         ) : null}
         {awaitingCheckoutBill ? (

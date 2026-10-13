@@ -398,6 +398,11 @@ export interface Booking {
    * upfront charge. total_price is only an estimate until checkout posts
    * the real bill for the time the pet actually stayed. */
   pay_at_checkout?: boolean;
+  /** The booking was made for a pet staff have not assessed yet: its price
+   * is an estimate and nothing has been charged. Cleared, with the booking
+   * repriced and its bill posted, once staff record the pet's weight class
+   * and coat type. */
+  awaiting_assessment?: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only for the discount)
@@ -460,6 +465,11 @@ export interface BookingGroup {
   /** Pay at checkout: every booking in the group is billed at its own
    * checkout - there is no shared upfront charge. */
   pay_at_checkout?: boolean;
+  /** The booking was made for a pet staff have not assessed yet: its price
+   * is an estimate and nothing has been charged. Cleared, with the booking
+   * repriced and its bill posted, once staff record the pet's weight class
+   * and coat type. */
+  awaiting_assessment?: boolean;
   payment_status: PaymentStatus;
   paid_at: string | null;
   created_at: string;

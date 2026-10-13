@@ -1,5 +1,6 @@
 import type { BookingStatus } from '../../../booking/booking.types';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
+import { AwaitingAssessmentBadge } from '../../../booking/components/shared/AwaitingAssessmentBadge/AwaitingAssessmentBadge';
 import type { GroomingSession } from '../../grooming.types';
 import type { GroomingTransitionTarget } from '../../api/grooming.api';
 import styles from './AppointmentCard.module.css';
@@ -71,6 +72,16 @@ export function AppointmentCard({
         {bookingStatus ? <BookingStatusBadge status={bookingStatus} /> : null}
       </div>
 
+      {/* Book before assessment: listed so the groomer sees it coming, but
+          it cannot be started until front desk assesses the pet and the
+          bill is paid. */}
+      {session.booking?.awaiting_assessment ? (
+        <p className={styles.notArrived}>
+          <AwaitingAssessmentBadge /> Front desk records this pet&apos;s weight
+          and coat on arrival - it can&apos;t be started until then.
+        </p>
+      ) : null}
+
       {/* A paid booking shows on the queue before the customer arrives -
           say so, with the booked time, so it isn't mistaken for a pet
           that's already waiting. */}
@@ -122,7 +133,11 @@ export function AppointmentCard({
         <button
           type="button"
           className={styles.primaryButton}
-          disabled={isAdvancing}
+          // Awaiting assessment: the server refuses to start it anyway -
+          // don't offer a button that can only fail.
+          disabled={
+            isAdvancing || session.booking?.awaiting_assessment === true
+          }
           onClick={() => onAdvance(session.id, advanceAction.target)}
         >
           {isAdvancing ? 'Updating...' : advanceAction.label}

@@ -25,6 +25,16 @@ vi.mock('../../billing/services/payAtCheckoutCharge.service.ts', () => ({
   postPayAtCheckoutCharge: vi.fn(),
 }));
 
+// Covered by its own spec. Mocked so its booking/service/pet lookups stay
+// out of this file's sequential mock queues; null = "no long-stay deal".
+vi.mock('../../booking/services/longStayTerms.service.ts', () => ({
+  resolveBookingLongStayTerms: vi.fn(),
+}));
+
+import { resolveBookingLongStayTerms } from '../../booking/services/longStayTerms.service.ts';
+
+const MAKATI_LONG_STAY = { minNights: 5, longStayRate: 750, regularRate: 850 };
+
 const itemUpdates: unknown[] = [];
 
 interface QueryResult {
@@ -86,6 +96,7 @@ describe('checkout.service (#78)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+    vi.mocked(resolveBookingLongStayTerms).mockResolvedValue(null);
   });
 
   describe('extensionDays', () => {
@@ -240,6 +251,100 @@ describe('checkout.service (#78)', () => {
       expect(result.remainingBalance).toBe(800);
     });
 
+    // Hotel long-stay rate (20261013260).
+    describe('a stay on a service with a long-stay rate', () => {
+      const LONG_STAY = {
+        ...PAY_AT_CHECKOUT_STAY,
+        // Booked as an estimated 6 nights at the long-stay 750 a night.
+        bookings: {
+          ...PAY_AT_CHECKOUT_STAY.bookings,
+          total_price: 4500,
+          scheduled_end: '2026-08-09T02:00:00Z',
+        },
+      };
+      const LONG_STAY_ITEMS = [
+        {
+          id: 'item-1',
+          service_id: 'service-hotel',
+          price_at_booking: 4500,
+          duration_minutes_at_booking: 1440,
+        },
+      ];
+
+      function queueLongStay() {
+        queueFromResults(
+          { data: LONG_STAY, error: null },
+          noOutstandingTasksResult(),
+          ...completeBookingQueue(),
+          { data: { ...LONG_STAY, extension_fee: null }, error: null },
+          { data: {}, error: null }, // cages update
+          { data: LONG_STAY_ITEMS, error: null }, // booking_items
+          { data: null, error: null } // booking_items update
+        );
+      }
+
+      beforeEach(() => {
+        vi.mocked(resolveBookingLongStayTerms).mockResolvedValue(
+          MAKATI_LONG_STAY
+        );
+      });
+
+      it('bills the booked nights at the long-stay rate and each night past them at the regular one', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-11T01:00:00Z')); // 8 nights
+
+        queueLongStay();
+
+        await checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' });
+
+        expect(resolveBookingLongStayTerms).toHaveBeenCalledWith(
+          'booking-1',
+          'branch-1'
+        );
+        // 6 x 750 + 2 x 850
+        expect(itemUpdates).toEqual([{ price_at_booking: 6200 }]);
+        expect(postPayAtCheckoutCharge).toHaveBeenCalledWith(
+          expect.objectContaining({ actualTotal: 6200 })
+        );
+      });
+
+      it('leaves the bill alone when the pet stays exactly the booked nights', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-09T01:00:00Z')); // 6 nights
+
+        queueLongStay();
+
+        await checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' });
+
+        expect(itemUpdates).toEqual([]);
+        expect(postPayAtCheckoutCharge).toHaveBeenCalledWith(
+          expect.objectContaining({ actualTotal: 4500 })
+        );
+      });
+
+      it('still a long stay when it ends early but at 5 nights or more: prorated at the long-stay rate', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-08T01:00:00Z')); // 5 nights
+
+        queueLongStay();
+
+        await checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' });
+
+        expect(itemUpdates).toEqual([{ price_at_booking: 3750 }]); // 5 x 750
+      });
+
+      it('no longer a long stay when it ends under 5 nights: every night is the regular rate', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-06T01:00:00Z')); // 3 nights
+
+        queueLongStay();
+
+        await checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' });
+
+        expect(itemUpdates).toEqual([{ price_at_booking: 2550 }]); // 3 x 850
+      });
+    });
+
     it('keeps the checkout and reports the problem when the bill cannot be posted', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-08-06T01:00:00Z'));
@@ -317,6 +422,54 @@ describe('checkout.service (#78)', () => {
 
       expect(result.extensionFee).toBe(1000);
       expect(result.remainingBalance).toBe(2000);
+    });
+
+    it('Hotel long-stay rate: an overdue day is charged at the regular nightly rate instead of the flat fee', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-07T09:00:00Z')); // 2 days late
+      vi.mocked(resolveBookingLongStayTerms).mockResolvedValue(
+        MAKATI_LONG_STAY
+      );
+
+      queueFromResults(
+        { data: ACTIVE_STAY, error: null },
+        noOutstandingTasksResult(),
+        ...completeBookingQueue(),
+        {
+          data: { ...ACTIVE_STAY, extension_fee: 1700 },
+          error: null,
+        },
+        { data: {}, error: null }
+      );
+
+      const result = await checkOutHotelStay({
+        stayId: 'stay-1',
+        branchId: 'branch-1',
+      });
+
+      expect(resolveBookingLongStayTerms).toHaveBeenCalledWith(
+        'booking-1',
+        'branch-1'
+      );
+      expect(result.extensionFee).toBe(1700); // 2 x 850
+      expect(result.remainingBalance).toBe(2700); // 2000 - 1000 + 1700
+    });
+
+    it('does not look up a long-stay deal for an on-time checkout', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-05T09:00:00Z'));
+
+      queueFromResults(
+        { data: ACTIVE_STAY, error: null },
+        noOutstandingTasksResult(),
+        ...completeBookingQueue(),
+        { data: { ...ACTIVE_STAY, extension_fee: null }, error: null },
+        { data: {}, error: null }
+      );
+
+      await checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' });
+
+      expect(resolveBookingLongStayTerms).not.toHaveBeenCalled();
     });
 
     it('AC-4: releases the cage back to Available in the same call', async () => {

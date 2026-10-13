@@ -38,12 +38,14 @@
 -- 1. service_branch_availability
 -- ============================================================
 
--- The Hotel service's Southwoods row is created with its own PHP 500 price
--- (per-branch service price, migration 20261006245 - whose own UPDATE finds
--- no rows yet on a fresh database). "do nothing" on conflict, so a price a
--- Superadmin later changes or clears is never overwritten.
+-- The Hotel service's Southwoods row is created with its own prices
+-- (per-branch service price): PHP 500 a night (migration 20261006245) and
+-- PHP 450 a night for a long stay (migration 20261013260) - those
+-- migrations' own UPDATEs find no rows yet on a fresh database. "do nothing"
+-- on conflict, so a price a Superadmin later changes or clears is never
+-- overwritten.
 insert into public.service_branch_availability
-  (service_id, branch_id, is_available, price_override)
+  (service_id, branch_id, is_available, price_override, long_stay_price_override)
 select
   s.id,
   b.id,
@@ -51,6 +53,10 @@ select
   case
     when s.id = 'a1300000-0000-4000-a000-000000000024' and b.name = 'Southwoods'
       then 500.00
+  end,
+  case
+    when s.id = 'a1300000-0000-4000-a000-000000000024' and b.name = 'Southwoods'
+      then 450.00
   end
 from public.services as s
 cross join public.branches as b
