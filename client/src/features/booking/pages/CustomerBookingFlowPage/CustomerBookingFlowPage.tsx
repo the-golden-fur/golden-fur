@@ -2469,12 +2469,15 @@ export function CustomerBookingFlowPage() {
         packageIds: [packageId],
       }));
     } else {
+      // Only one package per booking, even in the multi-select categories -
+      // picking another replaces the current one. Individual services stay
+      // selectable alongside it (minus the ones the package already covers).
       updateCategorySelection(category, (current) => ({
         ...current,
         serviceIds: current.serviceIds.filter(
           (id) => !packageMemberServiceIds(packageId).has(id)
         ),
-        packageIds: [...current.packageIds, packageId],
+        packageIds: [packageId],
       }));
     }
   }
@@ -3605,6 +3608,12 @@ export function CustomerBookingFlowPage() {
                 {category === 'Hotel'
                   ? 'One cage per booking - selecting another will replace your current pick.'
                   : 'One session per booking - selecting another will replace your current pick.'}
+              </p>
+            ) : selectionMode === 'package' &&
+              packagesForCategory.length > 1 ? (
+              <p className={styles.copy}>
+                One package per booking - selecting another will replace your
+                current pick.
               </p>
             ) : null}
 

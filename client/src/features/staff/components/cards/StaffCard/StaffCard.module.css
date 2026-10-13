@@ -16,6 +16,49 @@
   box-shadow: var(--shadow-md);
 }
 
+/* Clickable variant: the name is the real button and its ::after covers the
+   whole card, so a click anywhere on the card opens it while the markup
+   stays a plain article + heading. */
+.clickable {
+  position: relative;
+  cursor: pointer;
+}
+
+.clickable:hover {
+  border-color: var(--color-accent-gold-primary);
+}
+
+.clickable:has(.nameButton:focus-visible) {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.nameButton {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nameButton:focus-visible {
+  outline: none;
+}
+
+.nameButton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
 .header {
   display: flex;
   align-items: center;

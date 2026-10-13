@@ -114,6 +114,16 @@ function requireNoDuplicateItems(
       message: 'Duplicate services or packages are not allowed in one booking',
     });
   }
+
+  // A booking holds at most one package (any number of individual services
+  // may still sit alongside it) - mirrors togglePackageSelect on the client.
+  if (new Set(packageIds).size > 1) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['items'],
+      message: 'Only one package can be selected per booking',
+    });
+  }
 }
 
 /**

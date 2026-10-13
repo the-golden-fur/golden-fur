@@ -1988,6 +1988,39 @@ describe('CustomerBookingFlowPage', () => {
     expect(bathCard?.className).not.toMatch(/selected/);
   });
 
+  it('only one package can be picked - selecting another replaces the current one', async () => {
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, HOTEL_SERVICE],
+        packages: [
+          GOLDEN_PACKAGE,
+          { ...GOLDEN_PACKAGE, id: 'package-silver-1', name: 'Silver Package' },
+        ],
+        promos: [],
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToServicesStep(user);
+    await user.click(bookingForm().getByText('Grooming'));
+
+    await waitFor(() =>
+      expect(bookingForm().getByText('Package')).toBeInTheDocument()
+    );
+    await user.click(bookingForm().getByText('Package'));
+    await user.click(bookingForm().getByText('Golden Package'));
+    await user.click(bookingForm().getByText('Silver Package'));
+
+    expect(
+      bookingForm().getByText('Silver Package').closest('button')
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      bookingForm().getByText('Golden Package').closest('button')
+    ).toHaveAttribute('aria-pressed', 'false');
+  });
+
   // Browser-close-safe draft autosave/restore - keyed off the signed-in
   // customer's own id (renderPage's user.id is 'cust-1'), matching
   // bookingDraftStorageKey's customer-mode branch.
