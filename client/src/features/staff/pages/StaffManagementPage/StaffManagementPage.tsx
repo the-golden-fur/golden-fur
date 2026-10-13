@@ -40,6 +40,7 @@ import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import { listStaff } from '../../api/staff.api';
 import { UnavailabilityBlockBadge } from '../../components/badges/UnavailabilityBlockBadge/UnavailabilityBlockBadge';
+import { StaffDetailsPanel } from '../../components/StaffDetailsPanel/StaffDetailsPanel';
 import { StaffCard } from '../../components/cards/StaffCard/StaffCard';
 import { CreateStaffAccountForm } from '../../components/forms/CreateStaffAccountForm/CreateStaffAccountForm';
 import { ManageStaffAccountForm } from '../../components/forms/ManageStaffAccountForm/ManageStaffAccountForm';
@@ -110,6 +111,9 @@ export function StaffManagementPage() {
   const [expandedManageStaffId, setExpandedManageStaffId] = useState<
     string | null
   >(null);
+  // Read-only details modal - opened by clicking a card (Gallery/Board) or a
+  // name (Table/List), same idea as Customer Management's overview.
+  const [detailsStaffId, setDetailsStaffId] = useState<string | null>(null);
   const [blockRefreshKeys, setBlockRefreshKeys] = useState<
     Record<string, number>
   >({});
@@ -268,10 +272,15 @@ export function StaffManagementPage() {
     setExpandedManageStaffId((current) =>
       current === archivedId ? null : current
     );
+    setDetailsStaffId((current) => (current === archivedId ? null : current));
   };
 
   function staffActionItems(staff: StaffProfile): MoreOptionsMenuItem[] {
     return [
+      {
+        label: 'View details',
+        onSelect: () => setDetailsStaffId(staff.id),
+      },
       {
         label: 'Set day(s) off',
         onSelect: () => setExpandedStaffId(staff.id),
@@ -308,8 +317,22 @@ export function StaffManagementPage() {
           accessToken={accessToken}
           branchName={branchNameById.get(staff.branch_id)}
           refreshKey={blockRefreshKeys[staff.id]}
+          onSelect={() => setDetailsStaffId(staff.id)}
         />
       </CardContextMenu>
+    );
+  }
+
+  // Table/List: the name itself is the way into the details modal.
+  function renderStaffNameButton(staff: StaffProfile) {
+    return (
+      <button
+        type="button"
+        className={styles.staffNameButton}
+        onClick={() => setDetailsStaffId(staff.id)}
+      >
+        {staff.display_name}
+      </button>
     );
   }
 
@@ -330,7 +353,7 @@ export function StaffManagementPage() {
               {getInitials(staff.display_name)}
             </span>
           )}
-          <span className={styles.itemName}>{staff.display_name}</span>
+          {renderStaffNameButton(staff)}
         </div>
       ),
     },
@@ -357,6 +380,7 @@ export function StaffManagementPage() {
   const expandedManageStaff = staffList.find(
     (staff) => staff.id === expandedManageStaffId
   );
+  const detailsStaff = staffList.find((staff) => staff.id === detailsStaffId);
 
   if (!user?.id || !accessToken) {
     return (
@@ -515,7 +539,7 @@ export function StaffManagementPage() {
                       {getInitials(staff.display_name)}
                     </span>
                   )}
-                  <span className={styles.itemName}>{staff.display_name}</span>
+                  {renderStaffNameButton(staff)}
                   <span className={styles.roleBadge}>{staff.role}</span>
                   <span className={styles.copy}>
                     {branchNameById.get(staff.branch_id) ?? '—'}
@@ -551,6 +575,29 @@ export function StaffManagementPage() {
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={detailsStaff !== undefined}
+        title={`Staff details - ${detailsStaff?.display_name ?? ''}`}
+        onClose={() => setDetailsStaffId(null)}
+      >
+        {detailsStaff ? (
+          <StaffDetailsPanel
+            profile={detailsStaff}
+            branchName={branchNameById.get(detailsStaff.branch_id)}
+            accessToken={accessToken}
+            refreshKey={blockRefreshKeys[detailsStaff.id]}
+            onSetDaysOff={() => {
+              setDetailsStaffId(null);
+              setExpandedStaffId(detailsStaff.id);
+            }}
+            onManageAccount={() => {
+              setDetailsStaffId(null);
+              setExpandedManageStaffId(detailsStaff.id);
+            }}
+          />
+        ) : null}
+      </Modal>
 
       <Modal
         isOpen={expandedStaff !== undefined}
