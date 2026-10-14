@@ -152,7 +152,9 @@ describe('repriceBookingsAwaitingAssessment (book before assessment)', () => {
       'Grooming',
       'branch-1',
       GROOMING_BOOKING.scheduled_start,
-      GROOMING_BOOKING.scheduled_end
+      GROOMING_BOOKING.scheduled_end,
+      true,
+      true
     );
     expect(itemUpdates()).toEqual([{ price_at_booking: 425 }]);
     expect(bookingUpdate()).toMatchObject({
@@ -243,7 +245,9 @@ describe('repriceBookingsAwaitingAssessment (book before assessment)', () => {
       'Hotel',
       expect.anything(),
       expect.anything(),
-      expect.anything()
+      expect.anything(),
+      true,
+      true
     );
     expect(itemUpdates()).toEqual([]);
     expect(bookingUpdate()).toMatchObject({ total_price: 4500 });

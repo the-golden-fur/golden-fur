@@ -24,6 +24,7 @@ import { PricingMatrixEditor } from '../../components/PricingMatrixEditor/Pricin
 import {
   draftsFromCells,
   pricingCellsChanges,
+  withoutExtraLongCoat,
   type CellDrafts,
 } from '../../components/PricingMatrixEditor/pricingCellDrafts';
 import { deriveBundledPrice } from '../../utils/deriveBundledPrice';
@@ -165,6 +166,9 @@ export function AdminPackageBuilderPage() {
   const [formCatPrice, setFormCatPrice] = useState('');
   const [discountPercentInput, setDiscountPercentInput] = useState('0');
   const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
+  // Superadmin-only (optional Extra Long Coat): whether the grid has an
+  // Extra Long Coat column at all.
+  const [formHasExtraLongCoat, setFormHasExtraLongCoat] = useState(false);
   // Per-item weight x coat pricing: this package's own cell prices, as typed.
   const [formPricingCells, setFormPricingCells] = useState<CellDrafts>({});
   const [formIcon, setFormIcon] = useState<string | null>(null);
@@ -488,6 +492,7 @@ export function AdminPackageBuilderPage() {
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(false);
+    setFormHasExtraLongCoat(false);
     setFormPricingCells({});
     setFormIcon(null);
     setFormImageUrl(null);
@@ -534,6 +539,7 @@ export function AdminPackageBuilderPage() {
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(pkg.use_pricing_matrix);
+    setFormHasExtraLongCoat(Boolean(pkg.has_extra_long_coat));
     setFormPricingCells(draftsFromCells(pkg.pricing_tiers));
     setFormIcon(pkg.icon);
     setFormImageUrl(pkg.image_url);
@@ -716,7 +722,11 @@ export function AdminPackageBuilderPage() {
       isSuperadmin && formUsePricingMatrix
         ? pricingCellsChanges(
             draftsFromCells(savedPackage?.pricing_tiers),
-            formPricingCells
+            // No Extra Long Coat prices: any XLC cell typed before the
+            // switch went off isn't saved.
+            formHasExtraLongCoat
+              ? formPricingCells
+              : withoutExtraLongCoat(formPricingCells)
           )
         : { cells: [], error: null };
 
@@ -744,6 +754,7 @@ export function AdminPackageBuilderPage() {
         ...(catPrice !== null ? { cat_price: catPrice } : {}),
         branch_ids: selectedBranchIds,
         use_pricing_matrix: formUsePricingMatrix,
+        has_extra_long_coat: formHasExtraLongCoat,
         icon: formIcon,
         image_url: formImageUrl,
       });
@@ -786,6 +797,7 @@ export function AdminPackageBuilderPage() {
         ? { cat_price: catPrice }
         : {}),
       use_pricing_matrix: formUsePricingMatrix,
+      has_extra_long_coat: formHasExtraLongCoat,
       icon: formIcon,
       image_url: formImageUrl,
     });
@@ -879,6 +891,9 @@ export function AdminPackageBuilderPage() {
         ) : null}
         {pkg.use_pricing_matrix ? (
           <span className={styles.branchBadge}>Varies by weight/coat</span>
+        ) : null}
+        {pkg.use_pricing_matrix && pkg.has_extra_long_coat ? (
+          <span className={styles.branchBadge}>Extra Long Coat prices</span>
         ) : null}
       </>
     );
@@ -1292,12 +1307,22 @@ export function AdminPackageBuilderPage() {
                   {isSuperadmin ? null : ' Only a Superadmin can change this.'}
                 </p>
 
+                {formUsePricingMatrix ? (
+                  <ToggleSwitch
+                    label="Has Extra Long Coat prices (off = an extra long coat pet pays the Long Coat price)"
+                    checked={formHasExtraLongCoat}
+                    disabled={!isSuperadmin}
+                    onChange={setFormHasExtraLongCoat}
+                  />
+                ) : null}
+
                 {formUsePricingMatrix && pricingConfiguration ? (
                   <PricingMatrixEditor
                     basePrice={derivedBundledPrice}
                     configuration={pricingConfiguration}
                     drafts={formPricingCells}
                     readOnly={!isSuperadmin}
+                    showExtraLongCoat={formHasExtraLongCoat}
                     onChange={setFormPricingCells}
                   />
                 ) : null}

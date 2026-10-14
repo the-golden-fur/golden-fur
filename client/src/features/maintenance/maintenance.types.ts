@@ -213,6 +213,10 @@ export interface Service {
    * coat_type (Grooming only). Ignored for a Cat pet regardless (flat
    * base_price always). */
   use_pricing_matrix: boolean;
+  /** Optional Extra Long Coat (20261014265), Superadmin-only: off = no XLC
+   * cells in service_pricing_tiers, and an XLC pet pays the Long Coat price
+   * for its size. Optional so older fixtures/responses read as off. */
+  has_extra_long_coat?: boolean;
   /** Daycare-only: flat charge for the first hour (or less) of a session
    * on this service. NULL falls back to the documented ₱100 default. */
   first_hour_fee: number | null;
@@ -267,6 +271,9 @@ export interface Package {
    * type (pricing_tiers below) instead of the flat bundled_price above. A
    * pet type's fixed price still wins. Superadmin-only. */
   use_pricing_matrix: boolean;
+  /** Optional Extra Long Coat (20261014265) - same as
+   * Service.has_extra_long_coat, for pricing_tiers. */
+  has_extra_long_coat?: boolean;
   /** Custom change (per-item weight x coat pricing): the 8 S/M/L/XL x SC/LC
    * prices - bundled_price through the shared formula, with any cell a
    * Superadmin set for this package in its place. */
@@ -377,6 +384,7 @@ export interface CreateServicePayload {
   free_package_name?: string;
   long_stay_nightly_price?: number;
   use_pricing_matrix?: boolean;
+  has_extra_long_coat?: boolean;
   first_hour_fee?: number;
   succeeding_hour_fee?: number;
   daycare_overnight_fee?: number;
@@ -397,6 +405,7 @@ export interface UpdateServicePayload {
   free_package_name?: string | null;
   long_stay_nightly_price?: number | null;
   use_pricing_matrix?: boolean;
+  has_extra_long_coat?: boolean;
   first_hour_fee?: number | null;
   succeeding_hour_fee?: number | null;
   daycare_overnight_fee?: number | null;
@@ -428,6 +437,7 @@ export interface CreatePackagePayload {
   extras?: string[];
   cat_price?: number;
   use_pricing_matrix?: boolean;
+  has_extra_long_coat?: boolean;
   icon?: string | null;
   image_url?: string | null;
 }
@@ -443,6 +453,7 @@ export interface UpdatePackagePayload {
   /** null clears it - cats go back to the pet type's own pricing. */
   cat_price?: number | null;
   use_pricing_matrix?: boolean;
+  has_extra_long_coat?: boolean;
   icon?: string | null;
   image_url?: string | null;
 }

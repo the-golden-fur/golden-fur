@@ -17,7 +17,11 @@ import { getPricingConfiguration } from './pricingConfiguration.service.ts';
 import { deriveBundledPrice } from '../utils/deriveBundledPrice.ts';
 import { deriveGroomingMatrix } from '../utils/deriveGroomingMatrix.ts';
 import { mergePriceCells } from '../utils/mergePriceCells.ts';
-import { assertCanSetPricingMatrix } from '../utils/assertCanSetPricingMatrix.ts';
+import {
+  assertCanSetPricingMatrix,
+  EXTRA_LONG_COAT_SUPERADMIN_ONLY,
+} from '../utils/assertCanSetPricingMatrix.ts';
+import { dropExtraLongCoat } from '../utils/extraLongCoat.ts';
 import { derivePackageDuration } from '../utils/derivePackageDuration.ts';
 
 /** Postgres foreign_key_violation. */
@@ -106,9 +110,12 @@ function attachBundledPrice(
     bundled_price: bundledPrice,
     total_duration_minutes: derivePackageDuration(durations),
     package_services: links.map((link) => ({ service_id: link.service_id })),
-    pricing_tiers: mergePriceCells(
-      deriveGroomingMatrix(bundledPrice, pricingConfigurations.grooming),
-      overrides
+    pricing_tiers: dropExtraLongCoat(
+      mergePriceCells(
+        deriveGroomingMatrix(bundledPrice, pricingConfigurations.grooming),
+        overrides
+      ),
+      Boolean(rest.has_extra_long_coat)
     ),
   };
 }
@@ -243,6 +250,12 @@ export async function createPackage({
     next: input.use_pricing_matrix,
     current: false,
   });
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: input.has_extra_long_coat,
+    current: false,
+    message: EXTRA_LONG_COAT_SUPERADMIN_ONLY,
+  });
 
   const {
     service_ids: serviceIds,
@@ -304,7 +317,7 @@ export async function updatePackage({
 
   const { data: existing, error: lookupError } = await supabase
     .from('packages')
-    .select('id, use_pricing_matrix')
+    .select('id, use_pricing_matrix, has_extra_long_coat')
     .eq('id', packageId)
     .maybeSingle();
 
@@ -315,6 +328,12 @@ export async function updatePackage({
     requesterRole,
     next: updates.use_pricing_matrix,
     current: Boolean(existing.use_pricing_matrix),
+  });
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: updates.has_extra_long_coat,
+    current: Boolean(existing.has_extra_long_coat),
+    message: EXTRA_LONG_COAT_SUPERADMIN_ONLY,
   });
 
   if (serviceIds) {

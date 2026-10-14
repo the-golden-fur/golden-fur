@@ -18,17 +18,21 @@ export function assertCanSetPricingMatrix({
   requesterRole,
   next,
   current,
+  message = 'Only a Superadmin can change whether a price varies by weight class and coat type',
 }: {
   requesterRole: string | undefined;
   /** The value being saved; undefined = not being changed. */
   next: boolean | undefined;
   current: boolean;
+  /** The 403 message - also reused for has_extra_long_coat (20261014265),
+   * another per-item pricing switch with the same Superadmin-only rule. */
+  message?: string;
 }): void {
   if (requesterRole === undefined || requesterRole === 'Superadmin') return;
   if (next === undefined || next === current) return;
 
-  throwWithStatus(
-    403,
-    'Only a Superadmin can change whether a price varies by weight class and coat type'
-  );
+  throwWithStatus(403, message);
 }
+
+export const EXTRA_LONG_COAT_SUPERADMIN_ONLY =
+  'Only a Superadmin can change whether a price has Extra Long Coat prices';

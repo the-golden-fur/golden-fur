@@ -19,6 +19,7 @@ import { PricingMatrixEditor } from '../../components/PricingMatrixEditor/Pricin
 import {
   draftsFromCells,
   pricingCellsChanges,
+  withoutExtraLongCoat,
   type CellDrafts,
 } from '../../components/PricingMatrixEditor/pricingCellDrafts';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
@@ -106,6 +107,9 @@ interface ServiceFormState {
    * as typed. '' (or no entry) = the branch uses longStayPrice. */
   branchLongStayPrices: Record<string, string>;
   usePricingMatrix: boolean;
+  /** Superadmin-only (optional Extra Long Coat): whether the grid has an
+   * Extra Long Coat column at all. */
+  hasExtraLongCoat: boolean;
   firstHourFee: string;
   succeedingHourFee: string;
   daycareOvernightFee: string;
@@ -133,6 +137,7 @@ const EMPTY_FORM: ServiceFormState = {
   longStayPrice: '',
   branchLongStayPrices: {},
   usePricingMatrix: false,
+  hasExtraLongCoat: false,
   firstHourFee: '',
   succeedingHourFee: '',
   daycareOvernightFee: '',
@@ -167,6 +172,7 @@ function formStateFromService(service: Service): ServiceFormState {
         .map((row) => [row.branch_id, String(row.long_stay_price_override)])
     ),
     usePricingMatrix: service.use_pricing_matrix,
+    hasExtraLongCoat: Boolean(service.has_extra_long_coat),
     firstHourFee:
       service.first_hour_fee === null ? '' : String(service.first_hour_fee),
     succeedingHourFee:
@@ -689,7 +695,11 @@ export function AdminServicesPage() {
       form.usePricingMatrix
         ? pricingCellsChanges(
             draftsFromCells(savedService?.service_pricing_tiers),
-            form.pricingCells
+            // No Extra Long Coat prices: any XLC cell typed before the
+            // switch went off isn't saved.
+            form.hasExtraLongCoat
+              ? form.pricingCells
+              : withoutExtraLongCoat(form.pricingCells)
           )
         : { cells: [], error: null };
 
@@ -748,6 +758,7 @@ export function AdminServicesPage() {
         requires_assessed_pet: form.requiresAssessedPet,
         captures_pet_assessment: form.capturesPetAssessment,
         use_pricing_matrix: form.usePricingMatrix,
+        has_extra_long_coat: form.hasExtraLongCoat,
         icon: form.icon,
         image_url: form.imageUrl,
         ...(form.category !== 'Daycare' ? { base_price: basePrice } : {}),
@@ -814,6 +825,7 @@ export function AdminServicesPage() {
           }
         : {}),
       use_pricing_matrix: form.usePricingMatrix,
+      has_extra_long_coat: form.hasExtraLongCoat,
       first_hour_fee: firstHourFee ?? null,
       succeeding_hour_fee: succeedingHourFee ?? null,
       daycare_overnight_fee: daycareOvernightFee ?? null,
@@ -879,6 +891,11 @@ export function AdminServicesPage() {
         ) : null}
         {service.category === 'Grooming' && service.use_pricing_matrix ? (
           <span className={styles.categoryBadge}>Varies by weight/coat</span>
+        ) : null}
+        {service.category === 'Grooming' &&
+        service.use_pricing_matrix &&
+        service.has_extra_long_coat ? (
+          <span className={styles.categoryBadge}>Extra Long Coat prices</span>
         ) : null}
         {service.min_nights_for_free_package &&
         service.long_stay_nightly_price != null ? (
@@ -1257,6 +1274,19 @@ export function AdminServicesPage() {
                       }))
                     }
                   />
+                  {form.usePricingMatrix ? (
+                    <ToggleSwitch
+                      label="Has Extra Long Coat prices (off = an extra long coat pet pays the Long Coat price)"
+                      checked={form.hasExtraLongCoat}
+                      disabled={!canSetBranchPrices}
+                      onChange={(checked) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          hasExtraLongCoat: checked,
+                        }))
+                      }
+                    />
+                  ) : null}
                   {!canSetBranchPrices ? (
                     <p className={styles.fieldHint}>
                       Only a Superadmin can change this.
@@ -1273,6 +1303,7 @@ export function AdminServicesPage() {
                   configuration={pricingConfiguration}
                   drafts={form.pricingCells}
                   readOnly={!canSetBranchPrices}
+                  showExtraLongCoat={form.hasExtraLongCoat}
                   onChange={(pricingCells) =>
                     setForm((prev) => ({ ...prev, pricingCells }))
                   }

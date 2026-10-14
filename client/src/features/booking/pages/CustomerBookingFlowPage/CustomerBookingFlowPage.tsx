@@ -18,18 +18,22 @@ import {
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import {
+  findPetCell,
   isPricedByPetCell,
   packageFixedPriceForPet,
   packagePriceForPet,
+  variesByWeightAndCoat,
   withLongStayPrice,
   servicePriceForPet,
 } from '../../utils/petMatrixPrice';
+import { PriceMatrixTable } from '../../components/PriceMatrixTable/PriceMatrixTable';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
 import { CustomerPicker } from '../../components/CustomerPicker/CustomerPicker';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type {
   BranchSummary,
   Package,
+  PricingCell,
   Promo,
   Service,
   ServiceType,
@@ -272,6 +276,13 @@ interface SubBookingDraft {
    * `itemsTotal` at commit time. Summed across every entry for the shared
    * Review step's group pricing. */
   itemsSubtotal: number;
+  /** The same subtotal without the Hotel long-stay rate - what it costs if
+   * the checkout is paid at checkout, which never gets that rate. Absent on
+   * a draft saved before this existed (itemsSubtotal is used instead). */
+  itemsSubtotalRegular?: number;
+  /** The free package this Hotel stay unlocks at its length (null when
+   * none) - lost when the checkout is paid at checkout. */
+  longStayFreePackage?: string | null;
   /** Book before assessment: this booking is for a pet staff have not
    * assessed yet and includes something priced by size/coat, so
    * itemsSubtotal is only an estimate - nothing is paid online and it is
@@ -329,10 +340,16 @@ const DAYCARE_HOUR_PRESETS = [2, 4];
 const MAX_DAYCARE_HOURS = 12;
 
 /** Per-item weight x coat pricing: the line under a card whose price is the
- * pet's own weight x coat price, e.g. "Price for Large (L), Long Coat". */
-function petCellHint(pet: Pick<Pet, 'weight_class' | 'coat_type'>): string {
+ * pet's own weight x coat price, e.g. "Price for Large (L), Long Coat".
+ * Names the coat of the cell actually charged (findPetCell) - an Extra Long
+ * Coat pet on an item with no XLC prices reads "Long coat". */
+function petCellHint(
+  pet: Pick<Pet, 'weight_class' | 'coat_type'>,
+  cells: PricingCell[] | undefined
+): string {
   if (!pet.weight_class || !pet.coat_type) return '';
-  return `Price for ${WEIGHT_CLASS_LABEL[pet.weight_class]} (${pet.weight_class}), ${COAT_TYPE_LABEL[pet.coat_type]}`;
+  const coatType = findPetCell(cells, pet)?.coat_type ?? pet.coat_type;
+  return `Price for ${WEIGHT_CLASS_LABEL[pet.weight_class]} (${pet.weight_class}), ${COAT_TYPE_LABEL[coatType]}`;
 }
 
 /** What a Daycare booking costs for the hours booked: the service's own
@@ -1862,14 +1879,18 @@ export function CustomerBookingFlowPage() {
   // Hotel long-stay rate: once enough nights are chosen the Hotel service's
   // nightly price drops to its long-stay price (withLongStayPrice), again
   // exactly as the server does.
-  const itemsTotal =
+  //
+  // Pay at checkout never gets the long-stay rate, so the same total is also
+  // worked out without it (longStay = false) - the Review step uses that one
+  // once "Pay at checkout" is picked.
+  const itemsTotalFor = (longStay: boolean) =>
     (selectedServices.reduce(
       (sum, service) =>
         sum +
         (category === 'Daycare'
           ? daycareBookingPrice(service, daycareHours)
           : servicePriceForPet(
-              withLongStayPrice(service, hotelNights),
+              longStay ? withLongStayPrice(service, hotelNights) : service,
               selectedPet,
               serviceFixedPrice
             )),
@@ -1881,6 +1902,19 @@ export function CustomerBookingFlowPage() {
         0
       )) *
     hotelNightsMultiplier;
+  const itemsTotal = itemsTotalFor(true);
+
+  // The free package this Hotel stay unlocks at its length - lost with pay
+  // at checkout (mirrors resolveFreePackageAward).
+  const longStayFreePackage =
+    category === 'Hotel'
+      ? (selectedServices.find(
+          (service) =>
+            service.free_package_name &&
+            service.min_nights_for_free_package &&
+            hotelNights >= service.min_nights_for_free_package
+        )?.free_package_name ?? null)
+      : null;
 
   // ---- Multi-booking checkout: group-level pricing (Review step) ----
   //
@@ -1921,9 +1955,62 @@ export function CustomerBookingFlowPage() {
     () => new Set(payableBookings.map((entry) => entry.category)),
     [payableBookings]
   );
-  const groupSubtotal = useMemo(
-    () => payableBookings.reduce((sum, entry) => sum + entry.itemsSubtotal, 0),
-    [payableBookings]
+  // The payment scheme, decided before any group pricing below because pay
+  // at checkout changes what a Hotel stay costs (no long-stay rate).
+  //
+  // Walk-in booking flow: createBooking forces downpayment_required=false
+  // for a Walk-in booking regardless of policy_configurations - mirrored
+  // here as "skip only if EVERY booking in the list is Walk-in".
+  const downpaymentRequired =
+    payableBookings.some((entry) => entry.bookingSource !== 'Walk-in') &&
+    (downpaymentStatus?.downpayment_enabled ?? false);
+  // Shown whenever the branch requires a down payment: the customer picks
+  // whether the checkout's initial charge is the down payment (balance
+  // recorded later at the counter) or the full amount. No payment method is
+  // chosen here any more - that happens per transaction on the Transactions
+  // page.
+  //
+  // Pay at checkout: a third scheme, offered only to staff for a checkout
+  // made up entirely of walk-in Hotel/Daycare bookings (see paymentChoice.ts
+  // - a walk-in never has a down payment, so there it sits beside "Full
+  // payment" alone).
+  const payAtCheckoutAvailable = isPayAtCheckoutAvailable({
+    isStaff: isReceptionistMode,
+    enabled: downpaymentStatus?.pay_at_checkout_enabled ?? false,
+    bookings: payableBookings,
+  });
+  const effectivePaymentChoice = resolvePaymentChoice(paymentChoice, {
+    downpaymentRequired,
+    payAtCheckoutAvailable,
+  });
+  const payingAtCheckout = effectivePaymentChoice === 'pay_at_checkout';
+
+  /** A list entry's subtotal for the chosen payment scheme: pay at checkout
+   * never gets the Hotel long-stay rate (the server prices it the same way -
+   * resolveBookingItems' applyLongStayRate), so every night is the regular
+   * price there. */
+  function entrySubtotal(entry: SubBookingDraft): number {
+    return payingAtCheckout
+      ? (entry.itemsSubtotalRegular ?? entry.itemsSubtotal)
+      : entry.itemsSubtotal;
+  }
+
+  // Whether pay at checkout costs any booking in the list its long-stay
+  // rate or free package - drives the note on the Review step.
+  const payAtCheckoutLosesLongStay =
+    payingAtCheckout &&
+    payableBookings.some(
+      (entry) =>
+        (entry.itemsSubtotalRegular ?? entry.itemsSubtotal) !==
+          entry.itemsSubtotal || Boolean(entry.longStayFreePackage)
+    );
+  const payAtCheckoutLostFreePackage =
+    payingAtCheckout &&
+    payableBookings.some((entry) => Boolean(entry.longStayFreePackage));
+
+  const groupSubtotal = payableBookings.reduce(
+    (sum, entry) => sum + entrySubtotal(entry),
+    0
   );
 
   // Selectable at the payment step (booking-time discount/promo revision) -
@@ -2130,29 +2217,12 @@ export function CustomerBookingFlowPage() {
   // (no slot-holding risk - the customer/pet is already here); mirrored
   // here as "skip only if EVERY booking in the list is Walk-in" - a group
   // with even one Online booking still needs the down-payment decision.
-  const downpaymentRequired =
-    payableBookings.some((entry) => entry.bookingSource !== 'Walk-in') &&
-    (downpaymentStatus?.downpayment_enabled ?? false);
+  // (downpaymentRequired itself is computed above groupSubtotal.)
   const downpaymentAmount = downpaymentRequired
     ? downpaymentStatus?.downpayment_type === 'Percentage'
       ? estimatedTotal * ((downpaymentStatus.downpayment_amount ?? 0) / 100)
       : Math.min(downpaymentStatus?.downpayment_amount ?? 0, estimatedTotal)
     : null;
-  // Shown whenever the branch requires a down payment: the customer picks
-  // whether the checkout's initial charge is the down payment (balance
-  // recorded later at the counter) or the full amount. No payment method is
-  // chosen here any more - that happens per transaction on the Transactions
-  // page.
-  //
-  // Pay at checkout: a third scheme, offered only to staff for a checkout
-  // made up entirely of walk-in Hotel/Daycare bookings (see paymentChoice.ts
-  // - a walk-in never has a down payment, so there it sits beside "Full
-  // payment" alone).
-  const payAtCheckoutAvailable = isPayAtCheckoutAvailable({
-    isStaff: isReceptionistMode,
-    enabled: downpaymentStatus?.pay_at_checkout_enabled ?? false,
-    bookings: payableBookings,
-  });
   // An Initial Assessment has no payment scheme to choose - it's the pet's
   // onsite first check, not a slot held by a down payment. Only when EVERY
   // booking in the list is one: a mixed group still needs the decision.
@@ -2161,11 +2231,6 @@ export function CustomerBookingFlowPage() {
     payableBookings.every((entry) => entry.category === 'Assessment');
   const showPaymentChoice =
     !isAssessmentOnly && (downpaymentRequired || payAtCheckoutAvailable);
-  const effectivePaymentChoice = resolvePaymentChoice(paymentChoice, {
-    downpaymentRequired,
-    payAtCheckoutAvailable,
-  });
-  const payingAtCheckout = effectivePaymentChoice === 'pay_at_checkout';
 
   // ---- Steps ----
 
@@ -2869,6 +2934,8 @@ export function CustomerBookingFlowPage() {
       hotelUniformInstructions,
       hotelPreferencesPayload,
       itemsSubtotal: itemsTotal,
+      itemsSubtotalRegular: itemsTotalFor(false),
+      longStayFreePackage,
       awaitingAssessment: currentBookingAwaitsAssessment,
     };
 
@@ -3815,8 +3882,22 @@ export function CustomerBookingFlowPage() {
                     service.id
                   );
                   const isDisabled = coveredByPackageName !== undefined;
+                  // Book before assessment: a grid-priced card can't show
+                  // this pet's own price yet - say it may vary and offer the
+                  // full weight x coat table behind an ⓘ.
+                  const showMatrixInfo =
+                    Boolean(selectedPet) &&
+                    !isSelectedPetAssessed &&
+                    variesByWeightAndCoat(
+                      {
+                        use_pricing_matrix: service.use_pricing_matrix,
+                        category: service.category,
+                        cells: service.service_pricing_tiers,
+                      },
+                      serviceFixedPrice
+                    );
 
-                  return (
+                  const card = (
                     <button
                       key={service.id}
                       type="button"
@@ -3828,7 +3909,11 @@ export function CustomerBookingFlowPage() {
                       } ${isDisabled ? styles.readOnly : ''}`}
                       onClick={() => toggleServiceSelect(service.id)}
                     >
-                      <span className={styles.optionTitleRow}>
+                      <span
+                        className={`${styles.optionTitleRow} ${
+                          showMatrixInfo ? styles.optionTitleRowWithInfo : ''
+                        }`}
+                      >
                         <span className={styles.optionTitle}>
                           {service.name}
                         </span>
@@ -3865,7 +3950,10 @@ export function CustomerBookingFlowPage() {
                         serviceFixedPrice
                       ) ? (
                         <span className={styles.optionMeta}>
-                          {petCellHint(selectedPet)}
+                          {petCellHint(
+                            selectedPet,
+                            service.service_pricing_tiers
+                          )}
                         </span>
                       ) : null}
                       {category === 'Hotel' && longStayNote(service) ? (
@@ -3889,7 +3977,37 @@ export function CustomerBookingFlowPage() {
                           Included in {coveredByPackageName}
                         </span>
                       ) : null}
+                      {showMatrixInfo ? (
+                        <span className={styles.priceVariesNote}>
+                          Prices may vary with coat length and weight
+                        </span>
+                      ) : null}
                     </button>
+                  );
+
+                  if (!showMatrixInfo) return card;
+
+                  // The ⓘ is a sibling of the card <button>, not a child - a
+                  // button can't nest inside a button.
+                  return (
+                    <div key={service.id} className={styles.infoCardWrap}>
+                      {card}
+                      <span className={styles.infoCardBadge}>
+                        <InfoPopover label={`Full prices for ${service.name}`}>
+                          <span className={styles.priceInfoIntro}>
+                            The final price is set when {selectedPet?.name} is
+                            assessed at the branch.
+                          </span>
+                          <PriceMatrixTable
+                            cells={service.service_pricing_tiers}
+                            fallbackPrice={service.base_price}
+                            showExtraLongCoat={Boolean(
+                              service.has_extra_long_coat
+                            )}
+                          />
+                        </InfoPopover>
+                      </span>
+                    </div>
                   );
                 })}
               </div>
@@ -3903,8 +4021,25 @@ export function CustomerBookingFlowPage() {
                 ) : null}
                 {visiblePackagesForCategory.map((pkg) => {
                   const isChecked = selectedPackageIds.includes(pkg.id);
+                  // Book before assessment - same ⓘ price table as the
+                  // service cards. A cat's own package price is flat, so a
+                  // cat never gets it.
+                  const showMatrixInfo =
+                    Boolean(selectedPet) &&
+                    !isSelectedPetAssessed &&
+                    variesByWeightAndCoat(
+                      {
+                        use_pricing_matrix: pkg.use_pricing_matrix,
+                        cells: pkg.pricing_tiers,
+                      },
+                      packageFixedPriceForPet(
+                        pkg,
+                        selectedPet,
+                        catalogFixedPrice
+                      )
+                    );
 
-                  return (
+                  const card = (
                     <button
                       key={pkg.id}
                       type="button"
@@ -3914,7 +4049,13 @@ export function CustomerBookingFlowPage() {
                       }`}
                       onClick={() => togglePackageSelect(pkg.id)}
                     >
-                      <span className={styles.optionTitle}>{pkg.name}</span>
+                      <span
+                        className={`${styles.optionTitle} ${
+                          showMatrixInfo ? styles.optionTitleRowWithInfo : ''
+                        }`}
+                      >
+                        {pkg.name}
+                      </span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
                           ? `PHP ${packagePriceForPet(pkg, selectedPet, catalogFixedPrice).toFixed(2)}/night`
@@ -3936,7 +4077,7 @@ export function CustomerBookingFlowPage() {
                         )
                       ) ? (
                         <span className={styles.optionMeta}>
-                          {petCellHint(selectedPet)}
+                          {petCellHint(selectedPet, pkg.pricing_tiers)}
                         </span>
                       ) : null}
                       {category !== 'Hotel' ? (
@@ -3959,7 +4100,33 @@ export function CustomerBookingFlowPage() {
                           <li key={`extra:${extra}`}>{extra}</li>
                         ))}
                       </ul>
+                      {showMatrixInfo ? (
+                        <span className={styles.priceVariesNote}>
+                          Prices may vary with coat length and weight
+                        </span>
+                      ) : null}
                     </button>
+                  );
+
+                  if (!showMatrixInfo) return card;
+
+                  return (
+                    <div key={pkg.id} className={styles.infoCardWrap}>
+                      {card}
+                      <span className={styles.infoCardBadge}>
+                        <InfoPopover label={`Full prices for ${pkg.name}`}>
+                          <span className={styles.priceInfoIntro}>
+                            The final price is set when {selectedPet?.name} is
+                            assessed at the branch.
+                          </span>
+                          <PriceMatrixTable
+                            cells={pkg.pricing_tiers}
+                            fallbackPrice={pkg.bundled_price}
+                            showExtraLongCoat={Boolean(pkg.has_extra_long_coat)}
+                          />
+                        </InfoPopover>
+                      </span>
+                    </div>
                   );
                 })}
               </div>
@@ -4652,7 +4819,7 @@ export function CustomerBookingFlowPage() {
                     <span>
                       {entry.awaitingAssessment ? 'Estimate' : 'Subtotal'}
                     </span>
-                    <span>PHP {entry.itemsSubtotal.toFixed(2)}</span>
+                    <span>PHP {entrySubtotal(entry).toFixed(2)}</span>
                   </div>
                   {entry.awaitingAssessment ? (
                     <p className={styles.copy}>
@@ -4699,6 +4866,16 @@ export function CustomerBookingFlowPage() {
                   <span>Estimated total</span>
                   <span>PHP {estimatedTotal.toFixed(2)}</span>
                 </div>
+              ) : null}
+              {payAtCheckoutLosesLongStay ? (
+                <p className={styles.copy}>
+                  The long-stay rate doesn&apos;t apply to pay at checkout -
+                  every night is the regular price
+                  {payAtCheckoutLostFreePackage
+                    ? ', and there is no free package'
+                    : ''}
+                  .
+                </p>
               ) : null}
               {awaitingAssessmentBookings.length > 0 ? (
                 <div className={styles.pricingRowTotal}>
@@ -5037,11 +5214,11 @@ export function CustomerBookingFlowPage() {
         ? formatSlotStart(entry.selectedSlot.start)
         : 'No date/time selected',
     ],
-    subtotal: entry.itemsSubtotal,
+    subtotal: entrySubtotal(entry),
   }));
 
   const summarySubtotal =
-    bookingsList.reduce((sum, entry) => sum + entry.itemsSubtotal, 0) +
+    bookingsList.reduce((sum, entry) => sum + entrySubtotal(entry), 0) +
     itemsTotal;
 
   return (

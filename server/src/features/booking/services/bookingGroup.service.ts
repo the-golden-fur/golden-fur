@@ -280,6 +280,7 @@ export async function createBookingGroup({
       claimedStaffWindows,
       claimedCageWindows,
       claimedPetWindows,
+      payAtCheckout,
     });
 
     resolvedSubBookings.push(resolved);
@@ -669,6 +670,8 @@ interface ResolveSubBookingParams {
   claimedStaffWindows: Map<string, Array<{ start: number; end: number }>>;
   claimedCageWindows: Map<string, Array<{ start: number; end: number }>>;
   claimedPetWindows: Map<string, Array<{ start: number; end: number }>>;
+  /** Pay at checkout: no long-stay rate and no free package (20261013260). */
+  payAtCheckout: boolean;
 }
 
 /** One sub-booking's worth of createBooking's own pipeline (pet ownership ->
@@ -687,6 +690,7 @@ async function resolveSubBooking({
   claimedStaffWindows,
   claimedCageWindows,
   claimedPetWindows,
+  payAtCheckout,
 }: ResolveSubBookingParams): Promise<ResolvedSubBooking> {
   const { data: petRow, error: petError } = await supabase
     .from('pets')
@@ -717,11 +721,14 @@ async function resolveSubBooking({
     subInput.service_category,
     branchId,
     subInput.scheduled_start,
-    subInput.scheduled_end
+    subInput.scheduled_end,
+    true,
+    !payAtCheckout
   );
 
   const freePackageAward = await resolveFreePackageAward({
     pet_id: subInput.pet_id,
+    payment_scheme: payAtCheckout ? 'pay_at_checkout' : undefined,
     branch_id: branchId,
     service_category: subInput.service_category,
     items: subInput.items,

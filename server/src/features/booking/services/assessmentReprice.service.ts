@@ -79,7 +79,10 @@ async function repriceOne(booking: Booking, pet: AssessedPet): Promise<number> {
     booking.service_category,
     booking.branch_id,
     booking.scheduled_start,
-    booking.scheduled_end
+    booking.scheduled_end,
+    true,
+    // Pay at checkout never gets the Hotel long-stay rate.
+    !booking.pay_at_checkout
   );
 
   let totalPrice = 0;

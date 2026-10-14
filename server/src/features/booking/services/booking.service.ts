@@ -7,8 +7,12 @@ import {
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
-import { nightlyPriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
+import {
+  nightlyPriceAtBranch,
+  servicePriceAtBranch,
+} from '../../maintenance/utils/branchServicePrice.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
+import { findPetCell } from '../../maintenance/utils/extraLongCoat.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import {
@@ -150,10 +154,9 @@ export function resolveServicePrice(
   if (fixedPriceOverride !== null) return fixedPriceOverride;
 
   if (service.category === 'Grooming' && service.use_pricing_matrix) {
-    const tier = (service.service_pricing_tiers ?? []).find(
-      (row) =>
-        row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
-    );
+    // Optional Extra Long Coat (20261014265): an XLC pet on a service with
+    // no XLC prices pays its size's Long Coat cell.
+    const tier = findPetCell(service.service_pricing_tiers, pet);
 
     if (tier) return Number(tier.price);
   }
@@ -219,7 +222,8 @@ async function resolveBookingItem(
   scheduledStart: string,
   scheduledEnd: string,
   fixedPriceOverride: number | null,
-  enforceAssessmentGate: boolean
+  enforceAssessmentGate: boolean,
+  applyLongStayRate: boolean
 ): Promise<ResolvedBookingItem> {
   if ('service_id' in itemInput) {
     const service = await getServiceById(itemInput.service_id);
@@ -307,7 +311,11 @@ async function resolveBookingItem(
         resolveServicePrice(
           {
             ...service,
-            base_price: nightlyPriceAtBranch(service, branchId, quantity),
+            // Pay at checkout never gets the long-stay rate - every night
+            // is the branch's regular price.
+            base_price: applyLongStayRate
+              ? nightlyPriceAtBranch(service, branchId, quantity)
+              : servicePriceAtBranch(service, branchId),
           },
           pet,
           serviceFixedPrice
@@ -440,10 +448,8 @@ export async function resolvePackagePrice(
 
   // Per-item weight x coat pricing: the package's own cells (formula, with
   // any Superadmin-set cell in its place) - attached by getPackageById.
-  const cell = (pkg.pricing_tiers ?? []).find(
-    (row) =>
-      row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
-  );
+  // An XLC pet on a package with no XLC prices pays the Long Coat cell.
+  const cell = findPetCell(pkg.pricing_tiers, pet);
 
   return cell ? Number(cell.price) : Number(pkg.bundled_price);
 }
@@ -464,7 +470,14 @@ export async function resolveBookingItems(
    * price functions fall back to anyway (base/package price, no size or coat
    * cell) and the booking is marked awaiting assessment.
    */
-  enforceAssessmentGate = true
+  enforceAssessmentGate = true,
+  /**
+   * Hotel long-stay rate (20261013260): whether a stay booked for the
+   * long-stay night count gets the cheaper nightly price. False for a
+   * pay-at-checkout booking - it never gets the long-stay rate (or the free
+   * package), every night is the regular price.
+   */
+  applyLongStayRate = true
 ): Promise<ResolvedBookingItem[]> {
   const resolved: ResolvedBookingItem[] = [];
 
@@ -492,7 +505,8 @@ export async function resolveBookingItems(
         scheduledStart,
         scheduledEnd,
         fixedPriceOverride,
-        enforceAssessmentGate
+        enforceAssessmentGate,
+        applyLongStayRate
       )
     );
   }
@@ -527,6 +541,9 @@ export async function resolveFreePackageAward(
   input: CreateBookingInput
 ): Promise<FreePackageAward | null> {
   if (input.service_category !== 'Hotel') return null;
+  // A pay-at-checkout stay gets no long-stay perks: no cheaper nightly rate
+  // (resolveBookingItems) and no free package.
+  if (input.payment_scheme === 'pay_at_checkout') return null;
 
   const hotelServiceItem = input.items.find(
     (item): item is { service_id: string } => 'service_id' in item
@@ -1095,7 +1112,8 @@ export async function createBooking({
     // Book before assessment (20261013264): an Online booking may be made
     // for a pet staff have not assessed yet. A Walk-in still may not - the
     // pet is at the counter, so staff assess it first.
-    bookingSource !== 'Online'
+    bookingSource !== 'Online',
+    !payAtCheckout
   );
 
   // The booking is "awaiting assessment" when the pet is unassessed AND at

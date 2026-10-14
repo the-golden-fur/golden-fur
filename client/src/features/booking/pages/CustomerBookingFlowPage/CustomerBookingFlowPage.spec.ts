@@ -762,6 +762,110 @@ describe('CustomerBookingFlowPage', () => {
       expect(bookingForm().getByText('Golden Package')).toBeInTheDocument();
     });
 
+    it('a weight x coat priced card says its price may vary and its ⓘ shows the full price table', async () => {
+      const cells = [
+        { weight_class: 'S' as const, coat_type: 'SC' as const, price: 300 },
+        { weight_class: 'M' as const, coat_type: 'SC' as const, price: 420 },
+        { weight_class: 'XL' as const, coat_type: 'XLC' as const, price: 990 },
+      ].map((cell) => ({ ...cell, is_custom: true }));
+      vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+        data: {
+          services: [
+            {
+              ...GROOMING_SERVICE,
+              use_pricing_matrix: true,
+              has_extra_long_coat: true,
+              service_pricing_tiers: cells.map((cell) => ({
+                ...cell,
+                id: `service-1:${cell.weight_class}:${cell.coat_type}`,
+                service_id: 'service-1',
+              })),
+            },
+            ASSESSMENT_SERVICE,
+            HOTEL_SERVICE,
+          ],
+          packages: [
+            {
+              ...GOLDEN_PACKAGE,
+              use_pricing_matrix: true,
+              pricing_tiers: cells,
+            },
+          ],
+          promos: [],
+        },
+        error: null,
+      } as never);
+
+      const user = userEvent.setup();
+      await pickUnassessedPet(user);
+      await user.click(
+        await screen.findByRole('button', { name: 'I understand' })
+      );
+      await waitFor(() =>
+        expect(bookingForm().getByText('Grooming')).toBeInTheDocument()
+      );
+      await user.click(bookingForm().getByText('Grooming'));
+      expect(await bookingForm().findByText('Bath')).toBeInTheDocument();
+
+      expect(
+        bookingForm().getByText('Prices may vary with coat length and weight')
+      ).toBeInTheDocument();
+
+      await user.click(
+        bookingForm().getByRole('button', { name: 'Full prices for Bath' })
+      );
+      const table = within(screen.getByRole('note')).getByRole('table');
+      const mediumRow = within(table).getByRole('row', { name: /^Medium/ });
+      // Medium's own short-coat price; no long-coat cell, so the base price.
+      expect(mediumRow).toHaveTextContent('420.00');
+      expect(mediumRow).toHaveTextContent('300.00');
+      expect(within(table).getByRole('row', { name: /^XL/ })).toHaveTextContent(
+        '990.00'
+      );
+      // Opening the ⓘ doesn't pick the service.
+      expect(
+        bookingForm().getByRole('button', { name: /^Bath/ })
+      ).toHaveAttribute('aria-pressed', 'false');
+
+      // Bath has Extra Long Coat prices switched on - its column shows.
+      expect(
+        within(table).getByRole('columnheader', { name: 'Extra long' })
+      ).toBeInTheDocument();
+
+      await user.click(bookingForm().getByText('Package'));
+      await user.click(
+        bookingForm().getByRole('button', {
+          name: 'Full prices for Golden Package',
+        })
+      );
+      // The package doesn't (has_extra_long_coat off) - no XLC price shows.
+      const packageTable = within(screen.getByRole('note')).getByRole('table');
+      expect(
+        within(packageTable).queryByRole('columnheader', { name: 'Extra long' })
+      ).not.toBeInTheDocument();
+      expect(packageTable).not.toHaveTextContent('990.00');
+    });
+
+    it('a flat-priced card has no price note or ⓘ', async () => {
+      const user = userEvent.setup();
+      await pickUnassessedPet(user);
+      await user.click(
+        await screen.findByRole('button', { name: 'I understand' })
+      );
+      await waitFor(() =>
+        expect(bookingForm().getByText('Grooming')).toBeInTheDocument()
+      );
+      await user.click(bookingForm().getByText('Grooming'));
+      expect(await bookingForm().findByText('Bath')).toBeInTheDocument();
+
+      expect(
+        bookingForm().queryByText('Prices may vary with coat length and weight')
+      ).not.toBeInTheDocument();
+      expect(
+        bookingForm().queryByRole('button', { name: /^Full prices for/ })
+      ).not.toBeInTheDocument();
+    });
+
     it('books at an estimate with no payment step, sends no payment scheme, and says to pay at the counter', async () => {
       vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
         data: {
@@ -1686,6 +1790,13 @@ describe('CustomerBookingFlowPage', () => {
     // the flat 300 base price - the same price the server charges.
     expect(bookingForm().getAllByText('PHP 420.00')).toHaveLength(2);
     expect(bookingForm().queryByText('PHP 300.00')).not.toBeInTheDocument();
+    // Max is assessed - his own price is known, so no "may vary" note or ⓘ.
+    expect(
+      bookingForm().queryByText('Prices may vary with coat length and weight')
+    ).not.toBeInTheDocument();
+    expect(
+      bookingForm().queryByRole('button', { name: 'Full prices for Bath' })
+    ).not.toBeInTheDocument();
   });
 
   it("switching category tabs clears the previous tab's selection immediately, with no warning", async () => {
@@ -3000,6 +3111,77 @@ describe('CustomerBookingFlowPage', () => {
             })
           )
         );
+      });
+
+      it('a 5-night walk-in Hotel stay paid at checkout gets no long-stay rate or free package', async () => {
+        vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+          data: {
+            downpayment_enabled: false,
+            downpayment_type: null,
+            downpayment_amount: null,
+            pay_at_checkout_enabled: true,
+          },
+          error: null,
+        });
+        vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+          data: {
+            services: [
+              GROOMING_SERVICE,
+              {
+                ...HOTEL_SERVICE,
+                base_price: 850,
+                long_stay_nightly_price: 750,
+                min_nights_for_free_package: 5,
+                free_package_name: 'Golden Package',
+              },
+            ],
+            packages: [],
+            promos: [],
+          },
+          error: null,
+        });
+
+        const user = userEvent.setup();
+        renderStaffPage();
+
+        await user.click(await screen.findByText('Makati'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Jamie Cruz'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Max'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Hotel'));
+        await user.click(await screen.findByText('Hotel Stay - Medium Cage'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Walk-in'));
+        await user.click(screen.getByText('Next'));
+
+        fireEvent.change(await screen.findByLabelText('Number of nights'), {
+          target: { value: '5' },
+        });
+        await user.click(screen.getByText('Select slot'));
+        await user.click(screen.getByText('Next'));
+
+        // Care Instructions (optional) -> Your bookings -> Review.
+        await screen.findByRole('button', { name: 'Add feeding time' });
+        await user.click(screen.getByText('Next'));
+        await screen.findByText('Add another booking');
+        await user.click(screen.getByText('Next'));
+        await screen.findByText('Confirm booking');
+
+        // Paid in full: 5 x 750, the long-stay rate.
+        expect(screen.getAllByText('PHP 3750.00').length).toBeGreaterThan(0);
+
+        await user.click(screen.getByLabelText(/^Pay at checkout/));
+
+        // Pay at checkout: 5 x 850, and the note says why.
+        expect(screen.getAllByText('PHP 4250.00').length).toBeGreaterThan(0);
+        expect(screen.queryByText('PHP 3750.00')).not.toBeInTheDocument();
+        expect(
+          screen.getByText(
+            /long-stay rate doesn.t apply to pay at checkout.*no free package/
+          )
+        ).toBeInTheDocument();
       });
 
       it('is not offered when the branch has it switched off', async () => {

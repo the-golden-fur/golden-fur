@@ -344,6 +344,7 @@ describe('AdminPackageBuilderPage', () => {
         name: 'Fresh Coat Bundle',
         service_ids: ['service-1', 'service-2'],
         use_pricing_matrix: false,
+        has_extra_long_coat: false,
         icon: null,
         image_url: null,
       });
@@ -443,6 +444,7 @@ describe('AdminPackageBuilderPage', () => {
           name: 'Golden Package',
           service_ids: ['service-1', 'service-2'],
           use_pricing_matrix: false,
+          has_extra_long_coat: false,
         }
       );
     });
@@ -872,6 +874,7 @@ describe('AdminPackageBuilderPage', () => {
           name: 'Fresh Coat Bundle',
           service_ids: ['service-1', 'service-2'],
           use_pricing_matrix: true,
+          has_extra_long_coat: false,
           icon: null,
           image_url: null,
         });

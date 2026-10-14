@@ -188,6 +188,10 @@ export interface Service {
    * pricing; a pet type's fixed price never applies to an individual
    * Grooming service either way. */
   use_pricing_matrix: boolean;
+  /** Custom change (optional Extra Long Coat, 20261014265): Superadmin-only.
+   * Off (default) = service_pricing_tiers has no XLC cells and an XLC pet
+   * pays the Long Coat price for its size (findPetCell). */
+  has_extra_long_coat: boolean;
   /** Daycare-only: flat charge for the first hour (or less) of a session on
    * this service. NULL falls back to the documented ₱100 default
    * (daycareBilling.service.ts). */
@@ -274,6 +278,9 @@ export interface Package {
    * flat estimate either way (an S/SC-equivalent reference figure for the
    * admin list). Superadmin-only since per-item weight x coat pricing. */
   use_pricing_matrix: boolean;
+  /** Custom change (optional Extra Long Coat, 20261014265): same as
+   * Service.has_extra_long_coat, for pricing_tiers. */
+  has_extra_long_coat: boolean;
   /** Custom change (per-item weight x coat pricing): the 8 S/M/L/XL x SC/LC
    * prices - bundled_price through the shared formula, with any cell a
    * Superadmin set for this package in its place. Only charged when

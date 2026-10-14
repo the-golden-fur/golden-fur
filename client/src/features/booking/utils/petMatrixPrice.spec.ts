@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  findPetCell,
   isPricedByPetCell,
+  matrixPriceFor,
   packageFixedPriceForPet,
   packagePriceForPet,
   servicePriceForPet,
+  variesByWeightAndCoat,
   withLongStayPrice,
 } from './petMatrixPrice';
 
@@ -99,6 +102,75 @@ describe('isPricedByPetCell', () => {
         null
       )
     ).toBe(false);
+  });
+});
+
+describe('variesByWeightAndCoat', () => {
+  const item = {
+    use_pricing_matrix: true,
+    category: 'Grooming' as const,
+    cells: CELLS,
+  };
+
+  it('is true for a Grooming item on the weight x coat grid, whatever the pet', () => {
+    expect(variesByWeightAndCoat(item, null)).toBe(true);
+    // A package has no category.
+    expect(
+      variesByWeightAndCoat({ use_pricing_matrix: true, cells: CELLS }, null)
+    ).toBe(true);
+  });
+
+  it('is false for a flat price, the switch off, a non-Grooming service, or no cells', () => {
+    expect(variesByWeightAndCoat(item, 800)).toBe(false);
+    expect(
+      variesByWeightAndCoat({ ...item, use_pricing_matrix: false }, null)
+    ).toBe(false);
+    expect(variesByWeightAndCoat({ ...item, category: 'Hotel' }, null)).toBe(
+      false
+    );
+    expect(variesByWeightAndCoat({ ...item, cells: [] }, null)).toBe(false);
+  });
+});
+
+describe('Extra Long Coat pet on an item with no XLC prices (20261014265)', () => {
+  const LARGE_XLC = { weight_class: 'L' as const, coat_type: 'XLC' as const };
+
+  it("pays the Long Coat cell for its size, same as the server's findPetCell", () => {
+    expect(findPetCell(CELLS, LARGE_XLC)?.coat_type).toBe('LC');
+    expect(servicePriceForPet(BATH, LARGE_XLC, null)).toBe(650);
+    expect(
+      isPricedByPetCell(
+        {
+          use_pricing_matrix: true,
+          category: 'Grooming' as const,
+          cells: CELLS,
+        },
+        LARGE_XLC,
+        null
+      )
+    ).toBe(true);
+  });
+
+  it('pays its own XLC cell when the item has one', () => {
+    const cells = [
+      ...CELLS,
+      {
+        weight_class: 'L' as const,
+        coat_type: 'XLC' as const,
+        price: 800,
+        is_custom: true,
+      },
+    ];
+
+    expect(findPetCell(cells, LARGE_XLC)?.price).toBe(800);
+  });
+});
+
+describe('matrixPriceFor', () => {
+  it("is the cell's own price, else the fallback", () => {
+    expect(matrixPriceFor(CELLS, 'L', 'LC', 300)).toBe(650);
+    expect(matrixPriceFor(CELLS, 'M', 'XLC', 300)).toBe(300);
+    expect(matrixPriceFor(undefined, 'S', 'SC', 450)).toBe(450);
   });
 });
 
