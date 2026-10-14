@@ -22,11 +22,13 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
+  getPetWeightClassConfiguration: vi.fn(),
 }));
 
 vi.mock('../../../customers/api/customer.api', () => ({
   getPet: vi.fn(),
   getCustomerProfile: vi.fn(),
+  updatePet: vi.fn(),
 }));
 
 vi.mock('../../api/booking.api', () => ({
@@ -164,6 +166,10 @@ function renderPage() {
 describe('ReceptionistBookingsQueuePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(maintenanceApi.getPetWeightClassConfiguration).mockResolvedValue({
+      data: { m_min_kg: 9.5, l_min_kg: 22, xl_min_kg: 41 },
+      error: null,
+    } as never);
     vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
       data: [
         { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
@@ -1364,6 +1370,121 @@ describe('ReceptionistBookingsQueuePage', () => {
       expect(screen.getAllByRole('listitem')[0].textContent).toContain(
         'Unconfirmed'
       );
+    });
+  });
+
+  // Book before assessment: Front Desk assesses the pet from its row.
+  describe('assess an unassessed pet', () => {
+    const UNASSESSED_PET = {
+      id: 'pet-12345678',
+      customer_id: 'cust-12345678',
+      name: 'Buddy',
+      pet_type: 'Dog',
+      breed_id: 'breed-1',
+      photo_url: null,
+      gender: 'Male',
+      date_of_birth: null,
+      weight_class: null,
+      coat_type: null,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+
+    beforeEach(() => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(customerApi.getPet).mockResolvedValue({
+        data: UNASSESSED_PET,
+        error: null,
+      } as never);
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [buildBooking({ awaiting_assessment: true })],
+        error: null,
+      });
+    });
+
+    async function openAssessPopup() {
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(
+        await screen.findByRole('button', { name: 'Assess pet' })
+      );
+      const dialog = screen.getByRole('dialog', {
+        name: 'Record pet assessment',
+      });
+      await user.type(within(dialog).getByRole('spinbutton'), '12');
+      await user.selectOptions(
+        within(dialog).getByRole('combobox', { name: 'Coat type' }),
+        'LC'
+      );
+      return { user, dialog };
+    }
+
+    it('shows the badge and an Assess pet button only for a booking awaiting assessment', async () => {
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({ awaiting_assessment: true }),
+          buildBooking({ id: 'booking-2', awaiting_assessment: false }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      const assessButtons = await screen.findAllByRole('button', {
+        name: 'Assess pet',
+      });
+      expect(assessButtons).toHaveLength(1);
+      expect(assessButtons[0].closest('li')).toHaveTextContent(
+        'Awaiting assessment'
+      );
+    });
+
+    it('saves the weight and coat, closes the popup and re-fetches the repriced queue', async () => {
+      vi.mocked(customerApi.updatePet).mockResolvedValue({
+        data: { ...UNASSESSED_PET, weight_class: 'M', coat_type: 'LC' },
+        error: null,
+      } as never);
+
+      const { user, dialog } = await openAssessPopup();
+      const fetchesBefore = vi.mocked(bookingApi.listBookings).mock.calls
+        .length;
+
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+      expect(customerApi.updatePet).toHaveBeenCalledWith(
+        'pet-12345678',
+        'token',
+        { weight_kg: 12, coat_type: 'LC' }
+      );
+      expect(
+        await screen.findByText(
+          'Buddy assessed - the booking now has its final price.'
+        )
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          vi.mocked(bookingApi.listBookings).mock.calls.length
+        ).toBeGreaterThan(fetchesBefore)
+      );
+    });
+
+    it('keeps the popup open with the error when saving fails', async () => {
+      vi.mocked(customerApi.updatePet).mockResolvedValue({
+        data: null,
+        error: 'Weight is too low',
+      });
+
+      const { user, dialog } = await openAssessPopup();
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+      expect(
+        await within(dialog).findByText('Weight is too low')
+      ).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
   });
 });

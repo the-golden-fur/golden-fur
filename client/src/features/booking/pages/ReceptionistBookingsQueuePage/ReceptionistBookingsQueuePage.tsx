@@ -1,15 +1,33 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { useNowMs } from '../../../../shared/hooks/useNowMs/useNowMs';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
-import { listBranches } from '../../../maintenance/api/maintenance.api';
-import type { BranchSummary } from '../../../maintenance/maintenance.types';
+import {
+  getPetWeightClassConfiguration,
+  listBranches,
+} from '../../../maintenance/api/maintenance.api';
+import type {
+  BranchSummary,
+  PetWeightClassConfiguration,
+} from '../../../maintenance/maintenance.types';
+import { ThemeContext } from '../../../../shared/providers/ThemeProvider/themeContext';
+import type { WeightUnitPreference } from '../../../../shared/providers/ThemeProvider/themeContext';
+import {
+  toCanonicalKg,
+  toDisplayValue,
+} from '../../../../shared/utils/petWeight';
 import {
   getCustomerProfile,
   getPet,
+  updatePet,
 } from '../../../customers/api/customer.api';
-import type { CustomerProfile, Pet } from '../../../customers/customer.types';
+import type {
+  CustomerProfile,
+  Pet,
+  PetCoatType,
+  PetWeightClass,
+} from '../../../customers/customer.types';
 import {
   QueueFilterBar,
   type QueueStatusOption,
@@ -25,6 +43,8 @@ import { SearchSortBar } from '../../../../shared/components/SearchSortBar/Searc
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BookingConfirmationBadge } from '../../components/shared/BookingConfirmationBadge/BookingConfirmationBadge';
 import { PaymentStatusBadge } from '../../components/shared/PaymentStatusBadge/PaymentStatusBadge';
+import { AwaitingAssessmentBadge } from '../../components/shared/AwaitingAssessmentBadge/AwaitingAssessmentBadge';
+import { AssessmentModal } from '../../components/AssessmentModal/AssessmentModal';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import {
@@ -110,6 +130,17 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: 'pet-name', label: 'Sort: Pet name (A-Z)' },
   { value: 'owner-name', label: 'Sort: Owner name (A-Z)' },
 ];
+
+/** Book before assessment: a booking still priced as an estimate because
+ * its pet hasn't been assessed - Front Desk can assess the pet from its row.
+ * Not for a booking that's already finished or cancelled. */
+function needsAssessment(booking: Booking): boolean {
+  return (
+    booking.awaiting_assessment === true &&
+    booking.status !== 'Completed' &&
+    booking.status !== 'Cancelled'
+  );
+}
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -307,8 +338,32 @@ export function ReceptionistBookingsQueuePage() {
   const calendarYear = calendarAnchor.getFullYear();
   const calendarMonth = calendarAnchor.getMonth();
 
+  // Bumped to re-run the queue fetch on demand (after an assessment
+  // reprices this pet's bookings) without waiting for the next poll.
+  const [queueRefreshKey, setQueueRefreshKey] = useState(0);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pets, setPets] = useState<Record<string, Pet>>({});
+
+  // Book before assessment: Front Desk records the pet's weight and coat
+  // here, same popup as the Assessment Queue. Saving it is all it takes - the
+  // server reprices every booking waiting on that pet (pet.controller's
+  // repriceBookingsAwaitingAssessment).
+  const { weightUnit } = useContext(ThemeContext);
+  const [assessBookingId, setAssessBookingId] = useState<string | null>(null);
+  const [assessWeightKg, setAssessWeightKg] = useState<number | ''>('');
+  const [assessEntryUnit, setAssessEntryUnit] =
+    useState<WeightUnitPreference>(weightUnit);
+  const [assessWeightClass, setAssessWeightClass] = useState<
+    PetWeightClass | ''
+  >('');
+  const [assessWeightClassOverridden, setAssessWeightClassOverridden] =
+    useState(false);
+  const [assessCoatType, setAssessCoatType] = useState<PetCoatType | ''>('');
+  const [isSavingAssessment, setIsSavingAssessment] = useState(false);
+  const [assessError, setAssessError] = useState<string | null>(null);
+  const [assessMessage, setAssessMessage] = useState<string | null>(null);
+  const [weightClassCutoffs, setWeightClassCutoffs] =
+    useState<PetWeightClassConfiguration | null>(null);
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -526,7 +581,81 @@ export function ReceptionistBookingsQueuePage() {
     categoryFilter,
     confirmationFilter,
     paymentStatusFilter,
+    queueRefreshKey,
   ]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+
+    let isMounted = true;
+
+    void getPetWeightClassConfiguration(accessToken).then((result) => {
+      if (isMounted && result.data) setWeightClassCutoffs(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken]);
+
+  function openAssessment(booking: Booking) {
+    const pet = pets[booking.pet_id];
+    setAssessWeightKg(
+      pet?.weight_kg != null ? toDisplayValue(pet.weight_kg, weightUnit) : ''
+    );
+    setAssessEntryUnit(weightUnit);
+    setAssessWeightClass(pet?.weight_class ?? '');
+    setAssessWeightClassOverridden(false);
+    setAssessCoatType(pet?.coat_type ?? '');
+    setAssessError(null);
+    setAssessMessage(null);
+    setAssessBookingId(booking.id);
+  }
+
+  // Records the assessment only - the booking is not checked in or
+  // completed. The server reprices every booking waiting on this pet, so the
+  // queue is re-fetched to show the final prices.
+  async function saveAssessment(booking: Booking) {
+    if (
+      !accessToken ||
+      assessWeightKg === '' ||
+      assessWeightKg <= 0 ||
+      !assessCoatType
+    ) {
+      return;
+    }
+
+    setIsSavingAssessment(true);
+    setAssessError(null);
+
+    const result = await updatePet(booking.pet_id, accessToken, {
+      weight_kg: toCanonicalKg(assessWeightKg, assessEntryUnit),
+      coat_type: assessCoatType,
+      ...(assessWeightClassOverridden && assessWeightClass
+        ? { weight_class: assessWeightClass }
+        : {}),
+    });
+
+    setIsSavingAssessment(false);
+
+    if (result.error || !result.data) {
+      setAssessError(result.error ?? "Could not save this pet's assessment.");
+      return;
+    }
+
+    const savedPet = result.data;
+    setPets((prev) => ({ ...prev, [savedPet.id]: savedPet }));
+    setAssessBookingId(null);
+    setAssessMessage(
+      `${savedPet.name} assessed - the booking now has its final price.`
+    );
+    setQueueRefreshKey((key) => key + 1);
+  }
+
+  const assessBooking =
+    assessBookingId === null
+      ? null
+      : (bookings.find((booking) => booking.id === assessBookingId) ?? null);
 
   // Unconfirmed/Confirmed and Expired/Cancelled share a `status` value, so
   // the server query above can only narrow to the coarse status - the final
@@ -1070,6 +1199,12 @@ export function ReceptionistBookingsQueuePage() {
           </p>
         ) : null}
 
+        {assessMessage ? (
+          <p className={styles.successBanner} role="status">
+            {assessMessage}
+          </p>
+        ) : null}
+
         {!isLoading &&
         !loadError &&
         view === 'list' &&
@@ -1276,6 +1411,9 @@ export function ReceptionistBookingsQueuePage() {
                     <div className={styles.bookingBadges}>
                       <BookingConfirmationBadge booking={booking} />
                       <PaymentStatusBadge status={booking.payment_status} />
+                      {needsAssessment(booking) ? (
+                        <AwaitingAssessmentBadge />
+                      ) : null}
                     </div>
                   </div>
                   <span className={styles.bookingMeta}>
@@ -1307,6 +1445,15 @@ export function ReceptionistBookingsQueuePage() {
                       >
                         View details
                       </button>
+                      {needsAssessment(booking) ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => openAssessment(booking)}
+                        >
+                          Assess pet
+                        </button>
+                      ) : null}
                       {/* Walk-in booking flow: only a 'Pending' (online,
                           not-yet-arrived) booking has anywhere to go here -
                           an 'In Progress' booking (checked in already, or
@@ -1561,6 +1708,28 @@ export function ReceptionistBookingsQueuePage() {
           </>
         }
       />
+
+      {assessBooking ? (
+        <AssessmentModal
+          pet={pets[assessBooking.pet_id]}
+          weightKg={assessWeightKg}
+          onWeightKgChange={setAssessWeightKg}
+          entryUnit={assessEntryUnit}
+          onEntryUnitChange={setAssessEntryUnit}
+          cutoffs={weightClassCutoffs}
+          weightClass={assessWeightClass}
+          onWeightClassChange={setAssessWeightClass}
+          weightClassOverridden={assessWeightClassOverridden}
+          onWeightClassOverriddenChange={setAssessWeightClassOverridden}
+          coatType={assessCoatType}
+          onCoatTypeChange={setAssessCoatType}
+          isSaving={isSavingAssessment}
+          error={assessError}
+          completesBooking={false}
+          onCancel={() => setAssessBookingId(null)}
+          onConfirm={() => void saveAssessment(assessBooking)}
+        />
+      ) : null}
     </main>
   );
 }

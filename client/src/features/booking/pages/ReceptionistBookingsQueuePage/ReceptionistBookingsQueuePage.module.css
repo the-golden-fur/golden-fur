@@ -39,6 +39,15 @@
   font-size: var(--text-sm);
 }
 
+.successBanner {
+  margin: 0;
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
 .errorBanner {
   margin: 0;
   background: var(--color-error-bg);

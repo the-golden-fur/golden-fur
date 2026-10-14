@@ -10,7 +10,13 @@ import { AssessmentModal } from './AssessmentModal';
 
 const CUTOFFS = { m_min_kg: 9.5, l_min_kg: 22, xl_min_kg: 41 };
 
-function Harness({ onConfirm }: { onConfirm: () => void }) {
+function Harness({
+  onConfirm,
+  completesBooking,
+}: {
+  onConfirm: () => void;
+  completesBooking?: boolean;
+}) {
   const [weightKg, setWeightKg] = useState<number | ''>('');
   const [weightClass, setWeightClass] = useState<PetWeightClass | ''>('');
   const [overridden, setOverridden] = useState(false);
@@ -33,6 +39,7 @@ function Harness({ onConfirm }: { onConfirm: () => void }) {
     error: null,
     onCancel: vi.fn(),
     onConfirm,
+    completesBooking,
   });
 }
 
@@ -99,5 +106,22 @@ describe('AssessmentModal', () => {
     expect(
       screen.getByRole('option', { name: 'Long coat' }) as HTMLOptionElement
     ).toHaveValue('LC');
+  });
+
+  it('Bookings Queue use: Save only records the assessment - no mention of completing the booking', () => {
+    render(
+      createElement(Harness, { onConfirm: vi.fn(), completesBooking: false })
+    );
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Confirm' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      "sets the booking's final price"
+    );
+    expect(screen.getByRole('dialog')).not.toHaveTextContent(
+      'completes this booking'
+    );
   });
 });
