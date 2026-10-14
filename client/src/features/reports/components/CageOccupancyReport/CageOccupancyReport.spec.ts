@@ -218,7 +218,35 @@ describe('CageOccupancyReport', () => {
       renderPage();
 
       expect(
-        await screen.findByText(/^Overdue by 40m \d\ds$/)
+        // A Manila midnight may fall inside those 40 minutes.
+        await screen.findByText(/^Overdue by 40m \d\ds · 1 hour(, 1 night)?$/)
+      ).toBeInTheDocument();
+    });
+
+    it('shows the hours and nights a pay-at-checkout pet is overdue, with no fee', async () => {
+      const twoDaysAgo = new Date(
+        Date.now() - 2 * 24 * 60 * 60 * 1000 - 3 * 60 * 60 * 1000 - 5_000
+      ).toISOString();
+      vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+        data: [
+          {
+            ...occupant(twoDaysAgo),
+            service: 'Hotel' as const,
+            payment: 'pay_at_checkout',
+            overdue_fee_per_hour: null,
+            overdue_grace_minutes: null,
+          },
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      // 2 or 3 Manila midnights, depending on the time of day the test runs.
+      expect(
+        await screen.findByText(
+          /^Overdue by 2d 3h 00m · 52 hours, [23] nights$/
+        )
       ).toBeInTheDocument();
     });
 
@@ -240,7 +268,9 @@ describe('CageOccupancyReport', () => {
       renderPage();
 
       expect(
-        await screen.findByText(/^Overdue by 40m \d\ds · ₱50 overdue fee$/)
+        await screen.findByText(
+          /^Overdue by 40m \d\ds · 1 hour(, 1 night)? · ₱50 overdue fee$/
+        )
       ).toBeInTheDocument();
     });
 
