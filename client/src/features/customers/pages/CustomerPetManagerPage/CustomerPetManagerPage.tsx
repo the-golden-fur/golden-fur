@@ -16,6 +16,7 @@ import {
 import { PetCard } from '../../components/cards/PetCard/PetCard';
 import { PetForm } from '../../components/forms/PetForm/PetForm';
 import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
 import {
@@ -371,21 +372,34 @@ export function CustomerPetManagerPage() {
         <button
           className={styles.button}
           type="button"
-          onClick={() => setShowPetForm((current) => !current)}
+          onClick={() => setShowPetForm(true)}
         >
-          {showPetForm ? 'Cancel' : 'Add a pet'}
+          Add a pet
         </button>
-
-        {showPetForm ? (
-          <div className={styles.petFormWrap}>
-            <PetForm
-              customerId={user.id}
-              accessToken={accessToken}
-              onCreated={handlePetCreated}
-            />
-          </div>
-        ) : null}
       </section>
+
+      {/* Opens over the pet list instead of pushing it down. An outside
+          click doesn't close it, so half-typed pet details aren't lost - the
+          × (or Cancel) does. */}
+      <Modal
+        isOpen={showPetForm}
+        title="Add a pet"
+        onClose={() => setShowPetForm(false)}
+        closeOnBackdropClick={false}
+      >
+        <PetForm
+          customerId={user.id}
+          accessToken={accessToken}
+          onCreated={handlePetCreated}
+        />
+        <button
+          className={styles.cancelButton}
+          type="button"
+          onClick={() => setShowPetForm(false)}
+        >
+          Cancel
+        </button>
+      </Modal>
 
       <ConfirmDialog
         isOpen={petToDelete !== null}

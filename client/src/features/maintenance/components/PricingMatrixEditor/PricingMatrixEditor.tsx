@@ -33,6 +33,9 @@ interface PricingMatrixEditorProps {
   onChange: (drafts: CellDrafts) => void;
   /** Admins see the prices but can't change them (Superadmin-only). */
   readOnly?: boolean;
+  /** Optional Extra Long Coat (20261014265): false hides the XLC column -
+   * the item has no Extra Long Coat prices. */
+  showExtraLongCoat?: boolean;
 }
 
 /**
@@ -50,8 +53,12 @@ export function PricingMatrixEditor({
   drafts,
   onChange,
   readOnly = false,
+  showExtraLongCoat = true,
 }: PricingMatrixEditorProps) {
   const matrix = deriveGroomingMatrix(basePrice, configuration);
+  const coatTypes = showExtraLongCoat
+    ? COAT_TYPES
+    : COAT_TYPES.filter((coatType) => coatType !== 'XLC');
 
   const formulaPrice = (weightClass: WeightClass, coatType: CoatType) =>
     matrix.find(
@@ -79,10 +86,10 @@ export function PricingMatrixEditor({
 
       <div
         className={styles.grid}
-        style={{ '--coat-columns': COAT_TYPES.length } as CSSProperties}
+        style={{ '--coat-columns': coatTypes.length } as CSSProperties}
       >
         <span aria-hidden="true" />
-        {COAT_TYPES.map((coatType) => (
+        {coatTypes.map((coatType) => (
           <span key={coatType} className={styles.headerCell}>
             {COAT_LABELS[coatType]}
           </span>
@@ -93,7 +100,7 @@ export function PricingMatrixEditor({
             <span className={styles.headerCell}>
               {WEIGHT_LABELS[weightClass]}
             </span>
-            {COAT_TYPES.map((coatType) => {
+            {coatTypes.map((coatType) => {
               const key = cellKey(weightClass, coatType);
               const draft = drafts[key];
               const isCustom = draft !== undefined;

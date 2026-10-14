@@ -156,6 +156,7 @@ export const createServiceValidator = z
     // for Grooming only, but not category-gated here, same convention as
     // duration_minutes.
     use_pricing_matrix: z.boolean().optional(),
+    has_extra_long_coat: z.boolean().optional(),
     // Custom change (Daycare fee configuration): Daycare-only - meaningful
     // for Daycare only, but not category-gated here, same convention as
     // every other category-specific optional field above.
@@ -190,6 +191,7 @@ export const updateServiceValidator = z
     free_package_name: z.string().trim().min(1).nullable().optional(),
     long_stay_nightly_price: z.number().nonnegative().nullable().optional(),
     use_pricing_matrix: z.boolean().optional(),
+    has_extra_long_coat: z.boolean().optional(),
     first_hour_fee: z.number().nonnegative().nullable().optional(),
     succeeding_hour_fee: z.number().nonnegative().nullable().optional(),
     daycare_overnight_fee: z.number().nonnegative().nullable().optional(),
@@ -462,6 +464,7 @@ export const createPackageValidator = z
     // pricing for this package (sum of included services' own per-pet
     // price, bundle-discounted) instead of the flat bundled_price.
     use_pricing_matrix: z.boolean().optional(),
+    has_extra_long_coat: z.boolean().optional(),
     icon: iconField,
     image_url: imageUrlField,
   })
@@ -480,6 +483,7 @@ export const updatePackageValidator = z
     /** null clears it - cats go back to the pet type's own pricing. */
     cat_price: z.number().min(0).max(99999999.99).nullable().optional(),
     use_pricing_matrix: z.boolean().optional(),
+    has_extra_long_coat: z.boolean().optional(),
     icon: iconField,
     image_url: imageUrlField,
   })

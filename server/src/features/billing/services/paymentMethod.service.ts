@@ -30,8 +30,8 @@ export interface ResolvedPayment {
 }
 
 /**
- * Every payment method - Cash, GCash, Maya, Card, Bank Transfer, Grabmart,
- * Pickaroo - goes through one cashier-confirmation path: the transaction is
+ * Every payment method - Cash, GCash, Maya, Card, Bank Transfer
+ * - goes through one cashier-confirmation path: the transaction is
  * Fully Paid the moment this call succeeds, with Cash additionally returning
  * a computed change amount. There is no online/webhook-confirmed path.
  */

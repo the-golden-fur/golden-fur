@@ -94,9 +94,9 @@
     background-color 180ms ease;
   overflow: visible; /* allow dog to pop out */
   position: relative;
-  /* Above .menu: its invisible 280px hover area sits over the circle and
-     takes pointer events while the widget is hovered, which would swallow
-     every press meant for the mascot itself. */
+  /* Above .menu: its invisible hover bridge (.menu::before) overlaps the
+     circle and takes pointer events while the widget is hovered, which would
+     swallow every press meant for the mascot itself. */
   z-index: 1;
   padding: 0;
   isolation: isolate;
@@ -351,6 +351,25 @@
 .mascot:focus-within .menu {
   opacity: 1;
   transform: translate(50%, 50%) scale(1);
+}
+
+/* What keeps the menu open once it is showing: the link bubbles themselves
+   plus this strip on the left, bridging the gap between the circle and the
+   bubbles so the pointer can travel across. The rest of the 280px square
+   (above, below and right of the circle) no longer holds the menu open.
+   Bridge size: `left`/`width` (horizontal reach), `top`/`height` (vertical). */
+.menu::before {
+  content: '';
+  position: absolute;
+  left: 50px;
+  width: 90px;
+  top: 40px;
+  height: 175px;
+  pointer-events: none;
+}
+
+.mascot:hover .menu::before,
+.mascot:focus-within .menu::before {
   pointer-events: auto;
 }
 
@@ -379,26 +398,30 @@
 
 /* Radial positions around the mascot circle - five bubbles down its left
    side: FAQs, the two page links, "Change pet", then "Hide me". The top one
-   stays below the tip bubble and the bottom one clear of the screen edge. */
+   stays below the tip bubble and the bottom one clear of the screen edge.
+   Each bubble is placed by its RIGHT edge (translate(-100%, ...)), so every
+   one sits the same ~10px from the circle whatever its label's width - the
+   first value is where that right edge goes (less negative = closer). */
 .link:nth-child(1) {
-  transform: translate(-50%, -50%) translate(-116px, -80px);
+  transform: translate(-100%, -50%) translate(-72px, -80px);
 }
 .link:nth-child(2) {
-  transform: translate(-50%, -50%) translate(-140px, -46px);
+  transform: translate(-100%, -50%) translate(-74px, -46px);
 }
 .link:nth-child(3) {
-  transform: translate(-50%, -50%) translate(-148px, -12px);
+  transform: translate(-100%, -50%) translate(-76px, -12px);
 }
 .link:nth-child(4) {
-  transform: translate(-50%, -50%) translate(-140px, 22px);
+  transform: translate(-100%, -50%) translate(-74px, 22px);
 }
 .link:nth-child(5) {
-  transform: translate(-50%, -50%) translate(-122px, 56px);
+  transform: translate(-100%, -50%) translate(-60px, 56px);
 }
 
 .mascot:hover .link,
 .mascot:focus-within .link {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .link:hover,
@@ -463,24 +486,31 @@
     height: 224px;
   }
 
+  .menu::before {
+    left: 40px;
+    width: 72px;
+    top: 32px;
+    height: 136px;
+  }
+
   .link:nth-child(1) {
-    transform: translate(-50%, -50%) translate(-86px, -66px);
+    transform: translate(-100%, -50%) translate(-58px, -66px);
   }
 
   .link:nth-child(2) {
-    transform: translate(-50%, -50%) translate(-104px, -39px);
+    transform: translate(-100%, -50%) translate(-60px, -39px);
   }
 
   .link:nth-child(3) {
-    transform: translate(-50%, -50%) translate(-110px, -12px);
+    transform: translate(-100%, -50%) translate(-62px, -12px);
   }
 
   .link:nth-child(4) {
-    transform: translate(-50%, -50%) translate(-106px, 15px);
+    transform: translate(-100%, -50%) translate(-60px, 15px);
   }
 
   .link:nth-child(5) {
-    transform: translate(-50%, -50%) translate(-94px, 42px);
+    transform: translate(-100%, -50%) translate(-50px, 42px);
   }
 
   .link {

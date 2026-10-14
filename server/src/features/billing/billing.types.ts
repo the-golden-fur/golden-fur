@@ -25,8 +25,6 @@ export const PAYMENT_METHODS = [
   'Maya',
   'Card',
   'Bank Transfer',
-  'Grabmart',
-  'Pickaroo',
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
@@ -42,8 +40,6 @@ export const COUNTER_PAYMENT_METHODS = [
   'Maya',
   'Card',
   'Bank Transfer',
-  'Grabmart',
-  'Pickaroo',
 ] as const;
 export type CounterPaymentMethod = (typeof COUNTER_PAYMENT_METHODS)[number];
 

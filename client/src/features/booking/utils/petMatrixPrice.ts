@@ -37,20 +37,33 @@ export function packageFixedPriceForPet(
   return fixedPrice;
 }
 
-/** The pet's own cell, or null when the pet hasn't been assessed yet (no
- * weight class / coat type) or the item has no such cell. */
+/** The cell a pet is charged: its own, or - for an Extra Long Coat pet on an
+ * item with no XLC prices (20261014265) - the Long Coat cell for its size.
+ * Mirrors the server's findPetCell (maintenance/utils/extraLongCoat.ts).
+ * Undefined when the pet hasn't been assessed yet or there's no such cell. */
+export function findPetCell(
+  cells: PricingCell[] | undefined,
+  pet: PricedPet | null
+): PricingCell | undefined {
+  if (!pet?.weight_class || !pet.coat_type) return undefined;
+
+  const find = (coatType: CoatType) =>
+    (cells ?? []).find(
+      (entry) =>
+        entry.weight_class === pet.weight_class && entry.coat_type === coatType
+    );
+
+  return (
+    find(pet.coat_type) ?? (pet.coat_type === 'XLC' ? find('LC') : undefined)
+  );
+}
+
+/** The price of the cell a pet is charged (findPetCell), or null. */
 function cellPrice(
   cells: PricingCell[] | undefined,
   pet: PricedPet | null
 ): number | null {
-  if (!pet?.weight_class || !pet.coat_type) return null;
-
-  const cell = (cells ?? []).find(
-    (entry) =>
-      entry.weight_class === pet.weight_class &&
-      entry.coat_type === pet.coat_type
-  );
-
+  const cell = findPetCell(cells, pet);
   return cell ? Number(cell.price) : null;
 }
 
@@ -128,6 +141,41 @@ export function packagePriceForPet(
   }
 
   return pkg.bundled_price;
+}
+
+/** What one weight x coat cell of an item costs - the cell's own price, or
+ * `fallbackPrice` (the item's base/bundled price) when it has none, exactly
+ * as servicePriceForPet/packagePriceForPet fall back. For the full price
+ * table shown before a pet is assessed. */
+export function matrixPriceFor(
+  cells: PricingCell[] | undefined,
+  weightClass: WeightClass,
+  coatType: CoatType,
+  fallbackPrice: number
+): number {
+  return (
+    cellPrice(cells, { weight_class: weightClass, coat_type: coatType }) ??
+    Number(fallbackPrice)
+  );
+}
+
+/** Whether an item's price depends on the pet's weight and coat at all -
+ * regardless of which pet - so an unassessed pet's card can say its price
+ * may vary and offer the full table. Same rules as isPricedByPetCell minus
+ * the pet: a flat (pet type / cat) price wins, and only Grooming services
+ * use the grid. */
+export function variesByWeightAndCoat(
+  item: {
+    use_pricing_matrix: boolean;
+    category?: Service['category'];
+    cells: PricingCell[] | undefined;
+  },
+  /** null/undefined = the pet type has no fixed price. */
+  fixedPrice: number | null | undefined
+): boolean {
+  if (fixedPrice != null || !item.use_pricing_matrix) return false;
+  if (item.category !== undefined && item.category !== 'Grooming') return false;
+  return (item.cells ?? []).length > 0;
 }
 
 /** Whether the price shown is the pet's own weight x coat price - for the

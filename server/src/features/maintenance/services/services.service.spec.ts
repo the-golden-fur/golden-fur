@@ -331,7 +331,14 @@ describe('services.service', () => {
       const result = await listServices({});
 
       expect(result).toHaveLength(1);
-      expect(result[0].service_pricing_tiers).toHaveLength(12);
+      // No Extra Long Coat prices unless a Superadmin switched them on
+      // (20261014265) - 4 sizes x 2 coats.
+      expect(result[0].service_pricing_tiers).toHaveLength(8);
+      expect(
+        result[0].service_pricing_tiers?.some(
+          (tier) => tier.coat_type === 'XLC'
+        )
+      ).toBe(false);
       const smallShortCoat = result[0].service_pricing_tiers?.find(
         (tier) => tier.weight_class === 'S' && tier.coat_type === 'SC'
       );
@@ -340,6 +347,25 @@ describe('services.service', () => {
         (tier) => tier.weight_class === 'S' && tier.coat_type === 'LC'
       );
       expect(smallLongCoat?.price).toBe(350);
+    });
+
+    it('includes the Extra Long Coat cells only once the service has them switched on', async () => {
+      queueFromResults(
+        {
+          data: [{ ...GROOMING_SERVICE, has_extra_long_coat: true }],
+          error: null,
+        },
+        { data: PRICING_CONFIGURATION, error: null }
+      );
+
+      const [service] = await listServices({});
+
+      expect(service.service_pricing_tiers).toHaveLength(12);
+      expect(
+        service.service_pricing_tiers?.filter(
+          (tier) => tier.coat_type === 'XLC'
+        )
+      ).toHaveLength(4);
     });
 
     it("uses a Superadmin-set cell in place of the formula's price, and never returns the raw rows", async () => {

@@ -103,19 +103,28 @@ describe('CustomerPetManagerPage', () => {
     ).toHaveAttribute('href', '/portal/pets/pet-1');
   });
 
-  it('toggles the Add a pet form open and closed', async () => {
+  it('opens the Add a pet form in a popup, closed by Cancel or ×', async () => {
     vi.mocked(listCustomerPets).mockResolvedValue({ data: [], error: null });
 
     renderPage();
     await screen.findByText("You haven't added any pets yet.");
 
     await userEvent.click(screen.getByRole('button', { name: 'Add a pet' }));
-    expect(screen.getByRole('button', { name: 'Add pet' })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add a pet' });
     expect(
-      screen.queryByRole('button', { name: 'Add pet' })
-    ).not.toBeInTheDocument();
+      within(dialog).getByRole('button', { name: 'Add pet' })
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Cancel' })
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add a pet' }));
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' })
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('searching narrows the visible pets', async () => {

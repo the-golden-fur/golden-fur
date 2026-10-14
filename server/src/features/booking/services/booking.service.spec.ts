@@ -9,6 +9,7 @@ import {
   overrideBookingStatus,
   recomputeBookingPaymentStatus,
   resolveBookingItems,
+  resolveFreePackageAward,
   resolvePackagePrice,
   resolveServicePrice,
   startBooking,
@@ -136,6 +137,8 @@ function queueFromResults(...results: QueryResult[]) {
       'gt',
       'gte',
       'order',
+      // Type-only in supabase-js (resolveFreePackageAward) - a pass-through.
+      'returns',
     ]) {
       builder[method] = vi.fn((column?: string, value?: string) => {
         if (isServiceTypes && column === 'key') requestedKey = value;
@@ -584,7 +587,11 @@ describe('booking.service (#51)', () => {
     } as never;
     const START = '2026-08-03T01:00:00.000Z';
 
-    function priceFor(nights: number, branchId = 'branch-makati') {
+    function priceFor(
+      nights: number,
+      branchId = 'branch-makati',
+      applyLongStayRate = true
+    ) {
       const end = new Date(
         new Date(START).getTime() + nights * 24 * 60 * 60 * 1000
       ).toISOString();
@@ -596,9 +603,56 @@ describe('booking.service (#51)', () => {
         'Hotel' as never,
         branchId,
         START,
-        end
+        end,
+        true,
+        applyLongStayRate
       ).then((items) => items[0].price_at_booking);
     }
+
+    it('pay at checkout never gets the long-stay rate: 6 x 850 in Makati, 6 x 500 in Southwoods', async () => {
+      expect(await priceFor(6, 'branch-makati', false)).toBe(5100);
+      expect(await priceFor(6, 'branch-southwoods', false)).toBe(3000);
+    });
+
+    describe('free package (resolveFreePackageAward)', () => {
+      const SIX_NIGHTS = {
+        pet_id: PET.id,
+        branch_id: 'branch-makati',
+        service_category: 'Hotel',
+        items: [{ service_id: 'service-hotel' }],
+        scheduled_start: START,
+        scheduled_end: '2026-08-09T01:00:00.000Z',
+      };
+
+      it("a 5+ night stay gets the Superadmin's free package", async () => {
+        queueFromResults({
+          data: [
+            {
+              id: 'package-golden',
+              name: 'Golden Package',
+              package_branch_availability: [
+                { branch_id: 'branch-makati', is_available: true },
+              ],
+            },
+          ],
+          error: null,
+        });
+
+        expect(
+          await resolveFreePackageAward(SIX_NIGHTS as never)
+        ).toMatchObject({ packageId: 'package-golden', nights: 6 });
+      });
+
+      it('a pay-at-checkout stay gets no free package, however long', async () => {
+        expect(
+          await resolveFreePackageAward({
+            ...SIX_NIGHTS,
+            payment_scheme: 'pay_at_checkout',
+          } as never)
+        ).toBeNull();
+        expect(supabase.from).not.toHaveBeenCalledWith('packages');
+      });
+    });
 
     beforeEach(() => {
       vi.mocked(getFixedPrice).mockResolvedValue(null);
@@ -3153,6 +3207,36 @@ describe('booking.service (#51)', () => {
       );
 
       expect(price).toBe(350);
+    });
+
+    it('resolveServicePrice / resolvePackagePrice: an Extra Long Coat pet on an item with no XLC prices pays the Long Coat cell (20261014265)', async () => {
+      const cells = [
+        { weight_class: 'S', coat_type: 'SC', price: 350 },
+        { weight_class: 'S', coat_type: 'LC', price: 420 },
+      ];
+      const xlcPet = { ...PET, weight_class: 'S', coat_type: 'XLC' };
+
+      expect(
+        resolveServicePrice(
+          {
+            category: 'Grooming',
+            base_price: 300,
+            use_pricing_matrix: true,
+            service_pricing_tiers: cells,
+          },
+          xlcPet as never
+        )
+      ).toBe(420);
+      expect(
+        await resolvePackagePrice(
+          {
+            bundled_price: 600,
+            use_pricing_matrix: true,
+            pricing_tiers: cells,
+          } as never,
+          xlcPet as never
+        )
+      ).toBe(420);
     });
 
     it('resolveServicePrice: a non-matrix Grooming service ignores a matching tier (individual add-on services)', () => {

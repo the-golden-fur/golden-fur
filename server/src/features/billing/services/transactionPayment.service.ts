@@ -206,8 +206,8 @@ export interface RecordTransactionPaymentResult {
 
 /**
  * Payment/transactions rework: a cashier records a counter payment against a
- * Pending booking_payment transaction (Cash/Card/Bank Transfer/Grabmart/
- * Pickaroo). One money field only - amountApplied, how much is being paid now
+ * Pending booking_payment transaction (Cash/Card/Bank Transfer).
+ * One money field only - amountApplied, how much is being paid now
  * (there is no cash-tendered/change concept; the transaction stores neither).
  * Hands off to the settle_transaction RPC, which flips the transaction to
  * Fully Paid and recomputes bookings.payment_status atomically. GCash/Maya

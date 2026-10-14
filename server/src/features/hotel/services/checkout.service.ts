@@ -85,13 +85,10 @@ interface PayAtCheckoutBooking {
  * own per-night rate (the same math extendHotelStay uses), and returns the
  * new total. An item that isn't priced per night is left as it is.
  *
- * Hotel long-stay rate (20261013260), for the booking's service item when
- * `longStay` applies:
- * - nights past the ones booked are the regular rate, added on top of the
- *   booked price - the long-stay rate never stretches over nights that were
- *   not booked;
- * - a stay booked as a long one that ends before the threshold no longer
- *   qualifies, so every night actually stayed is the regular rate.
+ * Hotel long-stay rate (20261013260): a pay-at-checkout stay never gets it.
+ * When the booking's service item has `longStay` terms, every night
+ * actually stayed is the regular rate, however many there were (and no
+ * free package is awarded at booking either - createBooking).
  */
 async function repriceItemsForNights(
   bookingId: string,
@@ -130,19 +127,12 @@ async function repriceItemsForNights(
     );
     const bookedPrice = Number(item.price_at_booking);
     const terms = item.service_id ? longStay : null;
-    let price = round2((bookedPrice / bookedQuantity) * actualQuantity);
-
-    if (terms && actualQuantity > bookedQuantity) {
-      price = round2(
-        bookedPrice + terms.regularRate * (actualQuantity - bookedQuantity)
-      );
-    } else if (
-      terms &&
-      bookedQuantity >= terms.minNights &&
-      actualQuantity < terms.minNights
-    ) {
-      price = round2(terms.regularRate * actualQuantity);
-    }
+    // Pay at checkout never gets the long-stay rate: every night actually
+    // stayed is the regular rate - also correcting a booking made before
+    // that rule, still holding the long-stay rate in price_at_booking.
+    const price = terms
+      ? round2(terms.regularRate * actualQuantity)
+      : round2((bookedPrice / bookedQuantity) * actualQuantity);
 
     total = round2(total + price);
 

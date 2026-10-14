@@ -366,7 +366,25 @@ describe('AdminServicesPage', () => {
     // Every cell starts at the formula's price for the base price.
     const smallShort = screen.getByLabelText('Small (S), short coat price');
     expect(smallShort).toHaveValue(350);
+    // No Extra Long Coat column until a Superadmin switches it on.
+    expect(screen.getAllByText('Formula')).toHaveLength(8);
+    expect(
+      screen.queryByLabelText('Small (S), extra long coat price')
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('switch', { name: /Has Extra Long Coat prices/ })
+    );
     expect(screen.getAllByText('Formula')).toHaveLength(12);
+    // An XLC price typed and then switched off again is never saved.
+    const smallExtraLong = screen.getByLabelText(
+      'Small (S), extra long coat price'
+    );
+    await user.clear(smallExtraLong);
+    await user.type(smallExtraLong, '999');
+    await user.click(
+      screen.getByRole('switch', { name: /Has Extra Long Coat prices/ })
+    );
+    expect(screen.getAllByText('Formula')).toHaveLength(8);
 
     const largeLong = screen.getByLabelText('Large (L), long coat price');
     await user.clear(largeLong);
@@ -378,7 +396,11 @@ describe('AdminServicesPage', () => {
     await waitFor(() => {
       expect(maintenanceApi.createService).toHaveBeenCalledWith(
         'token',
-        expect.objectContaining({ base_price: 350, use_pricing_matrix: true })
+        expect.objectContaining({
+          base_price: 350,
+          use_pricing_matrix: true,
+          has_extra_long_coat: false,
+        })
       );
     });
     // Only the changed cell is sent; the other 7 keep following the formula.
@@ -409,6 +431,9 @@ describe('AdminServicesPage', () => {
       screen.getByRole('switch', {
         name: /Price varies by weight class and coat/,
       })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('switch', { name: /Has Extra Long Coat prices/ })
     ).toBeDisabled();
     expect(
       screen.getByText('Only a Superadmin can change these prices.')
@@ -453,6 +478,7 @@ describe('AdminServicesPage', () => {
         requires_assessed_pet: true,
         captures_pet_assessment: false,
         use_pricing_matrix: false,
+        has_extra_long_coat: false,
         icon: null,
         image_url: null,
       });

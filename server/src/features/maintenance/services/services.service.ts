@@ -8,7 +8,11 @@ import type {
   ServiceBranchAvailability,
 } from '../maintenance.types.ts';
 import { mergePriceCells } from '../utils/mergePriceCells.ts';
-import { assertCanSetPricingMatrix } from '../utils/assertCanSetPricingMatrix.ts';
+import {
+  assertCanSetPricingMatrix,
+  EXTRA_LONG_COAT_SUPERADMIN_ONLY,
+} from '../utils/assertCanSetPricingMatrix.ts';
+import { dropExtraLongCoat } from '../utils/extraLongCoat.ts';
 import type {
   CreateServiceInput,
   UpdateServiceInput,
@@ -130,9 +134,12 @@ function attachPricingMatrix(
     return { ...service, service_pricing_tiers: [] };
   }
 
-  const matrix = mergePriceCells(
-    deriveGroomingMatrix(Number(service.base_price), pricingConfiguration),
-    overrides
+  const matrix = dropExtraLongCoat(
+    mergePriceCells(
+      deriveGroomingMatrix(Number(service.base_price), pricingConfiguration),
+      overrides
+    ),
+    Boolean(service.has_extra_long_coat)
   );
 
   return {
@@ -234,6 +241,12 @@ export async function createService({
     next: input.use_pricing_matrix,
     current: false,
   });
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: input.has_extra_long_coat,
+    current: false,
+    message: EXTRA_LONG_COAT_SUPERADMIN_ONLY,
+  });
   assertCanSetLongStayDeal({
     requesterRole,
     next: input,
@@ -298,7 +311,7 @@ export async function updateService({
   const { data: existing, error: lookupError } = await supabase
     .from('services')
     .select(
-      'id, category, first_hour_fee, archived_at, use_pricing_matrix, free_package_name, long_stay_nightly_price'
+      'id, category, first_hour_fee, archived_at, use_pricing_matrix, has_extra_long_coat, free_package_name, long_stay_nightly_price'
     )
     .eq('id', serviceId)
     .maybeSingle();
@@ -313,6 +326,12 @@ export async function updateService({
     requesterRole,
     next: updates.use_pricing_matrix,
     current: Boolean(existing.use_pricing_matrix),
+  });
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: updates.has_extra_long_coat,
+    current: Boolean(existing.has_extra_long_coat),
+    message: EXTRA_LONG_COAT_SUPERADMIN_ONLY,
   });
   assertCanSetLongStayDeal({
     requesterRole,

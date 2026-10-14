@@ -353,8 +353,28 @@
   display: flex;
 }
 
-.infoCardWrap .categoryCard {
+.infoCardWrap .categoryCard,
+.infoCardWrap .optionCard {
   flex: 1;
+}
+
+/* Book before assessment: a grid-priced service/package card for a pet
+   not yet assessed - room for the ⓘ in the top-right corner, and a faint
+   note that the shown price is not this pet's own yet. */
+.optionTitleRowWithInfo {
+  padding-right: var(--space-4);
+}
+
+.priceVariesNote {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.priceInfoIntro {
+  display: block;
+  margin-bottom: var(--space-1);
 }
 
 .infoCardBadge {

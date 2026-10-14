@@ -289,7 +289,7 @@ describe('checkout.service (#78)', () => {
         );
       });
 
-      it('bills the booked nights at the long-stay rate and each night past them at the regular one', async () => {
+      it('pay at checkout never gets the long-stay rate: every night stayed is the regular one', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-08-11T01:00:00Z')); // 8 nights
 
@@ -301,14 +301,14 @@ describe('checkout.service (#78)', () => {
           'booking-1',
           'branch-1'
         );
-        // 6 x 750 + 2 x 850
-        expect(itemUpdates).toEqual([{ price_at_booking: 6200 }]);
+        // 8 x 850 - not 6 x 750 + 2 x 850.
+        expect(itemUpdates).toEqual([{ price_at_booking: 6800 }]);
         expect(postPayAtCheckoutCharge).toHaveBeenCalledWith(
-          expect.objectContaining({ actualTotal: 6200 })
+          expect.objectContaining({ actualTotal: 6800 })
         );
       });
 
-      it('leaves the bill alone when the pet stays exactly the booked nights', async () => {
+      it('corrects a stay booked at the long-stay rate even when it stays exactly the booked nights', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-08-09T01:00:00Z')); // 6 nights
 
@@ -316,13 +316,14 @@ describe('checkout.service (#78)', () => {
 
         await checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' });
 
-        expect(itemUpdates).toEqual([]);
+        // Booked at 6 x 750 = 4500; billed 6 x 850.
+        expect(itemUpdates).toEqual([{ price_at_booking: 5100 }]);
         expect(postPayAtCheckoutCharge).toHaveBeenCalledWith(
-          expect.objectContaining({ actualTotal: 4500 })
+          expect.objectContaining({ actualTotal: 5100 })
         );
       });
 
-      it('still a long stay when it ends early but at 5 nights or more: prorated at the long-stay rate', async () => {
+      it('5 nights or more is still the regular rate', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-08-08T01:00:00Z')); // 5 nights
 
@@ -330,7 +331,7 @@ describe('checkout.service (#78)', () => {
 
         await checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' });
 
-        expect(itemUpdates).toEqual([{ price_at_booking: 3750 }]); // 5 x 750
+        expect(itemUpdates).toEqual([{ price_at_booking: 4250 }]); // 5 x 850
       });
 
       it('no longer a long stay when it ends under 5 nights: every night is the regular rate', async () => {

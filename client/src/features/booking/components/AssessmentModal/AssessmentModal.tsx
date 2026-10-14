@@ -60,6 +60,11 @@ export interface AssessmentModalProps {
   error: string | null;
   onCancel: () => void;
   onConfirm: () => void;
+  /** Bookings Queue (book before assessment): false when saving only records
+   * the assessment - it does not complete the booking. The button reads
+   * Save and the copy says the booking gets its final price instead.
+   * Defaults to true (the Assessment Queue). */
+  completesBooking?: boolean;
 }
 
 /**
@@ -87,6 +92,7 @@ export function AssessmentModal({
   error,
   onCancel,
   onConfirm,
+  completesBooking = true,
 }: AssessmentModalProps) {
   const hasWeight = weightKg !== '' && weightKg > 0;
   const canonicalKg = hasWeight ? toCanonicalKg(weightKg, entryUnit) : null;
@@ -123,8 +129,10 @@ export function AssessmentModal({
         </h2>
         <p className={styles.modalBody}>
           Record {pet?.name ?? 'this pet'}&apos;s weight and coat type. The
-          weight class is worked out from the weight. Confirming saves the
-          assessment and completes this booking.
+          weight class is worked out from the weight.{' '}
+          {completesBooking
+            ? 'Confirming saves the assessment and completes this booking.'
+            : "Saving records the assessment and sets the booking's final price."}
         </p>
 
         <label className={styles.filterField}>
@@ -242,7 +250,7 @@ export function AssessmentModal({
             disabled={!hasWeight || !classSelectValue || !coatType || isSaving}
             onClick={onConfirm}
           >
-            {isSaving ? 'Saving...' : 'Confirm'}
+            {isSaving ? 'Saving...' : completesBooking ? 'Confirm' : 'Save'}
           </button>
         </div>
       </section>
