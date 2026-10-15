@@ -41,9 +41,10 @@ function throwWithStatus(statusCode: number, message: string): never {
  * already reads the same jsonb column for its own Check 1).
  */
 
-/** Arrival-time granularity for Hotel candidates - independent of the stay's
- * own duration (slotDurationMinutes), which only sets how far `end` extends. */
-const HOTEL_ARRIVAL_STEP_MS = 60 * 60000;
+/** Arrival-time granularity for Hotel and Daycare candidates - independent of
+ * the stay's own duration (slotDurationMinutes), which only sets how far
+ * `end` extends. */
+const ARRIVAL_STEP_MS = 60 * 60000;
 
 export type SlotLevel = 'available' | 'partial' | 'full';
 
@@ -82,10 +83,6 @@ interface BranchRow {
    * Grooming follows that day's full operating hours. */
   grooming_hours?: WeeklyHours | null;
   timezone: string;
-  /** Only selected where the Daycare check-in cutoff matters - see
-   * resolveDaycareCutoffInstant. */
-  name?: string;
-  daycare_checkin_cutoff?: string | null;
 }
 
 /**
@@ -246,29 +243,32 @@ export async function resolveOperatingWindow({
 }
 
 /**
- * The instant, on `date`, after which the branch no longer checks pets in to
- * Daycare (daycareCheckIn.service.ts's own cutoff) - a Daycare session has to
- * START before it, or it could be booked but never checked in. Null when the
- * branch row carries no cutoff.
+ * The last time, on `date`, a Daycare session may START: two hours before
+ * that day's closing time (resolveDaycareCutoffTime - the same rule check-in
+ * applies), or it could be booked but never checked in. Null when the branch
+ * is closed that day.
  */
-function resolveDaycareCutoffInstant(
+function resolveDaycareCutoff(
   branch: BranchRow,
   date: string
-): Date | null {
-  if (!branch.daycare_checkin_cutoff) return null;
+): { time: string; instant: Date } | null {
+  const window = resolveCategoryWindow(
+    branch,
+    weekdayName(date, branch.timezone),
+    'Daycare'
+  );
+  if (!window) return null;
 
-  const cutoffTime = resolveDaycareCutoffTime({
-    name: branch.name ?? '',
-    daycare_checkin_cutoff: branch.daycare_checkin_cutoff,
-  });
+  const time = resolveDaycareCutoffTime(window.close);
 
-  return zonedTimeToUtc(date, cutoffTime.slice(0, 5), branch.timezone);
+  return { time, instant: zonedTimeToUtc(date, time, branch.timezone) };
 }
 
 /**
- * Throws a 422 when a Daycare booking would start at or after the branch's
- * Daycare check-in cutoff. The hard gate behind getDaySlots' own filter that
- * a direct API call (or a typed-in time) still has to clear.
+ * Throws a 422 when a Daycare booking would start later than two hours
+ * before the branch's closing time that day. The hard gate behind
+ * getDaySlots' own filter that a direct API call (or a typed-in time) still
+ * has to clear.
  */
 export async function assertDaycareStartsBeforeCutoff(
   branchId: string,
@@ -276,7 +276,7 @@ export async function assertDaycareStartsBeforeCutoff(
 ): Promise<void> {
   const { data: branch, error } = await supabase
     .from('branches')
-    .select('name, timezone, daycare_checkin_cutoff')
+    .select('operating_hours, timezone')
     .eq('id', branchId)
     .maybeSingle();
 
@@ -287,17 +287,12 @@ export async function assertDaycareStartsBeforeCutoff(
   const date = new Intl.DateTimeFormat('en-CA', {
     timeZone: branchRow.timezone,
   }).format(new Date(scheduledStart));
-  const cutoff = resolveDaycareCutoffInstant(branchRow, date);
+  const cutoff = resolveDaycareCutoff(branchRow, date);
 
-  if (cutoff && new Date(scheduledStart).getTime() >= cutoff.getTime()) {
-    const cutoffTime = resolveDaycareCutoffTime({
-      name: branchRow.name ?? '',
-      daycare_checkin_cutoff: branchRow.daycare_checkin_cutoff!,
-    });
-
+  if (cutoff && new Date(scheduledStart).getTime() > cutoff.instant.getTime()) {
     throwWithStatus(
       422,
-      `Daycare check-in closes at ${formatDaycareCutoff(cutoffTime)} at this branch - please choose an earlier start time`
+      `Daycare check-in closes at ${formatDaycareCutoff(cutoff.time)} at this branch - please choose an earlier start time`
     );
   }
 }
@@ -381,9 +376,7 @@ export async function getDaySlots({
 }: GetDaySlotsParams): Promise<SlotAvailability[]> {
   const { data: branch, error: branchError } = await supabase
     .from('branches')
-    .select(
-      'name, operating_hours, grooming_hours, daycare_checkin_cutoff, timezone'
-    )
+    .select('operating_hours, grooming_hours, timezone')
     .eq('id', branchId)
     .maybeSingle();
 
@@ -461,7 +454,22 @@ export async function getDaySlots({
     for (
       let start = openUtc.getTime();
       start < closeUtc.getTime();
-      start += HOTEL_ARRIVAL_STEP_MS
+      start += ARRIVAL_STEP_MS
+    ) {
+      candidates.push({
+        start: new Date(start),
+        end: new Date(start + stepMs),
+      });
+    }
+  } else if (serviceCategory === 'Daycare') {
+    // Daycare: the customer picks how many hours, then when to drop the pet
+    // off - so start times step hourly, like Hotel arrivals, not by the
+    // session's own length (which offered a 4-hour session only at 08:00,
+    // 12:00, 16:00). The session still has to end by closing.
+    for (
+      let start = openUtc.getTime();
+      start + stepMs <= closeUtc.getTime();
+      start += ARRIVAL_STEP_MS
     ) {
       candidates.push({
         start: new Date(start),
@@ -485,11 +493,11 @@ export async function getDaySlots({
   // branch's effective policy window (default 12:00-13:00), the same
   // resolveEffectivePolicy() staffPicker.service.ts already uses elsewhere -
   // single source of truth for default-vs-branch-override precedence.
-  // Applies to every category uniformly since Hotel/Daycare route through
-  // this same candidate list ("cannot book at this time" is a blanket rule).
+  // Daycare is exempt: a pet in Daycare simply stays through lunch, and
+  // dropping every session that overlapped it hid most of the day.
   let lunchCandidates = candidates;
 
-  if (policy.lunch_break_enabled) {
+  if (policy.lunch_break_enabled && serviceCategory !== 'Daycare') {
     const lunchStartUtc = zonedTimeToUtc(
       date,
       policy.lunch_break_start.slice(0, 5),
@@ -522,16 +530,16 @@ export async function getDaySlots({
         )
       : lunchCandidates;
 
-  // Daycare stops checking pets in at the branch's cutoff (4 PM by default),
-  // so a session that starts at or after it could be booked but never
-  // checked in - don't offer it.
+  // Daycare stops checking pets in two hours before closing, so a session
+  // that starts later could be booked but never checked in - don't offer it.
   const daycareCutoff =
     serviceCategory === 'Daycare'
-      ? resolveDaycareCutoffInstant(branchRow, date)
+      ? resolveDaycareCutoff(branchRow, date)
       : null;
   const futureCandidates = daycareCutoff
     ? notPastCandidates.filter(
-        (candidate) => candidate.start.getTime() < daycareCutoff.getTime()
+        (candidate) =>
+          candidate.start.getTime() <= daycareCutoff.instant.getTime()
       )
     : notPastCandidates;
 

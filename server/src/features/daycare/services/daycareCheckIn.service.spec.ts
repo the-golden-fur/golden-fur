@@ -74,16 +74,34 @@ function queueFromResults(...results: QueryResult[]) {
   }) as never);
 }
 
+/** The same open/close on every weekday - 2026-07-19 is a Sunday. */
+function everyDay(open: string, close: string) {
+  return Object.fromEntries(
+    [
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+      'sunday',
+    ].map((day) => [day, { open, close }])
+  );
+}
+
+// Daycare check-in closes two hours before the branch's closing time:
+// 16:00 here...
 const MAKATI_BRANCH = {
   name: 'Makati',
   timezone: 'Asia/Manila',
-  daycare_checkin_cutoff: '16:00:00',
+  operating_hours: everyDay('08:00', '18:00'),
 };
 
+// ...and 19:00 at a branch that closes at 9 PM.
 const SOUTHWOODS_BRANCH = {
   name: 'Southwoods',
   timezone: 'Asia/Manila',
-  daycare_checkin_cutoff: '18:00:00',
+  operating_hours: everyDay('08:00', '21:00'),
 };
 
 describe('daycareCheckIn.service (#65)', () => {
@@ -303,7 +321,7 @@ describe('daycareCheckIn.service (#65)', () => {
       vi.useRealTimers();
     });
 
-    it('AC-2: check-in after the Makati 4:00 PM cutoff is rejected and creates no row', async () => {
+    it('AC-2: check-in later than two hours before closing is rejected and creates no row', async () => {
       const afterCutoff = new Date('2026-07-19T09:00:00.000Z'); // 17:00 Asia/Manila
       vi.useFakeTimers();
       vi.setSystemTime(afterCutoff);
@@ -325,7 +343,7 @@ describe('daycareCheckIn.service (#65)', () => {
       vi.useRealTimers();
     });
 
-    it('AC-2: Southwoods reads its own branch-config cutoff column, distinct from Makati', async () => {
+    it('AC-2: a branch that closes at 9 PM still checks pets in at 5:30 PM', async () => {
       const time = new Date('2026-07-19T09:30:00.000Z'); // 17:30 Asia/Manila
       vi.useFakeTimers();
       vi.setSystemTime(time);
@@ -366,6 +384,41 @@ describe('daycareCheckIn.service (#65)', () => {
       });
 
       expect(result.status).toBe('Active');
+
+      vi.useRealTimers();
+    });
+
+    it('at a 9 PM branch, checks in right up to 7 PM and refuses after it', async () => {
+      vi.useFakeTimers();
+
+      // 19:00 Asia/Manila - exactly two hours before closing: allowed past
+      // the cutoff check (it goes on to the pet lookup).
+      vi.setSystemTime(new Date('2026-07-19T11:00:00.000Z'));
+      queueFromResults(
+        { data: SOUTHWOODS_BRANCH, error: null },
+        { data: null, error: { message: 'stop after the cutoff check' } }
+      );
+      await expect(
+        checkInDaycareSession({
+          requesterId: 'staff-1',
+          input: { pet_id: 'pet-3', branch_id: 'branch-southwoods' },
+        })
+      ).rejects.not.toMatchObject({
+        message: expect.stringContaining('Check-in unavailable after'),
+      });
+
+      // 19:01 - past it.
+      vi.setSystemTime(new Date('2026-07-19T11:01:00.000Z'));
+      queueFromResults({ data: SOUTHWOODS_BRANCH, error: null });
+      await expect(
+        checkInDaycareSession({
+          requesterId: 'staff-1',
+          input: { pet_id: 'pet-3', branch_id: 'branch-southwoods' },
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Check-in unavailable after 7:00 PM',
+      });
 
       vi.useRealTimers();
     });

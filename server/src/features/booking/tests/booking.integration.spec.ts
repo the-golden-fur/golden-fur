@@ -182,13 +182,13 @@ describe('booking HTTP surface (Issues #51-#54)', () => {
       }, // pricing configuration (getServiceById always reads it, Epic B #80)
       {
         // CREATE_PAYLOAD starts at "now + 30 days", i.e. at whatever time of
-        // day this test happens to run - an end-of-day cutoff keeps the
+        // day this test happens to run - no operating hours means no
+        // closing time to count the cutoff back from, which keeps the
         // check-in cutoff gate from depending on the wall clock here (the
         // gate itself is covered in availability.service.spec).
         data: {
-          name: 'Southwoods',
           timezone: 'Asia/Manila',
-          daycare_checkin_cutoff: '23:59:00',
+          operating_hours: {},
         },
         error: null,
       }, // assertDaycareStartsBeforeCutoff - branch's Daycare check-in cutoff
