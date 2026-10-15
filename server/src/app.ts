@@ -58,7 +58,8 @@ if (process.env.NODE_ENV !== 'test') {
   startCustomerAutoDeleteScheduler();
 
   // Checkout countdown notifications - 1-min poll that tells the owner of a
-  // booked Hotel/Daycare pet 15 minutes before its checkout time, and again
+  // booked Hotel/Daycare pet a chosen lead time (default 15 minutes) before
+  // its checkout time, and again
   // once the countdown is complete while the pet is still checked in.
   startStayCheckoutScheduler();
 }

@@ -56,8 +56,9 @@ export type NotificationChannel = 'email' | 'in_browser';
 export interface NotificationChannelPreference {
   email: boolean;
   in_browser: boolean;
-  /** Only ever set on the 'appointment_reminder' entry - see
-   * REMINDER_OFFSET_MINUTES_OPTIONS. */
+  /** Only ever set on the 'appointment_reminder' and 'checkout_reminder'
+   * entries - see REMINDER_OFFSET_MINUTES_OPTIONS and
+   * CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS. */
   reminder_offset_minutes?: number;
 }
 
@@ -81,6 +82,15 @@ export const REMINDER_OFFSET_LABELS: Record<number, string> = {
   1440: '1 day before',
   2880: '2 days before',
 };
+
+/** Mirrors the server's CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS - "how long
+ * before a checked-in pet's checkout time should the checkout reminder
+ * fire". 15 is the pre-existing fixed lead. Labels reuse
+ * REMINDER_OFFSET_LABELS. */
+export const CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS = [
+  15, 60, 180, 1440,
+] as const;
+export const DEFAULT_CHECKOUT_REMINDER_OFFSET_MINUTES = 15;
 
 const NOTIFICATION_PREFERENCES_PATH_BY_ROLE: Record<ThemeRole, string> = {
   staff: '/staff/notification-preferences',
@@ -321,11 +331,12 @@ export async function updateNotificationPreference(
   return { data: body.notification_preferences, error: null };
 }
 
-/** Customer-only (appointment_reminder is not a staff-facing event type) -
- * see customerNotificationPreferencesController's {reminder_offset_minutes}
- * request shape. */
+/** Customer-only (appointment_reminder and checkout_reminder are not
+ * staff-facing event types) - see customerNotificationPreferencesController's
+ * {reminder_offset_minutes} request shape. */
 export async function updateReminderOffset(
   accessToken: string,
+  eventType: 'appointment_reminder' | 'checkout_reminder',
   reminderOffsetMinutes: number
 ): Promise<PreferencesApiResult<NotificationPreferences>> {
   const response = await fetch(
@@ -337,7 +348,7 @@ export async function updateReminderOffset(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        event_type: 'appointment_reminder',
+        event_type: eventType,
         reminder_offset_minutes: reminderOffsetMinutes,
       }),
     }

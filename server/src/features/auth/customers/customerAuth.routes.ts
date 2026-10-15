@@ -16,7 +16,7 @@ import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
 import {
   NOTIFICATION_CHANNELS,
   NOTIFICATION_EVENT_TYPES,
-  REMINDER_OFFSET_MINUTES_OPTIONS,
+  REMINDER_OFFSET_OPTIONS_BY_EVENT,
   type NotificationChannel,
   type NotificationEventType,
   type NotificationPreferences,
@@ -154,9 +154,10 @@ function isNotificationChannel(value: unknown): value is NotificationChannel {
  * other role-irrelevant keys' stored values.
  *
  * Two mutually-exclusive request shapes: {channel, enabled} (every event
- * type) or {reminder_offset_minutes} (appointment_reminder only, "how long
- * before the appointment should the reminder fire" - see
- * REMINDER_OFFSET_MINUTES_OPTIONS/appointmentReminder.job.ts). Both merge
+ * type) or {reminder_offset_minutes} (appointment_reminder and
+ * checkout_reminder only, "how long before the appointment / checkout should
+ * the reminder fire" - see REMINDER_OFFSET_OPTIONS_BY_EVENT,
+ * appointmentReminder.job.ts and stayCheckout.job.ts). Both merge
  * into the same per-event jsonb entry the same way.
  */
 export async function customerNotificationPreferencesController(
@@ -196,12 +197,8 @@ export async function customerNotificationPreferencesController(
       return res.status(400).json({ error: 'Invalid enabled value' });
     }
   } else {
-    if (
-      eventType !== 'appointment_reminder' ||
-      !(REMINDER_OFFSET_MINUTES_OPTIONS as readonly number[]).includes(
-        reminderOffsetMinutes
-      )
-    ) {
+    const offsetOptions = REMINDER_OFFSET_OPTIONS_BY_EVENT[eventType];
+    if (!offsetOptions || !offsetOptions.includes(reminderOffsetMinutes)) {
       return res.status(400).json({ error: 'Invalid reminder offset' });
     }
   }
