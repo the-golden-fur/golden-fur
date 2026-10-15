@@ -7,6 +7,7 @@ import {
   checkInDaycareSessionController,
   checkOutDaycareSessionController,
   listDaycareSessionsController,
+  previewDaycareCheckoutController,
 } from './daycare.controller.ts';
 import { DAYCARE_ADVANCE_ROLES } from './daycare.types.ts';
 
@@ -37,6 +38,15 @@ router.post(
   requireRole([...DAYCARE_ADVANCE_ROLES]),
   requireBranch,
   checkOutDaycareSessionController
+);
+
+router.get(
+  '/daycare/sessions/:id/checkout-preview',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...DAYCARE_ADVANCE_ROLES]),
+  requireBranch,
+  previewDaycareCheckoutController
 );
 
 export default router;

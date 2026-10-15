@@ -76,35 +76,3 @@
   display: flex;
   gap: var(--space-2);
 }
-
-.breakdown {
-  display: grid;
-  gap: var(--space-1);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  padding: var(--space-3);
-  margin: 0;
-}
-
-.breakdownRow,
-.breakdownTotal {
-  display: flex;
-  justify-content: space-between;
-  margin: 0;
-  color: var(--color-text-primary);
-}
-
-.breakdownRow dt,
-.breakdownRow dd,
-.breakdownTotal dt,
-.breakdownTotal dd {
-  margin: 0;
-}
-
-.breakdownTotal {
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-1);
-  font-weight: var(--weight-bold);
-}

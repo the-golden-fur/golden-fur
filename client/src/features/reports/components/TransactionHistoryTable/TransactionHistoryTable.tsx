@@ -755,6 +755,13 @@ export function TransactionHistoryTable() {
           }
           statusLabel={paymentStatusLabel(printing.payment_status)}
           amount={printing.total_amount}
+          // A Daycare bill is itemized - booked hours, overdue hours, the
+          // night of a pet not picked up before closing.
+          lines={
+            printing.bookings?.service_category === 'Daycare'
+              ? printing.transaction_line_items
+              : undefined
+          }
           onDone={() => setPrinting(null)}
         />
       ) : null}

@@ -82,6 +82,13 @@ export interface CageOccupancyRow {
  * when the referenced customer_profiles row is somehow missing. */
 export interface TransactionHistoryRecord extends Transaction {
   customer_name: string | null;
+  /** The bill's itemized lines (transaction_line_items) - for the receipt. */
+  transaction_line_items?: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
 }
 
 export interface TransactionHistoryFilters {

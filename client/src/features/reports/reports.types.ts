@@ -60,6 +60,14 @@ export interface TransactionRecord {
   total_amount: number;
   misc_sale_description: string | null;
   created_at: string;
+  /** The bill's itemized lines - printed on a Daycare receipt. Optional so
+   * older fixtures/callers stay valid. */
+  transaction_line_items?: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
   bookings: {
     pet_id: string;
     service_category: string;

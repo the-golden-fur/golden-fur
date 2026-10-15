@@ -6,6 +6,8 @@ import {
 } from './checkout.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
+import { postCheckoutExtras } from '../../billing/services/checkoutExtrasCharge.service.ts';
+import { loadRemainingBalance } from '../../billing/services/transactionPayment.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -23,6 +25,15 @@ vi.mock('./activityLog.service.ts', () => ({
 // Covered by its own spec - here only the bill it is asked to post matters.
 vi.mock('../../billing/services/payAtCheckoutCharge.service.ts', () => ({
   postPayAtCheckoutCharge: vi.fn(),
+}));
+
+// Covered by their own specs - here only the late fee posted and the
+// balance read back matter.
+vi.mock('../../billing/services/checkoutExtrasCharge.service.ts', () => ({
+  postCheckoutExtras: vi.fn(),
+}));
+vi.mock('../../billing/services/transactionPayment.service.ts', () => ({
+  loadRemainingBalance: vi.fn(),
 }));
 
 // Covered by its own spec. Mocked so its booking/service/pet lookups stay
@@ -92,11 +103,35 @@ const ACTIVE_STAY = {
   bookings: { total_price: 2000, status: 'In Progress' },
 };
 
+/** The booking's Hotel item - 2 nights booked at ₱800 a night. A late
+ * checkout's nights are billed at that same rate. */
+const BOOKED_AT_800_A_NIGHT: QueryResult = {
+  data: [
+    {
+      service_id: 'service-hotel',
+      price_at_booking: 1600,
+      duration_minutes_at_booking: 1440,
+    },
+  ],
+  error: null,
+};
+
+const LATE_STAY = {
+  ...ACTIVE_STAY,
+  bookings: {
+    ...ACTIVE_STAY.bookings,
+    scheduled_start: '2026-08-03T02:00:00Z',
+    scheduled_end: '2026-08-05T02:00:00Z',
+  },
+};
+
 describe('checkout.service (#78)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.mocked(resolveBookingLongStayTerms).mockResolvedValue(null);
+    vi.mocked(postCheckoutExtras).mockResolvedValue({ id: 'txn-1' } as never);
+    vi.mocked(loadRemainingBalance).mockResolvedValue(0);
   });
 
   describe('extensionDays', () => {
@@ -114,8 +149,19 @@ describe('checkout.service (#78)', () => {
         extensionDays('2026-08-05', new Date('2026-08-06T02:00:00Z'))
       ).toBe(1);
       expect(
-        extensionDays('2026-08-05', new Date('2026-08-07T23:00:00Z'))
+        extensionDays('2026-08-05', new Date('2026-08-07T09:00:00Z'))
       ).toBe(2);
+    });
+
+    it('counts Manila days, matching the cage card - not UTC ones', () => {
+      // 07:30 Manila on the 6th is still the 5th in UTC.
+      expect(
+        extensionDays('2026-08-05', new Date('2026-08-05T23:30:00Z'))
+      ).toBe(1);
+      // 23:00 UTC on the 7th is the 8th in Manila.
+      expect(
+        extensionDays('2026-08-05', new Date('2026-08-07T23:00:00Z'))
+      ).toBe(3);
     });
   });
 
@@ -377,9 +423,10 @@ describe('checkout.service (#78)', () => {
   });
 
   describe('checkOutHotelStay', () => {
-    it('AC-3/AC-4: on-time checkout leaves extension_fee null and reconciles total - downpayment', async () => {
+    it('AC-3/AC-4: on-time checkout leaves extension_fee null and reports what is still owed on Transactions', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-08-05T09:00:00Z'));
+      vi.mocked(loadRemainingBalance).mockResolvedValue(1000);
 
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
@@ -398,19 +445,23 @@ describe('checkout.service (#78)', () => {
       });
 
       expect(result.extensionFee).toBeNull();
+      expect(postCheckoutExtras).not.toHaveBeenCalled();
+      expect(loadRemainingBalance).toHaveBeenCalledWith('booking-1', null);
       expect(result.remainingBalance).toBe(1000);
     });
 
-    it('AC-3/AC-4: late checkout calculates a fee and reconciles total - downpayment + fee', async () => {
+    it('AC-3/AC-4: late checkout posts the fee to Transactions and reports the balance owed there', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-08-07T09:00:00Z')); // 2 days late
+      vi.mocked(loadRemainingBalance).mockResolvedValue(2000);
 
       queueFromResults(
-        { data: ACTIVE_STAY, error: null },
+        { data: LATE_STAY, error: null },
         noOutstandingTasksResult(),
+        BOOKED_AT_800_A_NIGHT,
         ...completeBookingQueue(),
         {
-          data: { ...ACTIVE_STAY, extension_fee: 1000 },
+          data: { ...LATE_STAY, extension_fee: 1600 },
           error: null,
         },
         { data: {}, error: null }
@@ -421,8 +472,99 @@ describe('checkout.service (#78)', () => {
         branchId: 'branch-1',
       });
 
-      expect(result.extensionFee).toBe(1000);
+      // Each late night at the booking's own nightly rate - no hourly fee.
+      expect(result.extensionFee).toBe(1600);
+      expect(postCheckoutExtras).toHaveBeenCalledWith({
+        bookingId: 'booking-1',
+        lines: [
+          {
+            description: 'Late checkout (2 nights x ₱800)',
+            quantity: 2,
+            unit_price: 800,
+            line_total: 1600,
+            line_item_type: 'stay_extension',
+          },
+        ],
+        requesterId: undefined,
+      });
+      // Read back after posting, so it is what Transactions now shows.
       expect(result.remainingBalance).toBe(2000);
+    });
+
+    it('a booking in a multi-booking checkout reads its balance off the group', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-05T09:00:00Z'));
+
+      const GROUPED = {
+        ...ACTIVE_STAY,
+        bookings: { ...ACTIVE_STAY.bookings, booking_group_id: 'group-1' },
+      };
+
+      queueFromResults(
+        { data: GROUPED, error: null },
+        noOutstandingTasksResult(),
+        ...completeBookingQueue(),
+        { data: { ...GROUPED, extension_fee: null }, error: null },
+        { data: {}, error: null }
+      );
+
+      await checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' });
+
+      expect(loadRemainingBalance).toHaveBeenCalledWith(null, 'group-1');
+    });
+
+    it('keeps the checkout and reports the problem when the late fee cannot be posted', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-07T09:00:00Z'));
+      vi.mocked(postCheckoutExtras).mockRejectedValue(new Error('boom'));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      queueFromResults(
+        { data: LATE_STAY, error: null },
+        noOutstandingTasksResult(),
+        BOOKED_AT_800_A_NIGHT,
+        ...completeBookingQueue(),
+        { data: { ...LATE_STAY, extension_fee: 1600 }, error: null },
+        { data: {}, error: null }
+      );
+
+      await expect(
+        checkOutHotelStay({ stayId: 'stay-1', branchId: 'branch-1' })
+      ).rejects.toMatchObject({
+        statusCode: 500,
+        message:
+          'The pet was checked out, but the ₱1600 late checkout fee could not be added to the bill - please add it at the cashier manually',
+      });
+    });
+
+    it('falls back to the flat late fee only when the booking has no Hotel item to price a night by', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-06T09:00:00Z')); // 1 day late
+
+      queueFromResults(
+        { data: LATE_STAY, error: null },
+        noOutstandingTasksResult(),
+        { data: [], error: null }, // no booking items
+        ...completeBookingQueue(),
+        { data: { ...LATE_STAY, extension_fee: 500 }, error: null },
+        { data: {}, error: null }
+      );
+
+      const result = await checkOutHotelStay({
+        stayId: 'stay-1',
+        branchId: 'branch-1',
+      });
+
+      expect(result.extensionFee).toBe(500);
+      expect(postCheckoutExtras).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lines: [
+            expect.objectContaining({
+              description: 'Late checkout (1 night x ₱500)',
+            }),
+          ],
+        })
+      );
     });
 
     it('Hotel long-stay rate: an overdue day is charged at the regular nightly rate instead of the flat fee', async () => {
@@ -453,7 +595,16 @@ describe('checkout.service (#78)', () => {
         'branch-1'
       );
       expect(result.extensionFee).toBe(1700); // 2 x 850
-      expect(result.remainingBalance).toBe(2700); // 2000 - 1000 + 1700
+      expect(postCheckoutExtras).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lines: [
+            expect.objectContaining({
+              description: 'Late checkout (2 nights x ₱850)',
+              line_total: 1700,
+            }),
+          ],
+        })
+      );
     });
 
     it('does not look up a long-stay deal for an on-time checkout', async () => {
@@ -474,6 +625,10 @@ describe('checkout.service (#78)', () => {
     });
 
     it('AC-4: releases the cage back to Available in the same call', async () => {
+      // On time, so no late-night rate lookup joins the mock queue.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-05T09:00:00Z'));
+
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
         noOutstandingTasksResult(),
@@ -516,6 +671,10 @@ describe('checkout.service (#78)', () => {
     });
 
     it('rejects checkout when the race-safe conditional update loses (actual_check_out_at was already set by a concurrent call)', async () => {
+      // On time, so no late-night rate lookup joins the mock queue.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-05T09:00:00Z'));
+
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
         noOutstandingTasksResult(),
@@ -561,6 +720,10 @@ describe('checkout.service (#78)', () => {
     });
 
     it('Custom change (checkout gating): a Completed/Missed-only checklist does not block checkout', async () => {
+      // On time, so no late-night rate lookup joins the mock queue.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-05T09:00:00Z'));
+
       queueFromResults(
         { data: ACTIVE_STAY, error: null },
         {

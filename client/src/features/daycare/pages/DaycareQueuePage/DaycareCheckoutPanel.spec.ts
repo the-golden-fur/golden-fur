@@ -153,6 +153,46 @@ describe('DaycareCheckoutPanel (#69)', () => {
     expect(breakdown?.textContent).toContain('₱250');
   });
 
+  it('a booked pet picked up late shows what was added and what is left to collect, matching Transactions', async () => {
+    vi.mocked(daycareApi.checkOutDaycareSession).mockResolvedValue({
+      data: {
+        id: 'session-1',
+        booking_id: 'booking-1',
+        status: 'Completed',
+        computed_charge: 250,
+        added_at_checkout: 100,
+        amount_due: 100,
+        charge_breakdown: {
+          first_hour_fee: 100,
+          succeeding_hours: 1,
+          succeeding_hour_fee: 50,
+          hourly_charge: 150,
+          overdue_hours: 2,
+          overdue_hour_fee: 50,
+          overdue_charge: 100,
+          nights: 0,
+          nightly_rate: null,
+          overnight_charge: 0,
+          total: 250,
+        },
+      } as never,
+      error: null,
+    });
+
+    renderPanel();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /check out/i })
+    );
+
+    expect(
+      await screen.findByText('Added to the bill at checkout')
+    ).toBeInTheDocument();
+    const toCollect = screen.getByText('To collect at the cashier');
+    // The booked hours were paid at booking - only the ₱100 fee is owed.
+    expect(toCollect.nextElementSibling?.textContent).toBe('₱100');
+  });
+
   it('surfaces an error for an already-completed session', async () => {
     vi.mocked(daycareApi.checkOutDaycareSession).mockResolvedValue({
       data: null,

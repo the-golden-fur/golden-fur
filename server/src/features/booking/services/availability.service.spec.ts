@@ -640,15 +640,14 @@ describe('availability.service (#56/#60 supporting infra)', () => {
     });
   });
 
-  describe('Daycare check-in cutoff', () => {
-    // Monday 2026-08-03, open 08:00-18:00, Daycare check-in closes 16:00.
-    // Asia/Manila is UTC+8, so 16:00 local = 08:00 UTC.
-    const branchWithCutoff = (name: string, cutoff: string) => ({
+  describe('Daycare start times', () => {
+    // Monday 2026-08-03. Daycare's last start is two hours before the
+    // branch's closing time for the day. Asia/Manila is UTC+8.
+    const branchClosingAt = (close: string) => ({
       data: {
-        name,
+        name: 'Southwoods',
         timezone: 'Asia/Manila',
-        operating_hours: { monday: { open: '08:00', close: '18:00' } },
-        daycare_checkin_cutoff: cutoff,
+        operating_hours: { monday: { open: '08:00', close } },
       },
       error: null,
     });
@@ -658,71 +657,76 @@ describe('availability.service (#56/#60 supporting infra)', () => {
       error: null,
     };
 
+    /** "HH:MM" Asia/Manila on 2026-08-03 as the ISO instant slots carry. */
+    const at = (time: string) => {
+      const [hour, minute] = time.split(':').map(Number);
+      return new Date(Date.UTC(2026, 7, 3, hour - 8, minute)).toISOString();
+    };
+
     function pinBeforeOpening() {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-08-02T20:00:00.000Z')); // 04:00 Monday
     }
 
-    it('does not offer Daycare slots that start at or after the cutoff', async () => {
+    async function daycareSlots(close: string, hours: number, lunch = false) {
       pinBeforeOpening();
       queueFromResults(
-        branchWithCutoff('Southwoods', '16:00:00'),
-        POLICY_ROW_LUNCH_DISABLED,
+        branchClosingAt(close),
+        policyRow({ lunch_break_enabled: lunch }),
         NO_STAFF_ROLES
       );
 
-      const slots = await getDaySlots({
+      return getDaySlots({
         branchId: 'branch-1',
         serviceCategory: 'Daycare',
         date: '2026-08-03',
-        slotDurationMinutes: 60,
+        slotDurationMinutes: hours * 60,
       });
+    }
 
-      // 08:00 through 15:00 - the 16:00 and 17:00 starts are gone.
-      expect(slots).toHaveLength(8);
-      expect(slots.at(-1)?.start).toBe('2026-08-03T07:00:00.000Z'); // 15:00
+    it('offers a start every hour, whatever the number of hours booked', async () => {
+      const slots = await daycareSlots('18:00', 4);
+
+      // Every hour that still ends by the 18:00 close: 08:00 to 14:00.
+      expect(slots.map((slot) => slot.start)).toEqual(
+        ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00'].map(at)
+      );
+      expect(slots[0]?.end).toBe(at('12:00'));
     });
 
-    it("follows the branch's own configured cutoff", async () => {
-      pinBeforeOpening();
-      queueFromResults(
-        branchWithCutoff('Southwoods', '17:00:00'),
-        POLICY_ROW_LUNCH_DISABLED,
-        NO_STAFF_ROLES
-      );
+    it('at a 9 PM branch, a 2-hour session can start as late as 7 PM', async () => {
+      const slots = await daycareSlots('21:00', 2);
 
-      const slots = await getDaySlots({
-        branchId: 'branch-1',
-        serviceCategory: 'Daycare',
-        date: '2026-08-03',
-        slotDurationMinutes: 60,
-      });
-
-      expect(slots).toHaveLength(9);
+      expect(slots.at(-1)?.start).toBe(at('19:00'));
     });
 
-    it('keeps Makati at its fixed 4 PM cutoff whatever the column says, same as check-in', async () => {
-      pinBeforeOpening();
-      queueFromResults(
-        branchWithCutoff('Makati', '17:30:00'),
-        POLICY_ROW_LUNCH_DISABLED,
-        NO_STAFF_ROLES
+    it('never starts later than two hours before closing, even for 1 hour', async () => {
+      const slots = await daycareSlots('21:00', 1);
+
+      // 20:00 would end by closing, but is past the 19:00 cutoff.
+      expect(slots.at(-1)?.start).toBe(at('19:00'));
+      expect(slots).toHaveLength(12); // 08:00 to 19:00
+    });
+
+    it('follows the closing time set for the day', async () => {
+      const slots = await daycareSlots('18:00', 1);
+
+      expect(slots.at(-1)?.start).toBe(at('16:00'));
+    });
+
+    it('is not affected by the lunch break', async () => {
+      const slots = await daycareSlots('18:00', 4, true);
+
+      expect(slots.map((slot) => slot.start)).toEqual(
+        expect.arrayContaining(['10:00', '11:00', '12:00'].map(at))
       );
-
-      const slots = await getDaySlots({
-        branchId: 'branch-1',
-        serviceCategory: 'Daycare',
-        date: '2026-08-03',
-        slotDurationMinutes: 60,
-      });
-
-      expect(slots).toHaveLength(8);
+      expect(slots).toHaveLength(7);
     });
 
     it('does not apply the Daycare cutoff to another category', async () => {
       pinBeforeOpening();
       queueFromResults(
-        branchWithCutoff('Southwoods', '16:00:00'),
+        branchClosingAt('18:00'),
         POLICY_ROW_LUNCH_DISABLED,
         NO_STAFF_ROLES
       );
@@ -740,28 +744,22 @@ describe('availability.service (#56/#60 supporting infra)', () => {
     });
 
     describe('assertDaycareStartsBeforeCutoff', () => {
-      it('allows a start before the cutoff', async () => {
-        queueFromResults(branchWithCutoff('Southwoods', '16:00:00'));
+      it('allows a start right up to two hours before closing', async () => {
+        queueFromResults(branchClosingAt('21:00'));
 
         await expect(
-          assertDaycareStartsBeforeCutoff(
-            'branch-1',
-            '2026-08-03T07:00:00.000Z' // 15:00
-          )
+          assertDaycareStartsBeforeCutoff('branch-1', at('19:00'))
         ).resolves.toBeUndefined();
       });
 
-      it('rejects a start at or after the cutoff, naming the time', async () => {
-        queueFromResults(branchWithCutoff('Southwoods', '16:00:00'));
+      it('rejects a later start, naming the time', async () => {
+        queueFromResults(branchClosingAt('21:00'));
 
         await expect(
-          assertDaycareStartsBeforeCutoff(
-            'branch-1',
-            '2026-08-03T08:00:00.000Z' // 16:00
-          )
+          assertDaycareStartsBeforeCutoff('branch-1', at('19:30'))
         ).rejects.toMatchObject({
           statusCode: 422,
-          message: expect.stringContaining('4:00 PM'),
+          message: expect.stringContaining('7:00 PM'),
         });
       });
     });
@@ -856,7 +854,8 @@ describe('availability.service (#56/#60 supporting infra)', () => {
         slotDurationMinutes: 60,
       });
 
-      expect(slots).toHaveLength(10);
+      // The full 08:00-18:00 day, up to Daycare's own 16:00 last start.
+      expect(slots).toHaveLength(9);
     });
 
     it('clamps a Grooming time that runs past the operating hours', async () => {

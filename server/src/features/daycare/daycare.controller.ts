@@ -4,7 +4,10 @@ import {
   checkInDaycareSession,
   listDaycareSessions,
 } from './services/daycareCheckIn.service.ts';
-import { checkOutDaycareSession } from './services/daycareBilling.service.ts';
+import {
+  checkOutDaycareSession,
+  previewDaycareCheckout,
+} from './services/daycareBilling.service.ts';
 import {
   checkInValidator,
   listDaycareSessionsQueryValidator,
@@ -104,6 +107,21 @@ export async function checkOutDaycareSessionController(
     });
 
     return res.status(200).json({ session });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** The bill this session would get if it were checked out now - shown in the
+ * check-out confirmation before staff confirm. Writes nothing. */
+export async function previewDaycareCheckoutController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const preview = await previewDaycareCheckout(paramId(req, 'id'));
+
+    return res.status(200).json({ preview });
   } catch (error) {
     return sendServiceError(res, error);
   }

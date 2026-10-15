@@ -96,6 +96,31 @@
     padding-top: 3mm;
   }
 
+  /* The itemized bill - one line per charge, amounts in their own column. */
+  .bill {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 0.5pt dashed #000;
+    margin-top: 3mm;
+    font-size: 9pt;
+  }
+
+  .bill td {
+    padding: 1mm 0 0;
+    vertical-align: top;
+  }
+
+  .bill tr:first-child td {
+    padding-top: 3mm;
+  }
+
+  .billAmount {
+    padding-left: 3mm;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
   .total {
     display: flex;
     justify-content: space-between;

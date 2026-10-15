@@ -1,0 +1,56 @@
+.breakdown {
+  display: grid;
+  gap: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin: 0;
+}
+
+.row,
+.subtotal,
+.total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.row dt,
+.row dd,
+.subtotal dt,
+.subtotal dd,
+.total dt,
+.total dd {
+  margin: 0;
+}
+
+/* Amounts line up in one column, whatever the label length. */
+.row dd,
+.subtotal dd,
+.total dd {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Charges that only exist because the pet was picked up late. */
+.late dt {
+  color: var(--color-error-text);
+}
+
+.subtotal {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-1);
+  font-weight: var(--weight-semibold);
+}
+
+.total {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-1);
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+}

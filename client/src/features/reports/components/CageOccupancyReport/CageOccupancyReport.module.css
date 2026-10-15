@@ -342,3 +342,10 @@
     gap: 0;
   }
 }
+
+/* Check-out confirmation / result: the line above a Daycare bill. */
+.previewNote {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
