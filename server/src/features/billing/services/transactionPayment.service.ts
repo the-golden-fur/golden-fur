@@ -106,9 +106,10 @@ async function loadSpawnedLeftover(
  * What is still owed on the booking (or booking group) after a settlement:
  * the total of its Pending booking_payment transactions - a spawned leftover,
  * a down-payment booking's waiting balance, a vet's unpaid charge. 0 means
- * nothing is left to pay.
+ * nothing is left to pay. Also what a Hotel/Daycare checkout reports as
+ * left to collect, so it always matches the Transactions list.
  */
-async function loadRemainingBalance(
+export async function loadRemainingBalance(
   bookingId: string | null,
   bookingGroupId: string | null
 ): Promise<number> {

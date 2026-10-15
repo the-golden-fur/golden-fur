@@ -37,7 +37,13 @@ export async function listTransactionHistory(
     ? `bookings!inner(${bookingColumns})`
     : `bookings(${bookingColumns})`;
 
-  let query = supabase.from('transactions').select(`*, ${bookingsSelect}`);
+  // Line items let a printed receipt itemize the bill (e.g. a Daycare
+  // checkout's overdue hours and night not picked up).
+  let query = supabase
+    .from('transactions')
+    .select(
+      `*, ${bookingsSelect}, transaction_line_items(description, quantity, unit_price, line_total)`
+    );
 
   if (filters.branchId) {
     query = query.eq('branch_id', filters.branchId);

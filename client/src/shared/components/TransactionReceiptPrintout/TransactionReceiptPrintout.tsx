@@ -5,6 +5,11 @@ import { encodeCode128 } from '../../utils/code128';
 import { formatCurrency } from '../../utils/formatCurrency';
 import styles from './TransactionReceiptPrintout.module.css';
 
+export interface ReceiptLine {
+  description: string;
+  line_total: number;
+}
+
 export interface TransactionReceiptPrintoutProps {
   /** The branch the transaction was made at - its name, address and contact
    * number sit under the business name. Each line is left out when unknown. */
@@ -30,6 +35,10 @@ export interface TransactionReceiptPrintoutProps {
   method: string | null;
   statusLabel: string;
   amount: number;
+  /** The bill's own lines (transaction_line_items) - e.g. a Daycare
+   * checkout's overdue hours and night not picked up - printed above the
+   * amount. Left out for a single-amount slip. */
+  lines?: ReceiptLine[];
   /** Called once the browser's print dialog has closed, so the owner can
    * unmount this sheet again. */
   onDone: () => void;
@@ -45,6 +54,26 @@ function formatDate(iso: string): string {
 // The sheet is mounted and printed in the same tick, which leaves no time to
 // fetch the logo - so it is fetched as soon as a page that can print loads.
 new Image().src = logo;
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * The lines to print, always adding up to `amount`: when they cover less
+ * (a balance transaction that also carries what was still owed from booking,
+ * which has no line of its own) a "Booking balance" line makes up the rest.
+ */
+function billLines(lines: ReceiptLine[], amount: number): ReceiptLine[] {
+  const listed = round2(
+    lines.reduce((sum, line) => sum + Number(line.line_total), 0)
+  );
+  const rest = round2(Number(amount) - listed);
+
+  return rest > 0
+    ? [{ description: 'Booking balance', line_total: rest }, ...lines]
+    : lines;
+}
 
 /** Blank margin a scanner needs either side of the bars, in modules. */
 const BARCODE_QUIET_ZONE = 10;
@@ -110,6 +139,7 @@ export function TransactionReceiptPrintout({
   method,
   statusLabel,
   amount,
+  lines,
   onDone,
 }: TransactionReceiptPrintoutProps) {
   // Read through a ref so a new onDone identity on re-render never
@@ -193,6 +223,21 @@ export function TransactionReceiptPrintout({
           <dd>{statusLabel}</dd>
         </div>
       </dl>
+
+      {lines && lines.length > 0 ? (
+        <table className={styles.bill} aria-label="Bill">
+          <tbody>
+            {billLines(lines, amount).map((line, index) => (
+              <tr key={`${line.description}-${index}`}>
+                <td>{line.description}</td>
+                <td className={styles.billAmount}>
+                  {formatCurrency(line.line_total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
 
       <p className={styles.total}>
         <span>Amount</span>

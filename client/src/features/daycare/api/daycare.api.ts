@@ -1,5 +1,6 @@
 import type {
   CheckInPayload,
+  DaycareCheckoutPreview,
   DaycareCheckoutResult,
   DaycareSession,
   DaycareStatus,
@@ -108,4 +109,23 @@ export async function checkOutDaycareSession(
 
   const result = await parseBody<{ session: DaycareCheckoutResult }>(response);
   return { data: result.data?.session ?? null, error: result.error };
+}
+
+/** The bill this session would get if it were checked out now - nothing is
+ * saved. Shown in the check-out confirmation. */
+export async function getDaycareCheckoutPreview(
+  sessionId: string,
+  accessToken: string
+): Promise<DaycareApiResult<DaycareCheckoutPreview>> {
+  const response = await fetch(
+    `${API_BASE_URL}/daycare/sessions/${sessionId}/checkout-preview`,
+    { headers: jsonHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ preview: DaycareCheckoutPreview }>(response);
+  return { data: result.data?.preview ?? null, error: result.error };
 }

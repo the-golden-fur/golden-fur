@@ -59,6 +59,16 @@ describe('listTransactionHistory', () => {
     expect(selectArgs[0]).not.toContain('!inner');
   });
 
+  it('includes each transaction’s line items, so a receipt can itemize the bill', async () => {
+    const { selectArgs } = stubQuery({ data: [], error: null });
+
+    await listTransactionHistory({});
+
+    expect(selectArgs[0]).toContain(
+      'transaction_line_items(description, quantity, unit_price, line_total)'
+    );
+  });
+
   it('switches to an !inner join once a service-category filter is requested', async () => {
     const { selectArgs } = stubQuery({ data: [], error: null });
 

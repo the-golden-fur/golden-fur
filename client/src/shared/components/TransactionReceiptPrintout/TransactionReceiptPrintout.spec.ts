@@ -100,3 +100,64 @@ describe('TransactionReceiptPrintout', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('TransactionReceiptPrintout - itemized bill', () => {
+  // A Daycare overdue checkout: 1 overdue hour and 1 night not picked up.
+  const LINES = [
+    {
+      description: 'Daycare overdue checkout fee (1 hour x ₱50)',
+      quantity: 1,
+      unit_price: 50,
+      line_total: 50,
+    },
+    {
+      description: 'Daycare overnight stay - not picked up (1 night x ₱850)',
+      quantity: 1,
+      unit_price: 850,
+      line_total: 850,
+    },
+  ];
+
+  it('lists each line of the bill with its amount above the total', () => {
+    render(
+      createElement(TransactionReceiptPrintout, {
+        ...PROPS,
+        amount: 900,
+        lines: LINES,
+      })
+    );
+
+    const bill = within(
+      screen.getByRole('document', { name: 'Receipt' })
+    ).getByRole('table', { name: 'Bill' });
+    const rows = within(bill).getAllByRole('row');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Daycare overdue checkout fee (1 hour x ₱50)₱50.00',
+      'Daycare overnight stay - not picked up (1 night x ₱850)₱850.00',
+    ]);
+  });
+
+  it('adds a booking balance line when the listed lines do not cover the amount', () => {
+    render(
+      createElement(TransactionReceiptPrintout, {
+        ...PROPS,
+        // ₱400 still owed from booking + the ₱900 checkout added.
+        amount: 1300,
+        lines: LINES,
+      })
+    );
+
+    const bill = screen.getByRole('table', { name: 'Bill' });
+    expect(within(bill).getAllByRole('row')[0]?.textContent).toBe(
+      'Booking balance₱400.00'
+    );
+  });
+
+  it('prints no bill table without lines', () => {
+    render(createElement(TransactionReceiptPrintout, PROPS));
+
+    expect(
+      screen.queryByRole('table', { name: 'Bill' })
+    ).not.toBeInTheDocument();
+  });
+});

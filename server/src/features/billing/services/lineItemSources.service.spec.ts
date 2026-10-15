@@ -74,3 +74,34 @@ describe('lineItemSources.service - Daycare', () => {
     });
   });
 });
+
+describe('lineItemSources.service - Hotel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('splits the late checkout fee (already part of total_price) out into its own line without counting it twice', async () => {
+    // Booked at 2000; checkout posted a 1000 late fee onto total_price.
+    staysResult({ downpayment_amount: 1000, extension_fee: 1000 });
+
+    const lines = await getServiceLineItems({
+      id: 'booking-1',
+      service_category: 'Hotel',
+      total_price: 3000,
+      items: [],
+    } as unknown as BookingForBilling);
+
+    expect(lines).toEqual([
+      expect.objectContaining({ description: 'Hotel stay', line_total: 2000 }),
+      expect.objectContaining({
+        description: 'Downpayment already collected',
+        line_total: -1000,
+      }),
+      expect.objectContaining({
+        description: 'Late checkout extension fee',
+        line_total: 1000,
+      }),
+    ]);
+    expect(lines.reduce((sum, line) => sum + line.line_total, 0)).toBe(2000);
+  });
+});

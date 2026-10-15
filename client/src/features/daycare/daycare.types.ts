@@ -43,7 +43,30 @@ export type DaycareCheckoutResult = DaycareSession & {
   /** Pay at checkout: true when this checkout sent the whole charge to the
    * cashier's Transactions list (the booking had no upfront charge). */
   billed_at_checkout?: boolean;
+  /** A normal booking's extras this checkout posted to Transactions - null
+   * for a walk-in or a pay-at-checkout booking. */
+  added_at_checkout?: number | null;
+  /** What the booking's Daycare hours were charged at booking - null for a
+   * walk-in or a pay-at-checkout booking. */
+  booked_charge?: number | null;
+  /** What the booking's Transactions still say is owed after checkout.
+   * Null for a walk-in (no booking). */
+  amount_due?: number | null;
 };
+
+/** The bill a session would get if it were checked out now - GET
+ * /daycare/sessions/:id/checkout-preview, shown before staff confirm. */
+export interface DaycareCheckoutPreview {
+  charge_breakdown: DaycareChargeBreakdown;
+  computed_charge: number;
+  booked_charge: number | null;
+  added_at_checkout: number | null;
+  /** Pending on Transactions now + what checkout would add. */
+  amount_due: number | null;
+  billed_at_checkout: boolean;
+  /** When the preview was worked out (ISO). */
+  as_of: string;
+}
 
 export type CheckInPayload = (
   | { booking_id: string; pet_id?: never; branch_id?: never }

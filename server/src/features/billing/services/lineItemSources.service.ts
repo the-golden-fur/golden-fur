@@ -285,11 +285,13 @@ async function getItemBasedLineItems(
 }
 
 /**
- * Mirrors checkout.service.ts's checkOutHotelStay() reconciliation
- * (total_price - downpayment_amount + extension_fee) as separate signed
- * lines rather than one pre-netted figure, so the cashier checkout screen
- * (#86) can show each component individually - SUM(line_total) still
- * reproduces the same remaining-balance figure.
+ * The stay (total_price - downpayment_amount) as separate signed lines
+ * rather than one pre-netted figure, so the cashier checkout screen (#86)
+ * can show each component individually. A late checkout's extension fee is
+ * already part of total_price (checkOutHotelStay posts it there via
+ * postCheckoutExtras), so it is split back out into its own line -
+ * SUM(line_total) is still total_price - downpayment, never the fee twice
+ * (the same split getDaycareLineItems does with computed_charge).
  */
 async function getHotelLineItems(
   booking: BookingForBilling
@@ -305,6 +307,9 @@ async function getHotelLineItems(
   if (!stay) throwWithStatus(404, 'Hotel stay not found for this booking');
 
   const downpayment = Number(stay.downpayment_amount);
+  const extensionFee =
+    stay.extension_fee === null ? 0 : Number(stay.extension_fee);
+  const stayPrice = booking.total_price - extensionFee;
 
   const lines: DraftLineItem[] = [
     {
@@ -318,8 +323,8 @@ async function getHotelLineItems(
         booking.items[0]?.service_id ?? booking.items[0]?.package_id ?? null,
       description: 'Hotel stay',
       quantity: 1,
-      unit_price: booking.total_price,
-      line_total: booking.total_price,
+      unit_price: stayPrice,
+      line_total: stayPrice,
     },
     {
       line_item_type: 'discount',
@@ -332,14 +337,13 @@ async function getHotelLineItems(
   ];
 
   if (stay.extension_fee !== null) {
-    const fee = Number(stay.extension_fee);
     lines.push({
       line_item_type: 'service',
       reference_id: null,
       description: 'Late checkout extension fee',
       quantity: 1,
-      unit_price: fee,
-      line_total: fee,
+      unit_price: extensionFee,
+      line_total: extensionFee,
     });
   }
 

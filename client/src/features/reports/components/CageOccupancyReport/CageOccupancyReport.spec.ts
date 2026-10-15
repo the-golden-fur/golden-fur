@@ -30,7 +30,33 @@ vi.mock('../../../hotel/api/hotel.api', () => ({
 
 vi.mock('../../../daycare/api/daycare.api', () => ({
   checkOutDaycareSession: vi.fn(),
+  // No preview unless a test sets one - the dialog then just confirms.
+  getDaycareCheckoutPreview: vi
+    .fn()
+    .mockResolvedValue({ data: null, error: 'no preview' }),
 }));
+
+/** Booked 1 hour (₱100), picked up the next morning: 1 overdue hour and 1
+ * night not picked up before closing. */
+const OVERDUE_BILL = {
+  charge_breakdown: {
+    first_hour_fee: 100,
+    succeeding_hours: 0,
+    succeeding_hour_fee: 50,
+    hourly_charge: 100,
+    overdue_hours: 1,
+    overdue_hour_fee: 50,
+    overdue_charge: 50,
+    nights: 1,
+    nightly_rate: 850,
+    overnight_charge: 850,
+    total: 1000,
+  },
+  computed_charge: 1000,
+  booked_charge: 100,
+  added_at_checkout: 900,
+  amount_due: 900,
+};
 
 vi.mock('../../api/reports.api', () => ({
   getCageOccupancyReport: vi.fn(),
@@ -382,7 +408,7 @@ describe('CageOccupancyReport', () => {
           error: null,
         });
         vi.mocked(daycareApi.checkOutDaycareSession).mockResolvedValue({
-          data: { id: 'stay-1', computed_charge: 150 } as never,
+          data: { id: 'stay-1', ...OVERDUE_BILL } as never,
           error: null,
         });
 
@@ -403,17 +429,57 @@ describe('CageOccupancyReport', () => {
           'stay-1',
           'token'
         );
-        expect(
-          await screen.findByText(
-            'Mochi was checked out and S-02 is available again. Daycare charge: PHP 150.00.'
-          )
-        ).toBeInTheDocument();
+        // The full bill, line by line, in its own result popup.
+        const result = await screen.findByRole('dialog', {
+          name: 'Mochi was checked out',
+        });
+        expect(result).toHaveTextContent('S-02 is available again.');
+        expect(result).toHaveTextContent('Overdue checkout - 1 hour × ₱50');
+        expect(result).toHaveTextContent(
+          'Not picked up before closing - 1 night × ₱850 (Hotel rate)'
+        );
+        expect(result).toHaveTextContent('To collect at the cashier₱900');
         await waitFor(() =>
           expect(
             vi.mocked(hotelApi.getCageGrid).mock.calls.length
           ).toBeGreaterThan(reloadsBefore)
         );
         expect(hotelApi.checkOutHotelStay).not.toHaveBeenCalled();
+      });
+
+      it("shows a Daycare pet's whole bill in the confirmation, before anything is saved", async () => {
+        const user = userEvent.setup();
+        vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+          data: [occupant(inTwoHours())],
+          error: null,
+        });
+        vi.mocked(daycareApi.getDaycareCheckoutPreview).mockResolvedValue({
+          data: {
+            ...OVERDUE_BILL,
+            billed_at_checkout: false,
+            as_of: '2026-07-20T01:00:00.000Z',
+          },
+          error: null,
+        });
+
+        renderPage();
+
+        await openCheckoutFromCage(user);
+
+        const dialog = screen.getByRole('dialog');
+        expect(daycareApi.getDaycareCheckoutPreview).toHaveBeenCalledWith(
+          'stay-1',
+          'token'
+        );
+        expect(
+          await within(dialog).findByText('Overdue checkout - 1 hour × ₱50')
+        ).toBeInTheDocument();
+        expect(dialog).toHaveTextContent(
+          'Not picked up before closing - 1 night × ₱850 (Hotel rate)'
+        );
+        expect(dialog).toHaveTextContent('To collect at the cashier₱900');
+        expect(dialog).toHaveTextContent(/If checked out now/);
+        expect(daycareApi.checkOutDaycareSession).not.toHaveBeenCalled();
       });
 
       it('uses the Hotel check-out for a Hotel stay', async () => {
@@ -448,6 +514,7 @@ describe('CageOccupancyReport', () => {
         expect(
           await screen.findByText(/Remaining balance: PHP 850.00/)
         ).toBeInTheDocument();
+        expect(daycareApi.getDaycareCheckoutPreview).not.toHaveBeenCalled();
       });
 
       it("keeps the dialog open with the server's reason when the check-out is refused", async () => {

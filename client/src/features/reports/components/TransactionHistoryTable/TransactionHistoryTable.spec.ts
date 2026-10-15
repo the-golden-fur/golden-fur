@@ -426,6 +426,73 @@ describe('TransactionHistoryTable', () => {
     ).not.toBeInTheDocument();
   });
 
+  it("itemizes a Daycare receipt with the bill's own lines - overdue hours and the night not picked up", async () => {
+    const lines = [
+      {
+        description: 'Daycare overdue checkout fee (1 hour x ₱50)',
+        quantity: 1,
+        unit_price: 50,
+        line_total: 50,
+      },
+      {
+        description: 'Daycare overnight stay - not picked up (1 night x ₱850)',
+        quantity: 1,
+        unit_price: 850,
+        line_total: 850,
+      },
+    ];
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          total_amount: 900,
+          bookings: { pet_id: 'pet-1', service_category: 'Daycare' } as never,
+          transaction_line_items: lines,
+        }),
+        // A Grooming receipt stays a single amount.
+        buildTransaction({
+          id: 'txn-2',
+          total_amount: 300,
+          transaction_line_items: [
+            {
+              description: 'Full groom',
+              quantity: 1,
+              unit_price: 300,
+              line_total: 300,
+            },
+          ],
+        }),
+      ],
+      error: null,
+    });
+    renderTable();
+    await screen.findByText('PHP 900.00');
+
+    const menus = screen.getAllByRole('button', {
+      name: /options for this transaction/i,
+    });
+    await userEvent.click(menus[0]);
+    await userEvent.click(await screen.findByText('Print receipt'));
+
+    const bill = within(
+      screen.getByRole('document', { name: 'Receipt' })
+    ).getByRole('table', { name: 'Bill' });
+    expect(bill).toHaveTextContent(
+      'Daycare overdue checkout fee (1 hour x ₱50)'
+    );
+    expect(bill).toHaveTextContent(
+      'Daycare overnight stay - not picked up (1 night x ₱850)'
+    );
+
+    act(() => {
+      window.dispatchEvent(new Event('afterprint'));
+    });
+    await userEvent.click(menus[1]);
+    await userEvent.click(await screen.findByText('Print receipt'));
+    expect(
+      screen.queryByRole('table', { name: 'Bill' })
+    ).not.toBeInTheDocument();
+  });
+
   it('prints an unpaid transaction as "Payment Due", with no payment method', async () => {
     vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
       data: [buildTransaction({ payment_status: 'Pending' })],
