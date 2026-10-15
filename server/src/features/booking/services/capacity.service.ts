@@ -347,7 +347,7 @@ export async function listOverlappingPencilBookings({
     )
     .eq('branch_id', branchId)
     .eq('service_category', serviceCategory)
-    .eq('status', 'Pending')
+    .in('status', ['Pending', 'Late'])
     .eq('payment_status', 'Pending')
     .eq('downpayment_required', true)
     .lt('scheduled_start', scheduledEnd)

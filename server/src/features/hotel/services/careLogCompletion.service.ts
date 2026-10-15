@@ -33,7 +33,7 @@ interface ListParams {
 /**
  * Boarding Checklist Kanban redesign: Missed is a lazy, read-time
  * transition - no cron/scheduled-job infra exists in this app, same as
- * bookings.status='No-show' (booking.service.ts's applyNoShowTransition,
+ * bookings.status='No-show' (booking.service.ts's applyLateAndNoShowTransition,
  * which this mirrors). Any Pending/In Progress entry whose scheduled_date
  * is strictly before today is flipped to Missed the moment it's next read.
  * A single bulk update covers every stale row in the result set, not one

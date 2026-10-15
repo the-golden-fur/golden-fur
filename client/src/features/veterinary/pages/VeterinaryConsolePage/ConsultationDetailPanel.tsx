@@ -496,7 +496,7 @@ export function ConsultationDetailPanel({
           </p>
         ) : null}
 
-        {bookingStatus === 'Pending' ? (
+        {bookingStatus === 'Pending' || bookingStatus === 'Late' ? (
           <button
             type="button"
             className={styles.primaryButton}

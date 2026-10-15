@@ -118,7 +118,7 @@ export async function listGroomingQueue({
     .eq('service_category', 'Grooming')
     .in(
       'status',
-      view === 'history' ? ['Completed'] : ['Pending', 'In Progress']
+      view === 'history' ? ['Completed'] : ['Pending', 'Late', 'In Progress']
     )
     .gte('scheduled_start', dayStart)
     .lt('scheduled_start', dayEnd);

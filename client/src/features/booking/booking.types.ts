@@ -65,9 +65,12 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
  * automatically - so 'Confirmed' was retired rather than relabeled.
  * Pending (booked, appointment hasn't started) -> In Progress (a Start
  * action, or physical check-in for Hotel/Daycare) -> Completed (a Complete
- * action or checkout). No-show is a lazy, read-time server transition: any
- * Pending booking whose scheduled_start has passed is flipped to No-show
- * the next time it's read. Cancelled is unchanged.
+ * action or checkout). Late and No-show are lazy, read-time server
+ * transitions: a Pending booking whose scheduled_start has passed is flipped
+ * to Late the next time it's read (it can still be started, checked in or
+ * cancelled), then to No-show once the branch's no-show threshold
+ * (Policy Configuration > "Mark as no-show after") has also passed.
+ * Cancelled is unchanged.
  *
  * 'Paid' was retired as a status value (staff-queue-overhaul): payment is
  * now tracked exclusively via the independent `payment_status` field
@@ -75,6 +78,7 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
  */
 export type BookingStatus =
   | 'Pending'
+  | 'Late'
   | 'In Progress'
   | 'Completed'
   | 'Cancelled'
@@ -82,6 +86,7 @@ export type BookingStatus =
 
 export const BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
   'Cancelled',
@@ -92,6 +97,7 @@ export const BOOKING_STATUSES: readonly BookingStatus[] = [
  * ACTIVE_BOOKING_STATUSES. */
 export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
 ];
@@ -103,8 +109,21 @@ export const FINISHED_BOOKING_STATUSES: readonly BookingStatus[] = [
 
 export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
+
+/** Mirrors the server's NOT_STARTED_BOOKING_STATUSES - booked but not
+ * started yet. A 'Late' booking can still be started/checked in exactly
+ * like a 'Pending' one. */
+export const NOT_STARTED_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'Late',
+];
+
+export function isNotStartedStatus(status: string): boolean {
+  return (NOT_STARTED_BOOKING_STATUSES as readonly string[]).includes(status);
+}
 
 /**
  * Mirrors the server's PaymentStatus - the same vocabulary as a
@@ -164,6 +183,7 @@ export const DOWNPAYMENT_EXPIRED_CANCELLATION_REASON =
 export type BookingConfirmationState =
   | 'Unconfirmed'
   | 'Confirmed'
+  | 'Late'
   | 'In service'
   | 'Completed'
   | 'Expired'
@@ -174,6 +194,7 @@ export const BOOKING_CONFIRMATION_STATES: readonly BookingConfirmationState[] =
   [
     'Unconfirmed',
     'Confirmed',
+    'Late',
     'In service',
     'Completed',
     'Expired',
@@ -198,6 +219,7 @@ export const RESCHEDULABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
  * Cancelled/No-show booking has nothing left to collect. */
 export const PAYABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
 ];
@@ -686,6 +708,13 @@ export interface PolicyConfiguration {
    * permanently removed. NOT NULL, default 30. Customers aren't
    * branch-scoped, so only the system-default row's value is ever read. */
   customer_deactivation_auto_delete_days: number;
+  /** Custom change (Late booking status): minutes after scheduled_start a
+   * booking stays 'Late' (still startable) before it becomes 'No-show'.
+   * Default 30. Ignored when no_show_at_closing is true. */
+  no_show_after_minutes: number;
+  /** When true, a Late booking becomes No-show at the branch's closing time
+   * on the booking's day instead. Default false. */
+  no_show_at_closing: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -719,6 +748,8 @@ export type EffectivePolicy = Pick<
   | 'care_log_daily_report_enabled'
   | 'credit_review_mode'
   | 'customer_deactivation_auto_delete_days'
+  | 'no_show_after_minutes'
+  | 'no_show_at_closing'
 >;
 
 export interface UpdatePolicyPayload {
@@ -750,6 +781,8 @@ export interface UpdatePolicyPayload {
   care_log_daily_report_enabled?: boolean;
   credit_review_mode?: CreditReviewMode;
   customer_deactivation_auto_delete_days?: number;
+  no_show_after_minutes?: number;
+  no_show_at_closing?: boolean;
 }
 
 export interface StaffPreferenceInput {

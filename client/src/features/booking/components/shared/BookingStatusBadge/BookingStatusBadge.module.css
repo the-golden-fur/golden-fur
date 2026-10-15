@@ -1,4 +1,5 @@
 .pending,
+.late,
 .inProgress,
 .completed,
 .cancelled,
@@ -16,6 +17,7 @@
 }
 
 .pending:hover,
+.late:hover,
 .inProgress:hover,
 .completed:hover,
 .cancelled:hover,
@@ -27,6 +29,11 @@
 .pending {
   background: var(--color-booking-pending-bg);
   color: var(--color-booking-pending-text);
+}
+
+.late {
+  background: var(--color-booking-late-bg);
+  color: var(--color-booking-late-text);
 }
 
 .inProgress {

@@ -93,6 +93,10 @@
   --color-booking-completed-text: #725a35;
   --color-booking-pending-bg: #fff6df;
   --color-booking-pending-text: #9a6400;
+  /* Late booking status - an orange step between Pending's amber and
+     No-show's red: past its start time but the customer may still come. */
+  --color-booking-late-bg: #ffe9d6;
+  --color-booking-late-text: #a84300;
   --color-booking-in-progress-bg: #e3edfa;
   --color-booking-in-progress-text: #2a5ba8;
   /* Transactions page row/card tints by payment status - a yellow ramp
@@ -276,6 +280,8 @@
   --color-booking-completed-text: #f0dfbf;
   --color-booking-pending-bg: #4d3413;
   --color-booking-pending-text: #ffd27a;
+  --color-booking-late-bg: #4f2a0f;
+  --color-booking-late-text: #ffbe8a;
   --color-booking-in-progress-bg: #1f3a5c;
   --color-booking-in-progress-text: #a9c8f0;
   /* Transactions page row/card tints (dark-theme values) - same ramp as

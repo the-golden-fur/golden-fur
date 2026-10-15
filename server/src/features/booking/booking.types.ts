@@ -80,10 +80,14 @@ export type ServiceCategory =
  * automatically - so 'Confirmed' was retired rather than relabeled.
  * Pending (booked, appointment hasn't started) -> In Progress (Start
  * action, or physical check-in for Hotel/Daycare) -> Completed (Complete
- * action or checkout). No-show is a lazy, read-time transition applied by
- * applyNoShowTransition in booking.service.ts (no cron infra exists in this
- * app): any Pending booking whose scheduled_start has passed is flipped to
- * No-show the next time it's read. Cancelled is unchanged.
+ * action or checkout). Late and No-show are lazy, read-time transitions
+ * applied by applyLateAndNoShowTransition in booking.service.ts (no cron
+ * infra exists in this app): a Pending booking whose scheduled_start has
+ * passed is flipped to Late the next time it's read (custom change,
+ * 20261015266 - the customer may still show up, so it can still be started,
+ * checked in, rescheduled or cancelled), and to No-show once the branch's
+ * no-show threshold (policy_configurations.no_show_after_minutes /
+ * no_show_at_closing) has also passed. Cancelled is unchanged.
  *
  * 'Paid' was retired as a status value (staff-queue-overhaul): payment is
  * now tracked exclusively via the independent `payment_status` column/enum
@@ -92,6 +96,7 @@ export type ServiceCategory =
  */
 export type BookingStatus =
   | 'Pending'
+  | 'Late'
   | 'In Progress'
   | 'Completed'
   | 'Cancelled'
@@ -99,6 +104,7 @@ export type BookingStatus =
 
 export const BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
   'Cancelled',
@@ -108,11 +114,12 @@ export const BOOKING_STATUSES: readonly BookingStatus[] = [
 /** Holds a real capacity/staff-time slot - mirrors the
  * bookings_staff_active_idx partial index predicate and
  * get_staff_availability()'s Check 2 (migrations 20260728058/...062/
- * ...083). NOTE: down-payment slot gate (20260829146-148) adds a second
+ * ...083, plus 'Late' since 20261015268). NOTE: down-payment slot gate (20260829146-148) adds a second
  * condition on top of this status list - a booking only actually holds its
  * slot when it ALSO passes SLOT_HOLD_PAID_OR_FILTER below. */
 export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
 ];
@@ -149,8 +156,22 @@ export const FINISHED_BOOKING_STATUSES: readonly BookingStatus[] = [
 
 export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
+
+/** Booked but not started yet - 'Late' (start time passed, customer may
+ * still show up) behaves exactly like 'Pending' everywhere a booking can be
+ * started, checked in, edited or billed ahead of its service. Use this
+ * instead of comparing against 'Pending' alone. */
+export const NOT_STARTED_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'Late',
+];
+
+export function isNotStartedStatus(status: string): boolean {
+  return (NOT_STARTED_BOOKING_STATUSES as readonly string[]).includes(status);
+}
 
 /**
  * Independent of `status` above - tracks only how much of the booking's
@@ -208,7 +229,8 @@ export const PAYMENT_STATUSES: readonly PaymentStatus[] = [
 /** Only before the service has started - matches "shouldn't be able to
  * reschedule a booking that's already underway or past due" (past-due is
  * additionally enforced by scheduled_start, not just status, in
- * reschedule.service.ts). */
+ * reschedule.service.ts). 'Late' is deliberately absent - its start time
+ * has already passed, which reschedule refuses anyway. */
 export const RESCHEDULABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
 ];
@@ -597,6 +619,14 @@ export interface PolicyConfiguration {
    * branch-scoped, so only this system-default row's value is ever read -
    * see getCustomerAutoDeletePolicyDays. */
   customer_deactivation_auto_delete_days: number;
+  /** Custom change (Late booking status, 20261015267): minutes after
+   * scheduled_start that a booking stays 'Late' (still startable) before it
+   * becomes 'No-show'. Default 30. Ignored when no_show_at_closing is true.
+   * Read by applyLateAndNoShowTransition in booking.service.ts. */
+  no_show_after_minutes: number;
+  /** When true, a Late booking becomes No-show at the branch's closing time
+   * on the booking's day instead. Default false. */
+  no_show_at_closing: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -634,6 +664,8 @@ export type EffectivePolicy = Pick<
   | 'care_log_daily_report_enabled'
   | 'credit_review_mode'
   | 'customer_deactivation_auto_delete_days'
+  | 'no_show_after_minutes'
+  | 'no_show_at_closing'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'

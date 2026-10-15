@@ -458,6 +458,21 @@ describe('updatePolicyValidator', () => {
     ).toBe(true);
   });
 
+  it('accepts the Late -> No-show threshold presets and rejects anything else', () => {
+    for (const minutes of [15, 30, 60, 120]) {
+      expect(
+        updatePolicyValidator.safeParse({ no_show_after_minutes: minutes })
+          .success
+      ).toBe(true);
+    }
+    expect(
+      updatePolicyValidator.safeParse({ no_show_after_minutes: 45 }).success
+    ).toBe(false);
+    expect(
+      updatePolicyValidator.safeParse({ no_show_at_closing: true }).success
+    ).toBe(true);
+  });
+
   it('accepts booking_notice_period_days (the new-booking notice knob) and rejects a negative one', () => {
     expect(
       updatePolicyValidator.safeParse({ booking_notice_period_days: 2 }).success

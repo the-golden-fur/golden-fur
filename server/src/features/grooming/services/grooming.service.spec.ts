@@ -362,7 +362,7 @@ describe('grooming.service (#64, booking-status revision)', () => {
       expect(recordedWrites).toHaveLength(0);
     });
 
-    it('asks for Pending and In Progress bookings, still scoped to the requesting groomer', async () => {
+    it('asks for Pending, Late and In Progress bookings, still scoped to the requesting groomer', async () => {
       const inSpy = vi.fn();
       const eqSpy = vi.fn();
 
@@ -394,7 +394,11 @@ describe('grooming.service (#64, booking-status revision)', () => {
         requesterBranchId: 'branch-1',
       });
 
-      expect(inSpy).toHaveBeenCalledWith('status', ['Pending', 'In Progress']);
+      expect(inSpy).toHaveBeenCalledWith('status', [
+        'Pending',
+        'Late',
+        'In Progress',
+      ]);
       expect(eqSpy).toHaveBeenCalledWith('assigned_staff_id', GROOMER_ID);
     });
 

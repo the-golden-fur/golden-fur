@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { BookingDetails } from '../../booking.types';
+import { isNotStartedStatus, type BookingDetails } from '../../booking.types';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import { BookingStatusBadge } from '../shared/BookingStatusBadge/BookingStatusBadge';
 import { PaymentStatusBadge } from '../shared/PaymentStatusBadge/PaymentStatusBadge';
@@ -82,7 +82,7 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
   // the total is only the estimate the booking was created with.
   const awaitingCheckoutBill =
     booking.pay_at_checkout === true &&
-    (booking.status === 'Pending' || booking.status === 'In Progress');
+    (isNotStartedStatus(booking.status) || booking.status === 'In Progress');
   const isGrouped = data.group !== null;
   const hotelNightDates = isHotel
     ? getHotelNightDates(

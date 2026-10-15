@@ -55,7 +55,7 @@ const ALLOWED_VIEWER_ROLES = new Set([
 // two meaningful values to filter by here. The old separate "Unconfirmed
 // (awaiting payment)" option is gone along with the server's now-merged
 // two-function split.
-const GROOMING_STATUSES: BookingStatus[] = ['Pending', 'In Progress'];
+const GROOMING_STATUSES: BookingStatus[] = ['Pending', 'Late', 'In Progress'];
 type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },

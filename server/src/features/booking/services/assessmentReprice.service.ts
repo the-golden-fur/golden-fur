@@ -15,6 +15,7 @@ import type { Booking } from '../booking.types.ts';
 /** A booking can still be repriced while it hasn't been finished. */
 const REPRICEABLE_STATUSES: readonly Booking['status'][] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
 

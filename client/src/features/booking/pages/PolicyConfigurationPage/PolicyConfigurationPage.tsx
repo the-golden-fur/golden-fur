@@ -35,6 +35,17 @@ const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const SYSTEM_DEFAULT_OPTION = '';
 
+/** "Mark as no-show after" presets - mirrors the server's
+ * NO_SHOW_AFTER_MINUTES_OPTIONS (booking.validator.ts), plus
+ * 'closing' for the no_show_at_closing flag. */
+const NO_SHOW_THRESHOLD_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '15', label: '15 minutes after the start time' },
+  { value: '30', label: '30 minutes after the start time' },
+  { value: '60', label: '1 hour after the start time' },
+  { value: '120', label: '2 hours after the start time' },
+  { value: 'closing', label: 'End of operating hours that day' },
+];
+
 interface FormState {
   notice_period_days: number;
   notice_enforcement_mode: EnforcementMode;
@@ -69,6 +80,8 @@ interface FormState {
   care_log_task_email_enabled: boolean;
   care_log_daily_report_enabled: boolean;
   customer_deactivation_auto_delete_days: number;
+  no_show_after_minutes: number;
+  no_show_at_closing: boolean;
 }
 
 function formStateFromPolicy(policy: PolicyConfiguration): FormState {
@@ -104,6 +117,8 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     care_log_daily_report_enabled: policy.care_log_daily_report_enabled,
     customer_deactivation_auto_delete_days:
       policy.customer_deactivation_auto_delete_days,
+    no_show_after_minutes: policy.no_show_after_minutes,
+    no_show_at_closing: policy.no_show_at_closing,
   };
 }
 
@@ -136,6 +151,8 @@ const DOCUMENTED_DEFAULTS: FormState = {
   care_log_task_email_enabled: false,
   care_log_daily_report_enabled: true,
   customer_deactivation_auto_delete_days: 30,
+  no_show_after_minutes: 30,
+  no_show_at_closing: false,
 };
 
 /**
@@ -350,6 +367,8 @@ export function PolicyConfigurationPage({
       care_log_daily_report_enabled: form.care_log_daily_report_enabled,
       customer_deactivation_auto_delete_days:
         form.customer_deactivation_auto_delete_days,
+      no_show_after_minutes: form.no_show_after_minutes,
+      no_show_at_closing: form.no_show_at_closing,
     });
 
     setIsSubmitting(false);
@@ -568,6 +587,48 @@ export function PolicyConfigurationPage({
             Separate from the reschedule notice above. Applies only to brand-new
             online bookings (customer self-service and receptionist New
             Booking), never to walk-ins.
+          </p>
+        </section>
+
+        <section aria-labelledby="no-show-heading">
+          <h2 className={styles.sectionTitle} id="no-show-heading">
+            Late arrivals and no-shows
+          </h2>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Mark as no-show after</span>
+            <select
+              className={styles.input}
+              value={
+                form.no_show_at_closing
+                  ? 'closing'
+                  : String(form.no_show_after_minutes)
+              }
+              onChange={(event) => {
+                const { value } = event.target;
+                setForm((prev) =>
+                  value === 'closing'
+                    ? { ...prev, no_show_at_closing: true }
+                    : {
+                        ...prev,
+                        no_show_at_closing: false,
+                        no_show_after_minutes: Number(value),
+                      }
+                );
+              }}
+            >
+              {NO_SHOW_THRESHOLD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className={styles.copy}>
+            Once a booking's start time passes it shows as <em>Late</em> - the
+            customer can still be checked in or the booking started as usual. If
+            they still haven't arrived by this point it becomes a{' '}
+            <em>No-show</em>.
           </p>
         </section>
 

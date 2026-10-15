@@ -35,6 +35,8 @@ import {
 import {
   BOOKING_MARK_PAID_ROLES,
   DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
+  isNotStartedStatus,
+  NOT_STARTED_BOOKING_STATUSES,
   OVERRIDABLE_BOOKING_STATUSES,
   PAY_AT_CHECKOUT_CATEGORIES,
   sanitizeHotelPreferencesForStaffRole,
@@ -74,6 +76,7 @@ import { daycareHourlyCharge } from '../../daycare/modules/daycareCharge.util.ts
 import {
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
+  closingInstantOn,
 } from './availability.service.ts';
 
 const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
@@ -1610,6 +1613,7 @@ export async function createBooking({
  * payment_status - no service was rendered on them and nothing is owed. */
 const UNRESOLVED_BOOKING_STATUSES: readonly Booking['status'][] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
 
@@ -1723,7 +1727,7 @@ export async function listConflictedBookingsForCustomer(
       'id, service_category, pet_id, scheduled_start, scheduled_end, branch_id, conflict_notice, slot_conflict_at'
     )
     .eq('customer_id', customerId)
-    .eq('status', 'Pending')
+    .in('status', NOT_STARTED_BOOKING_STATUSES)
     .not('slot_conflict_at', 'is', null)
     .order('slot_conflict_at', { ascending: false });
 
@@ -1809,7 +1813,7 @@ export async function getBookingById({
   const [withGroupExpiry] = await applyBookingGroupDownpaymentExpiry([
     withExpiry,
   ]);
-  const [withNoShow] = await applyNoShowTransition([withGroupExpiry]);
+  const [withNoShow] = await applyLateAndNoShowTransition([withGroupExpiry]);
   return withNoShow;
 }
 
@@ -1937,7 +1941,7 @@ export async function listBookings({
 
   const withExpiry = await applyDownpaymentExpiry((data ?? []) as Booking[]);
   const withGroupExpiry = await applyBookingGroupDownpaymentExpiry(withExpiry);
-  const withNoShow = await applyNoShowTransition(withGroupExpiry);
+  const withNoShow = await applyLateAndNoShowTransition(withGroupExpiry);
 
   // A row flipped to No-show / Cancelled by a lazy transition above may no
   // longer match an explicit status filter the caller asked for (e.g.
@@ -1952,7 +1956,8 @@ export async function listBookings({
  * Down-payment slot gate (advisor addendum A4): an unpaid,
  * down-payment-required Online booking auto-cancels once its
  * `downpayment_due_at` passes. Lazy, read-time - same rationale and bulk-
- * update shape as applyNoShowTransition (no cron infra exists in this app).
+ * update shape as applyLateAndNoShowTransition (no cron infra exists in
+ * this app).
  * Runs BEFORE the no-show pass so an expired-and-never-paid booking reads
  * as Cancelled ("down payment not received"), not No-show. The slot itself
  * was never held while the booking was unpaid, so this only tidies the
@@ -1963,7 +1968,7 @@ async function applyDownpaymentExpiry(bookings: Booking[]): Promise<Booking[]> {
   const expiredIds = bookings
     .filter(
       (booking) =>
-        booking.status === 'Pending' &&
+        isNotStartedStatus(booking.status) &&
         booking.downpayment_required &&
         booking.payment_status === 'Pending' &&
         booking.downpayment_due_at !== null &&
@@ -2039,7 +2044,8 @@ async function applyBookingGroupDownpaymentExpiry(
       bookings
         .filter(
           (booking) =>
-            booking.booking_group_id != null && booking.status === 'Pending'
+            booking.booking_group_id != null &&
+            isNotStartedStatus(booking.status)
         )
         .map((booking) => booking.booking_group_id as string)
     ),
@@ -2080,7 +2086,7 @@ async function applyBookingGroupDownpaymentExpiry(
       updated_at: now.toISOString(),
     })
     .in('booking_group_id', expiredGroupIds)
-    .eq('status', 'Pending')
+    .in('status', NOT_STARTED_BOOKING_STATUSES)
     .select(BOOKING_SELECT);
 
   if (error) throwWithStatus(400, error.message);
@@ -2093,36 +2099,117 @@ async function applyBookingGroupDownpaymentExpiry(
 }
 
 /**
- * No-show is a lazy, read-time transition - no cron/scheduled-job infra
- * exists in this app. Any Pending booking whose scheduled_start has already
- * passed is flipped to No-show the moment it's next read through
- * getBookingById/listBookings, matching "the label did not change from
- * pending to in-progress" as the definition of a no-show. A single bulk
- * update covers every stale row in the result set, not one query per row.
+ * Late and No-show are lazy, read-time transitions - no cron/scheduled-job
+ * infra exists in this app. A Pending booking whose scheduled_start has
+ * passed is flipped to 'Late' the moment it's next read through
+ * getBookingById/listBookings (custom change, 20261015266): the customer may
+ * still turn up, so it stays startable/cancellable and keeps its slot. Once
+ * the branch's no-show threshold has also passed - no_show_after_minutes
+ * after the start (default 30), or the branch's closing time that day when
+ * no_show_at_closing is on - it flips to 'No-show' instead, matching "the
+ * label never changed to In Progress" as the definition of a no-show.
+ *
+ * Each branch's effective policy (and, only for "End of operating hours",
+ * its operating hours) is resolved once per call, and every stale row goes
+ * out in at most one bulk update per target status, not one query per row.
  */
-async function applyNoShowTransition(bookings: Booking[]): Promise<Booking[]> {
+async function applyLateAndNoShowTransition(
+  bookings: Booking[]
+): Promise<Booking[]> {
   const now = new Date();
-  const staleIds = bookings
-    .filter(
-      (booking) =>
-        booking.status === 'Pending' &&
-        new Date(booking.scheduled_start).getTime() < now.getTime()
-    )
-    .map((booking) => booking.id);
-
-  if (staleIds.length === 0) return bookings;
-
-  const { data, error } = await supabase
-    .from('bookings')
-    .update({ status: 'No-show', updated_at: now.toISOString() })
-    .in('id', staleIds)
-    .select(BOOKING_SELECT);
-
-  if (error) throwWithStatus(400, error.message);
-
-  const updatedById = new Map(
-    ((data ?? []) as Booking[]).map((row) => [row.id, row])
+  const candidates = bookings.filter(
+    (booking) =>
+      isNotStartedStatus(booking.status) &&
+      new Date(booking.scheduled_start).getTime() < now.getTime()
   );
+
+  if (candidates.length === 0) return bookings;
+
+  const branchIds = [
+    ...new Set(candidates.map((booking) => booking.branch_id)),
+  ];
+  const policyByBranchId = new Map(
+    await Promise.all(
+      branchIds.map(
+        async (branchId) =>
+          [branchId, await resolveEffectivePolicy(branchId)] as const
+      )
+    )
+  );
+
+  const closingBranchIds = branchIds.filter(
+    (branchId) => policyByBranchId.get(branchId)?.no_show_at_closing
+  );
+  const branchHoursById = new Map<
+    string,
+    Parameters<typeof closingInstantOn>[1]
+  >();
+
+  if (closingBranchIds.length > 0) {
+    const { data: branchRows, error: branchError } = await supabase
+      .from('branches')
+      .select('id, operating_hours, timezone')
+      .in('id', closingBranchIds);
+
+    if (branchError) throwWithStatus(400, branchError.message);
+
+    for (const row of (branchRows ?? []) as Array<
+      { id: string } & Parameters<typeof closingInstantOn>[1]
+    >) {
+      branchHoursById.set(row.id, row);
+    }
+  }
+
+  const noShowAt = (booking: Booking): number => {
+    const start = new Date(booking.scheduled_start);
+    const policy = policyByBranchId.get(booking.branch_id);
+    const afterMinutesAt =
+      start.getTime() + (policy?.no_show_after_minutes ?? 30) * 60 * 1000;
+
+    if (!policy?.no_show_at_closing) return afterMinutesAt;
+
+    const branch = branchHoursById.get(booking.branch_id);
+    const closing = branch ? closingInstantOn(start, branch) : null;
+    // A closed day (or a start after closing) has no meaningful "end of
+    // operating hours" - fall back to the minutes threshold.
+    return closing && closing.getTime() > start.getTime()
+      ? closing.getTime()
+      : afterMinutesAt;
+  };
+
+  const noShowIds: string[] = [];
+  const lateIds: string[] = [];
+
+  for (const booking of candidates) {
+    if (now.getTime() >= noShowAt(booking)) {
+      noShowIds.push(booking.id);
+    } else if (booking.status === 'Pending') {
+      lateIds.push(booking.id);
+    }
+  }
+
+  const updatedById = new Map<string, Booking>();
+
+  for (const [status, ids] of [
+    ['No-show', noShowIds],
+    ['Late', lateIds],
+  ] as const) {
+    if (ids.length === 0) continue;
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .update({ status, updated_at: now.toISOString() })
+      .in('id', ids)
+      // Only rows still not started - a concurrent Start must win.
+      .in('status', NOT_STARTED_BOOKING_STATUSES)
+      .select(BOOKING_SELECT);
+
+    if (error) throwWithStatus(400, error.message);
+
+    for (const row of (data ?? []) as Booking[]) {
+      updatedById.set(row.id, row);
+    }
+  }
 
   return bookings.map((booking) => updatedById.get(booking.id) ?? booking);
 }
@@ -2183,7 +2270,7 @@ export async function startBooking({
 }: AdvanceStatusParams): Promise<Booking> {
   const booking = await getRawBookingById(bookingId);
 
-  if (booking.status !== 'Pending') {
+  if (!isNotStartedStatus(booking.status)) {
     throwWithStatus(409, `A ${booking.status} booking cannot be started`);
   }
 
@@ -2526,7 +2613,7 @@ export async function recomputeBookingGroupPaymentStatus(
       // here and re-email the customer a stale "bookings confirmed".
       if (
         updated.payment_status !== 'Pending' &&
-        updated.status === 'Pending' &&
+        isNotStartedStatus(updated.status) &&
         updated.booking_source === 'Online'
       ) {
         newlyConfirmed.push(updated);
@@ -2733,7 +2820,7 @@ export async function applyFirstBookingPaymentSideEffects({
 
   if (
     updated.downpayment_required &&
-    (updated.status === 'Pending' || updated.status === 'In Progress')
+    (isNotStartedStatus(updated.status) || updated.status === 'In Progress')
   ) {
     const stillHoldsSlot = await confirmCapacityAfterInsert(updated);
 
@@ -2760,7 +2847,10 @@ export async function applyFirstBookingPaymentSideEffects({
 
   // Best-effort: the first payment "confirms" a still-Pending Online booking
   // - fire the alerts createBooking held back while it was Unconfirmed.
-  if (updated.status === 'Pending' && updated.booking_source === 'Online') {
+  if (
+    isNotStartedStatus(updated.status) &&
+    updated.booking_source === 'Online'
+  ) {
     try {
       await sendBookingConfirmedNotification(updated, {
         skipEmail: suppressConfirmationEmail,

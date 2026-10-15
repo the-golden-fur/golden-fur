@@ -357,6 +357,11 @@
   color: var(--color-booking-pending-text);
 }
 
+.chipLate {
+  background: var(--color-booking-late-bg);
+  color: var(--color-booking-late-text);
+}
+
 .chipInProgress {
   background: var(--color-booking-in-progress-bg);
   color: var(--color-booking-in-progress-text);

@@ -17,6 +17,7 @@ interface BookingConfirmationBadgeProps {
 const STATE_CLASSNAME: Record<BookingConfirmationState, keyof typeof styles> = {
   Unconfirmed: 'unconfirmed',
   Confirmed: 'confirmed',
+  Late: 'late',
   'In service': 'inService',
   Completed: 'completed',
   Expired: 'expired',
