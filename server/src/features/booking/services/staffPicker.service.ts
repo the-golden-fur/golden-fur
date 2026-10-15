@@ -59,6 +59,10 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   // Mirrors the column default (20260915204). Not branch-scoped in
   // practice - see getCustomerAutoDeletePolicyDays.
   customer_deactivation_auto_delete_days: 30,
+  // Mirrors the column defaults (20261015267): a booking stays Late for 30
+  // minutes after its start before it becomes No-show.
+  no_show_after_minutes: 30,
+  no_show_at_closing: false,
 };
 
 export interface ServiceTypeStaffConfig {
@@ -594,6 +598,8 @@ export async function updatePolicyConfiguration({
     credit_review_mode: resolved.credit_review_mode,
     customer_deactivation_auto_delete_days:
       resolved.customer_deactivation_auto_delete_days,
+    no_show_after_minutes: resolved.no_show_after_minutes,
+    no_show_at_closing: resolved.no_show_at_closing,
   };
 
   const { data, error } = await supabase

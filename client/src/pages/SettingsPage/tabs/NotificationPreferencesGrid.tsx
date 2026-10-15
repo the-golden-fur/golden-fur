@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useState } from 'react';
 import { ToggleSwitch } from '../../../shared/components/ToggleSwitch/ToggleSwitch';
 import {
+  CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS,
+  DEFAULT_CHECKOUT_REMINDER_OFFSET_MINUTES,
   DEFAULT_REMINDER_OFFSET_MINUTES,
   getNotificationPreferences,
   REMINDER_OFFSET_LABELS,
@@ -59,13 +61,42 @@ const EVENT_TYPES_BY_ROLE: Record<
       type: 'booking_slot_conflict',
       label: 'Booking slot became unavailable',
     },
-    { type: 'checkout_reminder', label: 'Checkout in 15 minutes' },
+    { type: 'checkout_reminder', label: 'Checkout reminder' },
     { type: 'daycare_overdue', label: 'Checkout time is up' },
     { type: 'vet_charge_posted', label: 'Veterinary charges added' },
   ],
 };
 
 const DEFAULT_CHANNEL_PREFERENCE = { email: true, in_browser: true };
+
+type ReminderOffsetEventType = 'appointment_reminder' | 'checkout_reminder';
+
+/** Customer events that also carry a "when to send it" dropdown. */
+const REMINDER_OFFSET_CONFIG: Record<
+  ReminderOffsetEventType,
+  {
+    options: readonly number[];
+    defaultMinutes: number;
+    ariaLabel: string;
+  }
+> = {
+  appointment_reminder: {
+    options: REMINDER_OFFSET_MINUTES_OPTIONS,
+    defaultMinutes: DEFAULT_REMINDER_OFFSET_MINUTES,
+    ariaLabel: 'When to send the booking reminder',
+  },
+  checkout_reminder: {
+    options: CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS,
+    defaultMinutes: DEFAULT_CHECKOUT_REMINDER_OFFSET_MINUTES,
+    ariaLabel: 'When to send the checkout reminder',
+  },
+};
+
+function isReminderOffsetEvent(
+  eventType: NotificationEventType
+): eventType is ReminderOffsetEventType {
+  return eventType in REMINDER_OFFSET_CONFIG;
+}
 
 export function NotificationPreferencesGrid({
   role,
@@ -129,38 +160,42 @@ export function NotificationPreferencesGrid({
     });
   };
 
-  const handleReminderOffsetChange = (minutes: number) => {
-    const previous =
-      preferences?.appointment_reminder?.reminder_offset_minutes ??
-      DEFAULT_REMINDER_OFFSET_MINUTES;
+  const reminderOffsetFor = (eventType: ReminderOffsetEventType) =>
+    preferences?.[eventType]?.reminder_offset_minutes ??
+    REMINDER_OFFSET_CONFIG[eventType].defaultMinutes;
 
+  const setReminderOffset = (
+    eventType: ReminderOffsetEventType,
+    minutes: number
+  ) => {
     setPreferences((current) => {
       const base = current ?? ({} as NotificationPreferences);
       return {
         ...base,
-        appointment_reminder: {
+        [eventType]: {
           ...DEFAULT_CHANNEL_PREFERENCE,
-          ...base.appointment_reminder,
+          ...base[eventType],
           reminder_offset_minutes: minutes,
         },
       };
     });
+  };
 
-    void updateReminderOffset(accessToken, minutes).then((result) => {
-      if (result.error) {
-        setPreferences((current) => {
-          const base = current ?? ({} as NotificationPreferences);
-          return {
-            ...base,
-            appointment_reminder: {
-              ...DEFAULT_CHANNEL_PREFERENCE,
-              ...base.appointment_reminder,
-              reminder_offset_minutes: previous,
-            },
-          };
-        });
+  const handleReminderOffsetChange = (
+    eventType: ReminderOffsetEventType,
+    minutes: number
+  ) => {
+    const previous = reminderOffsetFor(eventType);
+
+    setReminderOffset(eventType, minutes);
+
+    void updateReminderOffset(accessToken, eventType, minutes).then(
+      (result) => {
+        if (result.error) {
+          setReminderOffset(eventType, previous);
+        }
       }
-    });
+    );
   };
 
   const events = EVENT_TYPES_BY_ROLE[role];
@@ -202,25 +237,21 @@ export function NotificationPreferencesGrid({
               />
             </div>
 
-            {role === 'customer' && type === 'appointment_reminder' ? (
+            {role === 'customer' && isReminderOffsetEvent(type) ? (
               <div className={styles.notificationGridRow}>
                 <span className={styles.notificationGridSubLabel}>
                   Send the reminder
                 </span>
                 <select
                   className={`${styles.input} ${styles.notificationGridReminderOffset}`}
-                  aria-label="When to send the booking reminder"
+                  aria-label={REMINDER_OFFSET_CONFIG[type].ariaLabel}
                   disabled={isReminderDisabled}
-                  value={
-                    preferences?.appointment_reminder
-                      ?.reminder_offset_minutes ??
-                    DEFAULT_REMINDER_OFFSET_MINUTES
-                  }
+                  value={reminderOffsetFor(type)}
                   onChange={(event) =>
-                    handleReminderOffsetChange(Number(event.target.value))
+                    handleReminderOffsetChange(type, Number(event.target.value))
                   }
                 >
-                  {REMINDER_OFFSET_MINUTES_OPTIONS.map((minutes) => (
+                  {REMINDER_OFFSET_CONFIG[type].options.map((minutes) => (
                     <option key={minutes} value={minutes}>
                       {REMINDER_OFFSET_LABELS[minutes]}
                     </option>

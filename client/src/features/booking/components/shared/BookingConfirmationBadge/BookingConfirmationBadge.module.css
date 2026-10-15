@@ -1,5 +1,6 @@
 .unconfirmed,
 .confirmed,
+.late,
 .inService,
 .completed,
 .expired,
@@ -19,6 +20,7 @@
 
 .unconfirmed:hover,
 .confirmed:hover,
+.late:hover,
 .inService:hover,
 .completed:hover,
 .expired:hover,
@@ -39,6 +41,11 @@
 .confirmed {
   background: var(--color-booking-paid-bg);
   color: var(--color-booking-paid-text);
+}
+
+.late {
+  background: var(--color-booking-late-bg);
+  color: var(--color-booking-late-text);
 }
 
 .inService {

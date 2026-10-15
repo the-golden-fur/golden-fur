@@ -7,6 +7,7 @@ interface BookingStatusBadgeProps {
 
 const STATUS_CLASSNAME: Record<BookingStatus, keyof typeof styles> = {
   Pending: 'pending',
+  Late: 'late',
   'In Progress': 'inProgress',
   Completed: 'completed',
   Cancelled: 'cancelled',
@@ -14,7 +15,7 @@ const STATUS_CLASSNAME: Record<BookingStatus, keyof typeof styles> = {
 };
 
 /**
- * Pending/In Progress/Completed/Cancelled/No-show pill, built once here
+ * Pending/Late/In Progress/Completed/Cancelled/No-show pill, built once here
  * (#55) and reused everywhere a booking's status is shown - the
  * receptionist queue, customer bookings list, and (booking-status revision)
  * every category's own execution UI (Grooming/Veterinary/Daycare/Hotel),

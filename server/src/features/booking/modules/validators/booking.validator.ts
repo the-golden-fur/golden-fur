@@ -22,6 +22,7 @@ const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
 const CREDIT_EXPIRY_MODES = ['none', 'rolling', 'fixed_date'] as const;
 const CREDIT_REVIEW_MODES = ['Automatic', 'Manual'] as const;
 const CREDIT_REVIEW_DECISIONS = ['approved', 'denied'] as const;
+const NO_SHOW_AFTER_MINUTES_OPTIONS: readonly number[] = [15, 30, 60, 120];
 /** Which notice-period floor the availability endpoints apply. */
 const BOOKING_INTENTS = ['new_booking', 'reschedule'] as const;
 
@@ -519,6 +520,17 @@ export const updatePolicyValidator = z
     // Customers aren't branch-scoped, so only the system-default row's
     // value is ever actually read - see getCustomerAutoDeletePolicyDays.
     customer_deactivation_auto_delete_days: z.number().int().min(1).optional(),
+    // Late booking status (20261015267): how long a booking stays Late
+    // before it becomes No-show - the Policy page's "Mark as no-show after"
+    // presets, or wait until the branch closes.
+    no_show_after_minutes: z
+      .number()
+      .int()
+      .refine((value) => NO_SHOW_AFTER_MINUTES_OPTIONS.includes(value), {
+        message: 'Choose 15, 30, 60 or 120 minutes',
+      })
+      .optional(),
+    no_show_at_closing: z.boolean().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

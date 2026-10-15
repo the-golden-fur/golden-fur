@@ -11,11 +11,12 @@ import type {
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import type { BookingStatus } from '../../../booking/booking.types';
 
-// Booking-status revision: the queue only ever shows Pending/In
+// Booking-status revision: the queue only ever shows Pending/Late/In
 // Progress/Completed rows (see VeterinaryConsolePage's STATUS_GROUPS) -
 // Cancelled/No-show consultations are filtered out server-side already.
 export const CONSULTATION_STATUS_GROUPS: BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
 ];

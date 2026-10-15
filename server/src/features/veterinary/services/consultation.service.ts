@@ -58,6 +58,7 @@ const CONSULTATION_SELECT =
  * that's already Completed. */
 const QUEUE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
 

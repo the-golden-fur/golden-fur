@@ -721,6 +721,25 @@ export async function listClosingTimesBetween(
   return closings;
 }
 
+/**
+ * Custom change (Late booking status): the instant the branch closes on the
+ * branch-local day `instant` falls on, or null when the branch is closed
+ * that day (no operating_hours entry). Pure - the caller supplies the branch
+ * row, so a batch can resolve many bookings from one branch lookup. Read by
+ * applyLateAndNoShowTransition's "End of operating hours" no-show threshold.
+ */
+export function closingInstantOn(
+  instant: Date,
+  branch: { operating_hours: BranchRow['operating_hours']; timezone: string }
+): Date | null {
+  const date = new Intl.DateTimeFormat('en-CA', {
+    timeZone: branch.timezone,
+  }).format(instant);
+  const window = branch.operating_hours?.[weekdayName(date, branch.timezone)];
+
+  return window ? zonedTimeToUtc(date, window.close, branch.timezone) : null;
+}
+
 /** How many nights a daycare pet was still there when the branch closed -
  * see listClosingTimesBetween. */
 export async function countOvernightNights(

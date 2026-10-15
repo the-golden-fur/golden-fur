@@ -1,5 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { HotelBookingPreferences } from '../../booking/booking.types.ts';
+import {
+  isNotStartedStatus,
+  type HotelBookingPreferences,
+} from '../../booking/booking.types.ts';
 import type { CheckInInput } from '../modules/validators/daycare.validator.ts';
 import type { DaycareSession, DaycareStatus } from '../daycare.types.ts';
 import { startBooking } from '../../booking/services/booking.service.ts';
@@ -181,7 +184,10 @@ export async function checkInDaycareSession({
     // created already In Progress (no Pending state to pass through), and
     // still needs to go through this same check-in action for cage
     // assignment/care instructions.
-    if (booking.status !== 'Pending' && booking.status !== 'In Progress') {
+    if (
+      !isNotStartedStatus(booking.status) &&
+      booking.status !== 'In Progress'
+    ) {
       throwWithStatus(409, `A ${booking.status} booking cannot be checked in`);
     }
 
@@ -257,7 +263,7 @@ export async function checkInDaycareSession({
     // (createBooking sets that directly), so startBooking - which only
     // accepts a 'Pending' booking - is skipped rather than called
     // redundantly.
-    if (bookingId && bookingStatus === 'Pending') {
+    if (bookingId && bookingStatus && isNotStartedStatus(bookingStatus)) {
       await startBooking({ bookingId });
     }
 

@@ -17,6 +17,7 @@ function throwWithStatus(statusCode: number, message: string): never {
  * independent and shouldn't drift together by accident. */
 const EXTENDABLE_BOOKING_STATUSES: readonly Booking['status'][] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
 

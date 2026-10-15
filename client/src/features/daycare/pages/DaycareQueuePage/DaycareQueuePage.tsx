@@ -22,7 +22,11 @@ import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useS
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
 import { listBookings } from '../../../booking/api/booking.api';
-import type { Booking, BookingStatus } from '../../../booking/booking.types';
+import {
+  isNotStartedStatus,
+  type Booking,
+  type BookingStatus,
+} from '../../../booking/booking.types';
 import { listDaycareSessions } from '../../api/daycare.api';
 import { DAYCARE_QUEUE_VIEWER_ROLES } from './daycareQueueRoles';
 import styles from './DaycareQueuePage.module.css';
@@ -32,6 +36,7 @@ type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
   { value: 'Pending', label: 'Pending' },
+  { value: 'Late', label: 'Late' },
   { value: 'In Progress', label: 'Checked in' },
   { value: 'Completed', label: 'Checked out' },
   { value: 'Cancelled', label: 'Cancelled' },
@@ -320,7 +325,7 @@ export function DaycareQueuePage() {
   }
 
   function handleRowClick(booking: Booking) {
-    if (booking.status === 'Pending' || needsCheckIn(booking)) {
+    if (isNotStartedStatus(booking.status) || needsCheckIn(booking)) {
       navigate(`/staff/daycare/queue/check-in/${booking.id}`);
     } else if (booking.status === 'In Progress') {
       navigate(
@@ -406,7 +411,7 @@ export function DaycareQueuePage() {
           <ul className={styles.bookingList}>
             {filteredAndSorted.map((booking) => {
               const isClickable =
-                booking.status === 'Pending' ||
+                isNotStartedStatus(booking.status) ||
                 booking.status === 'In Progress';
 
               const summary = (
@@ -426,7 +431,7 @@ export function DaycareQueuePage() {
                   <span className={styles.bookingMeta}>
                     Owner {owners[booking.customer_id]?.full_name ?? 'Unknown'}
                   </span>
-                  {booking.status === 'Pending' ? (
+                  {isNotStartedStatus(booking.status) ? (
                     <span className={styles.actionHint}>
                       Click to finalize the cage and care instructions
                     </span>

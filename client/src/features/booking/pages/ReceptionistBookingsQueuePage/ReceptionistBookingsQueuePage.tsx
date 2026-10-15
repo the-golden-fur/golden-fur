@@ -79,6 +79,7 @@ import {
 import {
   BOOKING_CONFIRMATION_HINT,
   deriveBookingConfirmationState,
+  isConfirmedNotStarted,
 } from '../../bookingConfirmation';
 import styles from './ReceptionistBookingsQueuePage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
@@ -107,6 +108,8 @@ function confirmationToStatusParam(
     case 'Unconfirmed':
     case 'Confirmed':
       return 'Pending';
+    case 'Late':
+      return 'Late';
     case 'In service':
       return 'In Progress';
     case 'Completed':
@@ -178,6 +181,7 @@ const MONTH_LABELS = [
 
 const STATUS_CHIP_CLASS: Record<BookingStatus, keyof typeof styles> = {
   Pending: 'chipPending',
+  Late: 'chipLate',
   'In Progress': 'chipInProgress',
   Completed: 'chipCompleted',
   Cancelled: 'chipCancelled',
@@ -239,6 +243,7 @@ type ActiveAction = {
  * still be extended before it's finished. */
 const EXTENDABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
 
@@ -1466,8 +1471,10 @@ export function ReceptionistBookingsQueuePage() {
                           (AssessmentQueuePage), so it's excluded here too -
                           starting it via this generic Check In would skip
                           the mandatory pet-assessment capture that only
-                          that page's Start does. */}
-                      {(confirmationState === 'Confirmed' &&
+                          that page's Start does. A paid 'Late' booking
+                          (past its start, not yet a no-show) can still be
+                          checked in exactly like a Confirmed one. */}
+                      {(isConfirmedNotStarted(booking) &&
                         booking.service_category !== 'Assessment') ||
                       daycareNeedsCheckIn(booking) ||
                       hotelNeedsCheckIn(booking) ? (

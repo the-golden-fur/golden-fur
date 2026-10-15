@@ -16,6 +16,7 @@ import { listBookings } from '../../../booking/api/booking.api';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
   BOOKING_STATUSES,
+  isNotStartedStatus,
   type Booking,
   type BookingStatus,
 } from '../../../booking/booking.types';
@@ -103,7 +104,7 @@ function needsCheckIn(
   booking: Booking,
   stayByBookingId: Record<string, string> | null
 ): boolean {
-  if (booking.status === 'Pending') return true;
+  if (isNotStartedStatus(booking.status)) return true;
 
   return (
     booking.status === 'In Progress' &&

@@ -1,5 +1,6 @@
 import {
   DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
+  isNotStartedStatus,
   type Booking,
   type BookingConfirmationState,
 } from './booking.types';
@@ -25,6 +26,7 @@ type ConfirmationInput = Pick<
  *   service category, including Veterinary, which now gets a real upfront
  *   charge like everything else)
  * - Pending otherwise (paid, or walk-in)  -> Confirmed
+ * - Late (start passed, may still arrive) -> Late
  * - In Progress                          -> In service   (live in a module queue)
  * - Completed                            -> Completed
  * - Cancelled by the expiry sweep        -> Expired
@@ -39,6 +41,8 @@ export function deriveBookingConfirmationState(
       return 'In service';
     case 'Completed':
       return 'Completed';
+    case 'Late':
+      return 'Late';
     case 'No-show':
       return 'No-show';
     case 'Cancelled':
@@ -56,6 +60,23 @@ export function deriveBookingConfirmationState(
   }
 }
 
+/**
+ * Can staff start / check in this booking right now? Not started yet
+ * (Pending or Late) and secured - the same line startBooking draws: an
+ * Online booking nobody has paid anything on yet is refused. A Late booking
+ * reads as 'Late' rather than 'Confirmed', so callers that used to test
+ * `=== 'Confirmed'` use this to keep a paid Late booking actionable.
+ */
+export function isConfirmedNotStarted(booking: ConfirmationInput): boolean {
+  return (
+    isNotStartedStatus(booking.status) &&
+    !(
+      booking.booking_source === 'Online' &&
+      booking.payment_status === 'Pending'
+    )
+  );
+}
+
 /** Short helper text shown under an Unconfirmed row / on hover elsewhere. */
 export const BOOKING_CONFIRMATION_HINT: Record<
   BookingConfirmationState,
@@ -64,6 +85,7 @@ export const BOOKING_CONFIRMATION_HINT: Record<
   Unconfirmed:
     "Not paid yet - this booking isn't secured. Staff aren't notified and it can't be checked in until a payment is recorded.",
   Confirmed: 'Payment recorded - ready to check in when the customer arrives.',
+  Late: "Past its start time, but the customer can still be checked in - it becomes a No-show once the branch's no-show threshold passes.",
   'In service': 'Checked in - being handled on its service queue.',
   Completed: 'Service finished.',
   Expired: 'Auto-cancelled - the down payment was never paid in time.',

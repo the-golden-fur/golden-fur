@@ -1577,6 +1577,7 @@ describe('booking.service (#51)', () => {
           ],
           error: null,
         }, // list query
+        { data: [], error: null }, // resolveEffectivePolicy -> documented 30-min default
         {
           data: [
             {
@@ -1598,6 +1599,118 @@ describe('booking.service (#51)', () => {
       // a "status = Pending" result even though the initial DB query (which
       // ran before the flip) matched it.
       expect(result).toHaveLength(0);
+    });
+
+    describe('Late booking status (lazy, read-time)', () => {
+      const minutesAgo = (minutes: number) =>
+        new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+      it('flips a Pending booking whose start just passed to Late, not No-show', async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        const start = minutesAgo(5);
+        queueFromResults(
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'Pending',
+                scheduled_start: start,
+              },
+            ],
+            error: null,
+          }, // list query
+          {
+            data: [{ branch_id: null, no_show_after_minutes: 30 }],
+            error: null,
+          }, // resolveEffectivePolicy
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'Late',
+                scheduled_start: start,
+              },
+            ],
+            error: null,
+          } // the Late bulk-update's own .select()
+        );
+
+        const result = await listBookings({
+          requesterId: 'staff-1',
+          filters: {},
+        });
+
+        expect(result.map((booking) => booking.status)).toEqual(['Late']);
+      });
+
+      it("flips a Late booking to No-show once the branch's threshold has passed", async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        const start = minutesAgo(20);
+        queueFromResults(
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'Late',
+                scheduled_start: start,
+              },
+            ],
+            error: null,
+          }, // list query
+          {
+            data: [{ branch_id: 'branch-1', no_show_after_minutes: 15 }],
+            error: null,
+          }, // resolveEffectivePolicy - the branch override wins
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'No-show',
+                scheduled_start: start,
+              },
+            ],
+            error: null,
+          } // the No-show bulk-update's own .select()
+        );
+
+        const result = await listBookings({
+          requesterId: 'staff-1',
+          filters: {},
+        });
+
+        expect(result.map((booking) => booking.status)).toEqual(['No-show']);
+      });
+
+      it('leaves a Late booking alone while it is still inside the threshold', async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        queueFromResults(
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'Late',
+                scheduled_start: minutesAgo(10),
+              },
+            ],
+            error: null,
+          }, // list query
+          { data: [], error: null } // resolveEffectivePolicy -> 30-min default
+        );
+
+        const result = await listBookings({
+          requesterId: 'staff-1',
+          filters: {},
+        });
+
+        expect(result.map((booking) => booking.status)).toEqual(['Late']);
+        // Only the list + policy queries ran - no update for an unchanged row.
+        expect(supabase.from).toHaveBeenCalledTimes(2);
+      });
     });
 
     it('down-payment slot gate: auto-cancels an unpaid down-payment booking past its downpayment_due_at (lazy, read-time)', async () => {

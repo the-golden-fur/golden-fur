@@ -46,6 +46,38 @@ describe('NotificationPreferencesGrid - reminder offset (customer only)', () => 
     expect(select).toHaveValue('1440');
   });
 
+  it('shows a checkout-reminder dropdown defaulting to 15 minutes before, and saves a new lead time', async () => {
+    const user = userEvent.setup();
+    vi.mocked(preferencesApi.getNotificationPreferences).mockResolvedValue({
+      checkout_reminder: { email: true, in_browser: true },
+    } as never);
+    vi.mocked(preferencesApi.updateReminderOffset).mockResolvedValue({
+      data: {} as never,
+      error: null,
+    });
+
+    renderGrid('customer');
+
+    expect(await screen.findByText('Checkout reminder')).toBeInTheDocument();
+    const select = await screen.findByLabelText(
+      'When to send the checkout reminder'
+    );
+    expect(select).toHaveValue('15');
+    // A checkout reminder has no 2-day lead.
+    expect(
+      Array.from((select as HTMLSelectElement).options).map((o) => o.value)
+    ).toEqual(['15', '60', '180', '1440']);
+
+    await user.selectOptions(select, '60');
+
+    expect(preferencesApi.updateReminderOffset).toHaveBeenCalledWith(
+      'token',
+      'checkout_reminder',
+      60
+    );
+    expect(select).toHaveValue('60');
+  });
+
   it('does not show the reminder-timing dropdown for staff (no appointment_reminder event)', async () => {
     vi.mocked(preferencesApi.getNotificationPreferences).mockResolvedValue(
       {} as never
@@ -80,6 +112,7 @@ describe('NotificationPreferencesGrid - reminder offset (customer only)', () => 
 
     expect(preferencesApi.updateReminderOffset).toHaveBeenCalledWith(
       'token',
+      'appointment_reminder',
       60
     );
 

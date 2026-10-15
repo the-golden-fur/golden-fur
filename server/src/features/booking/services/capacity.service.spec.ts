@@ -18,19 +18,26 @@ interface QueryResult {
 
 const orCalls: string[] = [];
 const eqCalls: Array<[string, unknown]> = [];
+const inCalls: Array<[string, unknown]> = [];
 
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
   orCalls.length = 0;
   eqCalls.length = 0;
+  inCalls.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'neq', 'in', 'lt', 'gt', 'order', 'is']) {
+    for (const method of ['select', 'neq', 'lt', 'gt', 'order', 'is']) {
       builder[method] = vi.fn(() => builder);
     }
+
+    builder.in = vi.fn((field: string, values: unknown) => {
+      inCalls.push([field, values]);
+      return builder;
+    });
 
     builder.eq = vi.fn((field: string, value: unknown) => {
       eqCalls.push([field, value]);
@@ -381,7 +388,9 @@ describe('capacity.service (#51)', () => {
       });
 
       expect(result).toEqual([row]);
-      expect(eqCalls).toContainEqual(['status', 'Pending']);
+      // A Late booking (start passed, not yet a no-show) is still an
+      // unpaid pencil booking too.
+      expect(inCalls).toContainEqual(['status', ['Pending', 'Late']]);
       expect(eqCalls).toContainEqual(['payment_status', 'Pending']);
       expect(eqCalls).toContainEqual(['downpayment_required', true]);
       // Deliberately does NOT use SLOT_HOLD_PAID_OR_FILTER's .or() - that

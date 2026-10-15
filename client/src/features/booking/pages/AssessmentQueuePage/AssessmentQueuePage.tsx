@@ -50,6 +50,7 @@ import {
 } from '../../api/booking.api';
 import {
   BOOKING_STATUS_OVERRIDE_ROLES,
+  isNotStartedStatus,
   OVERRIDABLE_BOOKING_STATUSES,
   type Booking,
   type BookingStatus,
@@ -57,6 +58,7 @@ import {
 import {
   BOOKING_CONFIRMATION_HINT,
   deriveBookingConfirmationState,
+  isConfirmedNotStarted,
 } from '../../bookingConfirmation';
 import styles from './AssessmentQueuePage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
@@ -79,6 +81,7 @@ type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
   { value: 'Pending', label: 'Pending' },
+  { value: 'Late', label: 'Late' },
   { value: 'In Progress', label: 'In Progress' },
   { value: 'Completed', label: 'Completed' },
   { value: 'Cancelled', label: 'Cancelled' },
@@ -228,10 +231,7 @@ export function AssessmentQueuePage() {
   // whose Confirm both records the assessment and completes the booking.
   function isAssessable(booking: Booking): boolean {
     if (booking.status === 'In Progress') return true;
-    return (
-      booking.status === 'Pending' &&
-      deriveBookingConfirmationState(booking) === 'Confirmed'
-    );
+    return isConfirmedNotStarted(booking);
   }
 
   const effectiveBranchId = isSuperadmin
@@ -528,7 +528,7 @@ export function AssessmentQueuePage() {
     const savedPet = petResult.data;
     setPets((prev) => ({ ...prev, [savedPet.id]: savedPet }));
 
-    if (booking.status === 'Pending') {
+    if (isNotStartedStatus(booking.status)) {
       const started = await handleStart(booking);
       if (!started) return;
     }
