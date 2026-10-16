@@ -71,6 +71,10 @@ export interface TransactionRecord {
   bookings: {
     pet_id: string;
     service_category: string;
+    /** The booking's lifecycle status - a Cancelled booking can't take a
+     * payment, so "Pay" is hidden for it. Optional so older fixtures/callers
+     * stay valid. */
+    status?: string;
     /** The parent booking's payment-status rollup + pricing snapshot -
      * lets the transaction pages work out a partly-paid booking's
      * remaining balance for the "add a balance payment" action. */

@@ -55,6 +55,7 @@ import {
   STAFF_SORT_FIELDS,
 } from './transactionFilterFields';
 import {
+  isBookingCancelled,
   paymentChoiceLabel,
   paymentStatusLabel,
   paymentTone,
@@ -409,7 +410,8 @@ export function TransactionHistoryTable() {
     const canPay =
       transaction.payment_status === 'Pending' &&
       transaction.transaction_type === 'booking_payment' &&
-      Boolean(transaction.booking_id || transaction.booking_group_id);
+      Boolean(transaction.booking_id || transaction.booking_group_id) &&
+      !isBookingCancelled(transaction);
     return [
       ...(transaction.booking_id
         ? [

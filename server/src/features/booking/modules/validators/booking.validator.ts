@@ -495,6 +495,9 @@ export const updatePolicyValidator = z
     // Advisor addendum #10: percent of the paid amount returned as credit on
     // a qualifying cancellation. NOT NULL in the DB (default 100), 0-100.
     cancellation_credit_conversion_rate: z.number().min(0).max(100).optional(),
+    // Cancellation grace for last-minute bookings (20261016269). NOT NULL in
+    // the DB (default 60), CHECK 0-1440 - up to a day; 0 turns it off.
+    cancellation_grace_minutes: z.number().int().min(0).max(1440).optional(),
     downpayment_enabled: z.boolean().optional(),
     downpayment_type: z.enum(DOWNPAYMENT_TYPES).nullable().optional(),
     downpayment_amount: z.number().positive().nullable().optional(),

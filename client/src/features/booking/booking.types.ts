@@ -667,6 +667,9 @@ export interface PolicyConfiguration {
   /** Percent (0-100) of what the customer paid that is returned as account
    * credit on a qualifying cancellation. Default 100 (full). */
   cancellation_credit_conversion_rate: number;
+  /** Minutes after a booking is made during which a booking made inside the
+   * notice window can still be cancelled for credit. 0 = off. Default 60. */
+  cancellation_grace_minutes: number;
   /** Per-transaction downpayment config, applied against a booking's whole
    * total_price at creation time - see createBooking server-side.
    * Supersedes the old per-catalog-item Service/Package.
@@ -736,6 +739,7 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_days'
   | 'credit_expiry_fixed_date'
   | 'cancellation_credit_conversion_rate'
+  | 'cancellation_grace_minutes'
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
@@ -769,6 +773,7 @@ export interface UpdatePolicyPayload {
   credit_expiry_days?: number;
   credit_expiry_fixed_date?: string | null;
   cancellation_credit_conversion_rate?: number;
+  cancellation_grace_minutes?: number;
   downpayment_enabled?: boolean;
   downpayment_type?: DownpaymentType | null;
   downpayment_amount?: number | null;

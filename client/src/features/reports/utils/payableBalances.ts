@@ -1,4 +1,5 @@
 import type { TransactionRecord } from '../reports.types';
+import { isBookingCancelled } from '../components/TransactionHistoryTable/transactionDisplay';
 
 export interface PayableBalance {
   bookingId: string;
@@ -15,8 +16,8 @@ function round2(value: number): number {
 /**
  * Payment/transactions rework, gap B: the bookings a viewer can add a
  * customer-chosen partial balance payment to - 'Partially Paid' (a down
- * payment settled, a balance still owed), with no charge already awaiting
- * settlement and a positive remaining balance.
+ * payment settled, a balance still owed), not cancelled, with no charge
+ * already awaiting settlement and a positive remaining balance.
  */
 export function payableBalances(
   transactions: TransactionRecord[]
@@ -39,6 +40,7 @@ export function payableBalances(
   for (const [bookingId, rows] of byBooking) {
     const booking = rows.find((row) => row.bookings)?.bookings;
     if (!booking || booking.payment_status !== 'Partially Paid') continue;
+    if (isBookingCancelled({ bookings: booking })) continue;
     if (rows.some((row) => row.payment_status === 'Pending')) continue;
 
     const net = round2(

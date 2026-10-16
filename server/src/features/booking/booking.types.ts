@@ -568,6 +568,12 @@ export interface PolicyConfiguration {
    * addendum #10). Default 100 = full conversion; lower it to keep part of
    * the payment as a cancellation charge. Applied in cancellation.service.ts. */
   cancellation_credit_conversion_rate: number;
+  /** Custom change (20261016269): a booking made less than
+   * notice_period_days ahead can never meet the notice period, so a
+   * cancellation within this many minutes of it being made is treated as if
+   * notice was met. 0 = no grace. Default 60. Applied in
+   * cancellation.service.ts. */
+  cancellation_grace_minutes: number;
   /** Per-transaction downpayment config, applied against a booking's whole
    * total_price at creation time - see resolveDownpaymentPolicy in
    * staffPicker.service.ts and createBooking in booking.service.ts.
@@ -652,6 +658,7 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_days'
   | 'credit_expiry_fixed_date'
   | 'cancellation_credit_conversion_rate'
+  | 'cancellation_grace_minutes'
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
