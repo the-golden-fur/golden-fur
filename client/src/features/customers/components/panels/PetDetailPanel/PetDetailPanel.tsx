@@ -14,6 +14,7 @@ import { MedicalNoteList } from '../../lists/MedicalNoteList/MedicalNoteList';
 import { VaccinationRecordList } from '../../lists/VaccinationRecordList/VaccinationRecordList';
 import { PrescriptionList } from '../../lists/PrescriptionList/PrescriptionList';
 import { ConsultationResultList } from '../../lists/ConsultationResultList/ConsultationResultList';
+import { ServiceHistoryList } from '../../lists/ServiceHistoryList/ServiceHistoryList';
 import type {
   Pet,
   PetCoatType,
@@ -432,7 +433,7 @@ export function PetDetailPanel({
           <h2 className={styles.sectionTitle} id="service-history-title">
             Service History
           </h2>
-          <p className={styles.copy}>No service history yet.</p>
+          <ServiceHistoryList petId={pet.id} accessToken={accessToken} />
         </section>
       </section>
     </>

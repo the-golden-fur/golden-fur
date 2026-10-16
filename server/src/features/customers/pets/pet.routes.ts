@@ -31,6 +31,7 @@ import {
   listPetConsultationResultsForRequester,
   listPetPrescriptionsForRequester,
 } from '../../veterinary/services/consultation.service.ts';
+import { listPetServiceHistory } from './services/petServiceHistory.service.ts';
 
 const router = Router();
 const petPhotoUpload = multer({
@@ -434,6 +435,32 @@ router.get(
       });
 
       return res.status(200).json({ results });
+    } catch (error) {
+      return sendServiceError(res, error);
+    }
+  }
+);
+
+// Read-only, same access as the two routes above (owning customer or any
+// staff role) - the pet's past Completed/Cancelled/No-show bookings.
+router.get(
+  '/pets/:id/service-history',
+  jwtMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requesterId = req.user?.sub;
+    const petId = paramId(req, 'id');
+
+    if (!requesterId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const history = await listPetServiceHistory({
+        requesterId,
+        petId: petId as string,
+      });
+
+      return res.status(200).json({ history });
     } catch (error) {
       return sendServiceError(res, error);
     }

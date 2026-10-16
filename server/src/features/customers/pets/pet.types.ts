@@ -1,3 +1,14 @@
+import type {
+  BookingStatus,
+  ServiceCategory,
+} from '../../booking/booking.types.ts';
+import type {
+  PaymentChoice,
+  PaymentMethod,
+  PaymentStatus,
+  TransactionType,
+} from '../../billing/billing.types.ts';
+
 export type PetType = 'Dog' | 'Cat';
 export type PetGender = 'Male' | 'Female';
 export type PetWeightClass = 'S' | 'M' | 'L' | 'XL';
@@ -102,6 +113,56 @@ export interface PetPrescriptionHistoryEntry {
     quantity?: number | null;
     quantity_unit?: string | null;
     refills?: number | null;
+  }>;
+}
+
+/** One past booking on a pet's Service History - Completed, Cancelled or
+ * No-show only (upcoming bookings live on the Bookings page). Built by
+ * services/petServiceHistory.service.ts; read by both the owning customer and
+ * staff, so it stays a flat display slice rather than the whole booking. */
+export interface PetServiceHistoryEntry {
+  booking_id: string;
+  /** completed_at when the service finished, else scheduled_start. */
+  date: string;
+  service_category: ServiceCategory;
+  status: Extract<BookingStatus, 'Completed' | 'Cancelled' | 'No-show'>;
+  /** Service/package names from booking_items. */
+  items: string[];
+  branch_name: string | null;
+  /** Assigned groomer/vet; null for Hotel/Daycare/Assessment. */
+  staff_name: string | null;
+  total_price: number;
+  cancellation_reason: string | null;
+  /** Paid (Partially/Fully) transactions for this booking - its own, plus a
+   * multi-booking checkout's group transaction - oldest first. Each one is a
+   * reprintable receipt. */
+  payments: PetServiceHistoryPayment[];
+}
+
+/** The slice of a transaction its printed receipt needs. Field names match
+ * the client's TransactionRecord so the same receipt builder reads both. */
+export interface PetServiceHistoryPayment {
+  id: string;
+  booking_id: string | null;
+  booking_group_id: string | null;
+  branch_id: string;
+  transaction_type: TransactionType;
+  payment_method: PaymentMethod;
+  payment_status: Exclude<PaymentStatus, 'Pending'>;
+  payment_choice: PaymentChoice | null;
+  total_amount: number;
+  misc_sale_description: string | null;
+  created_at: string;
+  customer_name: string | null;
+  bookings: {
+    service_category: ServiceCategory;
+    pets: { name: string } | null;
+  } | null;
+  transaction_line_items: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
   }>;
 }
 

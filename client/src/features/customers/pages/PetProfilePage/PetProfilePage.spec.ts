@@ -14,6 +14,13 @@ vi.mock('../../../../shared/auth/providers/AuthProvider/useAuth', () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock('../../../maintenance/api/maintenance.api', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  listBranchLetterheads: vi.fn(() =>
+    Promise.resolve({ data: [], error: null })
+  ),
+}));
+
 vi.mock('../../api/customer.api', () => ({
   getPet: vi.fn(),
   updatePet: vi.fn(),
@@ -27,6 +34,9 @@ vi.mock('../../api/customer.api', () => ({
   listMedicalNotes: vi.fn(() => Promise.resolve({ data: [], error: null })),
   listPetPrescriptions: vi.fn(() => Promise.resolve({ data: [], error: null })),
   listPetConsultationResults: vi.fn(() =>
+    Promise.resolve({ data: [], error: null })
+  ),
+  listPetServiceHistory: vi.fn(() =>
     Promise.resolve({ data: [], error: null })
   ),
   listBreeds: vi.fn(() =>
@@ -101,7 +111,9 @@ describe('PetProfilePage', () => {
 
     expect(await screen.findByText('Buddy')).toBeInTheDocument();
     expect(screen.getByText('Dog')).toBeInTheDocument();
-    expect(screen.getByText('No service history yet.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No service history yet.')
+    ).toBeInTheDocument();
   });
 
   it('AC-6: a 403 from the server surfaces as a clear error state, not a blank page', async () => {

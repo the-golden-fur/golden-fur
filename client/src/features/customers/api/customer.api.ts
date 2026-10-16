@@ -9,6 +9,7 @@ import type {
   PetHealthCondition,
   PetMedicalNote,
   PetPrescriptionHistoryEntry,
+  PetServiceHistoryEntry,
   PetType,
   PetTypeRow,
   PetUpdatePayloadStaff,
@@ -666,4 +667,25 @@ export async function listPetConsultationResults(
     response
   );
   return { data: result.data?.results ?? null, error: result.error };
+}
+
+/** A pet's past Completed/Cancelled/No-show bookings, newest first - read by
+ * the owning customer and staff alike. */
+export async function listPetServiceHistory(
+  petId: string,
+  accessToken: string
+): Promise<CustomerApiResult<PetServiceHistoryEntry[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/service-history`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ history: PetServiceHistoryEntry[] }>(
+    response
+  );
+  return { data: result.data?.history ?? null, error: result.error };
 }

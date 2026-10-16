@@ -7,6 +7,7 @@ import {
   listMedicalNotes,
   listPetConsultationResults,
   listPetPrescriptions,
+  listPetServiceHistory,
   listPetTypes,
   listVaccinationRecords,
   updatePet,
@@ -14,6 +15,16 @@ import {
 } from '../../../api/customer.api';
 import type { Pet } from '../../../customer.types';
 import { PetDetailPanel } from './PetDetailPanel';
+
+vi.mock(
+  '../../../../maintenance/api/maintenance.api',
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    listBranchLetterheads: vi.fn(() =>
+      Promise.resolve({ data: [], error: null })
+    ),
+  })
+);
 
 vi.mock('../../../api/customer.api', () => ({
   updatePet: vi.fn(),
@@ -23,6 +34,7 @@ vi.mock('../../../api/customer.api', () => ({
   listMedicalNotes: vi.fn(),
   listPetPrescriptions: vi.fn(),
   listPetConsultationResults: vi.fn(),
+  listPetServiceHistory: vi.fn(),
   listBreeds: vi.fn(),
   listPetTypes: vi.fn(),
 }));
@@ -76,6 +88,10 @@ describe('PetDetailPanel', () => {
       error: null,
     });
     vi.mocked(listPetConsultationResults).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(listPetServiceHistory).mockResolvedValue({
       data: [],
       error: null,
     });
