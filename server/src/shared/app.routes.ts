@@ -20,6 +20,7 @@ import reportsRoutes from '../features/reports/reports.routes.ts';
 import publicRoutes from '../features/public/public.routes.ts';
 import recordsArchiveRoutes from '../features/recordsArchive/recordsArchive.routes.ts';
 import faqRoutes from '../features/faq/faq.routes.ts';
+import landingRoutes from '../features/landing/landing.routes.ts';
 
 const router = Router();
 
@@ -44,5 +45,6 @@ router.use(reportsRoutes);
 router.use(publicRoutes);
 router.use(recordsArchiveRoutes);
 router.use(faqRoutes);
+router.use(landingRoutes);
 
 export default router;

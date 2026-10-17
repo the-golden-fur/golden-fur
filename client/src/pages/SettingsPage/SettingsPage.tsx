@@ -35,6 +35,7 @@ import {
   BRANCHES_TILE,
   CONFIG_TILES,
   FAQS_TILE,
+  LANDING_PAGE_TILE,
   VET_SERVICES_TILE,
   HIDDEN_CONFIG_TILES,
   WEIGHT_CLASSES_TILE,
@@ -308,6 +309,7 @@ export function SettingsPage({ role }: SettingsPageProps) {
             WEIGHT_CLASSES_TILE,
             BRANCHES_TILE,
             FAQS_TILE,
+            LANDING_PAGE_TILE,
             VET_SERVICES_TILE,
           ]
         : CONFIG_TILES,

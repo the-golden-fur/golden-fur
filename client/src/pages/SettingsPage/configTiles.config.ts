@@ -4,6 +4,7 @@ import {
   Calculator,
   DoorOpen,
   Gift,
+  LayoutTemplate,
   MessageCircleQuestion,
   Package,
   PawPrint,
@@ -23,6 +24,7 @@ import { AdminDiscountManagementPage } from '../../features/discounts/pages/Admi
 import { PolicyConfigurationPage } from '../../features/booking/pages/PolicyConfigurationPage/PolicyConfigurationPage';
 import { AdminCagesPage } from '../../features/hotel/pages/AdminCagesPage/AdminCagesPage';
 import { FaqConfigurationPage } from '../../features/faq/pages/FaqConfigurationPage/FaqConfigurationPage';
+import { LandingPageConfigurationPage } from '../../features/landing/pages/LandingPageConfigurationPage/LandingPageConfigurationPage';
 import { VetServicesConfigurationPage } from '../../features/veterinary/pages/VetServicesConfigurationPage/VetServicesConfigurationPage';
 
 export interface ConfigTileConfig {
@@ -145,6 +147,22 @@ export const FAQS_TILE: ConfigTileConfig = {
   to: '/staff/admin/maintenance/faqs',
   icon: MessageCircleQuestion,
   Component: FaqConfigurationPage,
+};
+
+/**
+ * Superadmin-only, appended conditionally to `CONFIG_TILES` (see
+ * SettingsPage.tsx), same shape as FAQS_TILE above: the public landing page
+ * is one page for every visitor, so a branch-scoped Admin has no access.
+ * LandingPageConfigurationPage enforces this too (ALLOWED_VIEWER_ROLES), as
+ * do the server's /maintenance/landing routes.
+ */
+export const LANDING_PAGE_TILE: ConfigTileConfig = {
+  title: 'Landing Page',
+  description:
+    'Edit the public home page’s words, photos and reviews, and show or hide its sections.',
+  to: '/staff/admin/maintenance/landing-page',
+  icon: LayoutTemplate,
+  Component: LandingPageConfigurationPage,
 };
 
 /**
