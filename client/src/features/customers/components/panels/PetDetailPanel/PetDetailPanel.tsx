@@ -79,6 +79,9 @@ export function PetDetailPanel({
   );
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The photo is optional - a failed upload never blocks the save, it's
+  // just reported here once the panel is back in view mode.
+  const [photoWarning, setPhotoWarning] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Pet Types admin CRUD (20260912191): the edit dropdown reads the
@@ -110,6 +113,7 @@ export function PetDetailPanel({
     setCoatType(pet.coat_type ?? '');
     setPhotoFile(null);
     setError(null);
+    setPhotoWarning(null);
     setIsEditing(true);
   }
 
@@ -150,6 +154,10 @@ export function PetDetailPanel({
 
       if (photoResult.data?.photo_url) {
         updatedPet = { ...updatedPet, photo_url: photoResult.data.photo_url };
+      } else {
+        setPhotoWarning(
+          `Changes saved, but the photo could not be uploaded: ${photoResult.error ?? 'Photo upload failed.'}`
+        );
       }
     }
 
@@ -169,6 +177,12 @@ export function PetDetailPanel({
       ) : null}
 
       <PetHealthConditionBadge petId={pet.id} accessToken={accessToken} />
+
+      {photoWarning && !isEditing ? (
+        <p className={styles.errorBanner} role="status">
+          {photoWarning}
+        </p>
+      ) : null}
 
       <section className={styles.panel}>
         {isEditing ? (
