@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   customerSignupController,
   customerLoginController,
+  customerForgotPasswordController,
   customerMfaEnrollController,
   customerMfaEmailRequestCodeController,
   customerMfaVerifyController,
@@ -256,6 +257,7 @@ const router = Router();
 
 router.post('/customers/signup', customerSignupController);
 router.post('/customers/login', customerLoginController);
+router.post('/customers/forgot-password', customerForgotPasswordController);
 router.post(
   '/customers/mfa/enroll',
   jwtMiddleware,

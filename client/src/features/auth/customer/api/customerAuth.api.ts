@@ -88,6 +88,18 @@ export async function login(payload: CustomerLoginPayload) {
   }>('/customers/login', payload);
 }
 
+/**
+ * Sends a password-reset link to the given email address if a customer
+ * account exists for it. Always resolves (never rejects) - the server
+ * deliberately returns the same 200 body regardless of whether the email
+ * is registered, to prevent user enumeration.
+ */
+export async function requestPasswordReset(email: string) {
+  return postJson<{ message: string }>('/customers/forgot-password', {
+    account_email: email,
+  });
+}
+
 function getStoredOAuthProvider() {
   return window.sessionStorage.getItem('oauthProvider') as 'google' | null;
 }

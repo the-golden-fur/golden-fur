@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Chrome, Lock, Mail } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
 import { getStoredDeviceToken } from '../../../../../../shared/auth/api/trustedDevice.api';
@@ -209,6 +209,24 @@ export function CustomerLoginForm() {
               onChange={(event) => setPassword(event.target.value)}
             />
           </div>
+          <Link
+            to="/forgot-password"
+            style={{
+              alignSelf: 'flex-end',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-text-muted)',
+              textDecoration: 'none',
+              transition: 'color 0.15s ease',
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.color = 'var(--color-accent)')
+            }
+            onMouseOut={(e) =>
+              (e.currentTarget.style.color = 'var(--color-text-muted)')
+            }
+          >
+            Forgot password?
+          </Link>
         </label>
         {error ? (
           <p className={styles.error} role="alert">
