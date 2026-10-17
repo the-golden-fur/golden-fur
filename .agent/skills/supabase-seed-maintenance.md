@@ -49,7 +49,8 @@ per-module tasks.
 `20260803080`, `20260903167`),
 `service_types` + `service_type_branch_availability` (`20260809113`,
 `20260818133`), `policy_configurations` defaults, `promo_cap_configuration`
-default row, `pricing_configuration`.
+default row, `pricing_configuration`, `landing_content` + `landing_sections` +
+`landing_reviews` (the editable landing page, `20261017272`).
 
 **App-only — do NOT seed** (state machines + triggers must stay honest):
 `bookings`, `booking_items`, `transactions`, `transaction_line_items`,

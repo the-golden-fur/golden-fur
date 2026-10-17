@@ -1,0 +1,400 @@
+/* Same base as FaqConfigurationPage.module.css - min-height must use the
+   --config-embed-min-height variable (see configTiles.config.ts). */
+.page {
+  composes: animate-fade-in from global;
+  display: grid;
+  min-height: var(--config-embed-min-height, 100vh);
+}
+
+.content {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  max-width: 56rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-2);
+}
+
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-heading);
+  font-size: var(--text-heading-lg);
+  font-weight: var(--weight-bold);
+}
+
+.viewLink {
+  color: var(--color-accent-gold-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.viewLink:hover {
+  text-decoration: underline;
+}
+
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* In-page jump links - the editor is long, so the sections are one click
+   away instead of a long scroll. */
+.jumpList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.jumpLink {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.jumpLink:hover {
+  border-bottom-color: var(--color-accent-gold-primary);
+}
+
+/* Save results stay in view however far down the editor you are. */
+.status {
+  position: sticky;
+  top: var(--space-2);
+  z-index: 1;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.status:empty {
+  display: none;
+}
+
+/* Sections read as one long document split by hairlines, not a stack of
+   cards. */
+.panel {
+  display: grid;
+  gap: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+  scroll-margin-top: var(--space-4);
+}
+
+.panelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.panelHeading {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+  flex: 1 1 20rem;
+}
+
+.sectionTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-heading-md);
+  font-weight: var(--weight-semibold);
+}
+
+.subTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.hiddenTag {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  padding: 0 var(--space-1);
+}
+
+.shownToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.fields,
+.editForm,
+.addForm {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 5rem;
+  gap: var(--space-2);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.fieldLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-2);
+  resize: vertical;
+  width: 100%;
+}
+
+.input:focus {
+  border-color: var(--color-accent-gold-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-accent-gold-primary) 25%, transparent);
+}
+
+.fieldError {
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+}
+
+.imageGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-3);
+}
+
+.imageField {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.imagePreview {
+  width: 6rem;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  object-fit: cover;
+}
+
+.imageMeta {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.imageMeta .actions {
+  margin-top: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.textButton {
+  border: none;
+  background: none;
+  color: var(--color-accent-gold-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) 0;
+}
+
+.textButton:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.textButton:focus-visible,
+.primaryButton:focus-visible,
+.jumpLink:focus-visible,
+.viewLink:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+/* The Replace <label> stands in for its hidden file input, so the input's
+   keyboard focus is shown on the label. */
+.imageMeta .textButton:has(+ input:focus-visible) {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.textButton:disabled,
+.isDisabled {
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.dangerButton {
+  color: var(--color-error-text);
+}
+
+.primaryButton {
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-button);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2) var(--space-3);
+  width: fit-content;
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Reviews - same ordered-list look as the FAQ screen. */
+.reviews {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.list {
+  display: grid;
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.item + .item {
+  border-top: 1px solid var(--color-border);
+}
+
+.position {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold);
+  line-height: 1.5;
+}
+
+.itemBody {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.itemBody .shownToggle {
+  margin-right: auto;
+}
+
+.reviewQuote {
+  margin: 0;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.addForm {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+}
+
+.errorBanner,
+.successBanner {
+  margin: 0;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+.errorBanner {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+.successBanner {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+@media (max-width: 40rem) {
+  .fieldRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 30rem) {
+  .item {
+    grid-template-columns: 1fr;
+  }
+
+  .position {
+    display: none;
+  }
+
+  .itemBody .shownToggle {
+    margin-right: 0;
+    width: 100%;
+  }
+}

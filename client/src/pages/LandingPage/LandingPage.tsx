@@ -1,79 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { LandingNavbar } from './components/LandingNavbar/LandingNavbar';
 import { HelpMascot } from '../../shared/components/HelpMascot/HelpMascot';
-import heroBg from '../../assets/goldenfurbg.jpg';
-import grooming from '../../assets/grooming.png';
-import vet from '../../assets/vet.png';
-import hotel from '../../assets/hotel.png';
-import daycare from '../../assets/daycare.png';
 import logo from '../../assets/logo.png';
-import step1 from '../../assets/step1.png';
-import step2 from '../../assets/step2.png';
-import step3 from '../../assets/step3.png';
-import step4 from '../../assets/step4.png';
+import { loadLandingPage } from '../../features/landing/api/landing.api';
+import {
+  CATEGORY_SLUGS,
+  FEATURE_SLUGS,
+  STORY_STEPS,
+  formatOperatingHours,
+  type ResolvedLanding,
+} from '../../features/landing/landing.content';
 import './LandingPage.css';
-
-const CUSTOMER_REVIEWS = [
-  {
-    quote:
-      'Rio used to come home from other groomers anxious and shaking. Here he practically drags me to the door. The team clearly loves what they do.',
-    name: 'Andrea Salcedo',
-    detail: 'Grooming · Makati',
-    rating: 5,
-  },
-  {
-    quote:
-      'Our senior cat needed bloodwork and a dental. The vet walked us through every option without rushing, and we even got a follow-up call the next day.',
-    name: 'Miguel Tan',
-    detail: 'Veterinary · Makati',
-    rating: 5,
-  },
-  {
-    quote:
-      'Booked the pet hotel for a week-long trip. The daily photo updates meant I actually relaxed on vacation — Buddy came back happy and calm.',
-    name: 'Kristine Reyes',
-    detail: 'Pet Hotel · Southwoods',
-    rating: 5,
-  },
-  {
-    quote:
-      'Day care has been a lifesaver on long workdays. Nala gets her play and naps on schedule, and pickup is always quick and friendly.',
-    name: 'Paolo Mendoza',
-    detail: 'Day Care · Makati',
-    rating: 5,
-  },
-  {
-    quote:
-      'Switched both dogs here after one visit. Clean, always on time, and they remember the little things — like which one is terrified of the dryer.',
-    name: 'Camille Ong',
-    detail: 'Grooming · Southwoods',
-    rating: 5,
-  },
-];
-
-// Placeholder branch details — replace addresses, hours, and phone numbers
-// with each branch's real information (kept in sync with BranchesPage).
-const VISIT_US = [
-  {
-    name: 'Makati',
-    address: 'Golden Fur Pet Care, Makati, Metro Manila, Philippines',
-    phone: '+63 2 8000 0000',
-    hours: [
-      { days: 'Mon – Fri', time: '9:00 AM – 7:00 PM' },
-      { days: 'Sat – Sun', time: '8:00 AM – 6:00 PM' },
-    ],
-  },
-  {
-    name: 'Southwoods, Laguna',
-    address: 'Golden Fur Pet Care, Southwoods, Laguna, Philippines',
-    phone: '+63 49 500 0000',
-    hours: [
-      { days: 'Mon – Fri', time: '9:00 AM – 7:00 PM' },
-      { days: 'Sat – Sun', time: '8:00 AM – 6:00 PM' },
-    ],
-  },
-];
 
 function getDirectionsUrl(address: string): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
@@ -85,8 +23,42 @@ function getMapEmbedUrl(address: string): string {
   return `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
 }
 
+/** One "What we Offer" card. */
+type BranchService = {
+  name: string;
+  image: string;
+  alt: string;
+  description: string;
+};
+
 export default function GoldenFurLanding() {
+  // Custom change (editable landing page): the words, images, sections,
+  // reviews and branches below come from the server (Settings > Config >
+  // Landing Page, Settings > Branches), laid over built-in defaults.
+  //
+  // The page renders only once that has resolved - loadLandingPage never
+  // takes longer than LANDING_LOAD_TIMEOUT_MS, falling back to the defaults -
+  // and never re-renders with new content after that. The setup effect below
+  // works on the DOM directly (splitting stagger text into spans, observing
+  // .fade-up sections, building the service cards), so it must run once,
+  // against the final content.
+  const [landing, setLanding] = useState<ResolvedLanding | null>(null);
+
   useEffect(() => {
+    let isMounted = true;
+
+    void loadLandingPage().then((resolved) => {
+      if (isMounted) setLanding(resolved);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!landing) return;
+
     const navToggle = document.getElementById(
       'navToggle'
     ) as HTMLButtonElement | null;
@@ -227,61 +199,25 @@ export default function GoldenFurLanding() {
         featureRevealObserver.observe(card);
       });
 
-    const branchServices = {
-      makati: [
-        {
-          name: 'Grooming',
-          image: grooming,
-          alt: 'Grooming service',
-          description:
-            'Gentle bathing, coat trimming, nail clipping, ear cleaning, and styling to keep your pet clean, healthy, and comfortable.',
-        },
-        {
-          name: 'Veterinary',
-          image: vet,
-          alt: 'Veterinary service',
-          description:
-            'Comprehensive checkups, diagnostics, vaccinations, treatment plans, and expert medical care tailored to your pet’s needs.',
-        },
-        {
-          name: 'Day Care',
-          image: daycare,
-          alt: 'Day care service',
-          description:
-            'Safe, supervised daytime care with social play, feeding support, and rest time for pets while you’re away.',
-        },
-        {
-          name: 'Pet Hotel',
-          image: hotel,
-          alt: 'Pet hotel service',
-          description:
-            'Comfortable overnight boarding with attentive staff, clean suites, routine care, and regular wellness monitoring.',
-        },
-      ],
-      southwoods: [
-        {
-          name: 'Grooming',
-          image: grooming,
-          alt: 'Grooming service',
-          description:
-            'Gentle bathing, coat trimming, nail clipping, ear cleaning, and styling to keep your pet clean, healthy, and comfortable.',
-        },
-        {
-          name: 'Day Care',
-          image: daycare,
-          alt: 'Day care service',
-          description:
-            'Safe, supervised daytime care with social play, feeding support, and rest time for pets while you’re away.',
-        },
-        {
-          name: 'Pet Hotel',
-          image: hotel,
-          alt: 'Pet hotel service',
-          description:
-            'Comfortable overnight boarding with attentive staff, clean suites, routine care, and regular wellness monitoring.',
-        },
-      ],
-    };
+    // Each branch's cards, keyed by branch id (the tab buttons'
+    // data-branch): one card per category the branch offers, with the
+    // category's editable name, description and image.
+    const { text } = landing;
+    const branchServices = new Map<string, BranchService[]>(
+      landing.branches.map((branch) => [
+        branch.id,
+        branch.categories.map((category) => {
+          const slug = CATEGORY_SLUGS[category];
+          const name = text[`services.${slug}.name`];
+          return {
+            name,
+            image: text[`services.${slug}.image`],
+            alt: `${name} service`,
+            description: text[`services.${slug}.description`],
+          };
+        }),
+      ])
+    );
 
     const serviceListEl = document.getElementById(
       'serviceList'
@@ -323,23 +259,34 @@ export default function GoldenFurLanding() {
       }
     }
 
-    function renderBranchServices(branchKey: keyof typeof branchServices) {
-      if (!serviceListEl || !branchServices[branchKey]) return;
+    function renderBranchServices(branchId: string) {
+      const services = branchServices.get(branchId);
+      if (!serviceListEl || !services) return;
 
-      serviceListEl.innerHTML = '';
-      const services = branchServices[branchKey];
+      serviceListEl.replaceChildren();
 
       services.forEach((service, index) => {
         const card = document.createElement('article');
         card.className = 'service-card service-card-stagger';
         card.style.setProperty('--card-delay', `${index * 90}ms`);
 
-        card.innerHTML = `
-          <div class="service-card-image-wrap">
-            <img src="${service.image}" alt="${service.alt}" class="service-card-image" loading="lazy">
-          </div>
-          <h3 class="service-card-title">${service.name}</h3>
-        `;
+        // Built element by element, never as an HTML string: the name and
+        // image come from Superadmin-editable content, so they must only
+        // ever be set as text / an attribute.
+        const imageWrap = document.createElement('div');
+        imageWrap.className = 'service-card-image-wrap';
+        const image = document.createElement('img');
+        image.src = service.image;
+        image.alt = service.alt;
+        image.className = 'service-card-image';
+        image.loading = 'lazy';
+        imageWrap.appendChild(image);
+
+        const title = document.createElement('h3');
+        title.className = 'service-card-title';
+        title.textContent = service.name;
+
+        card.append(imageWrap, title);
 
         card.addEventListener('click', () => {
           setActiveServiceCard(card as HTMLElement);
@@ -362,15 +309,21 @@ export default function GoldenFurLanding() {
         const firstCard =
           serviceListEl.querySelector<HTMLElement>('.service-card');
         setActiveServiceCard(firstCard);
+      } else {
+        // e.g. a branch just added in Settings > Branches, before any
+        // service is made available there.
+        updateServiceDetails({
+          name: 'Coming soon',
+          description: 'Services at this branch will be listed here soon.',
+        });
       }
     }
 
     serviceBranchButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
-        const branchKey = btn.dataset.branch as keyof typeof branchServices;
         serviceBranchButtons.forEach((b) => b.classList.remove('is-active'));
         btn.classList.add('is-active');
-        renderBranchServices(branchKey);
+        renderBranchServices(btn.dataset.branch ?? '');
       });
     });
 
@@ -387,7 +340,9 @@ export default function GoldenFurLanding() {
       { threshold: 0.22 }
     );
 
-    renderBranchServices('makati');
+    if (landing.branches.length > 0) {
+      renderBranchServices(landing.branches[0].id);
+    }
 
     const featureStripCards = document.querySelectorAll<HTMLElement>(
       '.feature-strip-card'
@@ -577,7 +532,15 @@ export default function GoldenFurLanding() {
       featureRevealObserver.disconnect();
       featureExpandCollapseObserver.disconnect();
     };
-  }, []);
+  }, [landing]);
+
+  // At most LANDING_LOAD_TIMEOUT_MS - every section below fades in on its
+  // own anyway, so this reads as the same entrance, just a moment later.
+  if (!landing) {
+    return <LandingNavbar />;
+  }
+
+  const { text, sections, reviews, branches } = landing;
 
   return (
     <>
@@ -588,420 +551,308 @@ export default function GoldenFurLanding() {
 
       <LandingNavbar />
 
-      <main className="hero fade-up">
-        <img
-          src={heroBg}
-          alt="The Golden Fur shop sign on a white brick wall beside shelves of pet care products"
-          className="hero-image"
-        />
-        <div className="hero-scrim" aria-hidden="true" />
+      {sections.hero ? (
+        <main className="hero fade-up">
+          <img
+            src={text['hero.image']}
+            alt={text['hero.image_alt']}
+            className="hero-image"
+          />
+          <div className="hero-scrim" aria-hidden="true" />
 
-        <div className="hero-content">
-          <p className="hero-eyebrow fade-up">
-            Grooming &middot; Veterinary &middot; Day Care &middot; Pet Hotel
-          </p>
+          <div className="hero-content">
+            <p className="hero-eyebrow fade-up">{text['hero.eyebrow']}</p>
 
-          <h1 className="hero-title">
-            <span className="hero-title-lead fade-up">Care as warm as</span>
-            <span
-              className="hero-title-brand stagger"
-              data-stagger
-              data-stagger-direction="left"
-            >
-              Golden Fur
+            <h1 className="hero-title">
+              <span className="hero-title-lead fade-up">
+                {text['hero.title_lead']}
+              </span>
+              <span
+                className="hero-title-brand stagger"
+                data-stagger
+                data-stagger-direction="left"
+              >
+                {text['hero.title_brand']}
+              </span>
+            </h1>
+
+            <p className="hero-lead fade-up">{text['hero.lead']}</p>
+
+            <div className="hero-actions fade-up">
+              <Link to="/portal/book" className="hero-btn hero-btn-primary">
+                {text['hero.primary_cta']}
+              </Link>
+              <a href="#servicesSection" className="hero-btn hero-btn-ghost">
+                {text['hero.secondary_cta']}
+              </a>
+            </div>
+
+            <ul className="hero-branches fade-up" aria-label="Our branches">
+              {branches.map((branch) => (
+                <li className="hero-branch" key={branch.id}>
+                  <span aria-hidden="true">📍</span> {branch.name}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <a
+            className="hero-scroll-cue"
+            href="#servicesSection"
+            aria-label="Scroll to what we offer"
+          >
+            <span className="hero-scroll-cue-track" aria-hidden="true">
+              <span className="hero-scroll-cue-thumb" />
             </span>
+            Scroll to explore
+          </a>
+        </main>
+      ) : null}
+
+      {sections.services ? (
+        <div className="services fade-up" id="servicesSection">
+          <h1 className="serviceTitle stagger" data-stagger>
+            {text['services.title']}
           </h1>
 
-          <p className="hero-lead fade-up">
-            Compassionate, expert care for your beloved companions — because
-            every tail wag, purr, and nuzzle deserves the very best.
-          </p>
-
-          <div className="hero-actions fade-up">
-            <Link to="/portal/book" className="hero-btn hero-btn-primary">
-              Book an appointment
-            </Link>
-            <a href="#servicesSection" className="hero-btn hero-btn-ghost">
-              Explore our services
-            </a>
-          </div>
-
-          <ul className="hero-branches fade-up" aria-label="Our branches">
-            <li className="hero-branch">
-              <span aria-hidden="true">📍</span> Makati
-            </li>
-            <li className="hero-branch">
-              <span aria-hidden="true">📍</span> Southwoods, Laguna
-            </li>
-          </ul>
-        </div>
-
-        <a
-          className="hero-scroll-cue"
-          href="#servicesSection"
-          aria-label="Scroll to what we offer"
-        >
-          <span className="hero-scroll-cue-track" aria-hidden="true">
-            <span className="hero-scroll-cue-thumb" />
-          </span>
-          Scroll to explore
-        </a>
-      </main>
-
-      <div className="services fade-up" id="servicesSection">
-        <h1 className="serviceTitle stagger" data-stagger>
-          What we Offer
-        </h1>
-
-        <div
-          className="service-branch-switcher"
-          role="tablist"
-          aria-label="Branch Services"
-        >
-          <button
-            className="service-branch-btn is-active"
-            data-branch="makati"
-            type="button"
+          <div
+            className="service-branch-switcher"
+            role="tablist"
+            aria-label="Branch Services"
           >
-            Makati
-          </button>
-          <button
-            className="service-branch-btn"
-            data-branch="southwoods"
-            type="button"
+            {branches.map((branch, index) => (
+              <button
+                key={branch.id}
+                className={`service-branch-btn${index === 0 ? ' is-active' : ''}`}
+                data-branch={branch.id}
+                type="button"
+              >
+                {branch.name}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="service-list"
+            id="serviceList"
+            aria-live="polite"
+          ></div>
+
+          <article
+            className="service-details"
+            id="serviceDetails"
+            aria-live="polite"
           >
-            Southwoods
-          </button>
-        </div>
-
-        <div className="service-list" id="serviceList" aria-live="polite"></div>
-
-        <article
-          className="service-details"
-          id="serviceDetails"
-          aria-live="polite"
-        >
-          <h3 className="service-details-title" id="serviceDetailsTitle">
-            Select a service
-          </h3>
-          <p className="service-details-text" id="serviceDetailsText">
-            Click a service card to view its description.
-          </p>
-        </article>
-      </div>
-
-      <section
-        className="feature-strip-section"
-        id="featureStripSection"
-        aria-label="More service highlights"
-      >
-        <div className="feature-strip">
-          <article className="feature-strip-card">
-            <img
-              src={grooming}
-              alt="Premium grooming highlight"
-              className="feature-strip-image"
-              loading="lazy"
-            />
-            <div className="feature-strip-overlay"></div>
-            <div className="feature-strip-content">
-              <div className="feature-strip-copy">
-                <h3>Premium Grooming</h3>
-                <p>
-                  Gentle coat care, trim styling, and wellness-focused grooming
-                  sessions.
-                </p>
-                <p className="feature-strip-detail">
-                  Includes breed-specific coat treatments, de-shedding options,
-                  nail and paw care, and a calming bath routine handled by
-                  certified groomers.
-                </p>
-              </div>
-              <button className="feature-strip-btn" type="button">
-                View
-              </button>
-            </div>
-          </article>
-
-          <article className="feature-strip-card">
-            <img
-              src={vet}
-              alt="Veterinary care highlight"
-              className="feature-strip-image"
-              loading="lazy"
-            />
-            <div className="feature-strip-overlay"></div>
-            <div className="feature-strip-content">
-              <div className="feature-strip-copy">
-                <h3>Veterinary Consults</h3>
-                <p>
-                  Routine checkups and preventive care for healthier, happier
-                  pets.
-                </p>
-                <p className="feature-strip-detail">
-                  Vaccinations, deworming, diagnostics, and personalized
-                  treatment plans from licensed veterinarians who track your
-                  pet’s health over time.
-                </p>
-              </div>
-              <button className="feature-strip-btn" type="button">
-                View
-              </button>
-            </div>
-          </article>
-
-          <article className="feature-strip-card">
-            <img
-              src={daycare}
-              alt="Day care highlight"
-              className="feature-strip-image"
-              loading="lazy"
-            />
-            <div className="feature-strip-overlay"></div>
-            <div className="feature-strip-content">
-              <div className="feature-strip-copy">
-                <h3>Trusted Day Care</h3>
-                <p>
-                  Safe supervised play and rest while you’re away for the day.
-                </p>
-                <p className="feature-strip-detail">
-                  Group play matched to temperament and size, scheduled rest
-                  breaks, and feeding on your pet’s usual routine, all under
-                  attentive staff supervision.
-                </p>
-              </div>
-              <button className="feature-strip-btn" type="button">
-                View
-              </button>
-            </div>
-          </article>
-
-          <article className="feature-strip-card">
-            <img
-              src={hotel}
-              alt="Pet hotel highlight"
-              className="feature-strip-image"
-              loading="lazy"
-            />
-            <div className="feature-strip-overlay"></div>
-            <div className="feature-strip-content">
-              <div className="feature-strip-copy">
-                <h3>Comfort Pet Hotel</h3>
-                <p>
-                  Clean cozy overnight boarding with attentive and loving
-                  support.
-                </p>
-                <p className="feature-strip-detail">
-                  Private suites, regular wellness checks, comfortable bedding,
-                  and daily updates so you can travel with peace of mind.
-                </p>
-              </div>
-              <button className="feature-strip-btn" type="button">
-                View
-              </button>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section className="reviews fade-up" aria-labelledby="reviewsTitle">
-        <h2 className="reviews-title stagger" data-stagger id="reviewsTitle">
-          Loved by pet parents
-        </h2>
-        <p className="reviews-subtitle fade-up">
-          Real words from families across our Makati and Southwoods branches.
-        </p>
-
-        <div className="reviews-grid">
-          {CUSTOMER_REVIEWS.map((review) => (
-            <article className="review-card fade-up" key={review.name}>
-              <div
-                className="review-stars"
-                role="img"
-                aria-label={`Rated ${review.rating} out of 5`}
-              >
-                {'★'.repeat(review.rating)}
-                <span className="review-stars-empty" aria-hidden="true">
-                  {'★'.repeat(5 - review.rating)}
-                </span>
-              </div>
-              <p className="review-quote">{review.quote}</p>
-              <div className="review-author">
-                <span className="review-avatar" aria-hidden="true">
-                  {review.name.charAt(0)}
-                </span>
-                <span className="review-author-meta">
-                  <span className="review-name">{review.name}</span>
-                  <span className="review-detail">{review.detail}</span>
-                </span>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section
-        className="scroll-story"
-        id="scrollStory"
-        aria-label="Guided care journey"
-      >
-        <div className="scroll-story-inner">
-          <div className="scroll-story-left" aria-hidden="true">
-            <div className="scroll-story-strip" id="scrollStoryStrip">
-              <article
-                className="scroll-story-image-card is-active"
-                data-story-index="0"
-              >
-                <img
-                  src={step1}
-                  alt="Initial consultation moment"
-                  loading="lazy"
-                />
-              </article>
-              <article className="scroll-story-image-card" data-story-index="1">
-                <img
-                  src={step2}
-                  alt="Personalized care planning"
-                  loading="lazy"
-                />
-              </article>
-              <article className="scroll-story-image-card" data-story-index="2">
-                <img src={step3} alt="Treatment and follow-up" loading="lazy" />
-              </article>
-              <article className="scroll-story-image-card" data-story-index="3">
-                <img
-                  src={step4}
-                  alt="Long-term wellness support"
-                  loading="lazy"
-                />
-              </article>
-            </div>
-          </div>
-
-          <div className="scroll-story-right">
-            <article
-              className="scroll-story-copy is-active"
-              data-story-copy="0"
-            >
-              <p className="scroll-story-kicker">Step 01</p>
-              <h3>Warm, attentive intake</h3>
-              <p>
-                We begin with a calm assessment so your pet feels safe while we
-                understand history, behavior, and immediate needs.
-              </p>
-            </article>
-
-            <article className="scroll-story-copy" data-story-copy="1" hidden>
-              <p className="scroll-story-kicker">Step 02</p>
-              <h3>Customized care mapping</h3>
-              <p>
-                Our team maps a tailored service path—from grooming to
-                veterinary support—based on breed, age, and condition.
-              </p>
-            </article>
-
-            <article className="scroll-story-copy" data-story-copy="2" hidden>
-              <p className="scroll-story-kicker">Step 03</p>
-              <h3>Precise, gentle execution</h3>
-              <p>
-                Every treatment is delivered with careful handling, clear
-                updates, and quality checks at each milestone.
-              </p>
-            </article>
-
-            <article className="scroll-story-copy" data-story-copy="3" hidden>
-              <p className="scroll-story-kicker">Step 04</p>
-              <h3>Ongoing wellness continuity</h3>
-              <p>
-                After the visit, we guide next steps and preventive routines to
-                keep your companion healthy between appointments.
-              </p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section
-        className="visit fade-up"
-        id="visitSection"
-        aria-labelledby="visitTitle"
-      >
-        <h2 className="visit-title stagger" data-stagger id="visitTitle">
-          Visit us
-        </h2>
-        <p className="visit-subtitle fade-up">
-          Drop by either branch — walk-ins are welcome, appointments
-          recommended.
-        </p>
-
-        <div className="visit-grid">
-          {VISIT_US.map((branch) => (
-            <article className="visit-card fade-up" key={branch.name}>
-              <div className="visit-map">
-                <iframe
-                  src={getMapEmbedUrl(branch.address)}
-                  title={`Map to Golden Fur ${branch.name}`}
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
-              </div>
-              <div className="visit-info">
-                <h3 className="visit-branch-name">📍 {branch.name}</h3>
-                <p className="visit-address">{branch.address}</p>
-
-                <dl className="visit-hours">
-                  {branch.hours.map((slot) => (
-                    <div className="visit-hours-row" key={slot.days}>
-                      <dt>{slot.days}</dt>
-                      <dd>{slot.time}</dd>
-                    </div>
-                  ))}
-                </dl>
-
-                <p className="visit-contact">
-                  <a href={`tel:${branch.phone.replace(/\s/g, '')}`}>
-                    {branch.phone}
-                  </a>
-                </p>
-
-                <a
-                  href={getDirectionsUrl(branch.address)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="visit-directions"
-                >
-                  Get directions
-                </a>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="cta-band fade-up" aria-labelledby="ctaBandTitle">
-        <div className="cta-band-inner">
-          <div className="cta-band-copy">
-            <h2 className="cta-band-title" id="ctaBandTitle">
-              Your pet&rsquo;s next visit starts here
-            </h2>
-            <p className="cta-band-text">
-              Book online in minutes for grooming, veterinary, day care, and
-              boarding — at our Makati and Southwoods branches.
+            <h3 className="service-details-title" id="serviceDetailsTitle">
+              Select a service
+            </h3>
+            <p className="service-details-text" id="serviceDetailsText">
+              Click a service card to view its description.
             </p>
-          </div>
-          <div className="cta-band-actions">
-            <Link
-              to="/portal/book"
-              className="cta-band-btn cta-band-btn-primary"
-            >
-              Book an appointment
-            </Link>
-            <Link to="/branches" className="cta-band-btn cta-band-btn-ghost">
-              Find a branch
-            </Link>
-          </div>
+          </article>
         </div>
-      </section>
+      ) : null}
+
+      {sections.features ? (
+        <section
+          className="feature-strip-section"
+          id="featureStripSection"
+          aria-label="More service highlights"
+        >
+          <div className="feature-strip">
+            {FEATURE_SLUGS.map((slug) => (
+              <article className="feature-strip-card" key={slug}>
+                <img
+                  src={text[`features.${slug}.image`]}
+                  alt={`${text[`features.${slug}.title`]} highlight`}
+                  className="feature-strip-image"
+                  loading="lazy"
+                />
+                <div className="feature-strip-overlay"></div>
+                <div className="feature-strip-content">
+                  <div className="feature-strip-copy">
+                    <h3>{text[`features.${slug}.title`]}</h3>
+                    <p>{text[`features.${slug}.summary`]}</p>
+                    <p className="feature-strip-detail">
+                      {text[`features.${slug}.detail`]}
+                    </p>
+                  </div>
+                  <button className="feature-strip-btn" type="button">
+                    View
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {sections.reviews ? (
+        <section className="reviews fade-up" aria-labelledby="reviewsTitle">
+          <h2 className="reviews-title stagger" data-stagger id="reviewsTitle">
+            {text['reviews.title']}
+          </h2>
+          <p className="reviews-subtitle fade-up">{text['reviews.subtitle']}</p>
+
+          <div className="reviews-grid">
+            {reviews.map((review) => (
+              <article className="review-card fade-up" key={review.id}>
+                <div
+                  className="review-stars"
+                  role="img"
+                  aria-label={`Rated ${review.rating} out of 5`}
+                >
+                  {'★'.repeat(review.rating)}
+                  <span className="review-stars-empty" aria-hidden="true">
+                    {'★'.repeat(5 - review.rating)}
+                  </span>
+                </div>
+                <p className="review-quote">{review.quote}</p>
+                <div className="review-author">
+                  <span className="review-avatar" aria-hidden="true">
+                    {review.name.charAt(0)}
+                  </span>
+                  <span className="review-author-meta">
+                    <span className="review-name">{review.name}</span>
+                    {review.detail ? (
+                      <span className="review-detail">{review.detail}</span>
+                    ) : null}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {sections.story ? (
+        <section
+          className="scroll-story"
+          id="scrollStory"
+          aria-label="Guided care journey"
+        >
+          <div className="scroll-story-inner">
+            <div className="scroll-story-left" aria-hidden="true">
+              <div className="scroll-story-strip" id="scrollStoryStrip">
+                {STORY_STEPS.map((step, index) => (
+                  <article
+                    key={step}
+                    className={`scroll-story-image-card${index === 0 ? ' is-active' : ''}`}
+                    data-story-index={index}
+                  >
+                    <img
+                      src={text[`story.${step}.image`]}
+                      alt={text[`story.${step}.title`]}
+                      loading="lazy"
+                    />
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="scroll-story-right">
+              {STORY_STEPS.map((step, index) => (
+                <article
+                  key={step}
+                  className={`scroll-story-copy${index === 0 ? ' is-active' : ''}`}
+                  data-story-copy={index}
+                  hidden={index !== 0}
+                >
+                  <p className="scroll-story-kicker">Step 0{step}</p>
+                  <h3>{text[`story.${step}.title`]}</h3>
+                  <p>{text[`story.${step}.body`]}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {sections.visit ? (
+        <section
+          className="visit fade-up"
+          id="visitSection"
+          aria-labelledby="visitTitle"
+        >
+          <h2 className="visit-title stagger" data-stagger id="visitTitle">
+            {text['visit.title']}
+          </h2>
+          <p className="visit-subtitle fade-up">{text['visit.subtitle']}</p>
+
+          <div className="visit-grid">
+            {branches.map((branch) => (
+              <article className="visit-card fade-up" key={branch.id}>
+                <div className="visit-map">
+                  <iframe
+                    src={getMapEmbedUrl(branch.address)}
+                    title={`Map to Golden Fur ${branch.name}`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+                <div className="visit-info">
+                  <h3 className="visit-branch-name">📍 {branch.name}</h3>
+                  <p className="visit-address">{branch.address}</p>
+
+                  <dl className="visit-hours">
+                    {formatOperatingHours(branch.operating_hours).map(
+                      (slot) => (
+                        <div className="visit-hours-row" key={slot.days}>
+                          <dt>{slot.days}</dt>
+                          <dd>{slot.time}</dd>
+                        </div>
+                      )
+                    )}
+                  </dl>
+
+                  {branch.contact_number ? (
+                    <p className="visit-contact">
+                      <a
+                        href={`tel:${branch.contact_number.replace(/\s/g, '')}`}
+                      >
+                        {branch.contact_number}
+                      </a>
+                    </p>
+                  ) : null}
+
+                  <a
+                    href={getDirectionsUrl(branch.address)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="visit-directions"
+                  >
+                    Get directions
+                  </a>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {sections.cta ? (
+        <section className="cta-band fade-up" aria-labelledby="ctaBandTitle">
+          <div className="cta-band-inner">
+            <div className="cta-band-copy">
+              <h2 className="cta-band-title" id="ctaBandTitle">
+                {text['cta.title']}
+              </h2>
+              <p className="cta-band-text">{text['cta.text']}</p>
+            </div>
+            <div className="cta-band-actions">
+              <Link
+                to="/portal/book"
+                className="cta-band-btn cta-band-btn-primary"
+              >
+                {text['cta.primary_button']}
+              </Link>
+              <Link to="/branches" className="cta-band-btn cta-band-btn-ghost">
+                {text['cta.secondary_button']}
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <HelpMascot
         links={[
@@ -1016,10 +867,7 @@ export default function GoldenFurLanding() {
             <img src={logo} alt="Golden Fur logo" className="footer-logo" />
             <div>
               <p className="footer-brand-name">Golden Fur</p>
-              <p className="footer-tagline">
-                Compassionate, expert pet care across grooming, veterinary, day
-                care, and boarding — because every pet deserves the best.
-              </p>
+              <p className="footer-tagline">{text['footer.tagline']}</p>
             </div>
           </div>
 
@@ -1044,8 +892,9 @@ export default function GoldenFurLanding() {
           <div className="footer-col">
             <h4>Branches</h4>
             <ul>
-              <li>📍 Makati</li>
-              <li>📍 Southwoods, Laguna</li>
+              {branches.map((branch) => (
+                <li key={branch.id}>📍 {branch.name}</li>
+              ))}
             </ul>
           </div>
 
@@ -1053,10 +902,14 @@ export default function GoldenFurLanding() {
             <h4>Get in touch</h4>
             <ul>
               <li>
-                <a href="tel:+63200000000">+63 2 0000 0000</a>
+                <a href={`tel:${text['footer.phone'].replace(/\s/g, '')}`}>
+                  {text['footer.phone']}
+                </a>
               </li>
               <li>
-                <a href="mailto:hello@goldenfur.ph">hello@goldenfur.ph</a>
+                <a href={`mailto:${text['footer.email']}`}>
+                  {text['footer.email']}
+                </a>
               </li>
             </ul>
 

@@ -8,6 +8,7 @@ import { AdminPromosAndRewardsPage } from './pages/AdminPromosAndRewardsPage/Adm
 import { AdminPetsPage } from './pages/AdminPetsPage/AdminPetsPage';
 import { BranchesPage } from './pages/BranchesPage/BranchesPage';
 import { FaqConfigurationPage } from '../faq/pages/FaqConfigurationPage/FaqConfigurationPage';
+import { LandingPageConfigurationPage } from '../landing/pages/LandingPageConfigurationPage/LandingPageConfigurationPage';
 import { VetServicesConfigurationPage } from '../veterinary/pages/VetServicesConfigurationPage/VetServicesConfigurationPage';
 
 /**
@@ -36,6 +37,11 @@ export const maintenanceRoutes = (
       <Route
         path="/staff/admin/maintenance/faqs"
         element={<FaqConfigurationPage />}
+      />
+      {/* Same for Landing Page (features/landing). */}
+      <Route
+        path="/staff/admin/maintenance/landing-page"
+        element={<LandingPageConfigurationPage />}
       />
       {/* Same for Veterinary Services (features/veterinary). */}
       <Route
