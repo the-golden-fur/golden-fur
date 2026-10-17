@@ -113,10 +113,14 @@ export function CustomerPetManagerPage() {
     };
   }, [user?.id, accessToken]);
 
-  const handlePetCreated = (pet: Pet) => {
+  const handlePetCreated = (pet: Pet, photoError?: string) => {
     setPets((prev) => [...prev, pet]);
     setShowPetForm(false);
-    setPetMessage('Pet added.');
+    setPetMessage(
+      photoError
+        ? `Pet added, but the photo could not be uploaded: ${photoError}`
+        : 'Pet added.'
+    );
   };
 
   function handleDeleteClick(pet: Pet) {

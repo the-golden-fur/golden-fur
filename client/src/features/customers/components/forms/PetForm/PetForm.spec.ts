@@ -170,7 +170,65 @@ describe('PetForm', () => {
       })
     );
     expect(uploadPetPhoto).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(onCreated).toHaveBeenCalledWith(pet));
+    await vi.waitFor(() =>
+      expect(onCreated).toHaveBeenCalledWith(pet, undefined)
+    );
+  });
+
+  it('session 120: still creates the pet but reports a failed photo upload to onCreated', async () => {
+    const pet = {
+      id: 'pet-1',
+      customer_id: 'customer-1',
+      name: 'Buddy',
+      pet_type: 'Dog' as const,
+      breed_id: 'breed-1',
+      photo_url: null,
+      gender: null,
+      date_of_birth: null,
+      weight_class: null,
+      coat_type: null,
+      assessed_by: null,
+      assessed_at: null,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+    vi.mocked(createPet).mockResolvedValue({ data: pet, error: null });
+    vi.mocked(uploadPetPhoto).mockResolvedValue({
+      data: null,
+      error: 'Bucket not found',
+    });
+    const onCreated = vi.fn();
+
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated,
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Lab' } });
+    fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Photo (optional)'), {
+      target: {
+        files: [new File(['x'], 'buddy.png', { type: 'image/png' })],
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
+
+    await vi.waitFor(() =>
+      expect(onCreated).toHaveBeenCalledWith(pet, 'Bucket not found')
+    );
   });
 
   it('a staff-authorized caller sees and can submit weight class/coat type', async () => {

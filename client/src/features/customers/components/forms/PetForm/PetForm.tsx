@@ -30,7 +30,9 @@ interface PetFormProps {
    */
   customerId: string;
   accessToken: string;
-  onCreated: (pet: Pet) => void;
+  /** `photoError` is set when the pet was created but its optional photo
+   * failed to upload - the caller decides how to tell the user. */
+  onCreated: (pet: Pet, photoError?: string) => void;
   /**
    * Client interview finding: a customer cannot set weight_class/coat_type
    * (they'd otherwise be able to manipulate Grooming price/Hotel cage size)
@@ -127,15 +129,19 @@ export function PetForm({
     }
 
     let pet = result.data;
+    let photoError: string | undefined;
 
     if (photoFile) {
       const photoResult = await uploadPetPhoto(pet.id, accessToken, photoFile);
 
       if (photoResult.data?.photo_url) {
         pet = { ...pet, photo_url: photoResult.data.photo_url };
+      } else {
+        // A photo-upload failure doesn't roll back pet creation - the pet
+        // profile page still lets a photo be added later - but it is
+        // reported rather than silently dropped.
+        photoError = photoResult.error ?? 'Photo upload failed.';
       }
-      // A photo-upload failure doesn't roll back pet creation - the pet
-      // profile page still lets a photo be added later.
     }
 
     setIsSubmitting(false);
@@ -150,7 +156,7 @@ export function PetForm({
     setWeightClassOverridden(false);
     setWeightFieldsKey((key) => key + 1);
     setCoatType('');
-    onCreated(pet);
+    onCreated(pet, photoError);
   };
 
   return (

@@ -234,12 +234,23 @@ export function CustomerManagementPage() {
     setMessage('Customer saved. Add a pet below if needed.');
   };
 
-  const handlePetCreated = (customerId: string, pet: Pet) => {
-    setPetsByCustomer((prev) => ({
-      ...prev,
-      [customerId]: [...(prev[customerId] ?? []), pet],
-    }));
-    setMessage('Pet added.');
+  const handlePetCreated = (
+    customerId: string,
+    pet: Pet,
+    photoError?: string
+  ) => {
+    // Only append to an already-loaded list - seeding a one-pet list for a
+    // customer whose pets were never fetched would hide their other pets.
+    setPetsByCustomer((prev) =>
+      prev[customerId]
+        ? { ...prev, [customerId]: [...prev[customerId], pet] }
+        : prev
+    );
+    setMessage(
+      photoError
+        ? `Pet added, but the photo could not be uploaded: ${photoError}`
+        : 'Pet added.'
+    );
   };
 
   async function handleToggleCustomerActive(customer: CustomerProfile) {
@@ -417,7 +428,10 @@ export function CustomerManagementPage() {
 
     const needsPets = action === 'viewPets' || action === 'overview';
 
-    if (needsPets && accessToken && !petsByCustomer[customerId]) {
+    // Pets are re-read each time too - the customer can change them (e.g.
+    // upload a photo) from the portal while this page is open. The cached
+    // list stays on screen while the fresh one loads.
+    if (needsPets && accessToken) {
       setIsPetsLoading(true);
       setPetsLoadError(null);
 
@@ -434,9 +448,9 @@ export function CustomerManagementPage() {
     }
 
     if (action === 'overview' && accessToken) {
-      // Unlike pets, bookings change from elsewhere in the app all day, so
-      // they are re-read each time the overview opens - the cached list
-      // just keeps the last one on screen while the fresh one loads.
+      // Bookings change from elsewhere in the app all day, so they are
+      // re-read each time the overview opens - the cached list just keeps
+      // the last one on screen while the fresh one loads.
       setIsBookingsLoading(true);
       setBookingsLoadError(null);
 
@@ -489,7 +503,8 @@ export function CustomerManagementPage() {
   }
 
   function renderPets(customer: CustomerProfile) {
-    if (isPetsLoading) return <LoadingState label="Loading pets..." />;
+    const pets = petsByCustomer[customer.id];
+
     if (petsLoadError) {
       return (
         <p className={styles.errorBanner} role="alert">
@@ -497,12 +512,15 @@ export function CustomerManagementPage() {
         </p>
       );
     }
-    if ((petsByCustomer[customer.id] ?? []).length === 0) {
+    if (!pets) {
+      return isPetsLoading ? <LoadingState label="Loading pets..." /> : null;
+    }
+    if (pets.length === 0) {
       return <p className={styles.copy}>No pets on file yet.</p>;
     }
     return (
       <div className={styles.petsGrid}>
-        {(petsByCustomer[customer.id] ?? []).map((pet) => (
+        {pets.map((pet) => (
           <PetCard key={pet.id} pet={pet} linkBasePath="/staff/pets" />
         ))}
       </div>
@@ -595,7 +613,9 @@ export function CustomerManagementPage() {
         <PetForm
           customerId={customer.id}
           accessToken={accessToken}
-          onCreated={(pet) => handlePetCreated(customer.id, pet)}
+          onCreated={(pet, photoError) =>
+            handlePetCreated(customer.id, pet, photoError)
+          }
           isStaff
         />
       );
