@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link } from 'react-router';
 import { LandingNavbar } from './components/LandingNavbar/LandingNavbar';
 import { HelpMascot } from '../../shared/components/HelpMascot/HelpMascot';
-import heroBg from '../../assets/herobg.png';
+import heroBg from '../../assets/goldenfurbg.jpg';
 import grooming from '../../assets/grooming.png';
 import vet from '../../assets/vet.png';
 import hotel from '../../assets/hotel.png';
@@ -591,7 +591,7 @@ export default function GoldenFurLanding() {
       <main className="hero fade-up">
         <img
           src={heroBg}
-          alt="A smiling owner embracing her golden retriever in warm light"
+          alt="The Golden Fur shop sign on a white brick wall beside shelves of pet care products"
           className="hero-image"
         />
         <div className="hero-scrim" aria-hidden="true" />

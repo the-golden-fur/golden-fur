@@ -55,11 +55,13 @@ import {
   STAFF_SORT_FIELDS,
 } from './transactionFilterFields';
 import {
+  isBookingCancelled,
   paymentChoiceLabel,
   paymentStatusLabel,
   paymentTone,
   transactionTypeLabel,
 } from './transactionDisplay';
+import { receiptPropsFor } from './transactionReceipt';
 import {
   GROUP_BY_OPTIONS,
   groupTransactions,
@@ -408,7 +410,8 @@ export function TransactionHistoryTable() {
     const canPay =
       transaction.payment_status === 'Pending' &&
       transaction.transaction_type === 'booking_payment' &&
-      Boolean(transaction.booking_id || transaction.booking_group_id);
+      Boolean(transaction.booking_id || transaction.booking_group_id) &&
+      !isBookingCancelled(transaction);
     return [
       ...(transaction.booking_id
         ? [
@@ -731,37 +734,7 @@ export function TransactionHistoryTable() {
 
       {printing ? (
         <TransactionReceiptPrintout
-          branchName={branches.get(printing.branch_id)?.name ?? null}
-          branchAddress={branches.get(printing.branch_id)?.address ?? null}
-          branchContactNumber={
-            branches.get(printing.branch_id)?.contact_number ?? null
-          }
-          title={
-            printing.payment_status === 'Pending' ? 'Payment Due' : 'Receipt'
-          }
-          reference={printing.id.replace(/-/g, '').slice(0, 12).toUpperCase()}
-          date={printing.created_at}
-          customerName={printing.customer_name}
-          petName={printing.bookings?.pets?.name ?? null}
-          description={transactionTypeLabel(printing)}
-          service={printing.bookings?.service_category ?? null}
-          paymentLabel={
-            printing.payment_choice ? paymentChoiceLabel(printing) : null
-          }
-          method={
-            printing.payment_status === 'Pending'
-              ? null
-              : printing.payment_method
-          }
-          statusLabel={paymentStatusLabel(printing.payment_status)}
-          amount={printing.total_amount}
-          // A Daycare bill is itemized - booked hours, overdue hours, the
-          // night of a pet not picked up before closing.
-          lines={
-            printing.bookings?.service_category === 'Daycare'
-              ? printing.transaction_line_items
-              : undefined
-          }
+          {...receiptPropsFor(printing, branches.get(printing.branch_id))}
           onDone={() => setPrinting(null)}
         />
       ) : null}

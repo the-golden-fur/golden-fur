@@ -35,6 +35,8 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   credit_expiry_days: 30,
   credit_expiry_fixed_date: null,
   cancellation_credit_conversion_rate: 100,
+  // Mirrors the column default (20261016269).
+  cancellation_grace_minutes: 60,
   // Mirrors the seeded system-default row (20260902161): downpayment enabled
   // system-wide at 50% of the discounted net total. Only used if that row is
   // deleted out-of-band.
@@ -584,6 +586,7 @@ export async function updatePolicyConfiguration({
     credit_expiry_fixed_date: resolved.credit_expiry_fixed_date,
     cancellation_credit_conversion_rate:
       resolved.cancellation_credit_conversion_rate,
+    cancellation_grace_minutes: resolved.cancellation_grace_minutes,
     downpayment_enabled: resolved.downpayment_enabled,
     downpayment_type: resolved.downpayment_type,
     downpayment_amount: resolved.downpayment_amount,

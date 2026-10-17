@@ -81,6 +81,24 @@ describe('payableBalances', () => {
     expect(result).toEqual([]);
   });
 
+  it('excludes a cancelled booking - it cannot take a payment', () => {
+    const result = payableBalances([
+      record({
+        bookings: {
+          pet_id: 'pet-1',
+          service_category: 'Grooming',
+          status: 'Cancelled',
+          payment_status: 'Partially Paid',
+          total_price: 1200,
+          discount_amount: 0,
+          promo_amount: 0,
+        },
+      }),
+    ]);
+
+    expect(result).toEqual([]);
+  });
+
   it('ignores miscellaneous sales', () => {
     const result = payableBalances([
       record({

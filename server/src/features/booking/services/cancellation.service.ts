@@ -48,6 +48,30 @@ export async function confirmedAmountPaid(bookingId: string): Promise<number> {
   );
 }
 
+/**
+ * Cancellation grace for last-minute bookings (20261016269). A booking made
+ * less than notice_period_days ahead of its start can never meet the notice
+ * period - without this, a paid down payment on any same-day booking was
+ * forfeited even when the customer cancelled a minute after booking. Such a
+ * booking cancelled within cancellation_grace_minutes of being made counts
+ * as if notice was met. Bookings made further ahead are unaffected; 0
+ * minutes turns the grace off.
+ */
+function isWithinLastMinuteGrace(
+  booking: Booking,
+  notice: Awaited<ReturnType<typeof evaluateNoticePeriod>>
+): boolean {
+  if (!notice.enforced || notice.met) return false;
+
+  const createdAt = new Date(booking.created_at).getTime();
+  const bookedInsideWindow =
+    new Date(booking.scheduled_start).getTime() - createdAt <
+    notice.policy.notice_period_days * DAY_MS;
+  const graceMs = (notice.policy.cancellation_grace_minutes ?? 0) * 60 * 1000;
+
+  return bookedInsideWindow && Date.now() - createdAt <= graceMs;
+}
+
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
@@ -113,6 +137,7 @@ export async function cancelBooking({
     booking.branch_id,
     booking.scheduled_start
   );
+  const noticeMet = notice.met || isWithinLastMinuteGrace(booking, notice);
 
   const { data: updated, error } = await supabase
     .from('bookings')
@@ -130,14 +155,14 @@ export async function cancelBooking({
     throwWithStatus(400, error?.message ?? 'Failed to cancel booking');
   }
 
-  const policyViolation = notice.enforced && !notice.met;
+  const policyViolation = notice.enforced && !noticeMet;
 
   const log = await writeCancellationLog({
     bookingId: booking.id,
     customerId: booking.customer_id,
     branchId: booking.branch_id,
     eventType: 'cancellation',
-    noticePeriodMet: notice.met,
+    noticePeriodMet: noticeMet,
     enforcementModeApplied: notice.policy.notice_enforcement_mode,
     policyViolation,
   });
@@ -150,7 +175,7 @@ export async function cancelBooking({
   // met (the payment is forfeited regardless).
   const reviewMode = notice.policy.credit_review_mode ?? 'Automatic';
   const amountPaid =
-    reviewMode === 'Manual' || notice.met
+    reviewMode === 'Manual' || noticeMet
       ? await confirmedAmountPaid(booking.id)
       : 0;
 
@@ -169,7 +194,7 @@ export async function cancelBooking({
   // rate itself, fresh, once a staff member actually decides.
   const rate = notice.policy.cancellation_credit_conversion_rate; // 0-100
   const creditAmount = round2(amountPaid * (rate / 100));
-  const qualifies = reviewMode !== 'Manual' && notice.met && creditAmount > 0;
+  const qualifies = reviewMode !== 'Manual' && noticeMet && creditAmount > 0;
 
   let creditIssued = false;
 
@@ -216,7 +241,7 @@ export async function cancelBooking({
   // issue wired it.
   await sendBookingCancelledNotification({
     booking: updated as Booking,
-    noticePeriodMet: notice.met,
+    noticePeriodMet: noticeMet,
     policyViolation,
     creditAmount: creditIssued ? creditAmount : null,
     creditReviewPending,
@@ -224,7 +249,7 @@ export async function cancelBooking({
 
   return {
     booking: updated as Booking,
-    notice_period_met: notice.met,
+    notice_period_met: noticeMet,
     policy_violation: policyViolation,
     credit_issued: creditIssued,
     credit_review_pending: creditReviewPending,

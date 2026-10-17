@@ -1,3 +1,5 @@
+import type { BookingStatus, ServiceCategory } from '../booking/booking.types';
+
 export type CommunicationChannel = 'Call' | 'Text' | 'Viber' | 'Messenger';
 
 export interface CustomerProfile {
@@ -171,6 +173,52 @@ export interface PetPrescriptionHistoryEntry {
     quantity?: number | null;
     quantity_unit?: string | null;
     refills?: number | null;
+  }>;
+}
+
+/** One past booking on a pet's Service History (Completed, Cancelled or
+ * No-show). Server: GET /pets/:id/service-history. */
+export interface PetServiceHistoryEntry {
+  booking_id: string;
+  /** completed_at when the service finished, else scheduled_start. */
+  date: string;
+  service_category: ServiceCategory;
+  status: Extract<BookingStatus, 'Completed' | 'Cancelled' | 'No-show'>;
+  items: string[];
+  branch_name: string | null;
+  /** Assigned groomer/vet; null for Hotel/Daycare/Assessment. */
+  staff_name: string | null;
+  total_price: number;
+  cancellation_reason: string | null;
+  /** Paid transactions for this booking (its own + a group checkout's),
+   * oldest first - each one a reprintable receipt. */
+  payments: PetServiceHistoryPayment[];
+}
+
+/** The slice of a transaction its printed receipt needs - same field names
+ * as reports' TransactionRecord, so receiptPropsFor reads it directly. */
+export interface PetServiceHistoryPayment {
+  id: string;
+  booking_id: string | null;
+  booking_group_id: string | null;
+  branch_id: string;
+  transaction_type: string;
+  payment_method: string;
+  payment_status: 'Partially Paid' | 'Fully Paid';
+  payment_choice: string | null;
+  total_amount: number;
+  misc_sale_description: string | null;
+  created_at: string;
+  customer_name: string | null;
+  bookings: {
+    service_category: string;
+    pets: { name: string } | null;
+  } | null;
+  transaction_line_items: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
   }>;
 }
 

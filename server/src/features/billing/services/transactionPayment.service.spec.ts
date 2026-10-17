@@ -95,9 +95,110 @@ const PENDING_GROUP_TXN = {
   total_amount: 500,
 };
 
+/** A group's member bookings, at least one still live - the shared
+ * transaction stays payable. */
+const LIVE_GROUP_MEMBERS = {
+  data: [{ status: 'Pending' }, { status: 'Cancelled' }],
+  error: null,
+};
+
 describe('transactionPayment.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('a Cancelled booking cannot take a payment', () => {
+    it('refuses a cash payment on a cancelled booking before any money moves', async () => {
+      queueFrom(
+        { data: PENDING_BOOKING_TXN, error: null }, // loadTransaction
+        {
+          data: { payment_status: 'Pending', status: 'Cancelled' },
+          error: null,
+        } // loadBookingPaymentStatus
+      );
+
+      await expect(
+        recordTransactionPayment({
+          requesterId: 'staff-1',
+          transactionId: 'txn-1',
+          paymentMethod: 'Cash',
+        })
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        message: expect.stringContaining('cancelled'),
+      });
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it('refuses pay-with-credit on a cancelled booking without redeeming credit', async () => {
+      queueFrom(
+        { data: PENDING_BOOKING_TXN, error: null },
+        {
+          data: { payment_status: 'Partially Paid', status: 'Cancelled' },
+          error: null,
+        }
+      );
+      vi.mocked(getAvailableCredit).mockResolvedValue(800);
+
+      await expect(
+        payTransactionWithCredit({
+          requesterId: 'staff-1',
+          transactionId: 'txn-1',
+          isStaff: true,
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it('refuses a GROUP transaction once every member booking is cancelled', async () => {
+      queueFrom(
+        { data: PENDING_GROUP_TXN, error: null },
+        {
+          data: [{ status: 'Cancelled' }, { status: 'Cancelled' }],
+          error: null,
+        }
+      );
+
+      await expect(
+        recordTransactionPayment({
+          requesterId: 'staff-1',
+          transactionId: 'txn-group-1',
+          paymentMethod: 'Cash',
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it('refuses a new balance charge on a cancelled booking', async () => {
+      queueFrom({ data: { status: 'Cancelled' }, error: null });
+
+      await expect(
+        addBookingPayment({
+          requesterId: 'staff-1',
+          bookingId: 'booking-1',
+          amount: 300,
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it('refuses a customer splitting the balance of a cancelled booking', async () => {
+      vi.mocked(getBookingById).mockResolvedValue({
+        id: 'booking-1',
+        customer_id: 'customer-1',
+        status: 'Cancelled',
+        payment_status: 'Partially Paid',
+      } as never);
+
+      await expect(
+        addCustomerBalancePayment({
+          requesterId: 'customer-1',
+          bookingId: 'booking-1',
+          amount: 100,
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    });
   });
 
   it('records a cash payment: settles the transaction for the amount paid', async () => {
@@ -151,6 +252,7 @@ describe('transactionPayment.service', () => {
   it('records a cash payment against a GROUP transaction: settles it and rolls up the whole booking group instead of a single booking', async () => {
     queueFrom(
       { data: PENDING_GROUP_TXN, error: null }, // loadTransaction
+      LIVE_GROUP_MEMBERS, // assertBookingGroupStillPayable
       // loadBookingPaymentStatus is skipped entirely - booking_id is null.
       { data: [], error: null }, // pendingBalanceTxnIds (before, keyed off booking_group_id)
       {
@@ -184,6 +286,7 @@ describe('transactionPayment.service', () => {
   it('surfaces a BookingGroupPartialConfirmationError from recomputeBookingGroupPaymentStatus (a sub-booking lost its slot) rather than swallowing it', async () => {
     queueFrom(
       { data: PENDING_GROUP_TXN, error: null },
+      LIVE_GROUP_MEMBERS,
       { data: [], error: null },
       {
         data: { ...PENDING_GROUP_TXN, payment_status: 'Fully Paid' },
@@ -416,6 +519,7 @@ describe('transactionPayment.service', () => {
   it('pays a GROUP transaction fully from credit and rolls up the booking group instead of a single booking', async () => {
     queueFrom(
       { data: PENDING_GROUP_TXN, error: null }, // loadTransaction
+      LIVE_GROUP_MEMBERS, // assertBookingGroupStillPayable
       // loadBookingPaymentStatus is skipped entirely - booking_id is null.
       { data: [], error: null }, // pendingBalanceTxnIds (before, keyed off booking_group_id)
       { data: { id: 'credit-txn-1', amount: -500 }, error: null }, // credit_transactions lookup

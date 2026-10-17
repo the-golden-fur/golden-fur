@@ -473,6 +473,21 @@ describe('updatePolicyValidator', () => {
     ).toBe(true);
   });
 
+  it('accepts cancellation_grace_minutes from 0 to a day and rejects anything outside', () => {
+    for (const minutes of [0, 60, 1440]) {
+      expect(
+        updatePolicyValidator.safeParse({ cancellation_grace_minutes: minutes })
+          .success
+      ).toBe(true);
+    }
+    for (const minutes of [-1, 1441, 1.5]) {
+      expect(
+        updatePolicyValidator.safeParse({ cancellation_grace_minutes: minutes })
+          .success
+      ).toBe(false);
+    }
+  });
+
   it('accepts booking_notice_period_days (the new-booking notice knob) and rejects a negative one', () => {
     expect(
       updatePolicyValidator.safeParse({ booking_notice_period_days: 2 }).success

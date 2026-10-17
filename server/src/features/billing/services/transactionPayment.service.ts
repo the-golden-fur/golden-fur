@@ -167,10 +167,18 @@ async function loadTransaction(transactionId: string): Promise<Transaction> {
   return data as Transaction;
 }
 
+const CANCELLED_BOOKING_MESSAGE =
+  "This booking was cancelled, so it can't take a payment";
+
 /** The booking's payment_status *before* a settlement, so
  * applyFirstBookingPaymentSideEffects can tell a first payment (Pending ->
  * settled: re-check the slot, send the confirmation alerts) apart from a
- * later balance payment. Null for a transaction with no booking. */
+ * later balance payment. Null for a transaction with no booking.
+ *
+ * Also refuses a Cancelled booking (409): money taken against one never
+ * becomes credit - the cancellation already happened - so it must not be
+ * taken at all. A down-payment booking swept by applyDownpaymentExpiry still
+ * carries its Pending charges, which is how this used to slip through. */
 async function loadBookingPaymentStatus(
   bookingId: string | null
 ): Promise<PaymentStatus | null> {
@@ -178,11 +186,52 @@ async function loadBookingPaymentStatus(
 
   const { data } = await supabase
     .from('bookings')
-    .select('payment_status')
+    .select('payment_status, status')
     .eq('id', bookingId)
     .maybeSingle();
 
+  if (data?.status === 'Cancelled') {
+    throwWithStatus(409, CANCELLED_BOOKING_MESSAGE);
+  }
+
   return (data?.payment_status as PaymentStatus | undefined) ?? null;
+}
+
+/** Group counterpart of loadBookingPaymentStatus's cancelled check: a
+ * multi-booking checkout's shared transaction stays payable while any member
+ * booking is still live, and is refused once every one of them is
+ * Cancelled. */
+async function assertBookingGroupStillPayable(
+  bookingGroupId: string | null
+): Promise<void> {
+  if (!bookingGroupId) return;
+
+  const { data } = await supabase
+    .from('bookings')
+    .select('status')
+    .eq('booking_group_id', bookingGroupId);
+
+  const members = (data ?? []) as Array<{ status: string }>;
+  if (
+    members.length > 0 &&
+    members.every((member) => member.status === 'Cancelled')
+  ) {
+    throwWithStatus(409, CANCELLED_BOOKING_MESSAGE);
+  }
+}
+
+/** addBookingPayment's cancelled check - it has no transaction to start from,
+ * only the booking. A missing row is left to the RPC to reject. */
+async function assertBookingNotCancelled(bookingId: string): Promise<void> {
+  const { data } = await supabase
+    .from('bookings')
+    .select('status')
+    .eq('id', bookingId)
+    .maybeSingle();
+
+  if (data?.status === 'Cancelled') {
+    throwWithStatus(409, CANCELLED_BOOKING_MESSAGE);
+  }
 }
 
 export interface RecordTransactionPaymentParams {
@@ -244,6 +293,9 @@ export async function recordTransactionPayment({
     Number(transaction.total_amount)
   );
 
+  if (!transaction.booking_id) {
+    await assertBookingGroupStillPayable(transaction.booking_group_id);
+  }
   const paymentStatusBefore = await loadBookingPaymentStatus(
     transaction.booking_id
   );
@@ -321,6 +373,8 @@ export async function addBookingPayment({
   bookingId,
   amount,
 }: AddBookingPaymentParams): Promise<Transaction> {
+  await assertBookingNotCancelled(bookingId);
+
   const { data, error } = await supabase.rpc('add_booking_payment', {
     p_booking_id: bookingId,
     p_amount: amount,
@@ -402,6 +456,9 @@ export async function payTransactionWithCredit({
     Number(transaction.total_amount)
   );
 
+  if (!transaction.booking_id) {
+    await assertBookingGroupStillPayable(transaction.booking_group_id);
+  }
   const paymentStatusBefore = await loadBookingPaymentStatus(
     transaction.booking_id
   );
@@ -504,6 +561,10 @@ export async function addCustomerBalancePayment({
 
   if (booking.customer_id !== requesterId) {
     throwWithStatus(403, 'You can only pay for your own bookings');
+  }
+
+  if (booking.status === 'Cancelled') {
+    throwWithStatus(409, CANCELLED_BOOKING_MESSAGE);
   }
 
   if (booking.payment_status !== 'Partially Paid') {

@@ -19,6 +19,15 @@ export function transactionTypeLabel(
     : 'Booking payment';
 }
 
+/** A cancelled booking can't take a payment (the server answers 409), so
+ * neither page offers "Pay" or a balance payment for one. Group
+ * transactions carry no booking row and are left to the server. */
+export function isBookingCancelled(
+  record: Pick<TransactionRecord, 'bookings'>
+): boolean {
+  return record.bookings?.status === 'Cancelled';
+}
+
 /** DB stores 'Pending' for an unsettled online payment - "Due payment" reads
  * better next to "Partially Paid" / "Fully Paid". */
 export function paymentStatusLabel(status: string): string {

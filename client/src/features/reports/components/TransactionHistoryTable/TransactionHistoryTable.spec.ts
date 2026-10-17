@@ -272,6 +272,30 @@ describe('TransactionHistoryTable', () => {
     expect(screen.queryByText('View booking')).not.toBeInTheDocument();
   });
 
+  it('does not offer Pay on a charge whose booking was cancelled', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          payment_status: 'Pending',
+          bookings: {
+            pet_id: 'pet-1',
+            service_category: 'Grooming',
+            status: 'Cancelled',
+          } as TransactionRecord['bookings'],
+        }),
+      ],
+      error: null,
+    });
+    renderTable();
+
+    await screen.findByText('PHP 500.00');
+    await userEvent.click(
+      screen.getByRole('button', { name: /options for this transaction/i })
+    );
+    expect(await screen.findByText('Print receipt')).toBeInTheDocument();
+    expect(screen.queryByText('Pay')).not.toBeInTheDocument();
+  });
+
   it('adds a Transaction type filter tile and passes it to the API', async () => {
     renderTable();
     await screen.findByText('PHP 500.00');

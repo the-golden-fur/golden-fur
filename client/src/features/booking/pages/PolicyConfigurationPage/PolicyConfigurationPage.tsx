@@ -68,6 +68,7 @@ interface FormState {
   /** "YYYY-MM-DD"; '' when not in fixed_date mode. */
   credit_expiry_fixed_date: string;
   cancellation_credit_conversion_rate: number;
+  cancellation_grace_minutes: number;
   credit_review_mode: CreditReviewMode;
   downpayment_enabled: boolean;
   downpayment_type: DownpaymentType;
@@ -104,6 +105,7 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     credit_expiry_fixed_date: policy.credit_expiry_fixed_date ?? '',
     cancellation_credit_conversion_rate:
       policy.cancellation_credit_conversion_rate,
+    cancellation_grace_minutes: policy.cancellation_grace_minutes,
     credit_review_mode: policy.credit_review_mode,
     downpayment_enabled: policy.downpayment_enabled,
     downpayment_type: policy.downpayment_type ?? 'Flat',
@@ -139,6 +141,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   credit_expiry_days: 30,
   credit_expiry_fixed_date: '',
   cancellation_credit_conversion_rate: 100,
+  cancellation_grace_minutes: 60,
   credit_review_mode: 'Automatic',
   downpayment_enabled: false,
   downpayment_type: 'Flat',
@@ -352,6 +355,7 @@ export function PolicyConfigurationPage({
           : null,
       cancellation_credit_conversion_rate:
         form.cancellation_credit_conversion_rate,
+      cancellation_grace_minutes: form.cancellation_grace_minutes,
       credit_review_mode: form.credit_review_mode,
       downpayment_enabled: form.downpayment_enabled,
       downpayment_type: form.downpayment_enabled ? form.downpayment_type : null,
@@ -958,7 +962,33 @@ export function PolicyConfigurationPage({
           <p className={styles.copy}>
             Share of a paid cancellation returned as credit, if the notice
             period was met - 100% is a full refund, lower keeps part as a
-            charge. Missed notice forfeits the payment entirely.
+            charge. Missed notice forfeits the payment entirely, except within
+            the grace period below.
+          </p>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Grace period for last-minute bookings (minutes)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min={0}
+              max={1440}
+              step={1}
+              value={form.cancellation_grace_minutes}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  cancellation_grace_minutes: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <p className={styles.copy}>
+            A booking made less than the notice period ahead can never meet it.
+            If the customer cancels within this many minutes of booking, their
+            payment still becomes credit. Set 0 to turn this off.
           </p>
 
           <label className={styles.field}>

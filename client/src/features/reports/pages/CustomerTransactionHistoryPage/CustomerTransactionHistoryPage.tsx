@@ -29,6 +29,7 @@ import {
   deriveStatusFilter,
 } from '../../components/TransactionHistoryTable/transactionFilterFields';
 import {
+  isBookingCancelled,
   paymentChoiceLabel,
   paymentStatusLabel,
   paymentTone,
@@ -61,7 +62,8 @@ function isPayable(t: TransactionRecord): boolean {
   return (
     t.payment_status === 'Pending' &&
     t.transaction_type === 'booking_payment' &&
-    Boolean(t.booking_id)
+    Boolean(t.booking_id) &&
+    !isBookingCancelled(t)
   );
 }
 
