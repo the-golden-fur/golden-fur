@@ -6,6 +6,10 @@
 
 .content {
   display: grid;
+  /* Pack rows at the top - .page's min-height: 100vh stretches .content, and
+     without this the leftover height is spread between the rows, opening
+     huge gaps when a filter leaves few results. */
+  align-content: start;
   gap: var(--space-4);
   max-width: 72rem;
   width: 100%;
