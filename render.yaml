@@ -52,3 +52,8 @@ services:
       # Optional. Bare number or JSON branch map. Defaults to 15 if unset.
       - key: DAYCARE_SESSION_CAPACITY
         sync: false
+      # Base URL of the customer-facing frontend (no trailing slash). Used to
+      # construct the password-reset redirectTo link. Example:
+      # https://golden-fur-client.vercel.app
+      - key: CLIENT_URL
+        sync: false

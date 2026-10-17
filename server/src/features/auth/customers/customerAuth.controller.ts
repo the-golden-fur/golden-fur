@@ -4,6 +4,7 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
   customerSignupValidator,
   customerLoginValidator,
+  customerForgotPasswordValidator,
   customerTotpValidator,
   customerMfaEnrollValidator,
   customerMfaUnenrollValidator,
@@ -13,6 +14,7 @@ import {
   mergeOrCreate,
   MissingProviderEmailError,
 } from './services/accountMerge.service.ts';
+import { sendPasswordResetEmail } from '../../../shared/email/passwordResetEmail.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
 import {
   checkMfaLockout,
@@ -189,6 +191,82 @@ export async function customerLoginController(req: Request, res: Response) {
     });
   } catch (error) {
     console.error('Login error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+/**
+ * POST /auth/customers/forgot-password
+ *
+ * Accepts an email address, checks whether a customer account exists for
+ * that address, generates a short-lived (1 h) Supabase password-reset link
+ * via the admin API, then delivers it via a custom Brevo email. Always
+ * returns 200 with the same body regardless of whether the email belongs
+ * to a real account — this prevents user-enumeration.
+ */
+export async function customerForgotPasswordController(
+  req: Request,
+  res: Response
+) {
+  const parsed = customerForgotPasswordValidator.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid email address' });
+  }
+
+  const { account_email } = parsed.data;
+
+  // Always return the same response to avoid leaking which emails are registered.
+  const safeOk = () =>
+    res.status(200).json({
+      message:
+        'If an account exists for that email, a reset link has been sent.',
+    });
+
+  try {
+    // Verify the email belongs to a customer (not a staff-only account).
+    const { data: profile } = await supabase
+      .from('customer_profiles')
+      .select('id')
+      .eq('account_email', account_email)
+      .maybeSingle();
+
+    if (!profile) {
+      // No customer account — return the safe response without sending.
+      return safeOk();
+    }
+
+    // Generate a password-reset link using the admin API.  The link
+    // embeds a short-lived one-time token; Supabase sets the expiry
+    // (default 1 h) on the hosted project.
+    const { data: linkData, error: linkError } =
+      await supabase.auth.admin.generateLink({
+        type: 'recovery',
+        email: account_email,
+        options: {
+          redirectTo: `${process.env.CLIENT_URL ?? ''}/reset-password`,
+        },
+      });
+
+    if (linkError || !linkData?.properties?.action_link) {
+      console.error('Failed to generate reset link:', linkError?.message);
+      // Best-effort: return safe response even on internal failure.
+      return safeOk();
+    }
+
+    // Best-effort Brevo send — a delivery failure is logged but does not
+    // change the HTTP response, consistent with the rest of the codebase.
+    try {
+      await sendPasswordResetEmail({
+        to: account_email,
+        resetLink: linkData.properties.action_link,
+      });
+    } catch (emailError) {
+      console.error('Failed to send password reset email:', emailError);
+    }
+
+    return safeOk();
+  } catch (error) {
+    console.error('Forgot password error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }

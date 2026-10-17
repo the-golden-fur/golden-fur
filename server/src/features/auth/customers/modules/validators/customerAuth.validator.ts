@@ -12,6 +12,10 @@ export const customerLoginValidator = z.object({
   device_token: z.string().min(1).optional(),
 });
 
+export const customerForgotPasswordValidator = z.object({
+  account_email: z.string().email('Invalid email address'),
+});
+
 const mfaMethodSchema = z.enum(['authenticator', 'email']);
 
 export const customerTotpValidator = z.object({
@@ -37,6 +41,9 @@ export const customerMfaPreferenceValidator = z.object({
 
 export type CustomerSignupInput = z.infer<typeof customerSignupValidator>;
 export type CustomerLoginInput = z.infer<typeof customerLoginValidator>;
+export type CustomerForgotPasswordInput = z.infer<
+  typeof customerForgotPasswordValidator
+>;
 export type CustomerTotpInput = z.infer<typeof customerTotpValidator>;
 export type CustomerMfaEnrollInput = z.infer<typeof customerMfaEnrollValidator>;
 export type CustomerMfaUnenrollInput = z.infer<

@@ -4,6 +4,7 @@ import {
   getLinkedProviders,
   handleOAuthCallback,
   login,
+  requestPasswordReset,
   signInWithGoogle,
   unlinkGoogleIdentity,
 } from './customerAuth.api';
@@ -246,6 +247,36 @@ describe('customerAuth.api', () => {
       const result = await unlinkGoogleIdentity();
 
       expect(result.error).toBe('Identity is the only one for user');
+    });
+  });
+
+  describe('requestPasswordReset', () => {
+    it('returns data on a 200 response', async () => {
+      fetchMock.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            message:
+              'If an account exists for that email, a reset link has been sent.',
+          }),
+          { status: 200 }
+        )
+      );
+
+      const result = await requestPasswordReset('customer@example.com');
+
+      expect(result.error).toBeNull();
+      expect(result.data).toEqual(
+        expect.objectContaining({ message: expect.any(String) })
+      );
+    });
+
+    it('resolves with a friendly error instead of throwing when the network fails', async () => {
+      fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+
+      const result = await requestPasswordReset('customer@example.com');
+
+      expect(result.data).toBeNull();
+      expect(result.error).toMatch(/server/i);
     });
   });
 });

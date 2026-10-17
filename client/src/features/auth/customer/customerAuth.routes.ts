@@ -6,6 +6,8 @@ import { CustomerSignupPage } from './pages/CustomerSignupPage/CustomerSignupPag
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage/OAuthCallbackPage';
 import { CustomerMfaChallengePage } from './pages/CustomerMfaChallengePage/CustomerMfaChallengePage';
 import { DeactivatedAccountNoticePage } from './pages/DeactivatedAccountNoticePage/DeactivatedAccountNoticePage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage/ResetPasswordPage';
 import { SettingsPage } from '../../../pages/SettingsPage/SettingsPage';
 import { NotificationsPage } from '../../../pages/NotificationsPage/NotificationsPage';
 import { CustomerPortalPage } from '../../customers/pages/CustomerPortalPage/CustomerPortalPage';
@@ -32,6 +34,14 @@ export const customerAuthRoutes = createElement(
   createElement(Route, {
     path: '/account-deactivated',
     element: createElement(DeactivatedAccountNoticePage),
+  }),
+  createElement(Route, {
+    path: '/forgot-password',
+    element: createElement(ForgotPasswordPage),
+  }),
+  createElement(Route, {
+    path: '/reset-password',
+    element: createElement(ResetPasswordPage),
   }),
   createElement(
     Route,

@@ -13,3 +13,11 @@ export const customerLoginSchema = z.object({
 
 export type CustomerSignupFormValues = z.infer<typeof customerSignupSchema>;
 export type CustomerLoginFormValues = z.infer<typeof customerLoginSchema>;
+
+export const customerForgotPasswordSchema = z.object({
+  account_email: z.email('Enter a valid email address'),
+});
+
+export type CustomerForgotPasswordFormValues = z.infer<
+  typeof customerForgotPasswordSchema
+>;
