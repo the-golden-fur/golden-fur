@@ -67,7 +67,15 @@ function adminContent(): LandingAdminContent {
       ),
     ],
     sections: (
-      ['hero', 'services', 'features', 'reviews', 'story', 'visit', 'cta'] as const
+      [
+        'hero',
+        'services',
+        'features',
+        'reviews',
+        'story',
+        'visit',
+        'cta',
+      ] as const
     ).map((key) => ({ key, is_visible: true, updated_at: UPDATED_AT })),
     reviews: [REVIEW],
   };
@@ -214,9 +222,13 @@ describe('LandingPageConfigurationPage', () => {
       false
     );
     expect(
-      await screen.findByText('Customer reviews is hidden from the landing page.')
+      await screen.findByText(
+        'Customer reviews is hidden from the landing page.'
+      )
     ).toBeInTheDocument();
-    expect(within(reviews).getByLabelText('Shown on the page')).not.toBeChecked();
+    expect(
+      within(reviews).getByLabelText('Shown on the page')
+    ).not.toBeChecked();
   });
 
   it('the footer has no show/hide switch', async () => {
@@ -278,13 +290,18 @@ describe('LandingPageConfigurationPage', () => {
     expect(within(list).getByText('“Rio loves it here.”')).toBeInTheDocument();
 
     const reviews = await panel('Customer reviews');
-    await user.type(within(reviews).getAllByLabelText('Review').at(-1)!, 'Great hotel.');
+    await user.type(
+      within(reviews).getAllByLabelText('Review').at(-1)!,
+      'Great hotel.'
+    );
     await user.type(within(reviews).getAllByLabelText('Name').at(-1)!, 'Ana');
     await user.selectOptions(
       within(reviews).getAllByLabelText('Stars').at(-1)!,
       '4'
     );
-    await user.click(within(reviews).getByRole('button', { name: 'Add review' }));
+    await user.click(
+      within(reviews).getByRole('button', { name: 'Add review' })
+    );
 
     expect(landingApi.createLandingReview).toHaveBeenCalledWith('token', {
       quote: 'Great hotel.',

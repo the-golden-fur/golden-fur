@@ -41,7 +41,9 @@ function ReviewFields({
           rows={3}
           maxLength={LANDING_REVIEW_QUOTE_MAX_LENGTH}
           value={draft.quote}
-          onChange={(event) => onChange({ ...draft, quote: event.target.value })}
+          onChange={(event) =>
+            onChange({ ...draft, quote: event.target.value })
+          }
         />
       </div>
       <div className={styles.fieldRow}>

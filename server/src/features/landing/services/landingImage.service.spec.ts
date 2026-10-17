@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetLandingImage, uploadLandingImage } from './landingImage.service.ts';
+import {
+  resetLandingImage,
+  uploadLandingImage,
+} from './landingImage.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 
 const storage = vi.hoisted(() => ({

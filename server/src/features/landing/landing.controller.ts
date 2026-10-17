@@ -45,10 +45,7 @@ function paramValue(req: AuthenticatedRequest, name: string): string {
 
 /** No auth in front of the two public reads (see landing.routes.ts) - the
  * landing page is shown to visitors who haven't logged in. */
-export async function getPublicLandingController(
-  _req: Request,
-  res: Response
-) {
+export async function getPublicLandingController(_req: Request, res: Response) {
   try {
     return res.status(200).json(await getPublicLandingContent());
   } catch (error) {

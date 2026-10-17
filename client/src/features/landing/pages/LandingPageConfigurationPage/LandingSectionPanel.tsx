@@ -14,7 +14,9 @@ interface LandingSectionPanelProps {
   /** undefined for a section that is always shown (the footer). */
   isVisible: boolean | undefined;
   isBusy: boolean;
-  onSaveText: (updates: Array<{ key: string; value: string }>) => Promise<boolean>;
+  onSaveText: (
+    updates: Array<{ key: string; value: string }>
+  ) => Promise<boolean>;
   onToggleVisible: (isVisible: boolean) => void;
   onUploadImage: (key: string, file: File) => void;
   onResetImage: (key: string) => void;

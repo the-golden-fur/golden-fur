@@ -222,7 +222,10 @@ export function LandingPageConfigurationPage() {
     );
   }
 
-  function saveReview(review: LandingReview, payload: CreateLandingReviewPayload) {
+  function saveReview(
+    review: LandingReview,
+    payload: CreateLandingReviewPayload
+  ) {
     return run(
       () => updateLandingReview(review.id, token, payload),
       (updated) => {
@@ -234,7 +237,8 @@ export function LandingPageConfigurationPage() {
 
   function toggleReviewShown(review: LandingReview) {
     void run(
-      () => updateLandingReview(review.id, token, { is_active: !review.is_active }),
+      () =>
+        updateLandingReview(review.id, token, { is_active: !review.is_active }),
       (updated) => {
         replaceReview(updated);
         return updated.is_active
@@ -265,10 +269,13 @@ export function LandingPageConfigurationPage() {
     setIsBusy(false);
 
     if (moved.error || displaced.error || !moved.data || !displaced.data) {
-      setError(moved.error ?? displaced.error ?? 'Could not reorder the reviews.');
+      setError(
+        moved.error ?? displaced.error ?? 'Could not reorder the reviews.'
+      );
       // One half may have saved - show what the server now has.
       const reloaded = await getLandingAdminContent(token);
-      if (reloaded.data) setReviews([...reloaded.data.reviews].sort(bySortOrder));
+      if (reloaded.data)
+        setReviews([...reloaded.data.reviews].sort(bySortOrder));
       return;
     }
 
@@ -352,8 +359,7 @@ export function LandingPageConfigurationPage() {
             </div>
 
             {LANDING_EDITOR_SECTIONS.map((section) => {
-              const sectionKey =
-                section.key === 'footer' ? null : section.key;
+              const sectionKey = section.key === 'footer' ? null : section.key;
 
               return (
                 <LandingSectionPanel
@@ -366,7 +372,8 @@ export function LandingPageConfigurationPage() {
                   isBusy={isBusy}
                   onSaveText={(updates) => saveText(section.title, updates)}
                   onToggleVisible={(next) => {
-                    if (sectionKey) toggleSection(sectionKey, section.title, next);
+                    if (sectionKey)
+                      toggleSection(sectionKey, section.title, next);
                   }}
                   onUploadImage={uploadImage}
                   onResetImage={resetImage}
@@ -400,9 +407,8 @@ export function LandingPageConfigurationPage() {
         title="Delete this review?"
         body={
           <>
-            {deleteTarget?.name}’s review will be removed from the landing
-            page. To take it off the page but keep it here, untick Shown
-            instead.
+            {deleteTarget?.name}’s review will be removed from the landing page.
+            To take it off the page but keep it here, untick Shown instead.
           </>
         }
         confirmLabel="Delete"

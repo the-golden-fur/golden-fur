@@ -154,9 +154,9 @@ describe('landing.service', () => {
 
   describe('updateLandingSection', () => {
     it('404s for a section that does not exist, without querying', async () => {
-      await expect(updateLandingSection('pricing', false)).rejects.toMatchObject(
-        { statusCode: 404 }
-      );
+      await expect(
+        updateLandingSection('pricing', false)
+      ).rejects.toMatchObject({ statusCode: 404 });
       expect(supabase.from).not.toHaveBeenCalled();
     });
 

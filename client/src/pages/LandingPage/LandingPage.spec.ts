@@ -81,9 +81,7 @@ describe('LandingPage', () => {
   });
 
   it('builds the branch tabs, service cards and Visit us from the branches', async () => {
-    vi.mocked(loadLandingPage).mockResolvedValue(
-      resolveLanding(null, [IMUS])
-    );
+    vi.mocked(loadLandingPage).mockResolvedValue(resolveLanding(null, [IMUS]));
 
     const { container } = renderPage();
 

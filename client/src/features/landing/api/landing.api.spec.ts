@@ -44,7 +44,9 @@ describe('landing.api', () => {
   });
 
   it('treats a non-JSON reply (the SPA’s HTML) as an error, not a throw', async () => {
-    fetchMock.mockResolvedValue(new Response('<!doctype html>', { status: 200 }));
+    fetchMock.mockResolvedValue(
+      new Response('<!doctype html>', { status: 200 })
+    );
 
     await expect(fetchPublicLanding()).resolves.toEqual({
       data: null,

@@ -47,10 +47,23 @@ export const LANDING_EDITOR_SECTIONS: LandingEditorSection[] = [
         label: 'Photo description (read aloud by screen readers)',
         kind: 'text',
       },
-      { key: 'hero.eyebrow', label: 'Small line above the headline', kind: 'text' },
+      {
+        key: 'hero.eyebrow',
+        label: 'Small line above the headline',
+        kind: 'text',
+      },
       { key: 'hero.title_lead', label: 'Headline', kind: 'text' },
-      { key: 'hero.title_brand', label: 'Highlighted headline words', kind: 'text' },
-      { key: 'hero.lead', label: 'Intro paragraph', kind: 'text', multiline: true },
+      {
+        key: 'hero.title_brand',
+        label: 'Highlighted headline words',
+        kind: 'text',
+      },
+      {
+        key: 'hero.lead',
+        label: 'Intro paragraph',
+        kind: 'text',
+        multiline: true,
+      },
       { key: 'hero.primary_cta', label: 'Main button', kind: 'text' },
       { key: 'hero.secondary_cta', label: 'Second button', kind: 'text' },
     ],
@@ -128,7 +141,11 @@ export const LANDING_EDITOR_SECTIONS: LandingEditorSection[] = [
         kind: 'text',
         multiline: true,
       },
-      { key: `story.${step}.image`, label: `Step ${step} photo`, kind: 'image' },
+      {
+        key: `story.${step}.image`,
+        label: `Step ${step} photo`,
+        kind: 'image',
+      },
     ]),
   },
   {
@@ -155,7 +172,12 @@ export const LANDING_EDITOR_SECTIONS: LandingEditorSection[] = [
     title: 'Footer',
     note: 'Always shown. The branch list comes from Settings › Branches.',
     fields: [
-      { key: 'footer.tagline', label: 'Tagline', kind: 'text', multiline: true },
+      {
+        key: 'footer.tagline',
+        label: 'Tagline',
+        kind: 'text',
+        multiline: true,
+      },
       { key: 'footer.phone', label: 'Phone number', kind: 'text' },
       { key: 'footer.email', label: 'Email address', kind: 'text' },
     ],

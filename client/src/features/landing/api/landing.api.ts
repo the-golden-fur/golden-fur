@@ -1,7 +1,4 @@
-import {
-  resolveLanding,
-  type ResolvedLanding,
-} from '../landing.content';
+import { resolveLanding, type ResolvedLanding } from '../landing.content';
 import type {
   CreateLandingReviewPayload,
   LandingAdminContent,

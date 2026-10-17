@@ -15,7 +15,9 @@ describe('resolveLanding', () => {
     expect(landing.text['hero.title_lead']).toBe(
       DEFAULT_LANDING_TEXT['hero.title_lead']
     );
-    expect(landing.text['hero.image']).toBe(DEFAULT_LANDING_IMAGES['hero.image']);
+    expect(landing.text['hero.image']).toBe(
+      DEFAULT_LANDING_IMAGES['hero.image']
+    );
     expect(Object.values(landing.sections).every(Boolean)).toBe(true);
     expect(landing.reviews).toBe(DEFAULT_LANDING_REVIEWS);
     expect(landing.branches).toBe(DEFAULT_LANDING_BRANCHES);
@@ -37,7 +39,9 @@ describe('resolveLanding', () => {
     );
 
     expect(landing.text['hero.title_lead']).toBe('Love as deep as');
-    expect(landing.text['hero.image']).toBe(DEFAULT_LANDING_IMAGES['hero.image']);
+    expect(landing.text['hero.image']).toBe(
+      DEFAULT_LANDING_IMAGES['hero.image']
+    );
     expect(landing.text['story.1.image']).toBe('https://cdn.example/step.png');
     expect(landing.text).not.toHaveProperty('unknown.key');
     expect(landing.sections.reviews).toBe(false);
