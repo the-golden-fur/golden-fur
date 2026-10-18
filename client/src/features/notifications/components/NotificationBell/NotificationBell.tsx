@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Bell } from 'lucide-react';
 import {
@@ -32,6 +32,7 @@ export function NotificationBell({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   // notificationsHref already tells us which role this bell is rendered for
   // (StaffAuthGuard passes "/staff/notifications", CustomerAuthGuard passes
   // "/portal/notifications") - reused here rather than a second role prop.
@@ -59,6 +60,30 @@ export function NotificationBell({
       isMounted = false;
     };
   }, [accessToken]);
+
+  // Close the dropdown on a click outside it (or Escape) - same pattern as
+  // InfoPopover/MoreOptionsMenu. The bell button sits inside wrapperRef, so
+  // clicking it still just toggles.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!wrapperRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setIsOpen(false);
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -101,7 +126,7 @@ export function NotificationBell({
   }
 
   return (
-    <div className={styles.wrapper}>
+    <div className={styles.wrapper} ref={wrapperRef}>
       <button
         type="button"
         className={styles.trigger}
