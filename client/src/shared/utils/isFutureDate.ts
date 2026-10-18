@@ -15,9 +15,6 @@ export function todayDateKey(today: Date = new Date()): string {
 /** Whether a `YYYY-MM-DD` date is after today - plain string comparison is
  * correct for that zero-padded shape. Used to block a pet's date of birth
  * from being set in the future. */
-export function isFutureDate(
-  value: string,
-  today: Date = new Date()
-): boolean {
+export function isFutureDate(value: string, today: Date = new Date()): boolean {
   return value > todayDateKey(today);
 }
