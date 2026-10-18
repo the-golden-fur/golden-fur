@@ -48,7 +48,9 @@ export function CustomerSignupForm() {
       setSessionPersistence(true);
       await applySession(access_token, refresh_token);
     }
-    navigate('/portal', { replace: true });
+    // justRegistered starts the customer tutorial (TourProvider) - set only
+    // here, so it runs after a fresh registration and never on a login.
+    navigate('/portal', { replace: true, state: { justRegistered: true } });
   };
 
   // signInWithOAuth takes the browser away to the provider itself (a full

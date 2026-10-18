@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ComponentProps } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import { AppShell } from '../../../../../shared/components/AppShell/AppShell';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -16,6 +16,15 @@ import { SpinCreditsProvider } from '../../../../rewards/providers/SpinCreditsPr
 import { SpinCreditsIndicator } from '../../../../rewards/components/SpinCreditsIndicator/SpinCreditsIndicator';
 import { SpinWheelPopup } from '../../../../rewards/components/SpinWheelPopup/SpinWheelPopup';
 import { IDENTITY_CHANGED_EVENT } from '../../../../../shared/events/identityEvents';
+import { TourProvider } from '../../../../customers/tour/TourProvider';
+import { useTour } from '../../../../customers/tour/tourContext';
+
+/** AppShell with the mascot's "Tutorial" bubble wired to the customer
+ * tutorial - split out because useTour() has to run inside TourProvider. */
+function CustomerAppShell(props: ComponentProps<typeof AppShell>) {
+  const { openSectionPicker } = useTour();
+  return <AppShell {...props} onStartTutorial={openSectionPicker} />;
+}
 
 export function CustomerAuthGuard() {
   const { user, session, accessToken, isLoading, signOut } = useAuth();
@@ -168,44 +177,55 @@ export function CustomerAuthGuard() {
   // spin triggers) and feeds both the navbar spins chip and the spin
   // pop-up. The pop-up renders as AppShell children so it sits inside the
   // routed shell and can open over any portal page.
+  //
+  // TourProvider: the customer tutorial (spotlight tour). The data-tour
+  // spans mark the navbar slots it points at - see tourSections.ts.
   return (
     <CreditBalanceProvider>
       <SpinCreditsProvider>
-        <AppShell
-          role="customer"
-          brandLabel="Golden Fur"
-          identity={fullName ? { primary: fullName, photoUrl } : null}
-          sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
-          creditIndicator={
-            <>
-              <SpinCreditsIndicator />
-              <CreditBalanceIndicator />
-            </>
-          }
-          notificationBell={
-            accessToken ? (
-              <NotificationBell
-                accessToken={accessToken}
-                notificationsHref="/portal/notifications"
-              />
-            ) : null
-          }
-          composeButton={
-            accessToken ? (
-              <ComposeEntryPoint
-                accessToken={accessToken}
-                viewerRole={null}
-                isOpen={isComposeOpen}
-                onOpenChange={setIsComposeOpen}
-              />
-            ) : null
-          }
-          onContactSupport={
-            accessToken ? () => setIsComposeOpen(true) : undefined
-          }
-        >
-          <SpinWheelPopup />
-        </AppShell>
+        <TourProvider>
+          <CustomerAppShell
+            role="customer"
+            brandLabel="Golden Fur"
+            identity={fullName ? { primary: fullName, photoUrl } : null}
+            sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
+            creditIndicator={
+              <>
+                <SpinCreditsIndicator />
+                <span data-tour="credits">
+                  <CreditBalanceIndicator />
+                </span>
+              </>
+            }
+            notificationBell={
+              accessToken ? (
+                <span data-tour="notifications">
+                  <NotificationBell
+                    accessToken={accessToken}
+                    notificationsHref="/portal/notifications"
+                  />
+                </span>
+              ) : null
+            }
+            composeButton={
+              accessToken ? (
+                <span data-tour="messages">
+                  <ComposeEntryPoint
+                    accessToken={accessToken}
+                    viewerRole={null}
+                    isOpen={isComposeOpen}
+                    onOpenChange={setIsComposeOpen}
+                  />
+                </span>
+              ) : null
+            }
+            onContactSupport={
+              accessToken ? () => setIsComposeOpen(true) : undefined
+            }
+          >
+            <SpinWheelPopup />
+          </CustomerAppShell>
+        </TourProvider>
       </SpinCreditsProvider>
     </CreditBalanceProvider>
   );

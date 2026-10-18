@@ -32,6 +32,9 @@ interface AppShellProps {
   /** Customer-only: opens the same compose modal as the Navbar's mail icon,
    * wired to the HelpMascot's "Contact support" link. */
   onContactSupport?: () => void;
+  /** Customer-only: replays the customer tutorial, wired to the
+   * HelpMascot's "Tutorial" bubble. */
+  onStartTutorial?: () => void;
   /** Rendered above the routed page content, below the navbar - e.g. the
    * staff-only UnavailabilityBlockBadge. */
   children?: ReactNode;
@@ -60,6 +63,7 @@ export function AppShell({
   composeButton,
   creditIndicator,
   onContactSupport,
+  onStartTutorial,
   children,
 }: AppShellProps) {
   const storageKey = `sidebar-collapsed-${role}`;
@@ -132,6 +136,7 @@ export function AppShell({
                   : { label: 'Contact support', href: '#' },
                 { label: 'My Bookings', href: '/portal/bookings' },
               ]}
+              onStartTutorial={onStartTutorial}
             />
           ) : null}
         </div>

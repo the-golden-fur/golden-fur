@@ -561,6 +561,8 @@ function SidebarCategory({
           return (
             <li
               key={item.to}
+              // Spotlight target for the customer tutorial (tourSections.ts).
+              data-tour={`nav:${item.to}`}
               ref={(element) => {
                 if (element) itemRefs.current.set(item.to, element);
                 else itemRefs.current.delete(item.to);

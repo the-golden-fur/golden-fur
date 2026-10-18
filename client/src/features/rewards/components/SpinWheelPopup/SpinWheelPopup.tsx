@@ -5,6 +5,7 @@ import { Modal } from '../../../../shared/components/Modal/Modal';
 import { getPromoWheel, spinTheWheel } from '../../api/rewards.api';
 import { notifySpinCreditsChanged } from '../../providers/spinCreditsEvents';
 import { useSpinCredits } from '../../providers/useSpinCredits';
+import { useTour } from '../../../customers/tour/tourContext';
 import type { PromoWheel } from '../../rewards.types';
 import { SpinWheel } from '../SpinWheel/SpinWheel';
 import styles from './SpinWheelPopup.module.css';
@@ -56,6 +57,9 @@ export function SpinWheelPopup() {
   const { accessToken, user } = useAuth();
   const { pathname } = useLocation();
   const { summary, total, refresh } = useSpinCredits();
+  // A brand-new customer can get a spin on their very first visit, the same
+  // moment the tutorial starts - hold the auto-open until the tour is closed.
+  const { isActive: isTourActive } = useTour();
   const userId = user?.id ?? null;
 
   const [dismissedAt, setDismissedAt] = useState<number | null>(() =>
@@ -90,6 +94,7 @@ export function SpinWheelPopup() {
   const shouldAutoOpen =
     total > 0 &&
     !isSuppressedRoute &&
+    !isTourActive &&
     (dismissedAt === null || total > dismissedAt);
   const isOpen = isPinnedOpen || shouldAutoOpen;
 

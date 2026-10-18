@@ -2,6 +2,7 @@ import { ThemeToggle } from '../../../shared/components/ThemeToggle/ThemeToggle'
 import { FontSizeSlider } from '../../../shared/components/FontSizeSlider/FontSizeSlider';
 import { WeightUnitToggle } from '../../../shared/components/WeightUnitToggle/WeightUnitToggle';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
+import { useTour } from '../../../features/customers/tour/tourContext';
 import { NotificationPreferencesGrid } from './NotificationPreferencesGrid';
 import styles from '../SettingsPage.module.css';
 
@@ -19,12 +20,17 @@ interface PreferencesTabProps {
  * save button) but through its own dedicated endpoint, since a single event
  * type + channel toggle merges into the stored preference map rather than
  * replacing it wholesale.
+ *
+ * Customers also get a Tutorial panel here to replay the customer tutorial
+ * (the same section picker as the help mascot's "Tutorial" bubble).
  */
 export function PreferencesTab({
   role,
   userId,
   accessToken,
 }: PreferencesTabProps) {
+  const { openSectionPicker } = useTour();
+
   return (
     <>
       <section className={styles.panel}>
@@ -56,6 +62,23 @@ export function PreferencesTab({
           accessToken={accessToken}
         />
       </section>
+      {role === 'customer' ? (
+        <section className={styles.panel}>
+          <h2 className={styles.sectionTitle}>Tutorial</h2>
+          <p className={styles.copy}>
+            See how Golden Fur works again - the whole tour, or just one part.
+          </p>
+          <div>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={openSectionPicker}
+            >
+              Replay tutorial
+            </button>
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }
