@@ -15,6 +15,10 @@ import type {
 } from '../../../customer.types';
 import { PET_COAT_TYPES } from '../../../customer.types';
 import { formatPetAge } from '../../../../../shared/utils/formatPetAge';
+import {
+  isFutureDate,
+  todayDateKey,
+} from '../../../../../shared/utils/isFutureDate';
 import { BreedSelect } from '../BreedSelect/BreedSelect';
 import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import styles from './PetForm.module.css';
@@ -99,6 +103,13 @@ export function PetForm({
 
     if (!breedId) {
       setError('Please select a breed.');
+      return;
+    }
+
+    // The input's `max` greys out future days in the picker, but a typed-in
+    // date can still get past it.
+    if (dateOfBirth && isFutureDate(dateOfBirth)) {
+      setError('Date of birth cannot be in the future.');
       return;
     }
 
@@ -235,6 +246,7 @@ export function PetForm({
         <input
           className={styles.input}
           type="date"
+          max={todayDateKey()}
           value={dateOfBirth}
           onChange={(event) => setDateOfBirth(event.target.value)}
         />

@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -10,6 +16,7 @@ import type { StaffProfile } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as reportsApi from '../../api/reports.api';
 import type { DailySalesReport } from '../../reports.types';
+import { currentReportDay, shiftReportDay } from '../../utils/reportDay';
 import { DailySalesReportPage } from './DailySalesReportPage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -282,21 +289,134 @@ describe('DailySalesReportPage', () => {
       error: null,
     });
 
-    const user = userEvent.setup();
     renderPage();
 
     await screen.findByText('Grooming');
 
-    const dateInput = screen.getByLabelText('Date');
-    await user.clear(dateInput);
-    await user.type(dateInput, '2026-08-01');
+    // A date picker sets the whole value at once. Clearing the field is
+    // deliberately ignored (no day to load), so the date can't be typed
+    // over character by character from empty.
+    fireEvent.change(screen.getByLabelText('Date'), {
+      target: { value: '2026-08-01' },
+    });
 
+    // The selected day plus the day before it, for the summary cards.
     await waitFor(() =>
-      expect(reportsApi.getDailySalesReport).toHaveBeenLastCalledWith(
+      expect(reportsApi.getDailySalesReport).toHaveBeenCalledWith(
         '2026-08-01',
         'branch-makati',
         'token'
       )
     );
+    expect(reportsApi.getDailySalesReport).toHaveBeenCalledWith(
+      '2026-07-31',
+      'branch-makati',
+      'token'
+    );
+  });
+
+  it('Previous/Next day buttons step the date one day at a time, and Next is disabled on today', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildStaff({ role: 'Admin' })],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
+      data: BRANCHES,
+      error: null,
+    });
+    vi.mocked(reportsApi.getDailySalesReport).mockResolvedValue({
+      data: buildReport(),
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Grooming');
+
+    const today = currentReportDay();
+    const dateInput = screen.getByLabelText('Date');
+    expect(dateInput).toHaveValue(today);
+    expect(screen.getByRole('button', { name: 'Next day' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Previous day' }));
+
+    const yesterday = shiftReportDay(today, -1);
+    expect(dateInput).toHaveValue(yesterday);
+    await waitFor(() =>
+      expect(reportsApi.getDailySalesReport).toHaveBeenCalledWith(
+        shiftReportDay(today, -2),
+        'branch-makati',
+        'token'
+      )
+    );
+
+    const nextButton = screen.getByRole('button', { name: 'Next day' });
+    expect(nextButton).toBeEnabled();
+    await user.click(nextButton);
+    expect(dateInput).toHaveValue(today);
+  });
+
+  it('summary cards show the day and compare it with the day before', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildStaff({ role: 'Admin' })],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
+      data: BRANCHES,
+      error: null,
+    });
+    const today = currentReportDay();
+    vi.mocked(reportsApi.getDailySalesReport).mockImplementation(
+      async (reportDate) => ({
+        data:
+          reportDate === today
+            ? buildReport({
+                totals: { transaction_count: 3, gross_amount: 900 },
+              })
+            : buildReport({
+                totals: { transaction_count: 4, gross_amount: 600 },
+              }),
+        error: null,
+      })
+    );
+
+    renderPage();
+
+    const summary = await screen.findByRole('region', { name: 'Day summary' });
+    const salesCard = within(summary).getByText('Total sales').parentElement!;
+    expect(within(salesCard).getByText('₱900.00')).toBeInTheDocument();
+    expect(within(salesCard).getByText('+50%')).toBeInTheDocument();
+    expect(
+      within(salesCard).getByText('Yesterday ₱600.00')
+    ).toBeInTheDocument();
+
+    const txnCard = within(summary).getByText('Transactions').parentElement!;
+    expect(within(txnCard).getByText('-25%')).toBeInTheDocument();
+  });
+
+  it('still shows the summary cards, without the comparison, when only the previous day fails to load', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildStaff({ role: 'Admin' })],
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
+      data: BRANCHES,
+      error: null,
+    });
+    const today = currentReportDay();
+    vi.mocked(reportsApi.getDailySalesReport).mockImplementation(
+      async (reportDate) =>
+        reportDate === today
+          ? { data: buildReport(), error: null }
+          : { data: null, error: 'Server error' }
+    );
+
+    renderPage();
+
+    const summary = await screen.findByRole('region', { name: 'Day summary' });
+    expect(within(summary).getByText('Total sales')).toBeInTheDocument();
+    expect(within(summary).queryByText(/Yesterday/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

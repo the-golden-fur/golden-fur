@@ -300,7 +300,9 @@
 /* =========================================================
    HIDE / SHOW - the visitor can put the mascot away
    EDIT GUIDE:
-   - "Hide me" is the last bubble of the hover menu: `.link:nth-child(5)`
+   - "Hide me" is the last bubble of the hover menu: `.link:nth-child(5)`,
+     or `.menu[data-items='6'] .link:nth-child(6)` when the customer
+     portal's extra "Tutorial" bubble is shown
    - Paw button shown while hidden: `.showButton` size/colors
    ========================================================= */
 .showButton {
@@ -418,6 +420,29 @@
   transform: translate(-100%, -50%) translate(-60px, 56px);
 }
 
+/* Six bubbles (customer portal: the extra "Tutorial" bubble). Same arc down
+   the left of the circle, 30px apart instead of 34px so the top one still
+   clears the tip bubble and the bottom one the screen edge. The five-bubble
+   positions above are untouched for the landing pages. */
+.menu[data-items='6'] .link:nth-child(1) {
+  transform: translate(-100%, -50%) translate(-70px, -86px);
+}
+.menu[data-items='6'] .link:nth-child(2) {
+  transform: translate(-100%, -50%) translate(-73px, -56px);
+}
+.menu[data-items='6'] .link:nth-child(3) {
+  transform: translate(-100%, -50%) translate(-76px, -26px);
+}
+.menu[data-items='6'] .link:nth-child(4) {
+  transform: translate(-100%, -50%) translate(-76px, 4px);
+}
+.menu[data-items='6'] .link:nth-child(5) {
+  transform: translate(-100%, -50%) translate(-72px, 34px);
+}
+.menu[data-items='6'] .link:nth-child(6) {
+  transform: translate(-100%, -50%) translate(-58px, 64px);
+}
+
 .mascot:hover .link,
 .mascot:focus-within .link {
   opacity: 1;
@@ -511,6 +536,30 @@
 
   .link:nth-child(5) {
     transform: translate(-100%, -50%) translate(-50px, 42px);
+  }
+
+  .menu[data-items='6'] .link:nth-child(1) {
+    transform: translate(-100%, -50%) translate(-56px, -70px);
+  }
+
+  .menu[data-items='6'] .link:nth-child(2) {
+    transform: translate(-100%, -50%) translate(-59px, -46px);
+  }
+
+  .menu[data-items='6'] .link:nth-child(3) {
+    transform: translate(-100%, -50%) translate(-62px, -22px);
+  }
+
+  .menu[data-items='6'] .link:nth-child(4) {
+    transform: translate(-100%, -50%) translate(-62px, 2px);
+  }
+
+  .menu[data-items='6'] .link:nth-child(5) {
+    transform: translate(-100%, -50%) translate(-58px, 26px);
+  }
+
+  .menu[data-items='6'] .link:nth-child(6) {
+    transform: translate(-100%, -50%) translate(-48px, 50px);
   }
 
   .link {

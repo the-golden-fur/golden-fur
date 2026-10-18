@@ -106,6 +106,47 @@ describe('PetForm', () => {
     expect(createPet).not.toHaveBeenCalled();
   });
 
+  it('blocks submission when the date of birth is in the future', async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Lab' } });
+    fireEvent.click(await screen.findByText('Labrador Retriever'));
+
+    const nextYear = new Date().getFullYear() + 1;
+    const dateInput = screen.getByLabelText(
+      /Date of birth/
+    ) as HTMLInputElement;
+    fireEvent.change(dateInput, { target: { value: `${nextYear}-01-01` } });
+
+    // The `max` attribute makes the browser itself refuse the submit...
+    expect(dateInput.validity.rangeOverflow).toBe(true);
+
+    // ...and the form's own check still catches it if that is bypassed.
+    fireEvent.submit(
+      screen.getByRole('button', { name: /add pet/i }).closest('form')!
+    );
+
+    expect(
+      await screen.findByText('Date of birth cannot be in the future.')
+    ).toBeInTheDocument();
+    expect(createPet).not.toHaveBeenCalled();
+  });
+
   it("client interview finding: does not render weight class/coat type inputs for a customer's own (non-staff) create", async () => {
     render(
       createElement(PetForm, {

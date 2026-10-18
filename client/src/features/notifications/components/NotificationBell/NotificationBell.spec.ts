@@ -153,4 +153,43 @@ describe('NotificationBell', () => {
     );
     expect(screen.queryByText('My bookings page')).not.toBeInTheDocument();
   });
+
+  it('closes the dropdown on a click outside it, but not on a click inside it', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      data: [buildNotification({ related_booking_id: null })],
+      error: null,
+    });
+
+    renderBell('/portal/notifications');
+
+    await user.click(
+      await screen.findByRole('button', { name: /notifications/i })
+    );
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Notifications', { selector: 'span' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    await user.click(document.body);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('closes the dropdown on Escape', async () => {
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+
+    renderBell('/portal/notifications');
+
+    await user.click(
+      await screen.findByRole('button', { name: /notifications/i })
+    );
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
 });
