@@ -1,8 +1,22 @@
 import { z } from 'zod';
+import { manilaDateString } from '../../../../../shared/services/promoEligibility/promoEligibility.service.ts';
 
 const GENDERS = ['Male', 'Female'] as const;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
 const COAT_TYPES = ['SC', 'LC', 'XLC'] as const;
+
+/**
+ * A pet can't be born after today. "Today" is the Asia/Manila date, not the
+ * server's UTC date, so a Manila customer entering today's date before 08:00
+ * isn't rejected as a day early. Plain string comparison is correct for the
+ * zero-padded YYYY-MM-DD shape.
+ */
+const dateOfBirthSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be YYYY-MM-DD')
+  .refine((value) => value <= manilaDateString(), {
+    message: 'Date of birth cannot be in the future',
+  });
 
 /**
  * Required fields per Modules-Features M02 Process 4's flowchart: name,
@@ -41,7 +55,7 @@ export const createPetValidator = z
     breed_id: z.uuid().optional(),
     photo_url: z.string().trim().min(1).optional(),
     gender: z.enum(GENDERS).optional(),
-    date_of_birth: z.string().min(1).optional(),
+    date_of_birth: dateOfBirthSchema.optional(),
   })
   .strict();
 
@@ -58,7 +72,7 @@ export const updatePetValidator = z
     breed_id: z.uuid().nullable().optional(),
     photo_url: z.string().trim().min(1).nullable().optional(),
     gender: z.enum(GENDERS).optional(),
-    date_of_birth: z.string().min(1).optional(),
+    date_of_birth: dateOfBirthSchema.optional(),
   })
   .strict();
 

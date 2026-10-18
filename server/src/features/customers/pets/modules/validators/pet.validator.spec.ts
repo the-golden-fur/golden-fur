@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createPetValidator,
   createPetValidatorStaff,
@@ -84,6 +84,58 @@ describe('createPetValidator (customer-facing)', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('date_of_birth', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects a date of birth after today (Asia/Manila) on create and update', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-18T04:00:00.000Z')); // 12:00 Manila
+
+    expect(
+      createPetValidator.safeParse({
+        name: 'Buddy',
+        pet_type: 'Dog',
+        date_of_birth: '2026-10-19',
+      }).success
+    ).toBe(false);
+    expect(
+      updatePetValidator.safeParse({ date_of_birth: '2027-01-01' }).success
+    ).toBe(false);
+  });
+
+  it('accepts today and past dates', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-18T04:00:00.000Z'));
+
+    for (const date_of_birth of ['2026-10-18', '2020-02-29']) {
+      expect(
+        createPetValidator.safeParse({
+          name: 'Buddy',
+          pet_type: 'Dog',
+          date_of_birth,
+        }).success
+      ).toBe(true);
+    }
+  });
+
+  it("uses Manila's date, not UTC's - today's Manila date is accepted before 08:00 Manila", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-17T18:00:00.000Z')); // 02:00 Oct 18 Manila
+
+    expect(
+      updatePetValidator.safeParse({ date_of_birth: '2026-10-18' }).success
+    ).toBe(true);
+  });
+
+  it('rejects a value that is not YYYY-MM-DD', () => {
+    expect(
+      updatePetValidator.safeParse({ date_of_birth: 'yesterday' }).success
+    ).toBe(false);
   });
 });
 

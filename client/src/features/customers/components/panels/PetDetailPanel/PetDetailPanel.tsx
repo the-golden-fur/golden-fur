@@ -6,6 +6,10 @@ import {
 } from '../../../api/customer.api';
 import { formatRelativeTime } from '../../../../../shared/utils/formatRelativeTime';
 import { formatWeight } from '../../../../../shared/utils/petWeight';
+import {
+  isFutureDate,
+  todayDateKey,
+} from '../../../../../shared/utils/isFutureDate';
 import { ThemeContext } from '../../../../../shared/providers/ThemeProvider/themeContext';
 import { PetHealthConditionBadge } from '../../badges/PetHealthConditionBadge/PetHealthConditionBadge';
 import { BreedSelect } from '../../forms/BreedSelect/BreedSelect';
@@ -121,6 +125,11 @@ export function PetDetailPanel({
   async function handleSave() {
     if (!name.trim() || !breedId) {
       setError(!name.trim() ? 'Name is required.' : 'Please select a breed.');
+      return;
+    }
+
+    if (dateOfBirth && isFutureDate(dateOfBirth)) {
+      setError('Date of birth cannot be in the future.');
       return;
     }
 
@@ -252,6 +261,7 @@ export function PetDetailPanel({
               <input
                 className={styles.input}
                 type="date"
+                max={todayDateKey()}
                 value={dateOfBirth}
                 onChange={(event) => setDateOfBirth(event.target.value)}
               />
