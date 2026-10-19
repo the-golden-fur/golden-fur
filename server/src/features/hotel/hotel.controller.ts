@@ -18,7 +18,10 @@ import {
   setCageMaintenanceStatus,
   updateCage,
 } from './services/cageStatus.service.ts';
-import { checkOutHotelStay } from './services/checkout.service.ts';
+import {
+  checkOutHotelStay,
+  previewHotelCheckout,
+} from './services/checkout.service.ts';
 import { listHotelStays } from './services/hotelStay.service.ts';
 import { suggestCage } from './services/cageAssignment.service.ts';
 import { listCageOccupants } from './services/cageOccupants.service.ts';
@@ -584,6 +587,27 @@ export async function checkoutController(
     });
 
     return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** The bill this stay would get if it were checked out now - shown in the
+ * check-out confirmation before staff confirm. Writes nothing. */
+export async function previewCheckoutController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const preview = await previewHotelCheckout(paramId(req, 'id'), branchId);
+
+    return res.status(200).json({ preview });
   } catch (error) {
     return sendServiceError(res, error);
   }

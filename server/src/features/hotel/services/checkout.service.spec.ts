@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkOutHotelStay,
   extensionDays,
+  previewHotelCheckout,
   stayNights,
 } from './checkout.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
+import {
+  postPayAtCheckoutCharge,
+  quotePayAtCheckoutCharge,
+} from '../../billing/services/payAtCheckoutCharge.service.ts';
 import { postCheckoutExtras } from '../../billing/services/checkoutExtrasCharge.service.ts';
 import { loadRemainingBalance } from '../../billing/services/transactionPayment.service.ts';
 
@@ -25,6 +29,7 @@ vi.mock('./activityLog.service.ts', () => ({
 // Covered by its own spec - here only the bill it is asked to post matters.
 vi.mock('../../billing/services/payAtCheckoutCharge.service.ts', () => ({
   postPayAtCheckoutCharge: vi.fn(),
+  quotePayAtCheckoutCharge: vi.fn(),
 }));
 
 // Covered by their own specs - here only the late fee posted and the
@@ -748,6 +753,201 @@ describe('checkout.service (#78)', () => {
       });
 
       expect(result.stay).toBeDefined();
+    });
+  });
+
+  describe('previewHotelCheckout', () => {
+    /** Every query builder handed out - a preview must never update. */
+    function expectNoWrites() {
+      for (const result of vi.mocked(supabase.from).mock.results) {
+        const builder = result.value as { update: ReturnType<typeof vi.fn> };
+        expect(builder.update).not.toHaveBeenCalled();
+      }
+    }
+
+    it('on time: the booked nights, nothing added, and what Transactions still says is owed', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-05T01:00:00Z'));
+      vi.mocked(loadRemainingBalance).mockResolvedValue(1000);
+
+      queueFromResults({ data: LATE_STAY, error: null });
+
+      const preview = await previewHotelCheckout('stay-1', 'branch-1');
+
+      expect(preview.breakdown).toEqual({
+        nights: 2,
+        nightly_rate: 1000,
+        stay_charge: 2000,
+        discount: 0,
+        late_nights: 0,
+        late_rate: null,
+        late_charge: 0,
+        total: 2000,
+        pay_at_checkout: false,
+      });
+      expect(preview.downpayment_collected).toBe(1000);
+      expect(preview.added_at_checkout).toBe(0);
+      expect(preview.amount_due).toBe(1000);
+      expect(resolveBookingLongStayTerms).not.toHaveBeenCalled();
+      expectNoWrites();
+    });
+
+    it('2 nights late: the late nights at the booked nightly rate, the same fee checkout posts', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-07T09:00:00Z'));
+      vi.mocked(loadRemainingBalance).mockResolvedValue(1000);
+
+      queueFromResults({ data: LATE_STAY, error: null }, BOOKED_AT_800_A_NIGHT);
+
+      const preview = await previewHotelCheckout('stay-1', 'branch-1');
+
+      expect(preview.breakdown).toMatchObject({
+        late_nights: 2,
+        late_rate: 800,
+        late_charge: 1600,
+        total: 3600,
+      });
+      expect(preview.added_at_checkout).toBe(1600);
+      expect(preview.amount_due).toBe(2600);
+      expectNoWrites();
+    });
+
+    it('a long-stay service: late nights are the regular rate', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-06T09:00:00Z'));
+      vi.mocked(resolveBookingLongStayTerms).mockResolvedValue(
+        MAKATI_LONG_STAY
+      );
+
+      queueFromResults({ data: LATE_STAY, error: null });
+
+      const preview = await previewHotelCheckout('stay-1', 'branch-1');
+
+      expect(preview.breakdown).toMatchObject({
+        late_nights: 1,
+        late_rate: 850,
+        late_charge: 850,
+      });
+    });
+
+    it('shows a discount fixed at booking as its own line', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-05T01:00:00Z'));
+
+      queueFromResults({
+        data: {
+          ...LATE_STAY,
+          bookings: {
+            ...LATE_STAY.bookings,
+            discount_amount: 200,
+            promo_amount: 100,
+          },
+        },
+        error: null,
+      });
+
+      const preview = await previewHotelCheckout('stay-1', 'branch-1');
+
+      expect(preview.breakdown.discount).toBe(300);
+      expect(preview.breakdown.total).toBe(1700);
+    });
+
+    it('pay at checkout: the nights stayed so far, quoted as checkout would bill them, without repricing', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-06T01:00:00Z')); // 3 nights
+      vi.mocked(quotePayAtCheckoutCharge).mockResolvedValue({
+        bill: 2400,
+        discounts: 0,
+      });
+      itemUpdates.length = 0;
+
+      queueFromResults(
+        {
+          data: {
+            ...ACTIVE_STAY,
+            downpayment_amount: 0,
+            check_in_at: '2026-08-03T02:00:00Z',
+            bookings: {
+              total_price: 1600,
+              status: 'In Progress',
+              pay_at_checkout: true,
+              scheduled_start: '2026-08-03T02:00:00Z',
+              scheduled_end: '2026-08-05T02:00:00Z',
+            },
+          },
+          error: null,
+        },
+        {
+          data: [
+            {
+              id: 'item-1',
+              price_at_booking: 1600,
+              duration_minutes_at_booking: 1440,
+            },
+          ],
+          error: null,
+        }
+      );
+
+      const preview = await previewHotelCheckout('stay-1', 'branch-1');
+
+      expect(quotePayAtCheckoutCharge).toHaveBeenCalledWith('booking-1', 2400);
+      expect(preview.breakdown).toMatchObject({
+        nights: 3,
+        nightly_rate: 800,
+        stay_charge: 2400,
+        late_charge: 0,
+        pay_at_checkout: true,
+      });
+      expect(preview.added_at_checkout).toBe(2400);
+      expect(preview.amount_due).toBe(2400);
+      expect(itemUpdates).toEqual([]);
+      expectNoWrites();
+    });
+
+    it('rejects a stay belonging to a different branch', async () => {
+      queueFromResults({ data: ACTIVE_STAY, error: null });
+
+      await expect(
+        previewHotelCheckout('stay-1', 'branch-2')
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('rejects a stay that is already checked out', async () => {
+      queueFromResults({
+        data: {
+          ...ACTIVE_STAY,
+          bookings: { ...ACTIVE_STAY.bookings, status: 'Completed' },
+        },
+        error: null,
+      });
+
+      await expect(
+        previewHotelCheckout('stay-1', 'branch-1')
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('checkout returns the same itemized bill the preview showed', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-07T09:00:00Z'));
+
+      queueFromResults({ data: LATE_STAY, error: null }, BOOKED_AT_800_A_NIGHT);
+      const preview = await previewHotelCheckout('stay-1', 'branch-1');
+
+      queueFromResults(
+        { data: LATE_STAY, error: null },
+        noOutstandingTasksResult(),
+        BOOKED_AT_800_A_NIGHT,
+        ...completeBookingQueue(),
+        { data: { ...LATE_STAY, extension_fee: 1600 }, error: null },
+        { data: {}, error: null }
+      );
+      const result = await checkOutHotelStay({
+        stayId: 'stay-1',
+        branchId: 'branch-1',
+      });
+
+      expect(result.bill).toEqual(preview.breakdown);
     });
   });
 });

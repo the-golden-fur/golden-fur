@@ -26,6 +26,10 @@ vi.mock('../../../hotel/api/hotel.api', () => ({
   getCageGrid: vi.fn(),
   getCageOccupants: vi.fn(),
   checkOutHotelStay: vi.fn(),
+  // No preview unless a test sets one - the dialog then just confirms.
+  getHotelCheckoutPreview: vi
+    .fn()
+    .mockResolvedValue({ data: null, error: 'no preview' }),
 }));
 
 vi.mock('../../../daycare/api/daycare.api', () => ({
@@ -515,6 +519,91 @@ describe('CageOccupancyReport', () => {
           await screen.findByText(/Remaining balance: PHP 850.00/)
         ).toBeInTheDocument();
         expect(daycareApi.getDaycareCheckoutPreview).not.toHaveBeenCalled();
+      });
+
+      /** Booked 3 nights at ₱850, 2 nights late at the same rate. */
+      const LATE_HOTEL_BILL = {
+        nights: 3,
+        nightly_rate: 850,
+        stay_charge: 2550,
+        discount: 0,
+        late_nights: 2,
+        late_rate: 850,
+        late_charge: 1700,
+        total: 4250,
+        pay_at_checkout: false,
+      };
+
+      it("shows a Hotel stay's whole bill in the confirmation, before anything is saved", async () => {
+        const user = userEvent.setup();
+        vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+          data: [{ ...occupant(inTwoHours()), service: 'Hotel' as const }],
+          error: null,
+        });
+        vi.mocked(hotelApi.getHotelCheckoutPreview).mockResolvedValue({
+          data: {
+            breakdown: LATE_HOTEL_BILL,
+            downpayment_collected: 0,
+            added_at_checkout: 1700,
+            amount_due: 4250,
+            as_of: '2026-10-19T01:00:00.000Z',
+          },
+          error: null,
+        });
+
+        renderPage();
+
+        await openCheckoutFromCage(user);
+
+        const dialog = screen.getByRole('dialog');
+        expect(hotelApi.getHotelCheckoutPreview).toHaveBeenCalledWith(
+          'stay-1',
+          'token'
+        );
+        expect(
+          await within(dialog).findByText('Late checkout - 2 nights × ₱850')
+        ).toBeInTheDocument();
+        expect(dialog).toHaveTextContent('Hotel stay - 3 nights × ₱850₱2550');
+        expect(dialog).toHaveTextContent('To collect at the cashier₱4250');
+        expect(dialog).toHaveTextContent(/If checked out now/);
+        expect(daycareApi.getDaycareCheckoutPreview).not.toHaveBeenCalled();
+        expect(hotelApi.checkOutHotelStay).not.toHaveBeenCalled();
+      });
+
+      it('after a Hotel checkout, shows the itemized bill the server returned', async () => {
+        const user = userEvent.setup();
+        vi.mocked(hotelApi.getCageOccupants).mockResolvedValue({
+          data: [{ ...occupant(inTwoHours()), service: 'Hotel' as const }],
+          error: null,
+        });
+        vi.mocked(hotelApi.checkOutHotelStay).mockResolvedValue({
+          data: {
+            stay: { id: 'stay-1' },
+            downpaymentAmount: 0,
+            extensionFee: 1700,
+            remainingBalance: 4250,
+            bill: LATE_HOTEL_BILL,
+          } as never,
+          error: null,
+        });
+
+        renderPage();
+
+        await openCheckoutFromCage(user);
+        await user.click(
+          within(screen.getByRole('dialog')).getByRole('button', {
+            name: 'Check out',
+          })
+        );
+
+        const result = await screen.findByRole('dialog', {
+          name: 'Mochi was checked out',
+        });
+        expect(result).toHaveTextContent('S-02 is available again.');
+        expect(result).toHaveTextContent(
+          'Late checkout - 2 nights × ₱850₱1700'
+        );
+        expect(result).toHaveTextContent('To collect at the cashier₱4250');
       });
 
       it("keeps the dialog open with the server's reason when the check-out is refused", async () => {

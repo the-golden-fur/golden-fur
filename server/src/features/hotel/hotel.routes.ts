@@ -18,6 +18,7 @@ import {
   hardDeleteCageController,
   listArchivedCagesController,
   listHotelStaysController,
+  previewCheckoutController,
   reopenCareLogEntryController,
   restoreCageController,
   startCareLogEntryController,
@@ -234,6 +235,15 @@ router.post(
   requireRole([...HOTEL_ADVANCE_ROLES]),
   requireBranch,
   checkoutController
+);
+
+router.get(
+  '/hotel/stays/:id/checkout-preview',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_ADVANCE_ROLES]),
+  requireBranch,
+  previewCheckoutController
 );
 
 // #79's food/medication catalogs moved to features/catalog/ (Sprint 5

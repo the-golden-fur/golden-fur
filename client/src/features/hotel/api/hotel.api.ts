@@ -12,6 +12,7 @@ import type {
   CheckoutResult,
   CurrentPrescription,
   FoodCatalogItem,
+  HotelCheckoutPreview,
   HotelStay,
   HotelStayWithCage,
   MedicationCatalogItem,
@@ -426,6 +427,25 @@ export async function checkOutHotelStay(
   }
 
   return parseBody<CheckoutResult>(response);
+}
+
+/** The bill this stay would get if it were checked out now - for the
+ * check-out confirmation. Writes nothing. */
+export async function getHotelCheckoutPreview(
+  stayId: string,
+  accessToken: string
+): Promise<HotelApiResult<HotelCheckoutPreview>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/stays/${stayId}/checkout-preview`,
+    { headers: jsonHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ preview: HotelCheckoutPreview }>(response);
+  return { data: result.data?.preview ?? null, error: result.error };
 }
 
 export interface ListActivityLogFilters {
