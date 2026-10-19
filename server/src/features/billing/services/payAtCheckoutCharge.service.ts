@@ -266,3 +266,76 @@ export async function postPayAtCheckoutCharge({
 
   return transaction;
 }
+
+/**
+ * What postPayAtCheckoutCharge would bill for `actualTotal` right now,
+ * worked out from the same reads (discount/promo fixed at booking, a
+ * group's already-checked-out members, everything already posted) - but
+ * writes nothing. Used by the Hotel checkout preview so the figure shown
+ * before confirming is the one checkout then posts.
+ */
+export async function quotePayAtCheckoutCharge(
+  bookingId: string,
+  actualTotal: number
+): Promise<{ bill: number; discounts: number }> {
+  const { data: bookingRow, error: bookingError } = await supabase
+    .from('bookings')
+    .select('id, discount_amount, promo_amount, booking_group_id')
+    .eq('id', bookingId)
+    .maybeSingle();
+
+  if (bookingError) throwWithStatus(400, bookingError.message);
+  if (!bookingRow) throwWithStatus(404, 'Booking not found');
+
+  const booking = bookingRow as Pick<
+    BookingRow,
+    'id' | 'discount_amount' | 'promo_amount' | 'booking_group_id'
+  >;
+  const groupId = booking.booking_group_id;
+  let grossOwed = round2(actualTotal);
+  let discounts =
+    Number(booking.discount_amount) + Number(booking.promo_amount);
+
+  if (groupId) {
+    const { data: groupRow, error: groupError } = await supabase
+      .from('booking_groups')
+      .select('discount_amount, promo_amount')
+      .eq('id', groupId)
+      .maybeSingle();
+
+    if (groupError) throwWithStatus(400, groupError.message);
+    if (!groupRow) throwWithStatus(404, 'Booking group not found');
+
+    const { data: checkedOutRows, error: checkedOutError } = await supabase
+      .from('bookings')
+      .select('total_price')
+      .eq('booking_group_id', groupId)
+      .eq('status', 'Completed')
+      .neq('id', bookingId);
+
+    if (checkedOutError) throwWithStatus(400, checkedOutError.message);
+
+    grossOwed = (
+      (checkedOutRows ?? []) as Array<{ total_price: number }>
+    ).reduce((sum, row) => sum + Number(row.total_price), grossOwed);
+    discounts =
+      Number(groupRow.discount_amount) + Number(groupRow.promo_amount);
+  }
+
+  const { data: postedRows, error: postedError } = await supabase
+    .from('transactions')
+    .select('total_amount')
+    .eq(groupId ? 'booking_group_id' : 'booking_id', groupId ?? bookingId)
+    .eq('transaction_type', 'booking_payment');
+
+  if (postedError) throwWithStatus(400, postedError.message);
+
+  const alreadyPosted = (
+    (postedRows ?? []) as Array<{ total_amount: number }>
+  ).reduce((sum, row) => sum + Number(row.total_amount), 0);
+
+  return {
+    bill: round2(Math.max(0, grossOwed - discounts - alreadyPosted)),
+    discounts: round2(discounts),
+  };
+}

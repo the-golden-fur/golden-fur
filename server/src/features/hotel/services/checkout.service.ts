@@ -5,10 +5,16 @@ import { resolveBookingLongStayTerms } from '../../booking/services/longStayTerm
 import type { LongStayTerms } from '../../maintenance/utils/branchServicePrice.ts';
 import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
 import { postCheckoutExtras } from '../../billing/services/checkoutExtrasCharge.service.ts';
+import { quotePayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
 import { loadRemainingBalance } from '../../billing/services/transactionPayment.service.ts';
 import { assertChecklistComplete } from './careLogCompletion.service.ts';
 import { recordActivity } from './activityLog.service.ts';
-import type { CheckoutResult, HotelStay } from '../hotel.types.ts';
+import type {
+  CheckoutResult,
+  HotelBillBreakdown,
+  HotelCheckoutPreview,
+  HotelStay,
+} from '../hotel.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -96,24 +102,61 @@ async function repriceItemsForNights(
   nights: number,
   longStay: LongStayTerms | null
 ): Promise<number> {
+  const items = await loadPricedItems(bookingId);
+  const { total, changed } = priceItemsForNights(
+    items,
+    booking,
+    checkInAt,
+    nights,
+    longStay
+  );
+
+  for (const { id, price } of changed) {
+    const { error: updateItemError } = await supabase
+      .from('booking_items')
+      .update({ price_at_booking: price })
+      .eq('id', id);
+
+    if (updateItemError) throwWithStatus(400, updateItemError.message);
+  }
+
+  return total;
+}
+
+interface PricedItemRow {
+  id: string;
+  service_id?: string | null;
+  price_at_booking: number;
+  duration_minutes_at_booking: number;
+}
+
+async function loadPricedItems(bookingId: string): Promise<PricedItemRow[]> {
   const { data: itemRows, error: itemsError } = await supabase
     .from('booking_items')
     .select('id, service_id, price_at_booking, duration_minutes_at_booking')
     .eq('booking_id', bookingId);
 
   if (itemsError) throwWithStatus(400, itemsError.message);
+  return (itemRows ?? []) as PricedItemRow[];
+}
 
+/** The pricing half of repriceItemsForNights: each item's price for the
+ * nights actually stayed, and the new total. Writes nothing, so the
+ * checkout preview can show the same bill checkout then charges. */
+function priceItemsForNights(
+  items: PricedItemRow[],
+  booking: PayAtCheckoutBooking,
+  checkInAt: Date,
+  nights: number,
+  longStay: LongStayTerms | null
+): { total: number; changed: Array<{ id: string; price: number }> } {
   const actualEndIso = new Date(
     checkInAt.getTime() + nights * ONE_DAY_MS
   ).toISOString();
   let total = 0;
+  const changed: Array<{ id: string; price: number }> = [];
 
-  for (const item of (itemRows ?? []) as Array<{
-    id: string;
-    service_id?: string | null;
-    price_at_booking: number;
-    duration_minutes_at_booking: number;
-  }>) {
+  for (const item of items) {
     const bookedQuantity = resolveQuantity(
       booking.scheduled_start,
       booking.scheduled_end,
@@ -136,16 +179,11 @@ async function repriceItemsForNights(
     total = round2(total + price);
 
     if (price !== Number(item.price_at_booking)) {
-      const { error: updateItemError } = await supabase
-        .from('booking_items')
-        .update({ price_at_booking: price })
-        .eq('id', item.id);
-
-      if (updateItemError) throwWithStatus(400, updateItemError.message);
+      changed.push({ id: item.id, price });
     }
   }
 
-  return total;
+  return { total, changed };
 }
 
 /**
@@ -188,6 +226,177 @@ async function bookedNightlyRate(
       0
     )
   );
+}
+
+interface HotelCheckoutBooking extends PayAtCheckoutBooking {
+  total_price: number;
+  status: string;
+  pay_at_checkout?: boolean;
+  booking_group_id?: string | null;
+  discount_amount?: number | null;
+  promo_amount?: number | null;
+}
+
+interface LateCharge {
+  days: number;
+  longStay: LongStayTerms | null;
+  rate: number;
+  fee: number | null;
+}
+
+/** The late-checkout nights and their charge if the stay ended at `now`,
+ * shared by checkout and its preview so both bill the same. A late night is
+ * the regular rate on a long-stay service, else the booking's own nightly
+ * rate, else the flat fallback. Pay at checkout never has one. */
+async function resolveLateCharge(
+  stay: { booking_id: string; scheduled_check_out_date: string },
+  booking: HotelCheckoutBooking,
+  branchId: string,
+  now: Date
+): Promise<LateCharge> {
+  const payAtCheckout = booking.pay_at_checkout === true;
+  const days = payAtCheckout
+    ? 0
+    : extensionDays(stay.scheduled_check_out_date, now);
+  // Looked up only when it can matter: a late day, or a pay-at-checkout
+  // bill to reprice.
+  const longStay =
+    days > 0 || payAtCheckout
+      ? await resolveBookingLongStayTerms(stay.booking_id, branchId)
+      : null;
+  const rate =
+    days > 0
+      ? (longStay?.regularRate ??
+        (await bookedNightlyRate(stay.booking_id, booking)) ??
+        EXTENSION_FEE_PER_DAY)
+      : EXTENSION_FEE_PER_DAY;
+
+  return { days, longStay, rate, fee: days > 0 ? days * rate : null };
+}
+
+/** The stay's bill line by line, for the checkout preview and the
+ * after-checkout popup. `stayCharge` is the booked total - or, for pay at
+ * checkout, the price of the `stayedNights` actually stayed. */
+function hotelBillBreakdown(
+  booking: HotelCheckoutBooking,
+  late: LateCharge,
+  stayCharge: number,
+  stayedNights: number | null
+): HotelBillBreakdown {
+  const nights =
+    stayedNights ??
+    (booking.scheduled_start && booking.scheduled_end
+      ? stayNights(
+          new Date(booking.scheduled_start),
+          new Date(booking.scheduled_end)
+        )
+      : 1);
+  const discount = round2(
+    Number(booking.discount_amount ?? 0) + Number(booking.promo_amount ?? 0)
+  );
+  const lateCharge = late.fee ?? 0;
+
+  return {
+    nights,
+    nightly_rate: round2(stayCharge / nights),
+    stay_charge: round2(stayCharge),
+    discount,
+    late_nights: late.days,
+    late_rate: late.days > 0 ? late.rate : null,
+    late_charge: lateCharge,
+    total: round2(Math.max(0, stayCharge - discount) + lateCharge),
+    pay_at_checkout: stayedNights !== null,
+  };
+}
+
+/** Loads an active Hotel stay with its booking, enforcing the same branch
+ * and "not yet checked out" rules for checkout and its preview. */
+async function loadCheckoutStay(stayId: string, branchId: string) {
+  const { data: stay, error: stayError } = await supabase
+    .from('stays')
+    .select(
+      '*, cages!inner(branch_id), bookings!inner(total_price, status, pay_at_checkout, scheduled_start, scheduled_end, booking_group_id, discount_amount, promo_amount)'
+    )
+    .eq('id', stayId)
+    .eq('stay_type', 'Hotel')
+    .maybeSingle();
+
+  if (stayError) throwWithStatus(400, stayError.message);
+  if (!stay) throwWithStatus(404, 'Hotel stay not found');
+
+  const cageBranchId = (stay as unknown as { cages: { branch_id: string } })
+    .cages.branch_id;
+
+  if (cageBranchId !== branchId) {
+    throwWithStatus(403, 'Hotel stay does not belong to your branch');
+  }
+
+  const booking = (stay as unknown as { bookings: HotelCheckoutBooking })
+    .bookings;
+
+  if (booking.status !== 'In Progress') {
+    throwWithStatus(409, 'This hotel stay is already checked out');
+  }
+
+  return { stay, booking };
+}
+
+/**
+ * The bill a Hotel stay would get if it were checked out right now - shown
+ * in the check-out confirmation so staff see the booked nights, any late
+ * nights and what is left to collect before confirming. Writes nothing, and
+ * skips the Boarding Checklist gate (that only blocks the checkout itself).
+ * amount_due is what Transactions would then say is owed: what is already
+ * pending plus what checkout would post - the figure checkout returns.
+ */
+export async function previewHotelCheckout(
+  stayId: string,
+  branchId: string
+): Promise<HotelCheckoutPreview> {
+  const { stay, booking } = await loadCheckoutStay(stayId, branchId);
+  const now = new Date();
+  const late = await resolveLateCharge(stay, booking, branchId, now);
+  const groupId = booking.booking_group_id ?? null;
+  const pending = await loadRemainingBalance(
+    groupId ? null : stay.booking_id,
+    groupId
+  );
+
+  if (booking.pay_at_checkout === true) {
+    const checkInAt = new Date(stay.check_in_at);
+    const nights = stayNights(checkInAt, now);
+    const { total } = priceItemsForNights(
+      await loadPricedItems(stay.booking_id),
+      booking,
+      checkInAt,
+      nights,
+      late.longStay
+    );
+    const { bill } = await quotePayAtCheckoutCharge(stay.booking_id, total);
+
+    return {
+      breakdown: hotelBillBreakdown(booking, late, total, nights),
+      downpayment_collected: 0,
+      added_at_checkout: bill,
+      amount_due: round2(pending + bill),
+      as_of: now.toISOString(),
+    };
+  }
+
+  const added = late.fee ?? 0;
+
+  return {
+    breakdown: hotelBillBreakdown(
+      booking,
+      late,
+      Number(booking.total_price),
+      null
+    ),
+    downpayment_collected: Number(stay.downpayment_amount ?? 0),
+    added_at_checkout: added,
+    amount_due: round2(pending + added),
+    as_of: now.toISOString(),
+  };
 }
 
 interface CheckoutParams {
@@ -247,41 +456,8 @@ export async function checkOutHotelStay({
   branchId,
   requesterId,
 }: CheckoutParams): Promise<CheckoutResult> {
-  const { data: stay, error: stayError } = await supabase
-    .from('stays')
-    .select(
-      '*, cages!inner(branch_id), bookings!inner(total_price, status, pay_at_checkout, scheduled_start, scheduled_end, booking_group_id)'
-    )
-    .eq('id', stayId)
-    .eq('stay_type', 'Hotel')
-    .maybeSingle();
-
-  if (stayError) throwWithStatus(400, stayError.message);
-  if (!stay) throwWithStatus(404, 'Hotel stay not found');
-
-  const cageBranchId = (stay as unknown as { cages: { branch_id: string } })
-    .cages.branch_id;
-
-  if (cageBranchId !== branchId) {
-    throwWithStatus(403, 'Hotel stay does not belong to your branch');
-  }
-
-  const booking = (
-    stay as unknown as {
-      bookings: PayAtCheckoutBooking & {
-        total_price: number;
-        status: string;
-        pay_at_checkout?: boolean;
-        booking_group_id?: string | null;
-      };
-    }
-  ).bookings;
-  const bookingStatus = booking.status;
+  const { stay, booking } = await loadCheckoutStay(stayId, branchId);
   const payAtCheckout = booking.pay_at_checkout === true;
-
-  if (bookingStatus !== 'In Progress') {
-    throwWithStatus(409, 'This hotel stay is already checked out');
-  }
 
   // Custom change (checkout gating): blocks checkout while the Boarding
   // Checklist still has actionable (Pending/In Progress) tasks - Missed
@@ -289,22 +465,8 @@ export async function checkOutHotelStay({
   await assertChecklistComplete(stayId);
 
   const now = new Date();
-  const days = payAtCheckout
-    ? 0
-    : extensionDays(stay.scheduled_check_out_date, now);
-  // Looked up only when it can matter: a late day, or a pay-at-checkout
-  // bill to reprice.
-  const longStay =
-    days > 0 || payAtCheckout
-      ? await resolveBookingLongStayTerms(stay.booking_id, branchId)
-      : null;
-  const extensionRate =
-    days > 0
-      ? (longStay?.regularRate ??
-        (await bookedNightlyRate(stay.booking_id, booking)) ??
-        EXTENSION_FEE_PER_DAY)
-      : EXTENSION_FEE_PER_DAY;
-  const extensionFee = days > 0 ? days * extensionRate : null;
+  const late = await resolveLateCharge(stay, booking, branchId, now);
+  const { days, longStay, rate: extensionRate, fee: extensionFee } = late;
 
   await completeBooking({ bookingId: stay.booking_id });
 
@@ -372,6 +534,7 @@ export async function checkOutHotelStay({
         extensionFee: null,
         remainingBalance: Number(transaction?.total_amount ?? 0),
         payAtCheckout: { nights },
+        bill: hotelBillBreakdown(booking, late, actualTotal, nights),
       };
     } catch (chargeError) {
       console.error(
@@ -430,5 +593,6 @@ export async function checkOutHotelStay({
     downpaymentAmount: Number(updated.downpayment_amount),
     extensionFee,
     remainingBalance,
+    bill: hotelBillBreakdown(booking, late, Number(booking.total_price), null),
   };
 }

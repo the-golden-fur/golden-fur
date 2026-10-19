@@ -260,6 +260,38 @@ export interface CheckoutResult {
   /** Set only for a pay-at-checkout booking: the nights it was billed for.
    * remainingBalance is then the bill just sent to the cashier. */
   payAtCheckout?: { nights: number };
+  /** The stay's bill line by line - the same breakdown the checkout
+   * preview showed before confirming. */
+  bill?: HotelBillBreakdown;
+}
+
+/** A Hotel stay's bill, itemized by the server (mirrors
+ * server/src/features/hotel/hotel.types.ts) - the rows always add up to
+ * `total`, nothing is recalculated on screen. */
+export interface HotelBillBreakdown {
+  /** Booked nights, or the nights actually stayed for pay at checkout. */
+  nights: number;
+  nightly_rate: number;
+  stay_charge: number;
+  /** Discount + promo fixed at booking. */
+  discount: number;
+  late_nights: number;
+  late_rate: number | null;
+  late_charge: number;
+  total: number;
+  pay_at_checkout: boolean;
+}
+
+/** GET /hotel/stays/:id/checkout-preview: the bill if checked out now. */
+export interface HotelCheckoutPreview {
+  breakdown: HotelBillBreakdown;
+  downpayment_collected: number;
+  /** What checkout would post to Transactions on top of what's there. */
+  added_at_checkout: number;
+  /** Pending on Transactions now + added_at_checkout - the cashier's figure. */
+  amount_due: number;
+  /** When the preview was worked out (ISO). */
+  as_of: string;
 }
 
 export interface HotelStayWithCage extends HotelStay {
