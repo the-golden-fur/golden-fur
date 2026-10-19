@@ -108,6 +108,12 @@
   color: var(--color-cage-status-maintenance-text);
 }
 
+/* Front-desk cage override: closed to customers for a while. */
+.closedBadge {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
 .sectionTitle {
   margin: 0;
   color: var(--color-text-primary);

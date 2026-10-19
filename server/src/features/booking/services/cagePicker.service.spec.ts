@@ -16,8 +16,11 @@ interface QueryResult {
   error: unknown;
 }
 
+const orCalls: string[] = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
+  orCalls.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
@@ -29,6 +32,10 @@ function queueFromResults(...results: QueryResult[]) {
     builder.in = builder.in ?? vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
     builder.limit = vi.fn(() => builder);
+    builder.or = vi.fn((filter: string) => {
+      orCalls.push(filter);
+      return builder;
+    });
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
@@ -124,6 +131,27 @@ describe('cagePicker.service', () => {
       const result = await verifyCagePreference('cage-1', 'branch-1', 'Dog');
 
       expect(result).toBe('cage-1');
+    });
+
+    it('hides front-desk-closed cages only for a customer (excludeClosed)', async () => {
+      queueFromResults({ data: { id: 'cage-1' }, error: null });
+      await verifyCagePreference('cage-1', 'branch-1', 'Dog');
+      expect(orCalls).toEqual([]);
+
+      queueFromResults({ data: null, error: null });
+      const result = await verifyCagePreference(
+        'cage-1',
+        'branch-1',
+        'Dog',
+        undefined,
+        true
+      );
+
+      expect(result).toBeNull();
+      expect(orCalls).toHaveLength(1);
+      expect(orCalls[0]).toMatch(
+        /^closed_until\.is\.null,closed_until\.lte\."/
+      );
     });
 
     it('returns null when the cage is no longer Available', async () => {

@@ -116,6 +116,73 @@ export async function setCageMaintenanceStatus(
   return withFlattenedPetTypes(updated);
 }
 
+/**
+ * Custom change (front-desk cage override, 20261019273): closes an Available
+ * cage to customers until now + minutes. Front desk/admin roles only -
+ * enforced at the route layer, like setCageMaintenanceStatus. Calling it on
+ * a cage that is already closed simply replaces the end time, so the same
+ * action extends or shortens a closure. Reopens on its own once
+ * closed_until passes; reopenCage ends it early.
+ */
+export async function closeCageTemporarily({
+  cageId,
+  branchId,
+  minutes,
+  staffId,
+}: {
+  cageId: string;
+  branchId: string;
+  minutes: number;
+  staffId: string;
+}): Promise<Cage> {
+  const now = Date.now();
+
+  const { data: updated, error } = await supabase
+    .from('cages')
+    .update({
+      closed_until: new Date(now + minutes * 60_000).toISOString(),
+      closed_by_staff_id: staffId,
+      updated_at: new Date(now).toISOString(),
+    })
+    .eq('id', cageId)
+    .eq('branch_id', branchId)
+    .is('archived_at', null)
+    .eq('status', 'Available')
+    .select(CAGE_SELECT_WITH_PET_TYPES)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!updated) {
+    throwWithStatus(409, 'Only an Available cage can be closed temporarily');
+  }
+
+  return withFlattenedPetTypes(updated);
+}
+
+/** Custom change (front-desk cage override): ends a temporary closure early. */
+export async function reopenCage(
+  cageId: string,
+  branchId: string
+): Promise<Cage> {
+  const { data: updated, error } = await supabase
+    .from('cages')
+    .update({
+      closed_until: null,
+      closed_by_staff_id: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', cageId)
+    .eq('branch_id', branchId)
+    .is('archived_at', null)
+    .select(CAGE_SELECT_WITH_PET_TYPES)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!updated) throwWithStatus(404, 'Cage not found');
+
+  return withFlattenedPetTypes(updated);
+}
+
 interface CreateCageParams {
   branchId: string;
   cageLabel: string;

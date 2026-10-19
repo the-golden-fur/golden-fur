@@ -807,7 +807,8 @@ async function resolveSubBooking({
           subInput.cage_preference.cage_id!,
           branchId,
           pet.pet_type,
-          staffRole ? undefined : (pet.weight_class ?? undefined)
+          staffRole ? undefined : (pet.weight_class ?? undefined),
+          !staffRole
         )
       : null;
 
@@ -866,6 +867,7 @@ async function resolveSubBooking({
       scheduledStart: subInput.scheduled_start,
       scheduledEnd: subInput.scheduled_end,
       petWeightClass: pet.weight_class!,
+      excludeClosedCages: !staffRole,
     });
 
     if (!capacity.available) {

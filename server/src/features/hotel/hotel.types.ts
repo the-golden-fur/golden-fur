@@ -130,6 +130,13 @@ export interface Cage {
    * the cage from Settings > Config. Archived cages are hidden from the cage
    * grid, cage picker, assignment, and capacity counts. */
   archived_at: string | null;
+  /** Custom change (front-desk cage override, 20261019273): while this is in
+   * the future the cage is closed to customers (cage picker and customer
+   * Hotel capacity) - staff can still book/check in to it. Null, or a time
+   * already past, means open. */
+  closed_until: string | null;
+  /** Staff member who last closed the cage via the override. */
+  closed_by_staff_id: string | null;
   created_at: string;
   updated_at: string;
 }

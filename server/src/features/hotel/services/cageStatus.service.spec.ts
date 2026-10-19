@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   archiveCage,
+  closeCageTemporarily,
   createCage,
   getAvailableCageCountsBySize,
   getCageGrid,
   hardDeleteCage,
   listArchivedCages,
+  reopenCage,
   restoreCage,
   setCageMaintenanceStatus,
   updateCage,
@@ -111,6 +113,81 @@ describe('cageStatus.service (#78)', () => {
       const counts = await getAvailableCageCountsBySize('branch-1');
 
       expect(counts).toEqual({ S: 2, M: 1, L: 0, XL: 0 });
+    });
+  });
+
+  // Custom change (front-desk cage override, 20261019273).
+  describe('closeCageTemporarily / reopenCage', () => {
+    function captureUpdate(result: QueryResult) {
+      const updates: Record<string, unknown>[] = [];
+      const eqCalls: Array<[string, unknown]> = [];
+
+      vi.mocked(supabase.from).mockImplementation((() => {
+        const builder: Record<string, unknown> = {};
+        for (const method of ['select', 'is']) {
+          builder[method] = vi.fn(() => builder);
+        }
+        builder.update = vi.fn((values: Record<string, unknown>) => {
+          updates.push(values);
+          return builder;
+        });
+        builder.eq = vi.fn((field: string, value: unknown) => {
+          eqCalls.push([field, value]);
+          return builder;
+        });
+        builder.maybeSingle = vi.fn(() => Promise.resolve(result));
+        return builder;
+      }) as never);
+
+      return { updates, eqCalls };
+    }
+
+    it('closes an Available cage until now + minutes and records who closed it', async () => {
+      const { updates, eqCalls } = captureUpdate({
+        data: { id: 'c1', status: 'Available' },
+        error: null,
+      });
+      const before = Date.now();
+
+      await closeCageTemporarily({
+        cageId: 'c1',
+        branchId: 'branch-1',
+        minutes: 30,
+        staffId: 'staff-1',
+      });
+
+      const closedUntil = new Date(updates[0].closed_until as string).getTime();
+      expect(closedUntil).toBeGreaterThanOrEqual(before + 30 * 60_000);
+      expect(closedUntil).toBeLessThanOrEqual(Date.now() + 30 * 60_000);
+      expect(updates[0].closed_by_staff_id).toBe('staff-1');
+      expect(eqCalls).toContainEqual(['status', 'Available']);
+    });
+
+    it('rejects closing a cage that is not Available with a 409', async () => {
+      captureUpdate({ data: null, error: null });
+
+      await expect(
+        closeCageTemporarily({
+          cageId: 'c1',
+          branchId: 'branch-1',
+          minutes: 30,
+          staffId: 'staff-1',
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('reopenCage clears the closure', async () => {
+      const { updates } = captureUpdate({
+        data: { id: 'c1', status: 'Available' },
+        error: null,
+      });
+
+      await reopenCage('c1', 'branch-1');
+
+      expect(updates[0]).toMatchObject({
+        closed_until: null,
+        closed_by_staff_id: null,
+      });
     });
   });
 

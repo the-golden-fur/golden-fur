@@ -180,6 +180,52 @@ export async function setCageMaintenanceStatus(
   return { data: result.data?.cage ?? null, error: result.error };
 }
 
+/** Custom change (front-desk cage override): close a cage to customers for
+ * `minutes` (5-1440). Calling it again on a closed cage replaces the end
+ * time. */
+export async function closeCageTemporarily(
+  cageId: string,
+  minutes: number,
+  accessToken: string
+): Promise<HotelApiResult<Cage>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cage/${cageId}/override`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ minutes }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cage: Cage }>(response);
+  return { data: result.data?.cage ?? null, error: result.error };
+}
+
+/** Custom change (front-desk cage override): end a closure early. */
+export async function reopenCage(
+  cageId: string,
+  accessToken: string
+): Promise<HotelApiResult<Cage>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cage/${cageId}/override`,
+    {
+      method: 'DELETE',
+      headers: jsonHeaders(accessToken),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cage: Cage }>(response);
+  return { data: result.data?.cage ?? null, error: result.error };
+}
+
 /** Custom change (Cage CRUD, Settings > Config). petTypes (cage pet-type
  * support, 20260912193) must be non-empty - a cage must support at least
  * one pet type. */
