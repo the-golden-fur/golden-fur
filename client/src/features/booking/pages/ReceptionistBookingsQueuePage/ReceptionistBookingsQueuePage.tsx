@@ -34,7 +34,10 @@ import {
 } from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
 import {
   dateRangePresetLabel,
+  countByDatePreset,
+  countsFetchRange,
   resolveDateRangePreset,
+  type CountedPreset,
   type DateRangePreset,
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
 import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
@@ -317,6 +320,10 @@ export function ReceptionistBookingsQueuePage() {
     PaymentStatus | 'All'
   >('All');
 
+  const [presetCounts, setPresetCounts] = useState<Record<
+    CountedPreset,
+    number
+  > | null>(null);
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
     [dateRangePreset, customDate]
@@ -528,6 +535,28 @@ export function ReceptionistBookingsQueuePage() {
     }
 
     function fetchQueue() {
+      // Separate fetch over every counted preset's span (same non-date
+      // filters) so the summary row under the filter bar shows how many
+      // bookings fall Today/Tomorrow/This week/This month at a glance. Sent
+      // before the queue fetch so the queue's own request stays the latest.
+      const countsRange = countsFetchRange();
+      void listBookings(token, {
+        branchId: effectiveBranchId,
+        dateFrom: countsRange.from ?? undefined,
+        dateTo: countsRange.to ?? undefined,
+        serviceCategory: categoryFilter === 'All' ? undefined : categoryFilter,
+        status: confirmationToStatusParam(confirmationFilter),
+        paymentStatus:
+          paymentStatusFilter === 'All' ? undefined : paymentStatusFilter,
+      }).then((result) => {
+        if (!isMounted || !result.data) return;
+        setPresetCounts(
+          countByDatePreset(
+            result.data.map((booking) => booking.scheduled_start)
+          )
+        );
+      });
+
       void listBookings(token, {
         branchId: effectiveBranchId,
         dateFrom: dateRange.from ?? undefined,
@@ -1098,6 +1127,7 @@ export function ReceptionistBookingsQueuePage() {
             setConfirmationFilter(value as BookingConfirmationState | 'All')
           }
           statusOptions={STATUS_OPTIONS}
+          presetCounts={presetCounts}
         >
           <SearchSortBar
             searchValue={search}
