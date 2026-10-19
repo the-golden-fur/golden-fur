@@ -269,6 +269,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/reports/dsr',
           },
           {
+            title: 'Booking Activity Report',
+            description:
+              'Bookings, check-ins, check-outs, no-shows, and lates for a date range - printable, with a sign-off line.',
+            to: '/staff/reports/booking-activity',
+          },
+          {
             title: 'Transactions',
             description:
               'Search and filter every customer transaction; record payments against pending charges.',
@@ -347,6 +353,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description:
               'Daily Sales Report - branch-wide performance reporting.',
             to: '/staff/reports/dsr',
+          },
+          {
+            title: 'Booking Activity Report',
+            description:
+              'Bookings, check-ins, check-outs, no-shows, and lates for a date range - printable, with a sign-off line.',
+            to: '/staff/reports/booking-activity',
           },
           {
             title: 'Transactions',
