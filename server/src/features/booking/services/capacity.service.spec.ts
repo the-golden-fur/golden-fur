@@ -218,6 +218,52 @@ describe('capacity.service (#51)', () => {
       });
     });
 
+    // Custom change (front-desk cage override): a cage staff closed over the
+    // stay's start is one fewer cage for a customer - never for staff.
+    describe('front-desk closed cages', () => {
+      beforeEach(() => {
+        vi.stubEnv('HOTEL_CAGE_CAPACITY', '{"S":2}');
+      });
+
+      const ONE_SAME_SIZE_STAY = {
+        data: [{ id: 'b-other', pet_id: 'pet-2', created_at: '' }],
+        error: null,
+      };
+
+      it('refuses a customer once the remaining open cages are taken', async () => {
+        queueFromResults(
+          ONE_SAME_SIZE_STAY, // overlapping bookings
+          { data: null, error: null, count: 1 } as QueryResult, // closed cages
+          { data: [{ id: 'pet-2' }], error: null } // same-size pets
+        );
+
+        const result = await checkCapacity({
+          ...WINDOW,
+          serviceCategory: 'Hotel',
+          petWeightClass: 'S',
+          excludeClosedCages: true,
+        });
+
+        expect(result.available).toBe(false);
+      });
+
+      it('ignores closures for a staff booking (no closed-cage query at all)', async () => {
+        queueFromResults(ONE_SAME_SIZE_STAY, {
+          data: [{ id: 'pet-2' }],
+          error: null,
+        });
+
+        const result = await checkCapacity({
+          ...WINDOW,
+          serviceCategory: 'Hotel',
+          petWeightClass: 'S',
+        });
+
+        expect(result.available).toBe(true);
+        expect(supabase.from).toHaveBeenCalledTimes(2);
+      });
+    });
+
     it('#78 (Sprint 4, M05): with no env override, capacity is the real count of cages of that size at the branch', async () => {
       queueFromResults(
         {

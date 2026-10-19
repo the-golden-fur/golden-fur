@@ -116,6 +116,35 @@ export async function getHotelTotalCageCapacity(
   return capacities.reduce((sum, count) => sum + count, 0);
 }
 
+/**
+ * Custom change (front-desk cage override, 20261019273): how many of the
+ * branch's cages (of `size`, or of any size when omitted - an unassessed pet)
+ * a staff member has closed past `scheduledStart`, i.e. closures that
+ * overlap a stay starting then. Subtracted from Hotel capacity for customer
+ * bookings only (CapacityCheckParams.excludeClosedCages) - staff bookings
+ * may still use a closed cage.
+ */
+export async function countClosedCages(
+  branchId: string,
+  size: WeightClass | undefined,
+  scheduledStart: string
+): Promise<number> {
+  let query = supabase
+    .from('cages')
+    .select('id', { count: 'exact', head: true })
+    .eq('branch_id', branchId)
+    .is('archived_at', null)
+    .gt('closed_until', scheduledStart);
+
+  if (size) query = query.eq('size', size);
+
+  const { count, error } = await query;
+
+  if (error) throwWithStatus(400, error.message);
+
+  return count ?? 0;
+}
+
 export function getDaycareSessionCapacity(branchId: string): number {
   const raw = process.env.DAYCARE_SESSION_CAPACITY;
 
@@ -146,6 +175,9 @@ export interface CapacityCheckParams {
   staffId?: string;
   /** #54 reschedule: exclude the booking being moved from overlap counts. */
   excludeBookingId?: string;
+  /** Hotel only (front-desk cage override): a customer's booking - cages
+   * staff have closed over the stay's start don't count toward capacity. */
+  excludeClosedCages?: boolean;
 }
 
 export interface CapacityCheckResult {
@@ -271,8 +303,17 @@ export async function checkCapacity(
     // cage free at all - every overlapping stay, of any size, against every
     // cage of any size. The size is settled when the pet is assessed on
     // arrival (assessmentReprice.service.ts re-runs this check with it).
+    const closedCages = params.excludeClosedCages
+      ? await countClosedCages(
+          params.branchId,
+          params.petWeightClass,
+          params.scheduledStart
+        )
+      : 0;
+
     if (!params.petWeightClass) {
-      const totalCages = await getHotelTotalCageCapacity(params.branchId);
+      const totalCages =
+        (await getHotelTotalCageCapacity(params.branchId)) - closedCages;
 
       return overlapping.length < totalCages
         ? { available: true }
@@ -286,10 +327,9 @@ export async function checkCapacity(
       overlapping,
       params.petWeightClass
     );
-    const capacity = await getHotelCageCapacity(
-      params.branchId,
-      params.petWeightClass
-    );
+    const capacity =
+      (await getHotelCageCapacity(params.branchId, params.petWeightClass)) -
+      closedCages;
 
     return sameSize.length < capacity
       ? { available: true }

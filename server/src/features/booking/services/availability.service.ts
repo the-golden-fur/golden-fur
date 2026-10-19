@@ -3,6 +3,7 @@ import type { AvailableStaff, ServiceCategory } from '../booking.types.ts';
 import {
   filterSameSizeRows,
   getDaycareSessionCapacity,
+  countClosedCages,
   getHotelCageCapacity,
   getHotelTotalCageCapacity,
   listOverlappingActiveBookings,
@@ -72,6 +73,9 @@ export interface GetDaySlotsParams {
   petWeightClass?: WeightClass;
   /** Which notice-period floor to apply. Omitted = 'new_booking'. */
   intent?: BookingIntent;
+  /** Front-desk cage override: a customer is browsing - Hotel slots leave
+   * out cages staff have temporarily closed (mirrors checkCapacity). */
+  excludeClosedCages?: boolean;
 }
 
 type WeeklyHours = Record<string, { open: string; close: string } | undefined>;
@@ -373,6 +377,7 @@ export async function getDaySlots({
   slotDurationMinutes,
   petWeightClass,
   intent = 'new_booking',
+  excludeClosedCages = false,
 }: GetDaySlotsParams): Promise<SlotAvailability[]> {
   const { data: branch, error: branchError } = await supabase
     .from('branches')
@@ -593,9 +598,17 @@ export async function getDaySlots({
         const sameSize = petWeightClass
           ? await filterSameSizeRows(overlapping, petWeightClass)
           : overlapping;
-        const capacity = petWeightClass
-          ? await getHotelCageCapacity(branchId, petWeightClass)
-          : await getHotelTotalCageCapacity(branchId);
+        const closedCages = excludeClosedCages
+          ? await countClosedCages(
+              branchId,
+              petWeightClass ?? undefined,
+              start.toISOString()
+            )
+          : 0;
+        const capacity =
+          (petWeightClass
+            ? await getHotelCageCapacity(branchId, petWeightClass)
+            : await getHotelTotalCageCapacity(branchId)) - closedCages;
 
         return {
           start: start.toISOString(),

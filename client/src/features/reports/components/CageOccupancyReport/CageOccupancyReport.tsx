@@ -6,10 +6,18 @@ import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import {
   checkOutHotelStay,
+  closeCageTemporarily,
   getCageGrid,
   getCageOccupants,
   getHotelCheckoutPreview,
+  reopenCage,
 } from '../../../hotel/api/hotel.api';
+import { CageCloseDialog } from '../../../hotel/components/CageStatusGrid/CageCloseDialog';
+import {
+  OVERRIDE_ROLES,
+  formatClosedUntil,
+  isClosedToCustomers,
+} from '../../../hotel/components/CageStatusGrid/cageClosure';
 import { HotelBillBreakdown } from '../../../hotel/components/HotelBillBreakdown/HotelBillBreakdown';
 import {
   checkOutDaycareSession,
@@ -184,6 +192,12 @@ export function CageOccupancyReport() {
   // Bumped after a check-out so the summary, the cage list and the
   // occupants all reload - the freed cage then reads Available everywhere.
   const [refreshKey, setRefreshKey] = useState(0);
+  // Front-desk cage override: the cage the close dialog is open for, any
+  // reopen error, and when the cage list was last fetched (closures are
+  // judged against that, keeping render pure).
+  const [closingCage, setClosingCage] = useState<Cage | null>(null);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+  const [cagesLoadedAt, setCagesLoadedAt] = useState(0);
   const [statusFilter, setStatusFilter] = useState<CageStatus | 'All'>('All');
   const [sizeFilter, setSizeFilter] = useState<CageSize | 'All'>('All');
 
@@ -267,6 +281,7 @@ export function CageOccupancyReport() {
 
       setCagesError(null);
       setCages(SIZE_ORDER.flatMap((size) => result.data![size]));
+      setCagesLoadedAt(Date.now());
     });
 
     void getCageOccupants(accessToken, cageBranch).then((result) => {
@@ -396,6 +411,36 @@ export function CageOccupancyReport() {
     setRefreshKey((key) => key + 1);
   }
 
+  /** Front-desk cage override: close the dialog's cage to customers. Returns
+   * an error message for the dialog to show, or null on success. */
+  async function closeCage(minutes: number): Promise<string | null> {
+    if (!accessToken || !closingCage) return null;
+
+    const result = await closeCageTemporarily(
+      closingCage.id,
+      minutes,
+      accessToken
+    );
+
+    if (!result.data) return result.error ?? 'Could not close the cage.';
+
+    setRefreshKey((key) => key + 1);
+    return null;
+  }
+
+  async function reopen(cage: Cage) {
+    if (!accessToken) return;
+
+    const result = await reopenCage(cage.id, accessToken);
+
+    if (result.data) {
+      setOverrideError(null);
+      setRefreshKey((key) => key + 1);
+    } else {
+      setOverrideError(result.error ?? `Could not reopen ${cage.cage_label}.`);
+    }
+  }
+
   const cageComparators = useMemo(
     () => buildCageComparators(occupantByCageId),
     [occupantByCageId]
@@ -455,6 +500,17 @@ export function CageOccupancyReport() {
   // any other), so the popup only offers it for the viewer's own branch.
   const canCheckOutDetailsCage =
     detailsCage !== null && detailsCage.branch_id === viewerBranchId;
+  // Same own-branch rule for the front-desk override (the server closes
+  // cages at the viewer's branch), and only an Available cage can be closed.
+  const canOverrideDetailsCage =
+    canCheckOutDetailsCage &&
+    viewerRole !== null &&
+    OVERRIDE_ROLES.includes(viewerRole) &&
+    detailsCage?.status === 'Available';
+  const detailsClosedUntil =
+    detailsCage?.closed_until && isClosedToCustomers(detailsCage, cagesLoadedAt)
+      ? detailsCage.closed_until
+      : null;
 
   function renderCageCard(cage: Cage) {
     // Only an Occupied cage has someone in it - a stale occupant entry for a
@@ -480,6 +536,11 @@ export function CageOccupancyReport() {
         <span className={`${styles.badge} ${STATUS_TOKEN[cage.status]}`}>
           {cage.status}
         </span>
+        {cage.closed_until && isClosedToCustomers(cage, cagesLoadedAt) ? (
+          <span className={`${styles.badge} ${styles.closedBadge}`}>
+            Closed until {formatClosedUntil(cage.closed_until, cagesLoadedAt)}
+          </span>
+        ) : null}
         {occupant ? (
           <span className={styles.occupant}>
             <span className={styles.occupantName}>
@@ -685,7 +746,50 @@ export function CageOccupancyReport() {
                 <dt>Suitable for</dt>
                 <dd>{detailsCage.pet_types.join(', ') || 'Not set'}</dd>
               </div>
+              {detailsClosedUntil ? (
+                <div className={styles.detailsRow}>
+                  <dt>Customers</dt>
+                  <dd>
+                    Closed until{' '}
+                    {formatClosedUntil(detailsClosedUntil, cagesLoadedAt)}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
+
+            {canOverrideDetailsCage ? (
+              <div className={styles.detailsActions}>
+                <button
+                  type="button"
+                  className={styles.checkoutButton}
+                  onClick={() => {
+                    setOverrideError(null);
+                    setClosingCage(detailsCage);
+                    // One dialog at a time - the close dialog takes over.
+                    setDetailsCageId(null);
+                  }}
+                >
+                  {detailsClosedUntil
+                    ? 'Change close time'
+                    : 'Close to customers'}
+                </button>
+                {detailsClosedUntil ? (
+                  <button
+                    type="button"
+                    className={styles.checkoutButton}
+                    onClick={() => void reopen(detailsCage)}
+                  >
+                    Reopen now
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {overrideError ? (
+              <p className={styles.errorBanner} role="alert">
+                {overrideError}
+              </p>
+            ) : null}
 
             {detailsOccupant ? (
               <>
@@ -791,6 +895,13 @@ export function CageOccupancyReport() {
           </div>
         ) : null}
       </Modal>
+
+      <CageCloseDialog
+        key={closingCage?.id ?? 'closed'}
+        cage={closingCage}
+        onClose={() => setClosingCage(null)}
+        onConfirm={closeCage}
+      />
 
       <ConfirmDialog
         isOpen={checkoutTarget !== null}

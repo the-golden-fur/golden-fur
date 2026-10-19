@@ -1,5 +1,6 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
+import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
 import {
   completeBooking,
   createBooking,
@@ -263,6 +264,7 @@ export async function availabilityController(
         slotDurationMinutes: parsed.data.slot_duration_minutes,
         petWeightClass: parsed.data.pet_weight_class,
         intent,
+        excludeClosedCages: !(await getStaffRoleOrNull(requesterId)),
       }),
       resolveOperatingWindow({
         branchId: parsed.data.branch_id,
@@ -401,7 +403,9 @@ export async function cagePickerOptionsController(
     const result = await getCagePickerOptions(
       parsed.data.branch_id,
       parsed.data.service_category,
-      parsed.data.pet_id
+      parsed.data.pet_id,
+      // A customer never sees cages front desk has temporarily closed.
+      !(await getStaffRoleOrNull(requesterId))
     );
 
     return res.status(200).json(result);
@@ -435,7 +439,8 @@ export async function cageAssignmentStatusController(
   try {
     const result = await getCageAssignmentStatus(
       parsed.data.pet_id,
-      parsed.data.branch_id
+      parsed.data.branch_id,
+      !(await getStaffRoleOrNull(requesterId))
     );
 
     return res.status(200).json(result);

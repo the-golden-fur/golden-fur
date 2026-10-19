@@ -287,7 +287,8 @@ export async function rescheduleBooking({
               input.cage_preference.cage_id!,
               targetBranchId,
               pet.pet_type as string,
-              isStaff ? undefined : ((pet.weight_class as string) ?? undefined)
+              isStaff ? undefined : ((pet.weight_class as string) ?? undefined),
+              !isStaff
             )
           : null;
     }

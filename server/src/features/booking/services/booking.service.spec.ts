@@ -2738,6 +2738,7 @@ describe('booking.service (#51)', () => {
         { data: PET, error: null }, // pet ownership
         { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [], error: null }, // Hotel overlap - empty (filterSameSizeRows then short-circuits, no query)
+        { count: 0, error: null }, // countClosedCages - customer booking, no front-desk closures
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
@@ -2777,6 +2778,7 @@ describe('booking.service (#51)', () => {
         { data: PET, error: null },
         { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [], error: null },
+        { count: 0, error: null }, // countClosedCages
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: [{ id: 'booking-1' }], error: null },

@@ -49,6 +49,11 @@ export interface Cage {
   pet_types: string[];
   /** Set when archived from Settings > Config > Archive (20260928218). */
   archived_at?: string | null;
+  /** Custom change (front-desk cage override, 20261019273): while in the
+   * future, the cage is closed to customers (staff can still use it). Null
+   * or already past = open. */
+  closed_until?: string | null;
+  closed_by_staff_id?: string | null;
   created_at: string;
   updated_at: string;
 }

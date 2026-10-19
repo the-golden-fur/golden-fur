@@ -163,6 +163,13 @@ function renderPage() {
   );
 }
 
+/** Booking rows only - skips QueueFilterBar's per-preset counts list. */
+function bookingRows() {
+  return screen
+    .getAllByRole('listitem')
+    .filter((item) => !item.closest('[aria-label="Bookings by date range"]'));
+}
+
 describe('ReceptionistBookingsQueuePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -844,12 +851,10 @@ describe('ReceptionistBookingsQueuePage', () => {
 
     renderPage();
 
-    await waitFor(() =>
-      expect(screen.getAllByRole('listitem')).toHaveLength(2)
-    );
+    await waitFor(() => expect(bookingRows()).toHaveLength(2));
 
     // Latest service on top by default.
-    let rows = screen.getAllByRole('listitem');
+    let rows = bookingRows();
     expect(rows[0].textContent).toContain('Late Riser');
     expect(rows[1].textContent).toContain('Early Bird');
 
@@ -858,7 +863,7 @@ describe('ReceptionistBookingsQueuePage', () => {
       'soonest'
     );
 
-    rows = screen.getAllByRole('listitem');
+    rows = bookingRows();
     expect(rows[0].textContent).toContain('Early Bird');
     expect(rows[1].textContent).toContain('Late Riser');
   });
@@ -1352,9 +1357,7 @@ describe('ReceptionistBookingsQueuePage', () => {
 
       renderPage();
 
-      await waitFor(() =>
-        expect(screen.getAllByRole('listitem')).toHaveLength(2)
-      );
+      await waitFor(() => expect(bookingRows()).toHaveLength(2));
 
       await user.selectOptions(screen.getByLabelText('Status'), 'Unconfirmed');
 
@@ -1364,12 +1367,8 @@ describe('ReceptionistBookingsQueuePage', () => {
           expect.objectContaining({ status: 'Pending' })
         )
       );
-      await waitFor(() =>
-        expect(screen.getAllByRole('listitem')).toHaveLength(1)
-      );
-      expect(screen.getAllByRole('listitem')[0].textContent).toContain(
-        'Unconfirmed'
-      );
+      await waitFor(() => expect(bookingRows()).toHaveLength(1));
+      expect(bookingRows()[0].textContent).toContain('Unconfirmed');
     });
   });
 

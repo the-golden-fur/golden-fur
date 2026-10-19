@@ -101,6 +101,16 @@ export const cageStatusUpdateValidator = z
 
 export type CageStatusUpdateInput = z.infer<typeof cageStatusUpdateValidator>;
 
+/** Custom change (front-desk cage override): how long to close a cage to
+ * customers - 5 minutes up to a full day. */
+export const cageOverrideCloseValidator = z
+  .object({
+    minutes: z.number().int().min(5).max(1440),
+  })
+  .strict();
+
+export type CageOverrideCloseInput = z.infer<typeof cageOverrideCloseValidator>;
+
 /** Custom change (Cage CRUD, Settings > Config). pet_types is required and
  * non-empty (cage pet-type support, 20260912193) - a cage must support at
  * least one pet type. Not DB-validated against live pet_types.key values

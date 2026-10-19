@@ -16,6 +16,8 @@ import {
   listArchivedCages,
   restoreCage,
   setCageMaintenanceStatus,
+  closeCageTemporarily,
+  reopenCage,
   updateCage,
 } from './services/cageStatus.service.ts';
 import {
@@ -30,6 +32,7 @@ import { listActivityLog } from './services/activityLog.service.ts';
 import {
   activityLogQueryValidator,
   cageStatusUpdateValidator,
+  cageOverrideCloseValidator,
   careLogEntriesQueryValidator,
   checkInValidator,
   createCageValidator,
@@ -376,6 +379,61 @@ export async function updateCageStatusController(
       branchId,
       parsed.data.status
     );
+
+    return res.status(200).json({ cage });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Custom change (front-desk cage override): close a cage to customers for
+ * a staff-chosen number of minutes. */
+export async function closeCageOverrideController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+  const staffId = req.user?.sub;
+
+  if (!branchId || !staffId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = cageOverrideCloseValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const cage = await closeCageTemporarily({
+      cageId: paramId(req, 'id'),
+      branchId,
+      minutes: parsed.data.minutes,
+      staffId,
+    });
+
+    return res.status(200).json({ cage });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Custom change (front-desk cage override): end a closure early. */
+export async function reopenCageOverrideController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const cage = await reopenCage(paramId(req, 'id'), branchId);
 
     return res.status(200).json({ cage });
   } catch (error) {

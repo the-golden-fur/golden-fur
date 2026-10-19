@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
 import { CalendarDays, ListFilter } from 'lucide-react';
 import {
+  COUNTED_PRESETS,
   DATE_RANGE_PRESET_OPTIONS,
+  dateRangePresetLabel,
+  type CountedPreset,
   type DateRangePreset,
 } from './dateRangePreset';
 import styles from './QueueFilterBar.module.css';
@@ -24,6 +27,10 @@ export interface QueueFilterBarProps {
   /** Page-specific extra filters (e.g. service type, branch) rendered
    * alongside the date/status fields, styled the same way. */
   children?: ReactNode;
+  /** Optional booking counts per preset, shown as a small summary row under
+   * the toolbar so staff can see upcoming load without switching the Date
+   * filter. Omitted/null hides the row. */
+  presetCounts?: Record<CountedPreset, number> | null;
 }
 
 /**
@@ -42,60 +49,81 @@ export function QueueFilterBar({
   statusOptions,
   statusLabel = 'Status',
   children,
+  presetCounts,
 }: QueueFilterBarProps) {
   return (
-    <div className={styles.toolbar}>
-      <label className={styles.filterField}>
-        <span className={styles.filterLabel}>
-          <CalendarDays size={12} aria-hidden="true" />
-          Date
-        </span>
-        <select
-          className={styles.filterSelect}
-          value={dateRangePreset}
-          onChange={(event) =>
-            onDateRangePresetChange(event.target.value as DateRangePreset)
-          }
-        >
-          {DATE_RANGE_PRESET_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {dateRangePreset === 'custom' ? (
+    <>
+      <div className={styles.toolbar}>
         <label className={styles.filterField}>
-          <span className={styles.filterLabel}>Custom date</span>
-          <input
+          <span className={styles.filterLabel}>
+            <CalendarDays size={12} aria-hidden="true" />
+            Date
+          </span>
+          <select
             className={styles.filterSelect}
-            type="date"
-            value={customDate}
-            onChange={(event) => onCustomDateChange(event.target.value)}
-          />
+            value={dateRangePreset}
+            onChange={(event) =>
+              onDateRangePresetChange(event.target.value as DateRangePreset)
+            }
+          >
+            {DATE_RANGE_PRESET_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </label>
-      ) : null}
 
-      <label className={styles.filterField}>
-        <span className={styles.filterLabel}>
-          <ListFilter size={12} aria-hidden="true" />
-          {statusLabel}
-        </span>
-        <select
-          className={styles.filterSelect}
-          value={statusValue}
-          onChange={(event) => onStatusChange(event.target.value)}
-        >
-          {statusOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
+        {dateRangePreset === 'custom' ? (
+          <label className={styles.filterField}>
+            <span className={styles.filterLabel}>Custom date</span>
+            <input
+              className={styles.filterSelect}
+              type="date"
+              value={customDate}
+              onChange={(event) => onCustomDateChange(event.target.value)}
+            />
+          </label>
+        ) : null}
+
+        <label className={styles.filterField}>
+          <span className={styles.filterLabel}>
+            <ListFilter size={12} aria-hidden="true" />
+            {statusLabel}
+          </span>
+          <select
+            className={styles.filterSelect}
+            value={statusValue}
+            onChange={(event) => onStatusChange(event.target.value)}
+          >
+            {statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {children}
+      </div>
+
+      {presetCounts ? (
+        <ul className={styles.presetCounts} aria-label="Bookings by date range">
+          {COUNTED_PRESETS.map((preset) => (
+            <li
+              key={preset}
+              className={
+                preset === dateRangePreset
+                  ? `${styles.presetCount} ${styles.presetCountActive}`
+                  : styles.presetCount
+              }
+            >
+              <span className={styles.countBadge}>{presetCounts[preset]}</span>
+              {dateRangePresetLabel(preset)}
+            </li>
           ))}
-        </select>
-      </label>
-
-      {children}
-    </div>
+        </ul>
+      ) : null}
+    </>
   );
 }

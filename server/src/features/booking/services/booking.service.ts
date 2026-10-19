@@ -1348,7 +1348,8 @@ export async function createBooking({
           input.cage_preference.cage_id!,
           input.branch_id,
           (pet as PetRow).pet_type,
-          staffRole ? undefined : ((pet as PetRow).weight_class ?? undefined)
+          staffRole ? undefined : ((pet as PetRow).weight_class ?? undefined),
+          !staffRole
         )
       : null;
 
@@ -1374,6 +1375,9 @@ export async function createBooking({
       // Undefined for a pet not assessed yet - checkCapacity then asks
       // whether the branch has any cage free at all (no size to reserve).
       petWeightClass: (pet as PetRow).weight_class ?? undefined,
+      // Front-desk cage override: a temporarily closed cage blocks customers
+      // only, never a staff-created booking.
+      excludeClosedCages: !staffRole,
     });
 
     if (!capacity.available) {

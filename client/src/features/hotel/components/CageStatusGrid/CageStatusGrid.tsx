@@ -1,6 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getCageGrid, setCageMaintenanceStatus } from '../../api/hotel.api';
-import { MoreOptionsMenu } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import {
+  closeCageTemporarily,
+  getCageGrid,
+  reopenCage,
+  setCageMaintenanceStatus,
+} from '../../api/hotel.api';
+import {
+  MoreOptionsMenu,
+  type MoreOptionsMenuItem,
+} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { CageCloseDialog } from './CageCloseDialog';
+import {
+  OVERRIDE_ROLES,
+  formatClosedUntil,
+  isClosedToCustomers,
+} from './cageClosure';
 import type { Cage, CageSize, CageStatus } from '../../hotel.types';
 import styles from './CageStatusGrid.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
@@ -43,6 +57,11 @@ interface CageStatusGridProps {
  * Issue #79: cage grid grouped by size category (S/M/L/XL) with a status-
  * colour badge per cage; Admin sees an Under Maintenance toggle on each
  * card, non-Admin roles do not (AC-5).
+ *
+ * Custom change (front-desk cage override): front desk roles also get a
+ * "..." menu on Available cages to close one to customers for a chosen time
+ * (or reopen it early). A closed cage stays selectable here - the closure
+ * only blocks customers.
  */
 export function CageStatusGrid({
   accessToken,
@@ -58,12 +77,19 @@ export function CageStatusGrid({
   const [error, setError] = useState<string | null>(null);
 
   const isAdmin = viewerRole === 'Admin' || viewerRole === 'Superadmin';
+  const canOverride = OVERRIDE_ROLES.includes(viewerRole);
+  const [closingCage, setClosingCage] = useState<Cage | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // When the grid was last fetched - closures are judged against this rather
+  // than Date.now() during render, which must stay pure.
+  const [loadedAt, setLoadedAt] = useState(0);
 
   const load = useCallback(() => {
     void getCageGrid(accessToken).then((result) => {
       setIsLoading(false);
       if (result.data) {
         setGrid(result.data);
+        setLoadedAt(Date.now());
       } else {
         setError(result.error);
       }
@@ -87,6 +113,65 @@ export function CageStatusGrid({
     if (result.data) {
       load();
     }
+  }
+
+  async function closeCage(minutes: number): Promise<string | null> {
+    if (!closingCage) return null;
+
+    const result = await closeCageTemporarily(
+      closingCage.id,
+      minutes,
+      accessToken
+    );
+
+    if (!result.data) return result.error ?? 'Could not close the cage.';
+
+    load();
+    return null;
+  }
+
+  async function reopen(cage: Cage) {
+    const result = await reopenCage(cage.id, accessToken);
+
+    if (result.data) {
+      setActionError(null);
+      load();
+    } else {
+      setActionError(result.error ?? `Could not reopen ${cage.cage_label}.`);
+    }
+  }
+
+  function menuItemsFor(cage: Cage): MoreOptionsMenuItem[] {
+    const items: MoreOptionsMenuItem[] = [];
+
+    if (canOverride && cage.status === 'Available') {
+      if (isClosedToCustomers(cage, loadedAt)) {
+        items.push(
+          { label: 'Change close time', onSelect: () => setClosingCage(cage) },
+          { label: 'Reopen now', onSelect: () => void reopen(cage) }
+        );
+      } else {
+        items.push({
+          label: 'Close to customers',
+          onSelect: () => setClosingCage(cage),
+        });
+      }
+    }
+
+    if (
+      isAdmin &&
+      (cage.status === 'Available' || cage.status === 'Under Maintenance')
+    ) {
+      items.push({
+        label:
+          cage.status === 'Under Maintenance'
+            ? 'Mark Available'
+            : 'Mark Under Maintenance',
+        onSelect: () => void toggleMaintenance(cage),
+      });
+    }
+
+    return items;
   }
 
   if (isLoading) {
@@ -122,6 +207,11 @@ export function CageStatusGrid({
           )}
         </p>
       ) : null}
+      {actionError ? (
+        <p className={styles.errorBanner} role="alert">
+          {actionError}
+        </p>
+      ) : null}
       {SIZE_ORDER.map((size) => (
         <div key={size} className={styles.sizeGroup}>
           <h3 className={styles.sizeTitle}>Size {size}</h3>
@@ -154,32 +244,40 @@ export function CageStatusGrid({
                     {sizeWarning?.cageId === cage.id ? (
                       <CageSizeWarningBadge fit={sizeWarning.fit} />
                     ) : null}
-                    {isAdmin &&
-                    (cage.status === 'Available' ||
-                      cage.status === 'Under Maintenance') ? (
+                    {menuItemsFor(cage).length > 0 ? (
                       <MoreOptionsMenu
                         label={`More options for ${cage.cage_label}`}
-                        items={[
-                          {
-                            label:
-                              cage.status === 'Under Maintenance'
-                                ? 'Mark Available'
-                                : 'Mark Under Maintenance',
-                            onSelect: () => void toggleMaintenance(cage),
-                          },
-                        ]}
+                        items={menuItemsFor(cage)}
                       />
                     ) : null}
                   </div>
-                  <span className={styles[STATUS_CLASSNAME[cage.status]]}>
-                    {cage.status}
-                  </span>
+                  <div className={styles.cageStatusRow}>
+                    <span className={styles[STATUS_CLASSNAME[cage.status]]}>
+                      {cage.status}
+                    </span>
+                    {cage.closed_until &&
+                    isClosedToCustomers(cage, loadedAt) ? (
+                      <span
+                        className={styles.closedBadge}
+                        title="Closed to customers - staff can still use it"
+                      >
+                        Closed until{' '}
+                        {formatClosedUntil(cage.closed_until, loadedAt)}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               ))
             )}
           </div>
         </div>
       ))}
+      <CageCloseDialog
+        key={closingCage?.id ?? 'closed'}
+        cage={closingCage}
+        onClose={() => setClosingCage(null)}
+        onConfirm={closeCage}
+      />
     </div>
   );
 }
