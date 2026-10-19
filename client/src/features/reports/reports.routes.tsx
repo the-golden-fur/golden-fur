@@ -3,6 +3,7 @@ import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
 import { CustomerAuthGuard } from '../auth/customer/guards/CustomerAuthGuard/CustomerAuthGuard';
 import { DailySalesReportPage } from './pages/DailySalesReportPage/DailySalesReportPage';
+import { BookingActivityReportPage } from './pages/BookingActivityReportPage/BookingActivityReportPage';
 import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage/AnalyticsDashboardPage';
 import { BranchComparisonPage } from './pages/BranchComparisonPage/BranchComparisonPage';
 import { GoalsPage } from './pages/GoalsPage/GoalsPage';
@@ -28,6 +29,10 @@ export const reportsRoutes = (
   <Fragment>
     <Route element={<StaffAuthGuard />}>
       <Route path="/staff/reports/dsr" element={<DailySalesReportPage />} />
+      <Route
+        path="/staff/reports/booking-activity"
+        element={<BookingActivityReportPage />}
+      />
       <Route
         path="/staff/reports/analytics"
         element={<AnalyticsDashboardPage />}

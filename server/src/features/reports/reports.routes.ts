@@ -5,6 +5,7 @@ import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.mi
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   analyticsSummaryController,
+  bookingActivityReportController,
   branchComparisonController,
   cageOccupancyReportController,
   customerTransactionHistoryController,
@@ -72,6 +73,11 @@ const analyticsRead = [
 ];
 
 router.get('/reports/dsr', reportsRead, dailySalesReportController);
+router.get(
+  '/reports/booking-activity',
+  reportsRead,
+  bookingActivityReportController
+);
 router.get(
   '/reports/cage-occupancy',
   cageOccupancyRead,

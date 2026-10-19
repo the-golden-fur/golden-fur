@@ -1,3 +1,5 @@
+import type { BookingStatus, ServiceCategory } from '../booking/booking.types';
+
 /** Client mirror of the server's reports.types.ts shapes. */
 export interface DailySalesReportBreakdownRow {
   service_category: string;
@@ -30,6 +32,39 @@ export interface DailySalesReport {
   credit_usage: DailySalesReportCreditUsage;
   misc_sales: DailySalesReportMiscSaleRow[];
   misc_sales_total: number;
+}
+
+/** Client mirror of the server's BookingActivityRecord/Report
+ * (GET /reports/booking-activity). */
+export interface BookingActivityRecord {
+  id: string;
+  branch_id: string;
+  customer_name: string | null;
+  pet_name: string | null;
+  service_category: ServiceCategory;
+  scheduled_start: string;
+  scheduled_end: string;
+  status: BookingStatus;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface BookingActivityTotals {
+  total_bookings: number;
+  pending: number;
+  late: number;
+  checked_in: number;
+  checked_out: number;
+  no_show: number;
+  cancelled: number;
+}
+
+export interface BookingActivityReport {
+  branch_id: string | null;
+  date_from: string;
+  date_to: string;
+  totals: BookingActivityTotals;
+  records: BookingActivityRecord[];
 }
 
 export interface CageOccupancyRow {

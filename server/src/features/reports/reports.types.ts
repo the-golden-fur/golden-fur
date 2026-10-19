@@ -1,4 +1,8 @@
 import type { Transaction } from '../billing/billing.types.ts';
+import type {
+  BookingStatus,
+  ServiceCategory,
+} from '../booking/booking.types.ts';
 
 /** Admin/Supervisor see their own branch only; Superadmin gets the
  * toggle/combined option - enforced at the application layer in each
@@ -69,6 +73,43 @@ export interface DailySalesReport {
   credit_usage: DailySalesReportCreditUsage;
   misc_sales: DailySalesReportMiscSaleRow[];
   misc_sales_total: number;
+}
+
+/** Custom change (Booking Activity Report): bookings, check-ins, check-outs,
+ * no-shows and lates for a date range - reuses REPORTS_READ_ROLES rather
+ * than a dedicated role list since the viewer set is identical to the DSR's. */
+export interface BookingActivityRecord {
+  id: string;
+  branch_id: string;
+  customer_name: string | null;
+  pet_name: string | null;
+  service_category: ServiceCategory;
+  scheduled_start: string;
+  scheduled_end: string;
+  status: BookingStatus;
+  /** Set once the booking is checked in (status moves to 'In Progress') -
+   * null means it never has been, regardless of its current status. */
+  started_at: string | null;
+  /** Set once the booking is checked out (status 'Completed'). */
+  completed_at: string | null;
+}
+
+export interface BookingActivityTotals {
+  total_bookings: number;
+  pending: number;
+  late: number;
+  checked_in: number;
+  checked_out: number;
+  no_show: number;
+  cancelled: number;
+}
+
+export interface BookingActivityReport {
+  branch_id: string | null;
+  date_from: string;
+  date_to: string;
+  totals: BookingActivityTotals;
+  records: BookingActivityRecord[];
 }
 
 export interface CageOccupancyRow {

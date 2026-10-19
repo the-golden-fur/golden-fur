@@ -1,5 +1,6 @@
 import type {
   AnalyticsSummary,
+  BookingActivityReport,
   BranchComparisonRow,
   CageOccupancyRow,
   DailySalesReport,
@@ -56,6 +57,31 @@ export async function getDailySalesReport(
   }
 
   const result = await parseBody<{ report: DailySalesReport }>(response);
+  return { data: result.data?.report ?? null, error: result.error };
+}
+
+export async function getBookingActivityReport(
+  dateFrom: string,
+  dateTo: string,
+  branchId: string | null,
+  accessToken: string
+): Promise<ReportsApiResult<BookingActivityReport>> {
+  const params = new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+  });
+  if (branchId) params.set('branch_id', branchId);
+
+  const response = await fetch(
+    `${API_BASE_URL}/reports/booking-activity?${params.toString()}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ report: BookingActivityReport }>(response);
   return { data: result.data?.report ?? null, error: result.error };
 }
 

@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { getDailySalesReport } from './services/dailySalesReport.service.ts';
+import { getBookingActivityReport } from './services/bookingActivity.service.ts';
 import { getCageOccupancyReport } from './services/cageOccupancy.service.ts';
 import { listTransactionHistory } from './services/transactionHistory.service.ts';
 import { getAnalyticsSummary } from './services/analytics.service.ts';
@@ -58,6 +59,43 @@ export async function dailySalesReportController(
       requesterBranchId,
       branchId: queryParam(req, 'branch_id') ?? null,
       reportDate,
+    });
+
+    return res.status(200).json({ report });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function bookingActivityReportController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterId || !requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const dateFrom = queryParam(req, 'date_from');
+  const dateTo = queryParam(req, 'date_to');
+
+  if (!dateFrom || !dateTo) {
+    return res
+      .status(400)
+      .json({ error: 'date_from and date_to are required' });
+  }
+
+  try {
+    const report = await getBookingActivityReport({
+      requesterId,
+      requesterRole,
+      requesterBranchId,
+      branchId: queryParam(req, 'branch_id') ?? null,
+      dateFrom,
+      dateTo,
     });
 
     return res.status(200).json({ report });
