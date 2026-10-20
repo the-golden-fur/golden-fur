@@ -1,4 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { sendStayCheckedOutNotification } from './careLogNotifications.service.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
 import { resolveQuantity } from '../../booking/services/extendStay.service.ts';
 import { resolveBookingLongStayTerms } from '../../booking/services/longStayTerms.service.ts';
@@ -502,6 +503,15 @@ export async function checkOutHotelStay({
       extensionFee != null
         ? `Checked out of a Hotel stay (₱${extensionFee} extension fee)`
         : 'Checked out of a Hotel stay',
+  });
+
+  // Before the billing branches below, so every checkout path sends it once.
+  await sendStayCheckedOutNotification({
+    stayType: 'Hotel',
+    petId: stay.pet_id,
+    branchId,
+    bookingId: stay.booking_id,
+    checkedOutAt: now,
   });
 
   if (payAtCheckout) {

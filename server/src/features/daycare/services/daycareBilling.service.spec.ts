@@ -6,11 +6,18 @@ import {
   previewDaycareCheckout,
 } from './daycareBilling.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { sendStayCheckedOutNotification } from '../../hotel/services/careLogNotifications.service.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
 import { postDaycareOverdueCharge } from './daycareOverdueCharge.service.ts';
 import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
 import { resolveEffectivePolicy } from '../../booking/services/staffPicker.service.ts';
 import { loadRemainingBalance } from '../../billing/services/transactionPayment.service.ts';
+
+// The checked-out notification does its own Supabase lookups - mocked so
+// they don't consume this spec's sequential supabase.from results.
+vi.mock('../../hotel/services/careLogNotifications.service.ts', () => ({
+  sendStayCheckedOutNotification: vi.fn(),
+}));
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -635,6 +642,14 @@ describe('daycareBilling.service (#65)', () => {
 
       expect(result.status).toBe('Completed');
       expect(completeBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
+      expect(sendStayCheckedOutNotification).toHaveBeenCalledTimes(1);
+      expect(sendStayCheckedOutNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stayType: 'Daycare',
+          branchId: 'branch-1',
+          bookingId: 'booking-1',
+        })
+      );
     });
 
     it('stores the overdue fee on its own for a booked session picked up late', async () => {
