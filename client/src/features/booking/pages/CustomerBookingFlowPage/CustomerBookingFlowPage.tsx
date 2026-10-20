@@ -119,6 +119,7 @@ import { getHotelNightDates, formatNightLabel } from '../../utils/hotelNights';
 import { formatDuration } from '../../../../shared/utils/formatDuration';
 import styles from './CustomerBookingFlowPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 /** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
  * no-picks-yet case, so those useMemo values don't return a fresh empty
@@ -3334,25 +3335,30 @@ export function CustomerBookingFlowPage() {
                     } ${hasConflict ? styles.readOnly : ''}`}
                     onClick={() => handlePetSelect(pet.id)}
                   >
-                    <span className={styles.optionTitle}>{pet.name}</span>
-                    <span className={styles.optionMeta}>
-                      {PET_TYPE_LABEL[pet.pet_type]}
-                      {pet.weight_class && pet.coat_type ? (
-                        <>
-                          {' '}
-                          &middot; {WEIGHT_CLASS_LABEL[pet.weight_class]} (
-                          {pet.weight_class}) &middot;{' '}
-                          {COAT_TYPE_LABEL[pet.coat_type]}
-                        </>
-                      ) : (
-                        <> &middot; Not yet assessed</>
-                      )}
-                    </span>
-                    {hasConflict ? (
-                      <span className={styles.optionMeta}>
-                        Already has an unresolved booking
+                    <span className={styles.petOption}>
+                      <PetAvatar name={pet.name} photoUrl={pet.photo_url} />
+                      <span className={styles.petOptionText}>
+                        <span className={styles.optionTitle}>{pet.name}</span>
+                        <span className={styles.optionMeta}>
+                          {PET_TYPE_LABEL[pet.pet_type]}
+                          {pet.weight_class && pet.coat_type ? (
+                            <>
+                              {' '}
+                              &middot; {WEIGHT_CLASS_LABEL[pet.weight_class]} (
+                              {pet.weight_class}) &middot;{' '}
+                              {COAT_TYPE_LABEL[pet.coat_type]}
+                            </>
+                          ) : (
+                            <> &middot; Not yet assessed</>
+                          )}
+                        </span>
+                        {hasConflict ? (
+                          <span className={styles.optionMeta}>
+                            Already has an unresolved booking
+                          </span>
+                        ) : null}
                       </span>
-                    ) : null}
+                    </span>
                   </button>
 
                   {conflict && isConflictExpanded ? (

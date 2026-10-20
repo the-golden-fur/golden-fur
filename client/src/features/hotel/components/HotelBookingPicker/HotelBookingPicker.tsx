@@ -32,6 +32,7 @@ import {
 import { listHotelStays } from '../../api/hotel.api';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import styles from './HotelBookingPicker.module.css';
 
 type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
@@ -67,6 +68,7 @@ const REFRESH_INTERVAL_MS = 15_000;
 interface EnrichedBooking {
   booking: Booking;
   petName: string;
+  petPhotoUrl: string | null;
   weightClass: string;
   ownerName: string;
   ownerContact: string;
@@ -308,6 +310,7 @@ export function HotelBookingPicker({
           return {
             booking,
             petName: pet?.name ?? 'Unknown pet',
+            petPhotoUrl: pet?.photo_url ?? null,
             weightClass: pet?.weight_class ?? '—',
             ownerName: owner?.full_name ?? 'Unknown owner',
             ownerContact: owner?.contact_number ?? owner?.account_email ?? '—',
@@ -465,6 +468,11 @@ export function HotelBookingPicker({
                     } ${!isCheckinable ? styles.disabledCard : ''}`}
                   >
                     <div className={styles.cardHeader}>
+                      <PetAvatar
+                        name={item.petName}
+                        photoUrl={item.petPhotoUrl}
+                        size="sm"
+                      />
                       <span className={styles.petName}>{item.petName}</span>
                       <span className={styles.weightBadge}>
                         {item.weightClass}

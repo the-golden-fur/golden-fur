@@ -1,4 +1,5 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { sendStayCheckedOutNotification } from '../../hotel/services/careLogNotifications.service.ts';
 import type {
   DaycareChargeBreakdown,
   DaycareCheckoutPreview,
@@ -556,6 +557,16 @@ export async function checkOutDaycareSession({
     .from('cages')
     .update({ status: 'Available', updated_at: now.toISOString() })
     .eq('id', session.cage_id);
+
+  // The stay is durably Completed here - tell the owner before the booking
+  // sync and billing below.
+  await sendStayCheckedOutNotification({
+    stayType: 'Daycare',
+    petId: session.pet_id,
+    branchId: session.branch_id,
+    bookingId: session.booking_id,
+    checkedOutAt: now,
+  });
 
   // What this checkout added to the booking's Transactions (a normal
   // booking's late extras), and what its Daycare hours were charged at

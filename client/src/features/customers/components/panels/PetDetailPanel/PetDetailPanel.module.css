@@ -1,10 +1,65 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16rem;
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.photoCard {
+  position: sticky;
+  top: var(--space-4);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3);
+}
+
 .photo {
   width: 100%;
-  max-width: 16rem;
   aspect-ratio: 1 / 1;
   object-fit: cover;
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+}
+
+.photoButton {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-button);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-3);
+}
+
+.photoButton:focus-within {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+/* Visually hidden - the label above is the visible control. */
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 48rem) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .photoCard {
+    position: static;
+    order: -1;
+  }
 }
 
 .panel {

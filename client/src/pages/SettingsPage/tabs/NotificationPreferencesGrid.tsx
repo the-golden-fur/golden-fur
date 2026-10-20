@@ -63,6 +63,7 @@ const EVENT_TYPES_BY_ROLE: Record<
     },
     { type: 'checkout_reminder', label: 'Checkout reminder' },
     { type: 'daycare_overdue', label: 'Checkout time is up' },
+    { type: 'stay_checked_out', label: 'Pet checked out' },
     { type: 'vet_charge_posted', label: 'Veterinary charges added' },
   ],
 };

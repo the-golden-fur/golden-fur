@@ -6,12 +6,19 @@ import {
   stayNights,
 } from './checkout.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { sendStayCheckedOutNotification } from './careLogNotifications.service.ts';
 import {
   postPayAtCheckoutCharge,
   quotePayAtCheckoutCharge,
 } from '../../billing/services/payAtCheckoutCharge.service.ts';
 import { postCheckoutExtras } from '../../billing/services/checkoutExtrasCharge.service.ts';
 import { loadRemainingBalance } from '../../billing/services/transactionPayment.service.ts';
+
+// The checked-out notification does its own Supabase lookups - mocked so
+// they don't consume this spec's sequential supabase.from results.
+vi.mock('./careLogNotifications.service.ts', () => ({
+  sendStayCheckedOutNotification: vi.fn(),
+}));
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -272,6 +279,15 @@ describe('checkout.service (#78)', () => {
       expect(result.extensionFee).toBeNull();
       expect(result.remainingBalance).toBe(2400);
       expect(result.payAtCheckout).toEqual({ nights: 3 });
+      // The owner is told once, even on the pay-at-checkout path.
+      expect(sendStayCheckedOutNotification).toHaveBeenCalledTimes(1);
+      expect(sendStayCheckedOutNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stayType: 'Hotel',
+          branchId: 'branch-1',
+          bookingId: 'booking-1',
+        })
+      );
     });
 
     it('bills fewer nights when the pet leaves earlier than estimated', async () => {

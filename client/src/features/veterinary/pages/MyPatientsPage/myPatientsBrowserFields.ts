@@ -10,6 +10,7 @@ export interface PatientRow {
   petId: string;
   lastVisitAt: string;
   petName: string;
+  petPhotoUrl?: string | null;
   ownerName: string;
   petType: string | null;
 }

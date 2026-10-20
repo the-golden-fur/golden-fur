@@ -60,6 +60,7 @@ import {
 } from './consultationQueueFilterFields';
 import styles from './VeterinaryConsolePage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 const ALLOWED_VIEWER_ROLES = new Set([
   'Veterinarian',
@@ -335,6 +336,7 @@ export function VeterinaryConsolePage() {
       return {
         consultation,
         petName: pet?.name ?? 'Unknown pet',
+        petPhotoUrl: pet?.photo_url ?? null,
         ownerName: owner?.full_name ?? 'Unknown owner',
         scheduledStart: booking?.scheduled_start ?? consultation.created_at,
       };
@@ -775,7 +777,14 @@ export function VeterinaryConsolePage() {
     return (
       <div className={styles.rowBody}>
         <div className={styles.rowHeader}>
-          <span className={styles.rowPetName}>{row.petName}</span>
+          <span className={styles.rowPetName}>
+            <PetAvatar
+              name={row.petName}
+              photoUrl={row.petPhotoUrl}
+              size="sm"
+            />
+            {row.petName}
+          </span>
           {rowBookingStatus ? (
             <BookingStatusBadge status={rowBookingStatus} />
           ) : null}
@@ -970,6 +979,7 @@ export function VeterinaryConsolePage() {
             key={openRow.consultation.id}
             consultation={openRow.consultation}
             petName={openRow.petName}
+            petPhotoUrl={openRow.petPhotoUrl}
             ownerName={openRow.ownerName}
             accessToken={accessToken}
             canWrite={canWrite && !isHandledByAnotherVet(openRow.consultation)}

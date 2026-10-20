@@ -1,3 +1,4 @@
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import type { BookingStatus } from '../../../booking/booking.types';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { AwaitingAssessmentBadge } from '../../../booking/components/shared/AwaitingAssessmentBadge/AwaitingAssessmentBadge';
@@ -24,6 +25,7 @@ const ADVANCE_ACTION: Partial<
 export interface AppointmentCardProps {
   session: GroomingSession;
   petName: string;
+  petPhotoUrl?: string | null;
   ownerName: string;
   breed: string | null;
   weightClass: string;
@@ -45,6 +47,7 @@ export interface AppointmentCardProps {
 export function AppointmentCard({
   session,
   petName,
+  petPhotoUrl,
   ownerName,
   breed,
   weightClass,
@@ -62,12 +65,15 @@ export function AppointmentCard({
   return (
     <li className={styles.card}>
       <div className={styles.header}>
-        <div className={styles.identity}>
-          <h3 className={styles.petName}>{petName}</h3>
-          <span className={styles.subtitle}>
-            Owner: {ownerName}
-            {breed ? ` · ${breed}` : ''}
-          </span>
+        <div className={styles.identityRow}>
+          <PetAvatar name={petName} photoUrl={petPhotoUrl} />
+          <div className={styles.identity}>
+            <h3 className={styles.petName}>{petName}</h3>
+            <span className={styles.subtitle}>
+              Owner: {ownerName}
+              {breed ? ` · ${breed}` : ''}
+            </span>
+          </div>
         </div>
         {bookingStatus ? <BookingStatusBadge status={bookingStatus} /> : null}
       </div>

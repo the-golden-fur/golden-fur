@@ -53,6 +53,7 @@ import {
 } from './myPatientsBrowserFields';
 import styles from './MyPatientsPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 /** "My Patients" is a personal roster, unlike the Consultation Queue (which
  * Admin/Supervisor/Superadmin can also view) - only the Veterinarian who
@@ -239,6 +240,7 @@ export function MyPatientsPage() {
         petId: patient.petId,
         lastVisitAt: patient.lastVisitAt,
         petName: pet?.name ?? 'Unknown pet',
+        petPhotoUrl: pet?.photo_url ?? null,
         ownerName: owner?.full_name ?? 'Unknown owner',
         petType: pet?.pet_type ?? null,
       };
@@ -340,7 +342,10 @@ export function MyPatientsPage() {
           row.petId === selectedPetId ? styles.cardActive : styles.card
         }
       >
-        <span className={styles.rowPetName}>{row.petName}</span>
+        <span className={styles.rowPetName}>
+          <PetAvatar name={row.petName} photoUrl={row.petPhotoUrl} size="sm" />
+          {row.petName}
+        </span>
         <span className={styles.rowMeta}>{row.ownerName}</span>
         <span className={styles.rowMeta}>
           Last visit: {formatDate(row.lastVisitAt)}
@@ -491,11 +496,17 @@ export function MyPatientsPage() {
                 aria-label={`${selectedRow.petName} details`}
               >
                 <div className={styles.panelHeader}>
-                  <div className={styles.header}>
-                    <h2 className={styles.petName}>{selectedRow.petName}</h2>
-                    <span className={styles.subtitle}>
-                      Owner: {selectedRow.ownerName}
-                    </span>
+                  <div className={styles.identity}>
+                    <PetAvatar
+                      name={selectedRow.petName}
+                      photoUrl={selectedRow.petPhotoUrl}
+                    />
+                    <div className={styles.header}>
+                      <h2 className={styles.petName}>{selectedRow.petName}</h2>
+                      <span className={styles.subtitle}>
+                        Owner: {selectedRow.ownerName}
+                      </span>
+                    </div>
                   </div>
                   <button
                     type="button"

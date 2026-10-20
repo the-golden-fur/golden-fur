@@ -91,6 +91,9 @@
 }
 
 .petLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--color-text-primary);
   font-weight: var(--weight-semibold);
   text-decoration: none;

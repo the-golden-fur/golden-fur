@@ -51,6 +51,7 @@ import {
   groupCagesBySize,
   type CageSortKey,
 } from './cageSort';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import styles from './CageOccupancyReport.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
@@ -507,6 +508,13 @@ export function CageOccupancyReport() {
     viewerRole !== null &&
     OVERRIDE_ROLES.includes(viewerRole) &&
     detailsCage?.status === 'Available';
+  // Occupied with no checked-in pet: a check-in that claimed the cage and
+  // then failed. Reopen frees it (the server re-checks there is no stay).
+  const canReopenStaleCage =
+    canCheckOutDetailsCage &&
+    viewerRole !== null &&
+    OVERRIDE_ROLES.includes(viewerRole) &&
+    detailsCage?.status === 'Occupied';
   const detailsClosedUntil =
     detailsCage?.closed_until && isClosedToCustomers(detailsCage, cagesLoadedAt)
       ? detailsCage.closed_until
@@ -544,6 +552,11 @@ export function CageOccupancyReport() {
         {occupant ? (
           <span className={styles.occupant}>
             <span className={styles.occupantName}>
+              <PetAvatar
+                name={occupant.pet_name ?? 'Unknown pet'}
+                photoUrl={occupant.pet_photo_url}
+                size="xs"
+              />
               {occupant.pet_name ?? 'Unknown pet'}
             </span>
             <span className={styles.cageSize}>{occupant.service}</span>
@@ -884,13 +897,26 @@ export function CageOccupancyReport() {
                 </div>
               </>
             ) : (
-              <p className={styles.copy}>
-                {detailsCage.status === 'Occupied'
-                  ? 'This cage is marked Occupied, but no checked-in pet was found for it.'
-                  : detailsCage.status === 'Under Maintenance'
-                    ? 'This cage is under maintenance and cannot be assigned.'
-                    : 'No pet is in this cage.'}
-              </p>
+              <>
+                <p className={styles.copy}>
+                  {detailsCage.status === 'Occupied'
+                    ? 'This cage is marked Occupied, but no checked-in pet was found for it.'
+                    : detailsCage.status === 'Under Maintenance'
+                      ? 'This cage is under maintenance and cannot be assigned.'
+                      : 'No pet is in this cage.'}
+                </p>
+                {canReopenStaleCage ? (
+                  <div className={styles.detailsActions}>
+                    <button
+                      type="button"
+                      className={styles.checkoutButton}
+                      onClick={() => void reopen(detailsCage)}
+                    >
+                      Reopen cage
+                    </button>
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         ) : null}

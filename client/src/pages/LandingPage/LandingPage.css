@@ -60,79 +60,10 @@ body {
   white-space: nowrap;
 }
 
-.nav-links {
-  display: flex;
-  list-style: none;
-  justify-content: center;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.nav-links a {
-  text-decoration: none;
-  color: var(--color-text-primary);
-  font-weight: 500;
-  font-size: 0.95rem;
-  letter-spacing: 0.2px;
-  transition: opacity 0.2s ease;
-}
-
-.nav-links a:hover {
-  opacity: 0.8;
-}
-
 .nav-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-/* Hamburger toggle button (shown via responsive.css on smaller screens) */
-.nav-toggle {
-  appearance: none;
-  border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.6);
-  background: rgba(var(--color-landing-glass-bg-rgb), 0.12);
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  display: none; /* desktop hidden */
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 5px;
-  cursor: pointer;
-  transition:
-    background-color 180ms ease,
-    border-color 180ms ease,
-    transform 180ms ease;
-}
-
-.nav-toggle:hover {
-  background: rgba(var(--color-landing-glass-bg-rgb), 0.22);
-  border-color: rgba(var(--color-landing-glass-border-rgb), 0.9);
-}
-
-.nav-toggle span {
-  display: block;
-  width: 18px;
-  height: 2px;
-  border-radius: 99px;
-  background: var(--color-text-primary);
-  transition:
-    transform 220ms ease,
-    opacity 220ms ease;
-}
-
-.nav-toggle.is-active span:nth-child(1) {
-  transform: translateY(7px) rotate(45deg);
-}
-
-.nav-toggle.is-active span:nth-child(2) {
-  opacity: 0;
-}
-
-.nav-toggle.is-active span:nth-child(3) {
-  transform: translateY(-7px) rotate(-45deg);
 }
 
 .btn {
@@ -1416,12 +1347,8 @@ body {
   }
 }
 
-/* Collapsible nav: below 900px the hamburger toggle takes over. The first
-   row keeps only the brand + toggle (guaranteed to fit at any width); both
-   .nav-links and .nav-actions wrap onto their own full-width row and stay
-   collapsed (max-height: 0) until LandingPage.tsx toggles `is-open` on
-   .nav-links. .nav-actions has no JS hook of its own, so it rides along via
-   the `.nav-links.is-open ~ .nav-actions` sibling selector below. */
+/* Below 900px: brand on the left, the actions on the right - they wrap
+   onto their own row when the bar is too narrow for both. */
 @media (max-width: 900px) {
   .nav-inner {
     display: flex;
@@ -1435,40 +1362,8 @@ body {
     font-size: 1.5rem;
   }
 
-  .nav-toggle {
-    display: flex;
-    flex-shrink: 0;
-  }
-
-  .nav-links,
   .nav-actions {
-    flex-basis: 100%;
-    max-height: 0;
-    margin-top: 0;
-    opacity: 0;
-    overflow: hidden;
-    transition:
-      max-height 220ms ease,
-      opacity 200ms ease,
-      margin-top 220ms ease;
-  }
-
-  .nav-links {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .nav-links.is-open {
-    max-height: 220px;
-    margin-top: 8px;
-    opacity: 1;
-  }
-
-  .nav-links.is-open ~ .nav-actions {
-    max-height: 80px;
-    margin-top: 8px;
-    opacity: 1;
+    flex-wrap: wrap;
   }
 }
 

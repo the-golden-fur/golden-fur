@@ -46,6 +46,10 @@ export const NOTIFICATION_EVENT_TYPES = [
    * minutes) before a booked Hotel or Daycare pet's checkout time - see
    * stayCheckout.job.ts. */
   'checkout_reminder',
+  /** Custom change (checked-out notification, migration 20261020274): fires
+   * once when staff check a Hotel or Daycare pet out - see
+   * careLogNotifications.service.ts's sendStayCheckedOutNotification. */
+  'stay_checked_out',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];

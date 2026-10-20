@@ -106,6 +106,11 @@ export function PetForm({
       return;
     }
 
+    if (!gender) {
+      setError('Please select a gender.');
+      return;
+    }
+
     // The input's `max` greys out future days in the picker, but a typed-in
     // date can still get past it.
     if (dateOfBirth && isFutureDate(dateOfBirth)) {
@@ -120,7 +125,7 @@ export function PetForm({
       name: name.trim(),
       pet_type: petType,
       breed_id: breedId,
-      ...(gender ? { gender } : {}),
+      gender,
       ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
       ...(isStaff && weightKg != null ? { weight_kg: weightKg } : {}),
       // Send an explicit class only when the server can't derive it (no
@@ -227,9 +232,10 @@ export function PetForm({
         />
       </label>
       <label className={styles.field}>
-        <span className={styles.label}>Gender (optional)</span>
+        <span className={styles.label}>Gender</span>
         <select
           className={styles.input}
+          aria-required="true"
           value={gender}
           onChange={(event) => setGender(event.target.value as PetGender)}
         >

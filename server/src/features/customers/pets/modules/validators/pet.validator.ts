@@ -54,7 +54,9 @@ export const createPetValidator = z
     pet_type: z.string().trim().min(1, 'Pet type is required'),
     breed_id: z.uuid().optional(),
     photo_url: z.string().trim().min(1).optional(),
-    gender: z.enum(GENDERS).optional(),
+    // Required when adding a pet. Updates keep it optional, so a pet
+    // registered before this rule can still be edited without one.
+    gender: z.enum(GENDERS, { error: 'Gender is required' }),
     date_of_birth: dateOfBirthSchema.optional(),
   })
   .strict();

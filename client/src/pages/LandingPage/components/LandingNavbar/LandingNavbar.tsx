@@ -1,19 +1,15 @@
-import { Link, useLocation } from 'react-router';
+import { Link } from 'react-router';
 import { LandingThemeToggle } from '../LandingThemeToggle/LandingThemeToggle';
 import '../../LandingPage.css';
 
 /**
  * Marketing navbar for the public landing page only - distinct from the
  * authenticated shared/components/Navbar used inside /staff and /portal.
- * Ids/classes are unchanged from their previous inline markup: LandingPage's
- * own useEffect still wires up the mobile toggle by querying
- * #navToggle/#primaryNavLinks directly. The navbar itself is static - no
- * entrance animation.
+ * Just the brand and the actions - the Services/Branches/Packages/About
+ * links (and the mobile hamburger that only revealed them) were removed. The
+ * navbar itself is static - no entrance animation.
  */
 export function LandingNavbar() {
-  const location = useLocation();
-  const isHome = location.pathname === '/';
-
   return (
     <nav
       className="navbar"
@@ -23,49 +19,14 @@ export function LandingNavbar() {
       <div
         className="nav-inner"
         style={{
-          gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+          gridTemplateColumns: 'auto auto',
+          justifyContent: 'space-between',
           gap: 'clamp(12px, 2.4vw, 20px)',
         }}
       >
         <Link to="/" className="brand">
           Golden Fur
         </Link>
-
-        <button
-          className="nav-toggle"
-          id="navToggle"
-          aria-label="Toggle navigation menu"
-          aria-expanded="false"
-          aria-controls="primaryNavLinks"
-          type="button"
-        >
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
-
-        <ul
-          className="nav-links"
-          id="primaryNavLinks"
-          style={{ gap: 'clamp(10px, 2vw, 20px)', justifyContent: 'center' }}
-        >
-          <li>
-            {isHome ? (
-              <a href="#featureStripSection">Services</a>
-            ) : (
-              <Link to="/#featureStripSection">Services</Link>
-            )}
-          </li>
-          <li>
-            <Link to="/branches">Branches</Link>
-          </li>
-          <li>
-            <Link to="/packages">Packages</Link>
-          </li>
-          <li>
-            <Link to="/about">About</Link>
-          </li>
-        </ul>
 
         <div
           className="nav-actions"

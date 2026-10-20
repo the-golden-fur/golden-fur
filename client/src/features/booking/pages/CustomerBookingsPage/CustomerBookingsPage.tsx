@@ -70,6 +70,7 @@ import {
 } from './bookingBrowserFields';
 import styles from './CustomerBookingsPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -204,6 +205,10 @@ export function CustomerBookingsPage() {
 
   const petNameById = useMemo(
     () => new Map(pets.map((pet) => [pet.id, pet.name])),
+    [pets]
+  );
+  const petPhotoById = useMemo(
+    () => new Map(pets.map((pet) => [pet.id, pet.photo_url])),
     [pets]
   );
   const branchNameById = useMemo(
@@ -400,6 +405,11 @@ export function CustomerBookingsPage() {
         className={styles.bookingMain}
         onClick={() => setDetailsBookingId(booking.id)}
       >
+        <PetAvatar
+          name={petNameOf(booking, lookups)}
+          photoUrl={petPhotoById.get(booking.pet_id)}
+          size="sm"
+        />
         <span className={styles.bookingTitle}>{bookingTitle(booking)}</span>
         <span className={styles.bookingMeta}>
           {branchNameOf(booking, lookups)} -{' '}

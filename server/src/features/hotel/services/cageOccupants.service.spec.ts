@@ -62,6 +62,7 @@ describe('cageOccupants.service', () => {
         stay_id: 'stay-1',
         cage_id: 'cage-1',
         pet_name: 'Mochi',
+        pet_photo_url: null,
         owner_name: 'Jamie Cruz',
         service: 'Hotel',
         booking_id: 'booking-1',

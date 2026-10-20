@@ -73,7 +73,7 @@ service (it is not auto-applied to the existing one — reconcile by hand).
 | `CORS_ALLOWED_ORIGINS`      | yes       | `https://golden-fur-client.vercel.app` (plus any custom domains). Comma-separated, **no spaces, no trailing slash.** An unlisted browser origin is rejected.           |
 | `STAFF_TEMP_CREDENTIAL_KEY` | yes       | base64 string that decodes to **exactly 32 bytes** (`openssl rand -base64 32`). Staff account creation/resend throws without it.                                       |
 | `BREVO_API_KEY`             | see notes | transactional email (Brevo). Leave unset on any environment where email isn't provisioned yet; email-triggering flows will error, which is expected, not a regression. |
-| `BREVO_FROM_EMAIL`          | optional  | verified Brevo sender, `"Display Name <address@domain.com>"`; defaults to `Golden Fur <noreply@goldenfur.com>` if unset                                                |
+| `BREVO_FROM_EMAIL`          | see notes | verified Brevo sender, `"Display Name <address@domain.com>"`. Set it wherever `BREVO_API_KEY` is set - there is no default, and a send without it throws.              |
 | `DAYCARE_SESSION_CAPACITY`  | optional  | bare number or JSON branch map; defaults to `15`                                                                                                                       |
 
 Google OAuth is configured in the **Supabase** dashboard (Auth →

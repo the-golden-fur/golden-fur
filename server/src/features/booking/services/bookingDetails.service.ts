@@ -191,7 +191,7 @@ export async function getBookingDetails({
       .maybeSingle(),
     supabase
       .from('pets')
-      .select('id, name, weight_class, coat_type')
+      .select('id, name, weight_class, coat_type, photo_url')
       .eq('id', booking.pet_id)
       .maybeSingle(),
     supabase

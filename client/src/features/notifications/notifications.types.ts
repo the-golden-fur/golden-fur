@@ -14,7 +14,8 @@ export type NotificationEventType =
   | 'spin_wheel_earned'
   | 'daycare_overdue'
   | 'vet_charge_posted'
-  | 'checkout_reminder';
+  | 'checkout_reminder'
+  | 'stay_checked_out';
 
 export interface Notification {
   id: string;

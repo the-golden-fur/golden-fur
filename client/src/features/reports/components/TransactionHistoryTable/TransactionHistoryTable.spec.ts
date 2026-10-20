@@ -637,6 +637,51 @@ describe('TransactionHistoryTable', () => {
     );
   });
 
+  it("finds a booking's transactions by the pet's name", async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          id: 'a',
+          booking_id: 'booking-1',
+          bookings: {
+            pet_id: 'pet-1',
+            service_category: 'Grooming',
+            payment_status: 'Fully Paid',
+            total_price: 1000,
+            discount_amount: 0,
+            promo_amount: 0,
+            pets: { name: 'Buddy' },
+          },
+        }),
+        buildTransaction({
+          id: 'b',
+          booking_id: 'booking-2',
+          bookings: {
+            pet_id: 'pet-2',
+            service_category: 'Hotel',
+            payment_status: 'Fully Paid',
+            total_price: 2000,
+            discount_amount: 0,
+            promo_amount: 0,
+            pets: { name: 'Mochi' },
+          },
+        }),
+      ],
+      error: null,
+    });
+
+    renderTable();
+
+    expect(await screen.findByText('Grooming · Buddy')).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByPlaceholderText(/search by customer, pet/i),
+      'mochi'
+    );
+
+    expect(await screen.findByText('Hotel · Mochi')).toBeInTheDocument();
+    expect(screen.queryByText('Grooming · Buddy')).not.toBeInTheDocument();
+  });
+
   it('drops the group headers when Group by is set to None', async () => {
     vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
       data: [

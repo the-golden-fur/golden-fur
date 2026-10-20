@@ -55,6 +55,7 @@ import {
 } from './boardingChecklistBrowserFields';
 import styles from './BoardingChecklistKanban.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 interface BoardingChecklistKanbanProps {
   accessToken: string;
@@ -265,6 +266,7 @@ export function BoardingChecklistKanban({
 }: BoardingChecklistKanbanProps) {
   const [entries, setEntries] = useState<CareLogEntry[]>([]);
   const [petNames, setPetNames] = useState<Record<string, string>>({});
+  const [petPhotos, setPetPhotos] = useState<Record<string, string | null>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -335,6 +337,15 @@ export function BoardingChecklistKanban({
             const next = { ...prev };
             for (const petResult of petResults) {
               if (petResult.data) next[petResult.data.id] = petResult.data.name;
+            }
+            return next;
+          });
+          setPetPhotos((prev) => {
+            const next = { ...prev };
+            for (const petResult of petResults) {
+              if (petResult.data) {
+                next[petResult.data.id] = petResult.data.photo_url;
+              }
             }
             return next;
           });
@@ -409,8 +420,9 @@ export function BoardingChecklistKanban({
         petName: entry.stays?.pet_id
           ? (petNames[entry.stays.pet_id] ?? 'Pet')
           : 'Pet',
+        petPhotoUrl: entry.stays?.pet_id ? petPhotos[entry.stays.pet_id] : null,
       })),
-    [scopedEntries, petNames]
+    [scopedEntries, petNames, petPhotos]
   );
 
   const filterFields = useMemo(() => {
@@ -538,7 +550,7 @@ export function BoardingChecklistKanban({
 
   /** Checkbox + expandable body - shared by the Board, Gallery and List
    * views (only the surrounding card/row chrome differs). */
-  function renderTaskContent({ entry, petName }: Row) {
+  function renderTaskContent({ entry, petName, petPhotoUrl }: Row) {
     const isMissed = entry.status === 'Missed';
     const isBacklog = entry.status === 'Backlog';
     const isExpanded = expandedIds.has(entry.id);
@@ -564,7 +576,10 @@ export function BoardingChecklistKanban({
             }
           }}
         >
-          <span className={styles.petName}>{petName}</span>
+          <span className={styles.petName}>
+            <PetAvatar name={petName} photoUrl={petPhotoUrl} size="xs" />
+            {petName}
+          </span>
           <span className={styles.description}>{title}</span>
           {detail ? (
             <span className={styles.descriptionDetail}>{detail}</span>

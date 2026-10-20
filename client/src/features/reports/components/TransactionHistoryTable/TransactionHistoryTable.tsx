@@ -377,6 +377,7 @@ export function TransactionHistoryTable() {
       list = list.filter(
         (t) =>
           (t.customer_name ?? '').toLowerCase().includes(query) ||
+          (t.bookings?.pets?.name ?? '').toLowerCase().includes(query) ||
           (t.misc_sale_description ?? '').toLowerCase().includes(query) ||
           t.payment_method.toLowerCase().includes(query) ||
           t.payment_status.toLowerCase().includes(query) ||
@@ -452,7 +453,7 @@ export function TransactionHistoryTable() {
         onChangeSort={setSortTile}
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search by customer, method, status..."
+        searchPlaceholder="Search by customer, pet, method, status..."
       >
         <ViewSwitcher
           ariaLabel="Transactions view"

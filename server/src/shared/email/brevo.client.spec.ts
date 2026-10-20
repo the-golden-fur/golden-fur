@@ -61,12 +61,23 @@ describe('brevo.client sendEmail', () => {
   });
 
   it('throws a wrapped error when BREVO_API_KEY is missing', async () => {
+    process.env.BREVO_FROM_EMAIL = 'noreply@goldenfur.com';
     delete process.env.BREVO_API_KEY;
     const sendEmail = await freshSendEmail();
 
     await expect(
       sendEmail({ to: 'c@example.com', subject: 'Hi', html: '<p>x</p>' })
     ).rejects.toThrow('BREVO_API_KEY is not configured');
+  });
+
+  it('throws when BREVO_FROM_EMAIL is missing instead of using an unverified default', async () => {
+    delete process.env.BREVO_FROM_EMAIL;
+    const sendEmail = await freshSendEmail();
+
+    await expect(
+      sendEmail({ to: 'c@example.com', subject: 'Hi', html: '<p>x</p>' })
+    ).rejects.toThrow('BREVO_FROM_EMAIL is not configured');
+    expect(sendTransacEmail).not.toHaveBeenCalled();
   });
 
   it('wraps a send failure as "Failed to send email via Brevo"', async () => {

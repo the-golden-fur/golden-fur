@@ -31,6 +31,7 @@ import { listDaycareSessions } from '../../api/daycare.api';
 import { DAYCARE_QUEUE_VIEWER_ROLES } from './daycareQueueRoles';
 import styles from './DaycareQueuePage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
@@ -417,7 +418,14 @@ export function DaycareQueuePage() {
               const summary = (
                 <>
                   <div className={styles.bookingHeader}>
-                    <span className={styles.bookingTitle}>
+                    <span
+                      className={`${styles.bookingTitle} ${styles.petTitle}`}
+                    >
+                      <PetAvatar
+                        name={pets[booking.pet_id]?.name ?? 'Unknown pet'}
+                        photoUrl={pets[booking.pet_id]?.photo_url}
+                        size="sm"
+                      />
                       {pets[booking.pet_id]?.name ?? 'Unknown pet'}
                     </span>
                     <div className={styles.bookingBadges}>

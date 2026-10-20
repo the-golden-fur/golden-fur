@@ -216,7 +216,7 @@ describe('PetDetailPanel', () => {
 
     await screen.findByText('Dog');
     fireEvent.click(screen.getByRole('button', { name: /^edit$/i }));
-    fireEvent.change(screen.getByLabelText('Photo (optional)'), {
+    fireEvent.change(screen.getByLabelText('Add photo'), {
       target: {
         files: [new File(['x'], 'buddy.png', { type: 'image/png' })],
       },

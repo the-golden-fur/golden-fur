@@ -32,11 +32,13 @@ import {
   seedMedications,
   withValidQuantities,
 } from './prescriptionMedications';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import styles from './ConsultationDetailPanel.module.css';
 
 export interface ConsultationDetailPanelProps {
   consultation: Consultation;
   petName: string;
+  petPhotoUrl?: string | null;
   ownerName: string;
   accessToken: string;
   canWrite: boolean;
@@ -135,6 +137,7 @@ function asMedicationList(
 export function ConsultationDetailPanel({
   consultation,
   petName,
+  petPhotoUrl,
   ownerName,
   accessToken,
   canWrite,
@@ -480,9 +483,12 @@ export function ConsultationDetailPanel({
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
-        <div>
-          <h2 className={styles.petName}>{petName}</h2>
-          <span className={styles.subtitle}>Owner: {ownerName}</span>
+        <div className={styles.identity}>
+          <PetAvatar name={petName} photoUrl={petPhotoUrl} />
+          <div>
+            <h2 className={styles.petName}>{petName}</h2>
+            <span className={styles.subtitle}>Owner: {ownerName}</span>
+          </div>
         </div>
         {bookingStatus ? <BookingStatusBadge status={bookingStatus} /> : null}
       </div>

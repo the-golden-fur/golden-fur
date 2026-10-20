@@ -95,6 +95,7 @@ const REFRESH_INTERVAL_MS = 15_000;
 interface EnrichedSession {
   session: GroomingSession;
   petName: string;
+  petPhotoUrl: string | null;
   ownerName: string;
   breed: string | null;
   weightClass: string;
@@ -306,6 +307,7 @@ export function GroomerDashboardPage() {
         return {
           session,
           petName: pet?.name ?? 'Unknown pet',
+          petPhotoUrl: pet?.photo_url ?? null,
           ownerName: owner?.full_name ?? 'Unknown owner',
           // pets.breed (free text) was replaced by breed_id (Issue #71) -
           // resolving it to a display name here is out of this epic's scope
@@ -507,6 +509,7 @@ export function GroomerDashboardPage() {
                 key={item.session.id}
                 session={item.session}
                 petName={item.petName}
+                petPhotoUrl={item.petPhotoUrl}
                 ownerName={item.ownerName}
                 breed={item.breed}
                 weightClass={item.weightClass}

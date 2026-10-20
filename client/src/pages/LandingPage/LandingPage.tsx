@@ -59,27 +59,8 @@ export default function GoldenFurLanding() {
   useEffect(() => {
     if (!landing) return;
 
-    const navToggle = document.getElementById(
-      'navToggle'
-    ) as HTMLButtonElement | null;
-    const primaryNavLinks = document.getElementById(
-      'primaryNavLinks'
-    ) as HTMLElement | null;
-
-    function handleNavToggleClick() {
-      if (!primaryNavLinks || !navToggle) return;
-      const isOpen = primaryNavLinks.classList.toggle('is-open');
-      navToggle.classList.toggle('is-active', isOpen);
-      navToggle.setAttribute('aria-expanded', String(isOpen));
-    }
-
-    if (navToggle && primaryNavLinks) {
-      navToggle.addEventListener('click', handleNavToggleClick);
-    }
-
     // Scrolls to the target section when arriving via a link from another
-    // page (e.g. LandingNavbar's Services link on /branches, /packages, or
-    // /about is `/#featureStripSection`) - client-side navigation doesn't
+    // page (e.g. a `/#featureStripSection` link) - client-side navigation doesn't
     // trigger the browser's native hash-scroll behavior the way a full page
     // load does.
     if (window.location.hash) {
@@ -524,9 +505,6 @@ export default function GoldenFurLanding() {
     });
 
     return () => {
-      if (navToggle) {
-        navToggle.removeEventListener('click', handleNavToggleClick);
-      }
       observer.disconnect();
       fadeReplayObserver.disconnect();
       featureRevealObserver.disconnect();

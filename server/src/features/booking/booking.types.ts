@@ -760,6 +760,7 @@ export interface BookingDetailsPet {
   name: string;
   weight_class: string | null;
   coat_type: string | null;
+  photo_url: string | null;
 }
 
 export interface BookingDetailsOwner {

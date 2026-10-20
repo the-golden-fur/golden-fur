@@ -25,6 +25,7 @@ export type CareType = CareLogEntry['care_type'];
 export interface Row {
   entry: CareLogEntry;
   petName: string;
+  petPhotoUrl?: string | null;
 }
 
 export const STATUS_COLUMNS: CareLogEntryStatus[] = [
