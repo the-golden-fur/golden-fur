@@ -204,7 +204,7 @@ describe('cageStatus.service (#78)', () => {
             error: null,
           })
         );
-        builder.then = (resolve: (value: unknown) => void) =>
+        builder.then = (resolve: (_value: unknown) => void) =>
           resolve(
             table === 'stays'
               ? { count: activeStays, error: null }
