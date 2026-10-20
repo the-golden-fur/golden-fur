@@ -12,6 +12,7 @@ import {
 } from './modules/validators/staffAuth.validator.ts';
 import type { AuthenticatedRequest } from '../../../shared/shared.types.ts';
 import { parseAllowedOrigins } from '../../../shared/config/cors/cors.config.ts';
+import { sendPasswordResetEmail } from '../../../shared/email/passwordResetEmail.ts';
 import {
   checkMfaLockout,
   formatMfaLockoutResponse,
@@ -608,22 +609,41 @@ export async function forgotPasswordController(req: Request, res: Response) {
     const clientOrigin = parseAllowedOrigins(
       process.env.CORS_ALLOWED_ORIGINS
     )[0];
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: clientOrigin
-        ? `${clientOrigin}/staff/reset-password`
-        : undefined,
-    });
-    if (error) {
-      return res.status(400).json({ error: error.message });
+
+    // Same as the customer flow: generate the recovery link with the admin
+    // API and send it through Brevo ourselves. Supabase's own
+    // resetPasswordForEmail mailer only delivers to project team members
+    // (about 2 an hour) on a hosted project, so staff never got the email.
+    // Both legs are best-effort - an unknown email (generateLink errors) or a
+    // failed send still gets the same response, so the endpoint never
+    // reveals which addresses have accounts.
+    const { data: linkData, error: linkError } =
+      await supabase.auth.admin.generateLink({
+        type: 'recovery',
+        email,
+        options: {
+          redirectTo: clientOrigin
+            ? `${clientOrigin}/staff/reset-password`
+            : undefined,
+        },
+      });
+
+    if (linkError || !linkData?.properties?.action_link) {
+      console.error('Failed to generate reset link:', linkError?.message);
+    } else {
+      try {
+        await sendPasswordResetEmail({
+          to: email,
+          resetLink: linkData.properties.action_link,
+        });
+      } catch (emailError) {
+        console.error('Failed to send password reset email:', emailError);
+      }
     }
 
-    // Issue #97: password_reset has no Brevo template (Supabase Auth just
-    // sent the email itself, above) - only the in-app row is written here,
-    // so the staff member sees "Password reset requested" in their inbox
-    // even though the actual email came from Supabase, not us. Best-effort
-    // and silent either way - a lookup miss (unregistered email) must not
-    // change this endpoint's response, matching resetPasswordForEmail's own
-    // generic response regardless of whether the address exists.
+    // Issue #97: the in-app "Password reset requested" row, alongside the
+    // email above. Best-effort and silent - a lookup miss (unregistered
+    // email) must not change this endpoint's response.
     try {
       const { data: staffProfile } = await supabase
         .from('staff_profiles')

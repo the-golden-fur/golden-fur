@@ -6,9 +6,9 @@ export interface PasswordResetEmailParams {
 }
 
 /**
- * Sends a customer password-reset link via Brevo. Called by the server-side
- * forgot-password controller, which uses the Supabase admin API to generate
- * a short-lived (1 h) magic-link token and passes it here.
+ * Sends a password-reset link via Brevo. Called by both the customer and the
+ * staff forgot-password controllers, which use the Supabase admin API to
+ * generate a short-lived (1 h) magic-link token and pass it here.
  *
  * We use a custom Brevo send instead of Supabase's own built-in
  * "reset password for email" so that the email is styled consistently with
