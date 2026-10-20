@@ -5,7 +5,7 @@ import {
   List as ListIcon,
   Table as TableIcon,
 } from 'lucide-react';
-import { Link, Navigate } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { DataBoard } from '../../../../shared/components/DataBoard/DataBoard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
@@ -96,6 +96,12 @@ const SIGN_IN_METHOD_LABELS: Record<
 
 type CustomerPanelAction = 'overview' | 'checkProfile' | 'viewPets' | 'addPet';
 
+/** Router state a staff pet page's Back hands back here, so the customer
+ * panel the pet was opened from comes back open. */
+export interface CustomerPanelReturnState {
+  reopenCustomerPanel: { customerId: string; action: CustomerPanelAction };
+}
+
 /** 'overview' is titled with the customer's name alone - see the Modal. */
 const PANEL_TITLES: Record<Exclude<CustomerPanelAction, 'overview'>, string> = {
   checkProfile: 'Profile',
@@ -124,6 +130,10 @@ function formatBookingDate(iso: string): string {
  */
 export function CustomerManagementPage() {
   const { user, accessToken } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const reopenPanel = (location.state as CustomerPanelReturnState | null)
+    ?.reopenCustomerPanel;
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
@@ -471,6 +481,18 @@ export function CustomerManagementPage() {
     }
   }
 
+  // Back from a pet page opened out of a customer panel: reopen that panel,
+  // then drop the state so a reload doesn't open it again.
+  useEffect(() => {
+    if (!reopenPanel || !accessToken) return;
+
+    handleSelectAction(reopenPanel.customerId, reopenPanel.action);
+    void navigate(location.pathname, { replace: true, state: null });
+    // Only on arrival with fresh state - handleSelectAction is re-created
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reopenPanel, accessToken]);
+
   const activePanelCustomer = customers.find(
     (customer) => customer.id === activePanel?.customerId
   );
@@ -522,7 +544,18 @@ export function CustomerManagementPage() {
     return (
       <div className={styles.petsGrid}>
         {pets.map((pet) => (
-          <PetCard key={pet.id} pet={pet} linkBasePath="/staff/pets" />
+          <PetCard
+            key={pet.id}
+            pet={pet}
+            linkBasePath="/staff/pets"
+            linkState={
+              activePanel
+                ? ({
+                    reopenCustomerPanel: activePanel,
+                  } satisfies CustomerPanelReturnState)
+                : undefined
+            }
+          />
         ))}
       </div>
     );
