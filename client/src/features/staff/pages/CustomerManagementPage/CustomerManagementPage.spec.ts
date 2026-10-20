@@ -277,6 +277,9 @@ describe('CustomerManagementPage (#76)', () => {
       fireEvent.focus(breedInput);
       fireEvent.change(breedInput, { target: { value: 'Lab' } });
       fireEvent.click(await screen.findByText('Labrador Retriever'));
+      fireEvent.change(screen.getByLabelText('Gender'), {
+        target: { value: 'Male' },
+      });
       fireEvent.click(screen.getByRole('button', { name: 'Add pet' }));
       expect(await screen.findByText('Pet added.')).toBeInTheDocument();
 
