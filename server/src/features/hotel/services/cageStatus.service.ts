@@ -159,11 +159,35 @@ export async function closeCageTemporarily({
   return withFlattenedPetTypes(updated);
 }
 
-/** Custom change (front-desk cage override): ends a temporary closure early. */
+/** Custom change (front-desk cage override): ends a temporary closure early.
+ *
+ * Also frees a cage left stuck as Occupied with no pet in it - a check-in
+ * that claimed the cage (assignCage) but died before its stays row was
+ * written or its releaseCage ran. Only when no Active stay points at the
+ * cage, so a cage with a real pet in it is never freed. */
 export async function reopenCage(
   cageId: string,
   branchId: string
 ): Promise<Cage> {
+  const { count: activeStays, error: staysError } = await supabase
+    .from('stays')
+    .select('id', { count: 'exact', head: true })
+    .eq('cage_id', cageId)
+    .eq('status', 'Active');
+
+  if (staysError) throwWithStatus(400, staysError.message);
+
+  if (!activeStays) {
+    const { error: releaseError } = await supabase
+      .from('cages')
+      .update({ status: 'Available', updated_at: new Date().toISOString() })
+      .eq('id', cageId)
+      .eq('branch_id', branchId)
+      .eq('status', 'Occupied');
+
+    if (releaseError) throwWithStatus(400, releaseError.message);
+  }
+
   const { data: updated, error } = await supabase
     .from('cages')
     .update({

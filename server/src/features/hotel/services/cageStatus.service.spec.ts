@@ -176,18 +176,76 @@ describe('cageStatus.service (#78)', () => {
       ).rejects.toMatchObject({ statusCode: 409 });
     });
 
+    /** reopenCage reads `stays` (an Active-stay count) before writing
+     * `cages`, so each table gets its own thenable builder here. */
+    function mockReopen(activeStays: number) {
+      const cageUpdates: Array<{
+        values: Record<string, unknown>;
+        eqCalls: Array<[string, unknown]>;
+      }> = [];
+
+      vi.mocked(supabase.from).mockImplementation(((table: string) => {
+        const eqCalls: Array<[string, unknown]> = [];
+        const builder: Record<string, unknown> = {};
+        for (const method of ['select', 'is']) {
+          builder[method] = vi.fn(() => builder);
+        }
+        builder.eq = vi.fn((field: string, value: unknown) => {
+          eqCalls.push([field, value]);
+          return builder;
+        });
+        builder.update = vi.fn((values: Record<string, unknown>) => {
+          cageUpdates.push({ values, eqCalls });
+          return builder;
+        });
+        builder.maybeSingle = vi.fn(() =>
+          Promise.resolve({
+            data: { id: 'c1', status: 'Available' },
+            error: null,
+          })
+        );
+        builder.then = (resolve: (value: unknown) => void) =>
+          resolve(
+            table === 'stays'
+              ? { count: activeStays, error: null }
+              : { data: null, error: null }
+          );
+        return builder;
+      }) as never);
+
+      return cageUpdates;
+    }
+
     it('reopenCage clears the closure', async () => {
-      const { updates } = captureUpdate({
-        data: { id: 'c1', status: 'Available' },
-        error: null,
-      });
+      const cageUpdates = mockReopen(1);
 
       await reopenCage('c1', 'branch-1');
 
-      expect(updates[0]).toMatchObject({
+      expect(cageUpdates).toHaveLength(1);
+      expect(cageUpdates[0].values).toMatchObject({
         closed_until: null,
         closed_by_staff_id: null,
       });
+    });
+
+    it('reopenCage frees a cage stuck Occupied with no active stay', async () => {
+      const cageUpdates = mockReopen(0);
+
+      await reopenCage('c1', 'branch-1');
+
+      expect(cageUpdates[0].values).toMatchObject({ status: 'Available' });
+      // Only flips a cage that is still Occupied.
+      expect(cageUpdates[0].eqCalls).toContainEqual(['status', 'Occupied']);
+    });
+
+    it('reopenCage leaves a cage with an active stay Occupied', async () => {
+      const cageUpdates = mockReopen(1);
+
+      await reopenCage('c1', 'branch-1');
+
+      expect(
+        cageUpdates.some((update) => update.values.status === 'Available')
+      ).toBe(false);
     });
   });
 
