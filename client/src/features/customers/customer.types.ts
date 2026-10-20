@@ -100,7 +100,7 @@ export interface PetCreatePayload {
   name: string;
   pet_type: PetType;
   breed_id?: string;
-  gender?: PetGender;
+  gender: PetGender;
   date_of_birth?: string;
 }
 

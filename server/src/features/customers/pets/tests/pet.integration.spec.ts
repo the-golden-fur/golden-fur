@@ -73,6 +73,7 @@ const NOT_STAFF: QueryResult = { data: null, error: null };
 const VALID_PET_PAYLOAD = {
   name: 'Buddy',
   pet_type: 'Dog',
+  gender: 'Male',
 };
 const VALID_STAFF_PET_PAYLOAD = {
   ...VALID_PET_PAYLOAD,

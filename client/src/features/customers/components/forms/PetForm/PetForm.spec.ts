@@ -106,6 +106,35 @@ describe('PetForm', () => {
     expect(createPet).not.toHaveBeenCalled();
   });
 
+  it('blocks submission when no gender is selected', async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Lab' } });
+    fireEvent.click(await screen.findByText('Labrador Retriever'));
+
+    fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
+
+    expect(
+      await screen.findByText('Please select a gender.')
+    ).toBeInTheDocument();
+    expect(createPet).not.toHaveBeenCalled();
+  });
+
   it('blocks submission when the date of birth is in the future', async () => {
     render(
       createElement(PetForm, {
@@ -126,6 +155,9 @@ describe('PetForm', () => {
     fireEvent.focus(breedInput);
     fireEvent.change(breedInput, { target: { value: 'Lab' } });
     fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
 
     const nextYear = new Date().getFullYear() + 1;
     const dateInput = screen.getByLabelText(
@@ -200,6 +232,9 @@ describe('PetForm', () => {
     fireEvent.focus(breedInput);
     fireEvent.change(breedInput, { target: { value: 'Lab' } });
     fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
 
@@ -208,6 +243,7 @@ describe('PetForm', () => {
         name: 'Buddy',
         pet_type: 'Dog',
         breed_id: 'breed-1',
+        gender: 'Male',
       })
     );
     expect(uploadPetPhoto).not.toHaveBeenCalled();
@@ -259,6 +295,9 @@ describe('PetForm', () => {
     fireEvent.focus(breedInput);
     fireEvent.change(breedInput, { target: { value: 'Lab' } });
     fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
     fireEvent.change(screen.getByLabelText('Photo (optional)'), {
       target: {
         files: [new File(['x'], 'buddy.png', { type: 'image/png' })],
@@ -318,6 +357,9 @@ describe('PetForm', () => {
     fireEvent.focus(breedInput);
     fireEvent.change(breedInput, { target: { value: 'Lab' } });
     fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
 
