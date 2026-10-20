@@ -6,6 +6,7 @@ import { PaymentStatusBadge } from '../shared/PaymentStatusBadge/PaymentStatusBa
 import { AwaitingAssessmentBadge } from '../shared/AwaitingAssessmentBadge/AwaitingAssessmentBadge';
 import { NightTabs } from '../NightTabs/NightTabs';
 import { getHotelNightDates } from '../../utils/hotelNights';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import styles from './BookingDetailsView.module.css';
 
 interface BookingDetailsViewProps {
@@ -108,12 +109,18 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
   return (
     <div className={styles.content}>
       <div className={styles.header}>
-        <div>
-          <h3 className={styles.title}>{booking.service_category} booking</h3>
-          <p className={styles.copy}>
-            {data.pet?.name ?? 'Unknown pet'}
-            {data.owner ? ` · ${data.owner.full_name}` : ''}
-          </p>
+        <div className={styles.identity}>
+          <PetAvatar
+            name={data.pet?.name ?? 'Unknown pet'}
+            photoUrl={data.pet?.photo_url}
+          />
+          <div>
+            <h3 className={styles.title}>{booking.service_category} booking</h3>
+            <p className={styles.copy}>
+              {data.pet?.name ?? 'Unknown pet'}
+              {data.owner ? ` · ${data.owner.full_name}` : ''}
+            </p>
+          </div>
         </div>
         <div className={styles.badgeGroup}>
           <BookingStatusBadge status={booking.status} />

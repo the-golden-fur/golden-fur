@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { PetAvatar } from '../../../../../shared/components/PetAvatar/PetAvatar';
 import { formatRelativeTime } from '../../../../../shared/utils/formatRelativeTime';
 import type { Pet } from '../../../customer.types';
 import styles from './PetCard.module.css';
@@ -10,23 +11,24 @@ interface PetCardProps {
    * Issue #76) pass '/staff/pets' instead, since /portal/pets/:id is gated
    * by CustomerAuthGuard and would otherwise redirect a staff viewer away. */
   linkBasePath?: string;
+  /** Router state carried to the pet page - Customer Management passes the
+   * customer panel to reopen when the pet page's Back is pressed. */
+  linkState?: unknown;
 }
 
-export function PetCard({ pet, linkBasePath = '/portal/pets' }: PetCardProps) {
+export function PetCard({
+  pet,
+  linkBasePath = '/portal/pets',
+  linkState,
+}: PetCardProps) {
   return (
-    <Link className={styles.card} to={`${linkBasePath}/${pet.id}`}>
+    <Link
+      className={styles.card}
+      to={`${linkBasePath}/${pet.id}`}
+      state={linkState}
+    >
       <div className={styles.header}>
-        {pet.photo_url ? (
-          <img
-            className={styles.avatar}
-            src={pet.photo_url}
-            alt={`${pet.name}'s photo`}
-          />
-        ) : (
-          <span className={styles.avatarFallback} aria-hidden="true">
-            {pet.name.slice(0, 1).toUpperCase()}
-          </span>
-        )}
+        <PetAvatar name={pet.name} photoUrl={pet.photo_url} />
         <div className={styles.identity}>
           <h3 className={styles.name}>{pet.name}</h3>
           <span className={styles.subtitle}>{pet.pet_type}</span>

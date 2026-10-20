@@ -137,6 +137,9 @@
 }
 
 .rowPetName {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--color-text-primary);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
@@ -156,6 +159,13 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
   padding: var(--space-3);
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .header {

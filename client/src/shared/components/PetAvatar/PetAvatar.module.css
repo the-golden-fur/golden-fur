@@ -1,0 +1,38 @@
+.avatar {
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.xs {
+  width: var(--avatar-size-xs);
+  height: var(--avatar-size-xs);
+  font-size: var(--text-xs);
+}
+
+.sm {
+  width: var(--avatar-size-sm);
+  height: var(--avatar-size-sm);
+  font-size: var(--text-xs);
+}
+
+.card {
+  width: var(--avatar-size-card);
+  height: var(--avatar-size-card);
+  font-size: var(--text-sm);
+}
+
+.profile {
+  width: var(--avatar-size-profile);
+  height: var(--avatar-size-profile);
+  font-size: var(--text-xl);
+}
+
+.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-primary);
+  font-weight: var(--weight-bold);
+}

@@ -48,6 +48,7 @@ import {
 } from './petBrowserFields';
 import styles from './CustomerPetManagerPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 type ViewMode = 'table' | 'list' | 'board';
 
@@ -205,6 +206,7 @@ export function CustomerPetManagerPage() {
       header: 'Name',
       render: (pet) => (
         <Link className={styles.petLink} to={`/portal/pets/${pet.id}`}>
+          <PetAvatar name={pet.name} photoUrl={pet.photo_url} size="sm" />
           {pet.name}
         </Link>
       ),
@@ -245,6 +247,7 @@ export function CustomerPetManagerPage() {
     return (
       <div className={styles.listRow}>
         <Link className={styles.petLink} to={`/portal/pets/${pet.id}`}>
+          <PetAvatar name={pet.name} photoUrl={pet.photo_url} size="sm" />
           {pet.name}
         </Link>
         <span className={styles.petTypeBadge}>{pet.pet_type}</span>

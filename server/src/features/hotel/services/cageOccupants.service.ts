@@ -87,7 +87,7 @@ export async function listCageOccupants(
 
   const { data: petRows, error: petsError } = await supabase
     .from('pets')
-    .select('id, name, customer_id')
+    .select('id, name, customer_id, photo_url')
     .in('id', [...new Set(stays.map((stay) => stay.pet_id))]);
 
   if (petsError) throwWithStatus(400, petsError.message);
@@ -96,6 +96,7 @@ export async function listCageOccupants(
     id: string;
     name: string;
     customer_id: string | null;
+    photo_url?: string | null;
   }>;
   const petById = new Map(pets.map((row) => [row.id, row]));
 
@@ -137,6 +138,7 @@ export async function listCageOccupants(
       stay_id: stay.id,
       cage_id: stay.cage_id,
       pet_name: pet?.name ?? null,
+      pet_photo_url: pet?.photo_url ?? null,
       owner_name: pet?.customer_id
         ? (ownerNameById.get(pet.customer_id) ?? null)
         : null,

@@ -62,6 +62,7 @@ import {
 } from './customerBrowserFields';
 import styles from './CustomerManagementPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 /**
  * Deliberately the exact same role list as the customer_profiles/pets staff
@@ -546,8 +547,8 @@ export function CustomerManagementPage() {
       return <p className={styles.copy}>No bookings yet.</p>;
     }
 
-    const petNames = new Map(
-      (petsByCustomer[customer.id] ?? []).map((pet) => [pet.id, pet.name])
+    const petsById = new Map(
+      (petsByCustomer[customer.id] ?? []).map((pet) => [pet.id, pet])
     );
     // Newest first - the server sends them oldest first.
     const newestFirst = [...bookings].sort((a, b) =>
@@ -556,26 +557,37 @@ export function CustomerManagementPage() {
 
     return (
       <ul className={styles.bookingList}>
-        {newestFirst.map((booking) => (
-          <li key={booking.id}>
-            <Link
-              className={styles.bookingRow}
-              to={`/staff/bookings/${booking.id}`}
-            >
-              <span className={styles.bookingDate}>
-                {formatBookingDate(booking.scheduled_start)}
-              </span>
-              <span className={styles.bookingService}>
-                {booking.service_category}
-              </span>
-              {/* An archived pet is no longer in the customer's pet list. */}
-              <span className={styles.bookingPet}>
-                {petNames.get(booking.pet_id) ?? '—'}
-              </span>
-              <BookingStatusBadge status={booking.status} />
-            </Link>
-          </li>
-        ))}
+        {newestFirst.map((booking) => {
+          const pet = petsById.get(booking.pet_id);
+
+          return (
+            <li key={booking.id}>
+              <Link
+                className={styles.bookingRow}
+                to={`/staff/bookings/${booking.id}`}
+              >
+                <span className={styles.bookingDate}>
+                  {formatBookingDate(booking.scheduled_start)}
+                </span>
+                <span className={styles.bookingService}>
+                  {booking.service_category}
+                </span>
+                {/* An archived pet is no longer in the customer's pet list. */}
+                <span className={styles.bookingPet}>
+                  {pet ? (
+                    <PetAvatar
+                      name={pet.name}
+                      photoUrl={pet.photo_url}
+                      size="xs"
+                    />
+                  ) : null}
+                  {pet?.name ?? '—'}
+                </span>
+                <BookingStatusBadge status={booking.status} />
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     );
   }

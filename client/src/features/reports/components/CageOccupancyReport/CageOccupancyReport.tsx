@@ -51,6 +51,7 @@ import {
   groupCagesBySize,
   type CageSortKey,
 } from './cageSort';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import styles from './CageOccupancyReport.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
@@ -544,6 +545,11 @@ export function CageOccupancyReport() {
         {occupant ? (
           <span className={styles.occupant}>
             <span className={styles.occupantName}>
+              <PetAvatar
+                name={occupant.pet_name ?? 'Unknown pet'}
+                photoUrl={occupant.pet_photo_url}
+                size="xs"
+              />
               {occupant.pet_name ?? 'Unknown pet'}
             </span>
             <span className={styles.cageSize}>{occupant.service}</span>

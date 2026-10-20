@@ -213,3 +213,9 @@
   cursor: progress;
   opacity: 0.6;
 }
+
+.petLine {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}

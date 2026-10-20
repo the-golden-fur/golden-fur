@@ -184,6 +184,7 @@ export function CreditReviewQueuePage() {
                 key={item.log.id}
                 item={item}
                 petName={pets[item.booking.pet_id]?.name ?? 'Unknown pet'}
+                petPhotoUrl={pets[item.booking.pet_id]?.photo_url}
                 ownerName={
                   owners[item.booking.customer_id]?.full_name ?? 'Unknown owner'
                 }

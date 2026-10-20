@@ -90,6 +90,7 @@ export interface CageOccupant {
   stay_id: string;
   cage_id: string;
   pet_name: string | null;
+  pet_photo_url: string | null;
   owner_name: string | null;
   service: 'Hotel' | 'Daycare';
   booking_id: string | null;

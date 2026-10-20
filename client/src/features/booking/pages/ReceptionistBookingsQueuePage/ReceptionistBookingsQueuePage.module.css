@@ -393,3 +393,9 @@
     min-height: 4rem;
   }
 }
+
+.petLine {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}

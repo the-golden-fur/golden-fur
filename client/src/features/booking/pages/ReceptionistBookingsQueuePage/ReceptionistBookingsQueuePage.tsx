@@ -86,6 +86,7 @@ import {
 } from '../../bookingConfirmation';
 import styles from './ReceptionistBookingsQueuePage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 // Same gap noted on Consultation Queue/Groomer Dashboard: no WebSocket/
 // realtime infra exists anywhere in this codebase yet, so this queue
@@ -1455,7 +1456,12 @@ export function ReceptionistBookingsQueuePage() {
                     {branchNameById.get(booking.branch_id) ?? 'Branch'} -{' '}
                     {formatDateTime(booking.scheduled_start)}
                   </span>
-                  <span className={styles.bookingMeta}>
+                  <span className={`${styles.bookingMeta} ${styles.petLine}`}>
+                    <PetAvatar
+                      name={pets[booking.pet_id]?.name ?? 'Unknown pet'}
+                      photoUrl={pets[booking.pet_id]?.photo_url}
+                      size="xs"
+                    />
                     {pets[booking.pet_id]?.name ?? 'Unknown pet'} - Owner{' '}
                     {owners[booking.customer_id]?.full_name ?? 'Unknown owner'}
                   </span>
