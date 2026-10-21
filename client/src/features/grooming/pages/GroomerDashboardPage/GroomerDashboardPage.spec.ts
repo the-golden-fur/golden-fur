@@ -233,7 +233,7 @@ describe('GroomerDashboardPage (#68, booking-status revision)', () => {
     ).toBeInTheDocument();
   });
 
-  it('History shows completed services: it asks the server for the history view and renders them read-only', async () => {
+  it('Past bookings asks the server for the history view, renders them read-only, and filters by Completed/No-show/Cancelled', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildViewerProfile('Groomer'),
       error: null,
@@ -261,11 +261,22 @@ describe('GroomerDashboardPage (#68, booking-status revision)', () => {
       screen.getByRole('heading', { name: 'Grooming Queue' })
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'History' }));
+    await user.click(screen.getByRole('button', { name: 'Past bookings' }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Grooming History' })
+      await screen.findByRole('heading', { name: 'Past Bookings' })
     ).toBeInTheDocument();
+    for (const status of ['Completed', 'No-show', 'Cancelled']) {
+      expect(screen.getByRole('option', { name: status })).toBeInTheDocument();
+    }
+    // Only backward-looking dates, starting at the last 7 days.
+    expect(screen.getByDisplayValue('Last 7 days')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('option', { name: 'Tomorrow' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('option', { name: 'This week' })
+    ).not.toBeInTheDocument();
     await waitFor(() =>
       expect(groomingApi.listGroomingQueue).toHaveBeenLastCalledWith(
         'token',
@@ -339,5 +350,75 @@ describe('GroomerDashboardPage (#68, booking-status revision)', () => {
     expect(
       screen.getByRole('button', { name: /complete/i })
     ).toBeInTheDocument();
+  });
+
+  it('keeps a started-but-not-completed groom at the top, even sorted by pet name', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Groomer'),
+      error: null,
+    });
+    vi.mocked(groomingApi.listGroomingQueue).mockResolvedValue({
+      data: {
+        sessions: [
+          buildSession('Pending', {
+            id: 'session-alpha',
+            booking_id: 'booking-alpha',
+            queue_position: 1,
+            booking: buildBooking({
+              id: 'booking-alpha',
+              pet_id: 'pet-alpha',
+              status: 'Pending',
+            }),
+          }),
+          buildSession('In Progress', {
+            id: 'session-zed',
+            booking_id: 'booking-zed',
+            queue_position: 9,
+            booking: buildBooking({
+              id: 'booking-zed',
+              pet_id: 'pet-zed',
+              status: 'In Progress',
+              started_at: '2026-07-18T02:00:00.000Z',
+            }),
+          }),
+        ],
+      },
+      error: null,
+    });
+    vi.mocked(customerApi.getPet).mockImplementation(async (id) => ({
+      data: {
+        id,
+        customer_id: 'customer-1',
+        name: id === 'pet-zed' ? 'Zed' : 'Alpha',
+        pet_type: 'Dog',
+        breed_id: null,
+        photo_url: null,
+        gender: null,
+        date_of_birth: null,
+        weight_class: 'M',
+        coat_type: 'SC',
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+      error: null,
+    }));
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: null,
+      error: 'not found',
+    });
+
+    renderPage();
+
+    // Queue order: In Progress first despite its higher queue_position.
+    await screen.findByText('Zed');
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Zed');
+
+    // Pet name (A-Z) would put Alpha first - the started groom stays on top.
+    await userEvent.selectOptions(
+      screen.getByDisplayValue('Sort: Queue order'),
+      'pet-name'
+    );
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Zed');
+    expect(screen.getAllByRole('listitem')[1]).toHaveTextContent('Alpha');
   });
 });

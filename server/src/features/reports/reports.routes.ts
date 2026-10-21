@@ -14,6 +14,7 @@ import {
   setGoalGrowthRateController,
   setGoalTargetController,
   transactionHistoryController,
+  trendsController,
 } from './reports.controller.ts';
 import {
   ANALYTICS_READ_ROLES,
@@ -22,6 +23,7 @@ import {
   GOALS_ROLES,
   REPORTS_READ_ROLES,
   TRANSACTION_HISTORY_READ_ROLES,
+  TRENDS_READ_ROLES,
 } from './reports.types.ts';
 
 /**
@@ -125,5 +127,16 @@ router.put(
   setGoalGrowthRateController
 );
 router.put('/reports/goals/target', goalsAccess, setGoalTargetController);
+
+// Custom change (Trends page): Admin/Supervisor for their own branch,
+// Superadmin for any branch - requireBranch supplies the "own branch".
+const trendsRead = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...TRENDS_READ_ROLES]),
+  requireBranch,
+];
+
+router.get('/reports/trends', trendsRead, trendsController);
 
 export default router;

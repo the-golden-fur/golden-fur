@@ -528,5 +528,118 @@ describe('pet CRUD (Issue #32)', () => {
 
       expect(res.status).toBe(403);
     });
+
+    it('DELETE saves the delete reason the owner picked', async () => {
+      mockCaller('customer-1');
+      const inactivePet = {
+        id: 'pet-1',
+        customer_id: 'customer-1',
+        is_active: false,
+      };
+      queueFromResults(
+        { data: inactivePet, error: null },
+        { data: inactivePet, error: null },
+        { data: null, error: null }
+      );
+
+      const res = await request(app)
+        .delete('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ reason: 'other', reasonOther: '  Moving abroad  ' });
+
+      expect(res.status).toBe(204);
+      expect(recordedWrites[0]?.payload).toMatchObject({
+        archive_reason: 'other',
+        archive_reason_other: 'Moving abroad',
+      });
+    });
+
+    it('DELETE drops reasonOther when the reason is not "other"', async () => {
+      mockCaller('customer-1');
+      const inactivePet = {
+        id: 'pet-1',
+        customer_id: 'customer-1',
+        is_active: false,
+      };
+      queueFromResults(
+        { data: inactivePet, error: null },
+        { data: inactivePet, error: null },
+        { data: null, error: null }
+      );
+
+      const res = await request(app)
+        .delete('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ reason: 'rehomed', reasonOther: 'ignored' });
+
+      expect(res.status).toBe(204);
+      expect(recordedWrites[0]?.payload).toMatchObject({
+        archive_reason: 'rehomed',
+        archive_reason_other: null,
+      });
+    });
+
+    it('DELETE returns 400 for an unknown delete reason', async () => {
+      mockCaller('customer-1');
+
+      const res = await request(app)
+        .delete('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ reason: 'bored' });
+
+      expect(res.status).toBe(400);
+      expect(recordedWrites).toHaveLength(0);
+    });
+
+    it('vaccination review rejects an unknown decision with 400', async () => {
+      mockCaller('staff-1');
+
+      const res = await request(app)
+        .post('/pets/pet-1/vaccination-records/record-1/review')
+        .set('Authorization', 'Bearer token')
+        .send({ decision: 'approve' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('the pending vaccination queue is staff-only', async () => {
+      mockCaller('customer-1');
+      queueFromResults(NOT_STAFF);
+
+      const res = await request(app)
+        .get('/vaccination-records/pending')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('an owner adding a vaccination without the card photo gets 400', async () => {
+      mockCaller('customer-1');
+      queueFromResults(NOT_STAFF, {
+        data: { id: 'pet-1', customer_id: 'customer-1' },
+        error: null,
+      });
+
+      const res = await request(app)
+        .post('/pets/pet-1/vaccination-records')
+        .set('Authorization', 'Bearer token')
+        .field('vaccine_name', 'Rabies')
+        .field('date_administered', '2026-07-01');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/card/i);
+    });
+
+    it('DELETE returns 400 for "other" with blank text', async () => {
+      mockCaller('customer-1');
+
+      const res = await request(app)
+        .delete('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ reason: 'other', reasonOther: '   ' });
+
+      expect(res.status).toBe(400);
+      expect(recordedWrites).toHaveLength(0);
+    });
   });
 });

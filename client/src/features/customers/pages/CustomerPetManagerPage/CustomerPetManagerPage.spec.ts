@@ -27,6 +27,18 @@ vi.mock('../../../booking/api/booking.api', () => ({
   getPetBookingConflicts: vi.fn(),
 }));
 
+// The details modal has its own spec - here it only needs to show which
+// booking it was opened for.
+vi.mock(
+  '../../../booking/components/BookingDetailsModal/BookingDetailsModal',
+  () => ({
+    BookingDetailsModal: ({ bookingId }: { bookingId: string | null }) =>
+      bookingId
+        ? createElement('div', { role: 'dialog' }, `Details for ${bookingId}`)
+        : null,
+  })
+);
+
 function buildPet(overrides: Partial<Pet> = {}): Pet {
   return {
     id: 'pet-1',
@@ -252,14 +264,23 @@ describe('CustomerPetManagerPage', () => {
     expect(dialog).toHaveTextContent(/Warning/);
     expect(deactivatePet).not.toHaveBeenCalled();
 
+    // A reason has to be picked before the delete can be confirmed.
+    const confirmButton = within(dialog).getByRole('button', {
+      name: 'Delete pet',
+    });
+    expect(confirmButton).toBeDisabled();
     await user.click(
-      within(dialog).getByRole('button', { name: 'Delete pet' })
+      within(dialog).getByRole('radio', { name: 'Passed away' })
     );
+    await user.click(confirmButton);
 
     expect(await screen.findByText('Pet deleted.')).toBeInTheDocument();
     // The server only archives an inactive pet, so deactivate goes first.
     expect(deactivatePet).toHaveBeenCalledWith('pet-1', 'token');
-    expect(archivePet).toHaveBeenCalledWith('pet-1', 'token');
+    expect(archivePet).toHaveBeenCalledWith('pet-1', 'token', {
+      reason: 'passed_away',
+      reasonOther: null,
+    });
     expect(vi.mocked(deactivatePet).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(archivePet).mock.invocationCallOrder[0]
     );
@@ -288,6 +309,47 @@ describe('CustomerPetManagerPage', () => {
     expect(deactivatePet).not.toHaveBeenCalled();
     expect(archivePet).not.toHaveBeenCalled();
     expect(screen.getByText('Bantay')).toBeInTheDocument();
+  });
+
+  it('"Other" asks for a custom reason and sends it with the delete', async () => {
+    vi.mocked(listCustomerPets).mockResolvedValue({
+      data: [buildPet({ id: 'pet-1', name: 'Bantay' })],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Delete Bantay' })
+    );
+    const dialog = screen.getByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', {
+      name: 'Delete pet',
+    });
+
+    expect(
+      within(dialog).queryByRole('textbox', { name: 'Tell us more' })
+    ).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('radio', { name: 'Other' }));
+
+    // Picking Other isn't enough - the text can't be blank.
+    const otherText = within(dialog).getByRole('textbox', {
+      name: 'Tell us more',
+    });
+    expect(confirmButton).toBeDisabled();
+    await user.type(otherText, '   ');
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(otherText, 'Moving abroad ');
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    expect(await screen.findByText('Pet deleted.')).toBeInTheDocument();
+    expect(archivePet).toHaveBeenCalledWith('pet-1', 'token', {
+      reason: 'other',
+      reasonOther: 'Moving abroad',
+    });
   });
 
   it('a pet with a booking that is not finished cannot be deleted', async () => {
@@ -321,6 +383,44 @@ describe('CustomerPetManagerPage', () => {
     expect(deactivatePet).not.toHaveBeenCalled();
   });
 
+  it("shows a pet's unresolved booking and opens its full details on click", async () => {
+    vi.mocked(listCustomerPets).mockResolvedValue({
+      data: [
+        buildPet({ id: 'pet-1', name: 'Bantay' }),
+        buildPet({ id: 'pet-2', name: 'Whiskers' }),
+      ],
+      error: null,
+    });
+    vi.mocked(getPetBookingConflicts).mockResolvedValue({
+      data: [
+        {
+          pet_id: 'pet-1',
+          booking_id: 'booking-1',
+          service_category: 'Grooming',
+          scheduled_start: '2026-11-01T01:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    const bookingButton = await screen.findByRole('button', {
+      name: /View Bantay's Grooming booking/,
+    });
+    // Whiskers has nothing open.
+    expect(
+      screen.queryByRole('button', { name: /View Whiskers's/ })
+    ).not.toBeInTheDocument();
+
+    await user.click(bookingButton);
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Details for booking-1'
+    );
+  });
+
   it('keeps the pet and shows the error when the delete fails', async () => {
     vi.mocked(listCustomerPets).mockResolvedValue({
       data: [buildPet({ id: 'pet-1', name: 'Bantay' })],
@@ -336,6 +436,11 @@ describe('CustomerPetManagerPage', () => {
 
     await user.click(
       await screen.findByRole('button', { name: 'Delete Bantay' })
+    );
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('radio', {
+        name: 'Rehomed / given away',
+      })
     );
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {

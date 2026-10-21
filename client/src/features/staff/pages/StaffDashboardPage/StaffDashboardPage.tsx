@@ -25,6 +25,7 @@ import { DaysOffWidget } from '../../components/dashboard/DaysOffWidget/DaysOffW
 import { DashboardTile } from '../../components/dashboard/DashboardTile/DashboardTile';
 import { ReceptionistBookingsQueueWidget } from '../../components/dashboard/ReceptionistBookingsQueueWidget/ReceptionistBookingsQueueWidget';
 import { AssessmentQueueWidget } from '../../components/dashboard/AssessmentQueueWidget/AssessmentQueueWidget';
+import { ASSESSMENT_BOOKINGS_PAUSED } from '../../../booking/booking.types';
 import { CreditReviewQueueWidget } from '../../components/dashboard/CreditReviewQueueWidget/CreditReviewQueueWidget';
 import { CageOccupancyWidget } from '../../components/dashboard/CageOccupancyWidget/CageOccupancyWidget';
 import { BoardingChecklistWidget } from '../../components/dashboard/BoardingChecklistWidget/BoardingChecklistWidget';
@@ -228,10 +229,13 @@ export function StaffDashboardPage() {
                 to="/staff/bookings/new"
                 icon={CalendarPlus}
               />
-              <AssessmentQueueWidget
-                branchId={branchId}
-                accessToken={accessToken}
-              />
+              {/* Archived for now - see ASSESSMENT_BOOKINGS_PAUSED. */}
+              {ASSESSMENT_BOOKINGS_PAUSED ? null : (
+                <AssessmentQueueWidget
+                  branchId={branchId}
+                  accessToken={accessToken}
+                />
+              )}
               <CreditReviewQueueWidget accessToken={accessToken} />
             </div>
           </div>
@@ -316,10 +320,13 @@ export function StaffDashboardPage() {
                 to="/staff/bookings/new"
                 icon={CalendarPlus}
               />
-              <AssessmentQueueWidget
-                branchId={branchId}
-                accessToken={accessToken}
-              />
+              {/* Archived for now - see ASSESSMENT_BOOKINGS_PAUSED. */}
+              {ASSESSMENT_BOOKINGS_PAUSED ? null : (
+                <AssessmentQueueWidget
+                  branchId={branchId}
+                  accessToken={accessToken}
+                />
+              )}
               <CreditReviewQueueWidget accessToken={accessToken} />
             </div>
           </div>

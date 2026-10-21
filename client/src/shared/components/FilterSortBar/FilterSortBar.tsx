@@ -10,8 +10,10 @@ import {
 } from 'lucide-react';
 import {
   DATE_RANGE_PRESET_OPTIONS,
+  PAST_DATE_RANGE_PRESET_OPTIONS,
   type DateRangePreset,
 } from '../QueueFilterBar/dateRangePreset';
+import { todayDateKey } from '../../utils/isFutureDate';
 import { FilterTile } from './FilterTile';
 import type {
   DateRangeValue,
@@ -323,6 +325,10 @@ function FilterEditor({ field, value, onChange, close }: FilterEditorProps) {
       'preset' in value
         ? (value as DateRangeValue)
         : { preset: 'all', from: null, to: null };
+    const presetOptions = field.pastOnly
+      ? PAST_DATE_RANGE_PRESET_OPTIONS
+      : DATE_RANGE_PRESET_OPTIONS;
+    const maxDay = field.pastOnly ? todayDateKey() : undefined;
     return (
       <>
         <label className={styles.editorField}>
@@ -338,7 +344,7 @@ function FilterEditor({ field, value, onChange, close }: FilterEditorProps) {
               })
             }
           >
-            {DATE_RANGE_PRESET_OPTIONS.map((option) => (
+            {presetOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -352,6 +358,7 @@ function FilterEditor({ field, value, onChange, close }: FilterEditorProps) {
               <input
                 className={styles.editorControl}
                 type="date"
+                max={maxDay}
                 value={current.from ?? ''}
                 onChange={(event) =>
                   onChange({
@@ -366,6 +373,7 @@ function FilterEditor({ field, value, onChange, close }: FilterEditorProps) {
               <input
                 className={styles.editorControl}
                 type="date"
+                max={maxDay}
                 value={current.to ?? ''}
                 onChange={(event) =>
                   onChange({ ...current, to: event.target.value || null })

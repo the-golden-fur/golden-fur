@@ -75,6 +75,17 @@ export type ServiceCategory =
   | 'Assessment';
 
 /**
+ * The Assessment Queue is archived for now: no new Assessment-category
+ * bookings (createBooking refuses them). Pets are still assessed - on
+ * arrival through the Bookings Queue's Assess popup, or on the staff pet
+ * profile before a walk-in. Bookings already made are untouched and can be
+ * finished at /staff/assessment/queue. To restore everything: set this
+ * and the client's ASSESSMENT_BOOKINGS_PAUSED (client booking.types.ts) to
+ * false - the client's flag also brings back the queue's tiles and widget.
+ */
+export const ASSESSMENT_BOOKINGS_PAUSED = true;
+
+/**
  * Unified booking lifecycle (booking-status revision): no manual "staff
  * confirms a booking" step ever existed - status was always set
  * automatically - so 'Confirmed' was retired rather than relabeled.

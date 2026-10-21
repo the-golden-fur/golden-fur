@@ -14,6 +14,17 @@ export type PetGender = 'Male' | 'Female';
 export type PetWeightClass = 'S' | 'M' | 'L' | 'XL';
 export type PetCoatType = 'SC' | 'LC' | 'XLC';
 
+/** Why a customer deleted (archived) a pet - mirrors the archive_reason
+ * check constraint in ...275_custom_pet_archive_reason.sql. */
+export const PET_ARCHIVE_REASONS = [
+  'passed_away',
+  'rehomed',
+  'duplicate',
+  'no_longer_using_clinic',
+  'other',
+] as const;
+export type PetArchiveReason = (typeof PET_ARCHIVE_REASONS)[number];
+
 export interface Breed {
   id: string;
   pet_type: PetType;
@@ -45,6 +56,10 @@ export interface Pet {
   assessed_at: string | null;
   is_active: boolean;
   archived_at: string | null;
+  /** Set when archived, cleared on restore. Not displayed yet - reserved
+   * for a future Trends tab. archive_reason_other is only set for 'other'. */
+  archive_reason: PetArchiveReason | null;
+  archive_reason_other: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -57,6 +72,12 @@ export interface PetHealthCondition {
   updated_at: string;
 }
 
+/** 'verified': entered by staff, or a customer's record staff confirmed.
+ * 'pending': added by the owner, awaiting review. 'rejected': staff turned
+ * it down (see rejection_reason). Information only - nothing in booking
+ * reads it (20261021277). */
+export type VaccinationRecordStatus = 'verified' | 'pending' | 'rejected';
+
 export interface PetVaccinationRecord {
   id: string;
   pet_id: string;
@@ -66,6 +87,23 @@ export interface PetVaccinationRecord {
   administered_by: string | null;
   notes: string | null;
   created_at: string;
+  status: VaccinationRecordStatus;
+  /** Set when the pet's owner added it themselves. */
+  reported_by_customer_id: string | null;
+  /** The card photo's path in the private 'vaccination-proofs' bucket. */
+  proof_path: string | null;
+  reviewed_by_staff_id: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  /** Short-lived signed link to the card photo - added when read, never
+   * stored. */
+  proof_url?: string | null;
+}
+
+/** A pending record in the staff review queue, with display names. */
+export interface PendingVaccinationRecord extends PetVaccinationRecord {
+  pet_name: string | null;
+  owner_name: string | null;
 }
 
 export type MedicalNoteCategory =

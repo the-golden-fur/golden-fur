@@ -23,9 +23,12 @@ import {
 import {
   createVaccinationRecord,
   deleteVaccinationRecord,
+  listPendingVaccinationRecords,
   listVaccinationRecords,
+  reviewVaccinationRecord,
   updateVaccinationRecord,
 } from './services/vaccinationRecord.service.ts';
+import type { VaccinationProofFile } from './services/vaccinationProof.service.ts';
 import { getPetHealthConditions } from '../../veterinary/services/petHealthConditions.service.ts';
 import {
   listPetConsultationResultsForRequester,
@@ -146,27 +149,83 @@ router.post(
   }
 );
 
+// Customer-reported vaccinations: create/update take an optional 'proof'
+// file (the vaccination card), so they accept multipart form data as well
+// as JSON. In a form every field is a string, so an empty one means
+// "cleared" - normalised to null (or dropped, where null isn't allowed).
+const vaccinationProofUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+const VACCINATION_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const emptyToNull = (value: unknown) => (value === '' ? null : value);
+const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value);
+
 const createVaccinationRecordValidator = z
   .object({
     vaccine_name: z.string().trim().min(1, 'Vaccine name is required'),
-    date_administered: z.string().min(1, 'Date administered is required'),
-    next_due_date: z.string().min(1).optional(),
-    notes: z.string().trim().optional(),
+    date_administered: z
+      .string()
+      .regex(VACCINATION_DATE, 'Date administered is required'),
+    next_due_date: z.preprocess(
+      emptyToUndefined,
+      z.string().regex(VACCINATION_DATE).optional()
+    ),
+    notes: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   })
   .strict();
 
 const updateVaccinationRecordValidator = z
   .object({
     vaccine_name: z.string().trim().min(1).optional(),
-    date_administered: z.string().min(1).optional(),
-    next_due_date: z.string().min(1).nullable().optional(),
-    notes: z.string().trim().nullable().optional(),
+    date_administered: z.string().regex(VACCINATION_DATE).optional(),
+    next_due_date: z.preprocess(
+      emptyToNull,
+      z.string().regex(VACCINATION_DATE).nullable().optional()
+    ),
+    notes: z.preprocess(emptyToNull, z.string().trim().nullable().optional()),
   })
   .strict();
+
+const reviewVaccinationRecordValidator = z
+  .object({
+    decision: z.enum(['verify', 'reject']),
+    reason: z.string().optional(),
+  })
+  .strict();
+
+function proofFile(
+  req: AuthenticatedRequest
+): VaccinationProofFile | undefined {
+  return req.file as VaccinationProofFile | undefined;
+}
+
+// Staff review queue - listed before the /pets/:id routes it doesn't
+// share a prefix with, purely for readability.
+router.get(
+  '/vaccination-records/pending',
+  jwtMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requesterId = req.user?.sub;
+
+    if (!requesterId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const records = await listPendingVaccinationRecords(requesterId);
+      return res.status(200).json({ records });
+    } catch (error) {
+      return sendServiceError(res, error);
+    }
+  }
+);
 
 router.post(
   '/pets/:id/vaccination-records',
   jwtMiddleware,
+  vaccinationProofUpload.single('proof'),
   async (req: AuthenticatedRequest, res: Response) => {
     const requesterId = req.user?.sub;
     const petId = paramId(req, 'id');
@@ -191,6 +250,7 @@ router.post(
         dateAdministered: parsed.data.date_administered,
         nextDueDate: parsed.data.next_due_date,
         notes: parsed.data.notes,
+        proofFile: proofFile(req),
       });
 
       return res.status(201).json({ record });
@@ -227,6 +287,7 @@ router.get(
 router.patch(
   '/pets/:id/vaccination-records/:recordId',
   jwtMiddleware,
+  vaccinationProofUpload.single('proof'),
   async (req: AuthenticatedRequest, res: Response) => {
     const requesterId = req.user?.sub;
     const petId = paramId(req, 'id');
@@ -250,6 +311,43 @@ router.patch(
         petId: petId as string,
         recordId: recordId as string,
         updates: parsed.data,
+        proofFile: proofFile(req),
+      });
+
+      return res.status(200).json({ record });
+    } catch (error) {
+      return sendServiceError(res, error);
+    }
+  }
+);
+
+router.post(
+  '/pets/:id/vaccination-records/:recordId/review',
+  jwtMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requesterId = req.user?.sub;
+    const petId = paramId(req, 'id');
+    const recordId = paramId(req, 'recordId');
+
+    if (!requesterId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const parsed = reviewVaccinationRecordValidator.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ error: 'Invalid payload', details: parsed.error.issues });
+    }
+
+    try {
+      const record = await reviewVaccinationRecord({
+        requesterId,
+        petId: petId as string,
+        recordId: recordId as string,
+        decision: parsed.data.decision,
+        reason: parsed.data.reason,
       });
 
       return res.status(200).json({ record });

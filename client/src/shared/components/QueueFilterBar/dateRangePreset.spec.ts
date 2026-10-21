@@ -32,6 +32,21 @@ describe('resolveDateRangePreset', () => {
     });
   });
 
+  it('the past presets only ever look back from today', () => {
+    expect(resolveDateRangePreset('yesterday', WEDNESDAY)).toEqual({
+      from: '2026-07-21',
+      to: '2026-07-21',
+    });
+    expect(resolveDateRangePreset('last_7_days', WEDNESDAY)).toEqual({
+      from: '2026-07-16',
+      to: '2026-07-22',
+    });
+    expect(resolveDateRangePreset('last_30_days', WEDNESDAY)).toEqual({
+      from: '2026-06-23',
+      to: '2026-07-22',
+    });
+  });
+
   it("'this_week' is a rolling 7-day window starting today (today through today+6)", () => {
     expect(resolveDateRangePreset('this_week', WEDNESDAY)).toEqual({
       from: '2026-07-22',

@@ -407,7 +407,11 @@ export function PetDetailPanel({
             <h2 className={styles.sectionTitle} id="vaccination-records-title">
               Vaccination Records
             </h2>
-            <VaccinationRecordList petId={pet.id} accessToken={accessToken} />
+            <VaccinationRecordList
+              petId={pet.id}
+              accessToken={accessToken}
+              mode={isStaff ? 'staff' : canEdit ? 'owner' : 'readonly'}
+            />
           </section>
 
           <section

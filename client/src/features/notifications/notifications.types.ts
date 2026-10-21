@@ -15,7 +15,8 @@ export type NotificationEventType =
   | 'daycare_overdue'
   | 'vet_charge_posted'
   | 'checkout_reminder'
-  | 'stay_checked_out';
+  | 'stay_checked_out'
+  | 'vaccination_reviewed';
 
 export interface Notification {
   id: string;

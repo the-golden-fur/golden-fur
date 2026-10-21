@@ -1,10 +1,27 @@
+/* Full width of the content area - the pet table has six columns plus
+   Delete, and a centred 60rem column made it scroll sideways on desktop. */
 .page {
   composes: animate-fade-in from global;
   display: grid;
   gap: var(--space-4);
-  max-width: 60rem;
-  margin: 0 auto;
+  min-width: 0;
   padding: var(--space-4) var(--space-2);
+}
+
+@media (min-width: 64rem) {
+  .page {
+    padding-inline: var(--space-4);
+  }
+}
+
+/* Title on the left, "Add a pet" on the right - wraps under the title on
+   a narrow screen. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
 .title {
@@ -21,11 +38,12 @@
   font-size: var(--text-sm);
 }
 
-/* Sits straight on the page (no card chrome) at the same 60rem column as
-   My Bookings, so the table has room for all its columns. */
+/* Sits straight on the page (no card chrome). min-width: 0 lets the grid
+   track shrink to the screen instead of growing to the table's width. */
 .panel {
   display: grid;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 /* The Add a pet form keeps a comfortable field width inside the wider
@@ -139,6 +157,32 @@
   box-shadow: var(--shadow-md);
 }
 
+/* A pet's unresolved booking - a pill-shaped button in the pending-booking
+   colours, so it reads as "something's still open" and as clickable. */
+.bookingLink {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--color-booking-pending-bg);
+  color: var(--color-booking-pending-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-2);
+  text-align: left;
+}
+
+.bookingLink:hover {
+  border-color: var(--color-booking-pending-text);
+}
+
+.bookingLink:focus-visible {
+  outline: 2px solid var(--color-booking-pending-text);
+  outline-offset: 2px;
+}
+
 /* Table's trailing Delete action - labelled and in the error colour so
    it reads as a destructive button at a glance, outlined (not filled) so
    it doesn't compete with the pet's name. */
@@ -188,6 +232,50 @@
   width: 1.25rem;
   height: 1.25rem;
   color: var(--color-error-text);
+}
+
+/* Delete dialog's "why" question - plain stacked radios under the
+   warning, no extra box, so the warning stays the first thing read. */
+.reasonGroup {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.reasonLegend {
+  margin-bottom: var(--space-1);
+  padding: 0;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.reasonOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.reasonOther {
+  display: grid;
+  gap: var(--space-0-5);
+  margin-top: var(--space-1);
+}
+
+.reasonTextarea {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+  resize: vertical;
 }
 
 .errorBanner,

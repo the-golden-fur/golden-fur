@@ -35,6 +35,14 @@ const FILTER_FIELDS: FilterField[] = [
     ],
     formatValue: (value) => String(value ?? ''),
   },
+  {
+    id: 'logged',
+    label: 'Logged',
+    type: 'date-range',
+    pastOnly: true,
+    defaultValue: { preset: 'today', from: null, to: null },
+    formatValue: () => 'Today',
+  },
 ];
 
 const SORT_FIELDS: SortFieldDescriptor[] = [
@@ -114,6 +122,27 @@ describe('FilterSortBar', () => {
     expect(
       screen.getByRole('button', { name: /Service: Hotel/ })
     ).toBeInTheDocument();
+  });
+
+  it('a pastOnly date-range field offers only backward-looking ranges', async () => {
+    render(<Harness />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Logged' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /Logged: Today/ })
+    );
+
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByRole('option', { name: 'Last 7 days' })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('option', { name: 'Tomorrow' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('option', { name: 'This week' })
+    ).not.toBeInTheDocument();
   });
 
   it('removes a tile via its X button', async () => {

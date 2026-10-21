@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getPetBookingConflicts } from '../../../booking/api/booking.api';
+import type { PetBookingConflict } from '../../../booking/booking.types';
+import { BookingDetailsModal } from '../../../booking/components/BookingDetailsModal/BookingDetailsModal';
 import {
   archivePet,
   deactivatePet,
@@ -36,7 +38,11 @@ import {
 import { useGroupBy } from '../../../../shared/hooks/useGroupBy/useGroupBy';
 import { formatPetAge } from '../../../../shared/utils/formatPetAge';
 import { formatRelativeTime } from '../../../../shared/utils/formatRelativeTime';
-import type { Pet } from '../../customer.types';
+import type { Pet, PetDeleteReason } from '../../customer.types';
+import {
+  PET_DELETE_REASON_OTHER_MAX_LENGTH,
+  PET_DELETE_REASONS,
+} from './petDeleteReasons';
 import {
   applyPetFilters,
   buildPetFilterFields,
@@ -70,14 +76,28 @@ export function CustomerPetManagerPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showPetForm, setShowPetForm] = useState(false);
   const [petMessage, setPetMessage] = useState<string | null>(null);
-  // Pets with a booking that isn't finished yet - these can't be deleted
-  // (same check the booking flow's Pet step uses to block a double booking).
-  const [conflictPetIds, setConflictPetIds] = useState<Set<string>>(
-    () => new Set()
+  // Each pet's unresolved booking (one per pet, the earliest) - these pets
+  // can't be deleted (same check the booking flow's Pet step uses to block
+  // a double booking), and the Booking filter/column read it too.
+  const [conflictByPetId, setConflictByPetId] = useState<
+    Map<string, PetBookingConflict>
+  >(() => new Map());
+  const unresolvedPetIds = useMemo(
+    () => new Set(conflictByPetId.keys()),
+    [conflictByPetId]
   );
+  // Booking opened from a pet's Booking cell - shows its full details.
+  const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null);
   const [petToDelete, setPetToDelete] = useState<Pet | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Why the customer is deleting - required before "Delete pet" enables.
+  // Saved with the archive for a future Trends tab, not shown anywhere yet.
+  const [deleteReason, setDeleteReason] = useState<PetDeleteReason | ''>('');
+  const [deleteReasonOther, setDeleteReasonOther] = useState('');
+  const isDeleteReasonMissing =
+    deleteReason === '' ||
+    (deleteReason === 'other' && deleteReasonOther.trim() === '');
 
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
@@ -103,8 +123,8 @@ export function CustomerPetManagerPage() {
 
     void getPetBookingConflicts(user.id, accessToken).then((result) => {
       if (isMounted && result.data) {
-        setConflictPetIds(
-          new Set(result.data.map((conflict) => conflict.pet_id))
+        setConflictByPetId(
+          new Map(result.data.map((conflict) => [conflict.pet_id, conflict]))
         );
       }
     });
@@ -127,7 +147,7 @@ export function CustomerPetManagerPage() {
   function handleDeleteClick(pet: Pet) {
     setPetMessage(null);
 
-    if (conflictPetIds.has(pet.id)) {
+    if (conflictByPetId.has(pet.id)) {
       setDeleteError(
         `${pet.name} has a booking that isn't finished yet. Cancel or complete it before deleting this pet.`
       );
@@ -135,6 +155,8 @@ export function CustomerPetManagerPage() {
     }
 
     setDeleteError(null);
+    setDeleteReason('');
+    setDeleteReasonOther('');
     setPetToDelete(pet);
   }
 
@@ -143,13 +165,24 @@ export function CustomerPetManagerPage() {
    * only archives an inactive pet (petArchive.service.ts), so deactivate
    * goes first. */
   async function handleConfirmDelete() {
-    if (!petToDelete || !accessToken) return;
+    if (
+      !petToDelete ||
+      !accessToken ||
+      deleteReason === '' ||
+      isDeleteReasonMissing
+    ) {
+      return;
+    }
 
     setIsDeleting(true);
     const deactivated = await deactivatePet(petToDelete.id, accessToken);
     const archived = deactivated.error
       ? deactivated
-      : await archivePet(petToDelete.id, accessToken);
+      : await archivePet(petToDelete.id, accessToken, {
+          reason: deleteReason,
+          reasonOther:
+            deleteReason === 'other' ? deleteReasonOther.trim() : null,
+        });
     setIsDeleting(false);
 
     if (archived.error) {
@@ -171,11 +204,11 @@ export function CustomerPetManagerPage() {
     const searched = query
       ? pets.filter((pet) => matchesPetQuery(pet, query))
       : pets;
-    const filtered = applyPetFilters(searched, filterTiles);
+    const filtered = applyPetFilters(searched, filterTiles, unresolvedPetIds);
 
     if (!sortTile) return filtered;
     return [...filtered].sort(PET_COMPARATORS[derivePetSortKey(sortTile)]);
-  }, [pets, search, filterTiles, sortTile]);
+  }, [pets, search, filterTiles, sortTile, unresolvedPetIds]);
 
   const activeGroupAxis =
     groupByAxes.find((axis) => axis.id === groupAxisId) ?? null;
@@ -198,6 +231,31 @@ export function CustomerPetManagerPage() {
 
   function handleRemoveFilter(fieldId: string) {
     setFilterTiles((prev) => prev.filter((tile) => tile.fieldId !== fieldId));
+  }
+
+  /** A pet's unresolved booking as a button that opens its full details,
+   * or null when it has none. */
+  function renderBookingLink(pet: Pet) {
+    const conflict = conflictByPetId.get(pet.id);
+    if (!conflict) return null;
+
+    const when = new Date(conflict.scheduled_start).toLocaleString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    return (
+      <button
+        type="button"
+        className={styles.bookingLink}
+        aria-label={`View ${pet.name}'s ${conflict.service_category} booking on ${when}`}
+        onClick={() => setDetailsBookingId(conflict.booking_id)}
+      >
+        {conflict.service_category} · {when}
+      </button>
+    );
   }
 
   const columns: DataTableColumn<Pet>[] = [
@@ -241,6 +299,11 @@ export function CustomerPetManagerPage() {
       render: (pet) =>
         pet.assessed_at ? formatRelativeTime(pet.assessed_at) : '—',
     },
+    {
+      id: 'booking',
+      header: 'Booking',
+      render: (pet) => renderBookingLink(pet) ?? '—',
+    },
   ];
 
   function renderPetRow(pet: Pet) {
@@ -266,6 +329,7 @@ export function CustomerPetManagerPage() {
             Last assessed {formatRelativeTime(pet.assessed_at)}
           </span>
         ) : null}
+        {renderBookingLink(pet)}
       </div>
     );
   }
@@ -282,7 +346,16 @@ export function CustomerPetManagerPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Pet Manager</h1>
+      <header className={styles.header}>
+        <h1 className={styles.title}>Pet Manager</h1>
+        <button
+          className={styles.button}
+          type="button"
+          onClick={() => setShowPetForm(true)}
+        >
+          Add a pet
+        </button>
+      </header>
 
       <section className={styles.panel}>
         {petMessage ? (
@@ -375,14 +448,6 @@ export function CustomerPetManagerPage() {
             )}
           </>
         )}
-
-        <button
-          className={styles.button}
-          type="button"
-          onClick={() => setShowPetForm(true)}
-        >
-          Add a pet
-        </button>
       </section>
 
       {/* Opens over the pet list instead of pushing it down. An outside
@@ -408,25 +473,65 @@ export function CustomerPetManagerPage() {
         </button>
       </Modal>
 
+      <BookingDetailsModal
+        bookingId={detailsBookingId}
+        onClose={() => setDetailsBookingId(null)}
+      />
+
       <ConfirmDialog
         isOpen={petToDelete !== null}
         title={`Delete ${petToDelete?.name ?? 'pet'}?`}
         body={
-          <p className={styles.deleteWarning}>
-            <TriangleAlert
-              className={styles.deleteWarningIcon}
-              aria-hidden="true"
-            />
-            <span>
-              <strong>Warning:</strong> {petToDelete?.name} will be removed from
-              your pets. You won&apos;t be able to book services for{' '}
-              {petToDelete?.name} unless the clinic restores it.
-            </span>
-          </p>
+          <>
+            <p className={styles.deleteWarning}>
+              <TriangleAlert
+                className={styles.deleteWarningIcon}
+                aria-hidden="true"
+              />
+              <span>
+                <strong>Warning:</strong> {petToDelete?.name} will be removed
+                from your pets. You won&apos;t be able to book services for{' '}
+                {petToDelete?.name} unless the clinic restores it.
+              </span>
+            </p>
+            <fieldset className={styles.reasonGroup} disabled={isDeleting}>
+              <legend className={styles.reasonLegend}>
+                Why are you deleting {petToDelete?.name}?
+              </legend>
+              {PET_DELETE_REASONS.map((option) => (
+                <label key={option.value} className={styles.reasonOption}>
+                  <input
+                    type="radio"
+                    name="pet-delete-reason"
+                    value={option.value}
+                    checked={deleteReason === option.value}
+                    onChange={() => setDeleteReason(option.value)}
+                  />
+                  {option.label}
+                </label>
+              ))}
+              {deleteReason === 'other' ? (
+                <label className={styles.reasonOther}>
+                  <span className={styles.filterLabel}>Tell us more</span>
+                  <textarea
+                    className={styles.reasonTextarea}
+                    value={deleteReasonOther}
+                    onChange={(event) =>
+                      setDeleteReasonOther(event.target.value)
+                    }
+                    maxLength={PET_DELETE_REASON_OTHER_MAX_LENGTH}
+                    rows={3}
+                    autoFocus
+                  />
+                </label>
+              ) : null}
+            </fieldset>
+          </>
         }
         confirmLabel="Delete pet"
         tone="danger"
         isConfirming={isDeleting}
+        confirmDisabled={isDeleteReasonMissing}
         onConfirm={() => void handleConfirmDelete()}
         onCancel={() => setPetToDelete(null)}
       />

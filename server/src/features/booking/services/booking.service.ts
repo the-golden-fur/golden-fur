@@ -33,6 +33,7 @@ import {
   notifyStaffRoleAtBranch,
 } from '../../notifications/services/notification.service.ts';
 import {
+  ASSESSMENT_BOOKINGS_PAUSED,
   BOOKING_MARK_PAID_ROLES,
   DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
   isNotStartedStatus,
@@ -1061,6 +1062,14 @@ export async function createBooking({
 
   if (bookingSource === 'Walk-in' && !staffRole) {
     throwWithStatus(403, 'Only staff may create a walk-in booking');
+  }
+
+  // The Assessment Queue is archived for now - see ASSESSMENT_BOOKINGS_PAUSED.
+  if (ASSESSMENT_BOOKINGS_PAUSED && input.service_category === 'Assessment') {
+    throwWithStatus(
+      409,
+      'Assessment bookings are paused. Book the service itself - the pet is assessed when it arrives.'
+    );
   }
 
   // Pay at checkout (20261005244): nothing is charged up front - the bill is

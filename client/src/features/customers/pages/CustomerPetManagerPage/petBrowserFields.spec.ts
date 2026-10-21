@@ -78,6 +78,25 @@ describe('applyPetFilters', () => {
     ];
     expect(applyPetFilters(pets, tiles).map((p) => p.id)).toEqual(['2']);
   });
+
+  it('narrows to pets with (or without) an unresolved booking', () => {
+    const unresolved = new Set(['2']);
+
+    expect(
+      applyPetFilters(
+        pets,
+        [{ fieldId: 'booking', value: 'unresolved' }],
+        unresolved
+      ).map((p) => p.id)
+    ).toEqual(['2']);
+    expect(
+      applyPetFilters(
+        pets,
+        [{ fieldId: 'booking', value: 'none' }],
+        unresolved
+      ).map((p) => p.id)
+    ).toEqual(['1']);
+  });
 });
 
 describe('matchesPetQuery', () => {

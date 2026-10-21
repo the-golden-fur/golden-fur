@@ -10,6 +10,7 @@ import {
   notifyStaffRoleAtBranch,
 } from '../../notifications/services/notification.service.ts';
 import {
+  ASSESSMENT_BOOKINGS_PAUSED,
   PAY_AT_CHECKOUT_CATEGORIES,
   sanitizeHotelPreferencesForStaffRole,
 } from '../booking.types.ts';
@@ -217,6 +218,18 @@ export async function createBookingGroup({
   const policy = hasOnlineSubBooking
     ? await resolveEffectivePolicy(input.branch_id)
     : null;
+
+  // The Assessment Queue is archived for now - same refusal as
+  // createBooking (see ASSESSMENT_BOOKINGS_PAUSED).
+  if (
+    ASSESSMENT_BOOKINGS_PAUSED &&
+    input.bookings.some((sub) => sub.service_category === 'Assessment')
+  ) {
+    throwWithStatus(
+      409,
+      'Assessment bookings are paused. Book the service itself - the pet is assessed when it arrives.'
+    );
+  }
 
   // Pay at checkout (20261005244) - same rule as createBooking, applied to
   // the whole checkout since it shares one payment decision: every

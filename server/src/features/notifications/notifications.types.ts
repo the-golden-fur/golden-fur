@@ -50,6 +50,11 @@ export const NOTIFICATION_EVENT_TYPES = [
    * once when staff check a Hotel or Daycare pet out - see
    * careLogNotifications.service.ts's sendStayCheckedOutNotification. */
   'stay_checked_out',
+  /** Custom change (customer-reported vaccinations, migration
+   * 20261021278): fires when staff verify or reject a vaccination record
+   * the pet's owner added - see vaccinationRecord.service.ts's
+   * reviewVaccinationRecord. */
+  'vaccination_reviewed',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];

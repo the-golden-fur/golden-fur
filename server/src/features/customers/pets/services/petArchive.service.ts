@@ -3,7 +3,7 @@ import {
   assertArchivedBeforeHardDelete,
   assertInactiveBeforeArchive,
 } from '../../../../shared/archive/archiveGuard.ts';
-import type { Pet } from '../pet.types.ts';
+import type { Pet, PetArchiveReason } from '../pet.types.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -40,24 +40,45 @@ export async function deactivatePet(petId: string): Promise<void> {
   if (error) throwWithStatus(400, error.message);
 }
 
-export async function archivePet(petId: string): Promise<void> {
+export interface PetArchiveReasonInput {
+  code: PetArchiveReason;
+  /** Only kept for 'other'. */
+  other: string | null;
+}
+
+/** The reason is optional - Pet Manager always sends one, but other
+ * archive callers don't have to. */
+export async function archivePet(
+  petId: string,
+  reason?: PetArchiveReasonInput
+): Promise<void> {
   const pet = await getPetOrThrow(petId);
   assertInactiveBeforeArchive(pet.is_active, 'This pet');
 
   const { error } = await supabase
     .from('pets')
-    .update({ archived_at: new Date().toISOString() })
+    .update({
+      archived_at: new Date().toISOString(),
+      archive_reason: reason?.code ?? null,
+      archive_reason_other: reason?.code === 'other' ? reason.other : null,
+    })
     .eq('id', petId);
 
   if (error) throwWithStatus(400, error.message);
 }
 
+/** Clears the archive reason too, so a restored pet doesn't count in the
+ * delete-reason trends. */
 export async function restorePet(petId: string): Promise<void> {
   await getPetOrThrow(petId);
 
   const { error } = await supabase
     .from('pets')
-    .update({ archived_at: null })
+    .update({
+      archived_at: null,
+      archive_reason: null,
+      archive_reason_other: null,
+    })
     .eq('id', petId);
 
   if (error) throwWithStatus(400, error.message);

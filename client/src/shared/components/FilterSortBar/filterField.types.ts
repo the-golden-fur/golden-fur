@@ -63,6 +63,10 @@ export interface MultiSelectFilterField extends FilterFieldBase {
 
 export interface DateRangeFilterField extends FilterFieldBase {
   type: 'date-range';
+  /** For records of what already happened (e.g. an activity log): offers
+   * only backward-looking presets (PAST_DATE_RANGE_PRESET_OPTIONS) and
+   * stops the custom From/To pickers at today. */
+  pastOnly?: boolean;
 }
 
 /** A "between X and Y" numeric filter (e.g. price range). Either bound may
