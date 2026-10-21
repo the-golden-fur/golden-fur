@@ -603,10 +603,9 @@ export async function reviewVaccinationRecord(
 export async function listPendingVaccinationRecords(
   accessToken: string
 ): Promise<CustomerApiResult<PendingVaccinationRecord[]>> {
-  const response = await fetch(
-    `${API_BASE_URL}/vaccination-records/pending`,
-    { headers: authHeaders(accessToken) }
-  );
+  const response = await fetch(`${API_BASE_URL}/vaccination-records/pending`, {
+    headers: authHeaders(accessToken),
+  });
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };

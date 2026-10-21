@@ -87,9 +87,7 @@ export function CustomerPetManagerPage() {
     [conflictByPetId]
   );
   // Booking opened from a pet's Booking cell - shows its full details.
-  const [detailsBookingId, setDetailsBookingId] = useState<string | null>(
-    null
-  );
+  const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null);
   const [petToDelete, setPetToDelete] = useState<Pet | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);

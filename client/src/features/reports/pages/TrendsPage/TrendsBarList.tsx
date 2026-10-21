@@ -24,7 +24,11 @@ interface TrendsBarListProps {
  * at phone width, and stays a plain list for screen readers. Bars are
  * scaled to the panel's largest value.
  */
-export function TrendsBarList({ rows, label, emptyMessage }: TrendsBarListProps) {
+export function TrendsBarList({
+  rows,
+  label,
+  emptyMessage,
+}: TrendsBarListProps) {
   if (rows.length === 0 || rows.every((row) => row.value === 0)) {
     return <p className={styles.empty}>{emptyMessage}</p>;
   }

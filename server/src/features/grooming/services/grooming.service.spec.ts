@@ -613,7 +613,10 @@ describe('grooming.service (#64, booking-status revision)', () => {
           {
             data: [
               {
-                ...sessionRow({ id: 'session-pending', booking_id: 'booking-1' }),
+                ...sessionRow({
+                  id: 'session-pending',
+                  booking_id: 'booking-1',
+                }),
                 queue_position: 1,
                 booking: bookingRow({
                   status: 'Pending',
@@ -621,7 +624,10 @@ describe('grooming.service (#64, booking-status revision)', () => {
                 }),
               },
               {
-                ...sessionRow({ id: 'session-started-late', booking_id: 'booking-2' }),
+                ...sessionRow({
+                  id: 'session-started-late',
+                  booking_id: 'booking-2',
+                }),
                 queue_position: 5,
                 booking: bookingRow({
                   status: 'In Progress',
@@ -630,7 +636,10 @@ describe('grooming.service (#64, booking-status revision)', () => {
                 }),
               },
               {
-                ...sessionRow({ id: 'session-started-early', booking_id: 'booking-3' }),
+                ...sessionRow({
+                  id: 'session-started-early',
+                  booking_id: 'booking-3',
+                }),
                 queue_position: 9,
                 booking: bookingRow({
                   status: 'In Progress',

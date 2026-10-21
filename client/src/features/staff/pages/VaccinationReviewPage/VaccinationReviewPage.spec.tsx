@@ -148,6 +148,8 @@ describe('VaccinationReviewPage', () => {
       await screen.findByText(/Bantay's Anti-rabies verified/)
     ).toBeInTheDocument();
     expect(screen.queryByText('Anti-rabies')).not.toBeInTheDocument();
-    expect(screen.getByText('Nothing to review right now.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Nothing to review right now.')
+    ).toBeInTheDocument();
   });
 });

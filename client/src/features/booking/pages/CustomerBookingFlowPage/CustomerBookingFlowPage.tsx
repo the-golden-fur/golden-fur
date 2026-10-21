@@ -3497,7 +3497,9 @@ export function CustomerBookingFlowPage() {
                   onClick={() => handleBookingSourceSelect('Walk-in')}
                   disabled={walkInNeedsAssessment}
                   aria-describedby={
-                    walkInNeedsAssessment ? 'walk-in-assessment-note' : undefined
+                    walkInNeedsAssessment
+                      ? 'walk-in-assessment-note'
+                      : undefined
                   }
                 >
                   <Footprints

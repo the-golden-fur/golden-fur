@@ -2615,75 +2615,78 @@ describe('CustomerBookingFlowPage', () => {
   });
 
   // Runs again once Assessment bookings are back (ASSESSMENT_BOOKINGS_PAUSED).
-  it.skipIf(ASSESSMENT_BOOKINGS_PAUSED)('Review offers no payment scheme for an Initial Assessment booking, even when the branch downpayment policy is enabled', async () => {
-    vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
-      data: {
-        downpayment_enabled: true,
-        downpayment_type: 'Flat',
-        downpayment_amount: 100,
-      },
-      error: null,
-    });
-    vi.mocked(customerApi.listCustomerPets).mockResolvedValue({
-      data: [UNASSESSED_PET],
-      error: null,
-    });
-    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
-      data: {
-        services: [GROOMING_SERVICE, ASSESSMENT_SERVICE, HOTEL_SERVICE],
-        packages: [],
-        promos: [],
-      },
-      error: null,
-    });
+  it.skipIf(ASSESSMENT_BOOKINGS_PAUSED)(
+    'Review offers no payment scheme for an Initial Assessment booking, even when the branch downpayment policy is enabled',
+    async () => {
+      vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+        data: {
+          downpayment_enabled: true,
+          downpayment_type: 'Flat',
+          downpayment_amount: 100,
+        },
+        error: null,
+      });
+      vi.mocked(customerApi.listCustomerPets).mockResolvedValue({
+        data: [UNASSESSED_PET],
+        error: null,
+      });
+      vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+        data: {
+          services: [GROOMING_SERVICE, ASSESSMENT_SERVICE, HOTEL_SERVICE],
+          packages: [],
+          promos: [],
+        },
+        error: null,
+      });
 
-    const user = userEvent.setup();
-    renderPage();
+      const user = userEvent.setup();
+      renderPage();
 
-    await waitFor(() =>
-      expect(bookingForm().getByText('Makati')).toBeInTheDocument()
-    );
-    await user.click(bookingForm().getByText('Makati'));
-    await user.click(bookingForm().getByText('Next'));
-    await agreeToStorePolicies(user);
+      await waitFor(() =>
+        expect(bookingForm().getByText('Makati')).toBeInTheDocument()
+      );
+      await user.click(bookingForm().getByText('Makati'));
+      await user.click(bookingForm().getByText('Next'));
+      await agreeToStorePolicies(user);
 
-    await waitFor(() =>
-      expect(bookingForm().getByText('Choot')).toBeInTheDocument()
-    );
-    await user.click(bookingForm().getByText('Choot'));
-    await user.click(bookingForm().getByText('Next'));
+      await waitFor(() =>
+        expect(bookingForm().getByText('Choot')).toBeInTheDocument()
+      );
+      await user.click(bookingForm().getByText('Choot'));
+      await user.click(bookingForm().getByText('Next'));
 
-    // Book before assessment: the notice comes first, and Initial Assessment
-    // is no longer the only (so no longer pre-selected) option.
-    await user.click(
-      await screen.findByRole('button', { name: 'I understand' })
-    );
-    await waitFor(() =>
-      expect(bookingForm().getByText('Assessment')).toBeInTheDocument()
-    );
-    await user.click(bookingForm().getByText('Assessment'));
-    await user.click(await bookingForm().findByText('Initial Assessment'));
-    await advanceThroughAvailability(user, { staff: false });
+      // Book before assessment: the notice comes first, and Initial Assessment
+      // is no longer the only (so no longer pre-selected) option.
+      await user.click(
+        await screen.findByRole('button', { name: 'I understand' })
+      );
+      await waitFor(() =>
+        expect(bookingForm().getByText('Assessment')).toBeInTheDocument()
+      );
+      await user.click(bookingForm().getByText('Assessment'));
+      await user.click(await bookingForm().findByText('Initial Assessment'));
+      await advanceThroughAvailability(user, { staff: false });
 
-    await waitFor(() =>
-      expect(screen.getByText('Add another booking')).toBeInTheDocument()
-    );
-    await user.click(screen.getByText('Next'));
+      await waitFor(() =>
+        expect(screen.getByText('Add another booking')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Next'));
 
-    await waitFor(() =>
-      expect(screen.getByText('Confirm booking')).toBeInTheDocument()
-    );
+      await waitFor(() =>
+        expect(screen.getByText('Confirm booking')).toBeInTheDocument()
+      );
 
-    expect(screen.queryByText('Payment scheme')).not.toBeInTheDocument();
-    expect(screen.queryByText('Downpayment amount')).not.toBeInTheDocument();
+      expect(screen.queryByText('Payment scheme')).not.toBeInTheDocument();
+      expect(screen.queryByText('Downpayment amount')).not.toBeInTheDocument();
 
-    await user.click(screen.getByText('Confirm booking'));
+      await user.click(screen.getByText('Confirm booking'));
 
-    await waitFor(() => expect(bookingApi.createBooking).toHaveBeenCalled());
-    expect(
-      JSON.stringify(vi.mocked(bookingApi.createBooking).mock.calls)
-    ).not.toContain('payment_scheme');
-  });
+      await waitFor(() => expect(bookingApi.createBooking).toHaveBeenCalled());
+      expect(
+        JSON.stringify(vi.mocked(bookingApi.createBooking).mock.calls)
+      ).not.toContain('payment_scheme');
+    }
+  );
 
   it('only one promo can be picked, and one that takes off more than half the price blocks Confirm', async () => {
     const promo = (id: string, name: string, value: number) => ({
@@ -2850,10 +2853,9 @@ describe('CustomerBookingFlowPage', () => {
         expect(
           screen.getByText(/Walk-in isn't available because Max/)
         ).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'its profile' })).toHaveAttribute(
-          'href',
-          `/staff/pets/${UNASSESSED_PET.id}`
-        );
+        expect(
+          screen.getByRole('link', { name: 'its profile' })
+        ).toHaveAttribute('href', `/staff/pets/${UNASSESSED_PET.id}`);
       }
     );
 

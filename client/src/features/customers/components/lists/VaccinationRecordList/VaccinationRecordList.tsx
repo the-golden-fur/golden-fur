@@ -182,7 +182,9 @@ export function VaccinationRecordList({
               {record.status === 'rejected' && record.rejection_reason ? (
                 <span className={styles.rejection}>
                   Not verified: {record.rejection_reason}
-                  {mode === 'owner' ? ' - edit the record to send it again.' : ''}
+                  {mode === 'owner'
+                    ? ' - edit the record to send it again.'
+                    : ''}
                 </span>
               ) : null}
 
@@ -267,7 +269,11 @@ export function VaccinationRecordList({
       <ConfirmDialog
         isOpen={recordToDelete !== null}
         title={`Delete ${recordToDelete?.vaccine_name ?? 'vaccination'}?`}
-        body={<p className={styles.copy}>This removes the record and its card photo.</p>}
+        body={
+          <p className={styles.copy}>
+            This removes the record and its card photo.
+          </p>
+        }
         confirmLabel="Delete"
         tone="danger"
         isConfirming={isDeleting}

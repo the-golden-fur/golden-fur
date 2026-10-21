@@ -37,9 +37,7 @@ export function VaccinationReviewActions({
       petId,
       record.id,
       accessToken,
-      decision === 'reject'
-        ? { decision, reason: reason.trim() }
-        : { decision }
+      decision === 'reject' ? { decision, reason: reason.trim() } : { decision }
     );
     setIsSaving(false);
 
@@ -85,7 +83,10 @@ export function VaccinationReviewActions({
         title={`Reject ${record.vaccine_name}?`}
         body={
           <div className={styles.reasonField}>
-            <label className={styles.reasonLabel} htmlFor={`reason-${record.id}`}>
+            <label
+              className={styles.reasonLabel}
+              htmlFor={`reason-${record.id}`}
+            >
               Reason - the owner will see this
             </label>
             <textarea

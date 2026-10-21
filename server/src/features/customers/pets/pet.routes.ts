@@ -160,8 +160,7 @@ const vaccinationProofUpload = multer({
 
 const VACCINATION_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const emptyToNull = (value: unknown) => (value === '' ? null : value);
-const emptyToUndefined = (value: unknown) =>
-  value === '' ? undefined : value;
+const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value);
 
 const createVaccinationRecordValidator = z
   .object({
@@ -196,7 +195,9 @@ const reviewVaccinationRecordValidator = z
   })
   .strict();
 
-function proofFile(req: AuthenticatedRequest): VaccinationProofFile | undefined {
+function proofFile(
+  req: AuthenticatedRequest
+): VaccinationProofFile | undefined {
   return req.file as VaccinationProofFile | undefined;
 }
 

@@ -269,7 +269,9 @@ describe('CustomerPetManagerPage', () => {
       name: 'Delete pet',
     });
     expect(confirmButton).toBeDisabled();
-    await user.click(within(dialog).getByRole('radio', { name: 'Passed away' }));
+    await user.click(
+      within(dialog).getByRole('radio', { name: 'Passed away' })
+    );
     await user.click(confirmButton);
 
     expect(await screen.findByText('Pet deleted.')).toBeInTheDocument();

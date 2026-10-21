@@ -90,7 +90,7 @@ describe('VaccinationRecordList', () => {
     ).toBeInTheDocument();
   });
 
-  it("shows whether the clinic has verified each record, and the rejection reason", async () => {
+  it('shows whether the clinic has verified each record, and the rejection reason', async () => {
     renderList([
       buildRecord(),
       OWNERS_PENDING,
@@ -120,7 +120,9 @@ describe('VaccinationRecordList', () => {
     expect(
       screen.queryByRole('button', { name: 'Add vaccination' })
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit' })
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Verify' })
     ).not.toBeInTheDocument();
@@ -132,10 +134,18 @@ describe('VaccinationRecordList', () => {
     const ownersItem = (await screen.findByText('Kennel cough')).closest('li')!;
     const clinicItem = screen.getByText('Rabies').closest('li')!;
 
-    expect(within(ownersItem).getByRole('button', { name: 'Edit' })).toBeInTheDocument();
-    expect(within(ownersItem).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
-    expect(within(clinicItem).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Verify' })).not.toBeInTheDocument();
+    expect(
+      within(ownersItem).getByRole('button', { name: 'Edit' })
+    ).toBeInTheDocument();
+    expect(
+      within(ownersItem).getByRole('button', { name: 'Delete' })
+    ).toBeInTheDocument();
+    expect(
+      within(clinicItem).queryByRole('button', { name: 'Edit' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Verify' })
+    ).not.toBeInTheDocument();
   });
 
   it('an owner adds a vaccination with its card - it shows as pending', async () => {
@@ -154,7 +164,9 @@ describe('VaccinationRecordList', () => {
     await user.type(within(dialog).getByLabelText('Date given'), '2026-07-01');
 
     // The card is required from an owner.
-    await user.click(within(dialog).getByRole('button', { name: 'Add vaccination' }));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Add vaccination' })
+    );
     expect(within(dialog).getByRole('alert')).toHaveTextContent(
       'Add a photo of the vaccination card.'
     );
@@ -165,7 +177,9 @@ describe('VaccinationRecordList', () => {
       within(dialog).getByLabelText(/^Vaccination card photo/),
       card
     );
-    await user.click(within(dialog).getByRole('button', { name: 'Add vaccination' }));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Add vaccination' })
+    );
 
     expect(createVaccinationRecord).toHaveBeenCalledWith(
       'pet-1',
@@ -199,7 +213,9 @@ describe('VaccinationRecordList', () => {
       { decision: 'verify' }
     );
     expect(await screen.findByText('Verified by clinic')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Verify' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Verify' })
+    ).not.toBeInTheDocument();
   });
 
   it('staff must give a reason to reject', async () => {
@@ -216,7 +232,9 @@ describe('VaccinationRecordList', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Reject' }));
     const dialog = screen.getByRole('dialog');
-    const confirm = within(dialog).getByRole('button', { name: 'Reject record' });
+    const confirm = within(dialog).getByRole('button', {
+      name: 'Reject record',
+    });
     expect(confirm).toBeDisabled();
 
     await user.type(within(dialog).getByRole('textbox'), 'Blurry photo');

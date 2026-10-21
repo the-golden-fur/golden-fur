@@ -166,7 +166,9 @@ async function listPastGroomingBookings(
 
   const { data: sessions, error: sessionsError } = await supabase
     .from('grooming_sessions')
-    .select('id, booking_id, assigned_groomer_id, queue_position, created_at, updated_at')
+    .select(
+      'id, booking_id, assigned_groomer_id, queue_position, created_at, updated_at'
+    )
     .in(
       'booking_id',
       bookingRows.map((booking) => booking.id)

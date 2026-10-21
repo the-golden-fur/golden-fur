@@ -35,9 +35,9 @@ describe('trendsPeriod', () => {
   });
 
   it('recognises a range that matches a preset or a whole month', () => {
-    expect(
-      matchingPreset({ from: '2026-10-01', to: '2026-10-21' }, NOW)
-    ).toBe('this-month');
+    expect(matchingPreset({ from: '2026-10-01', to: '2026-10-21' }, NOW)).toBe(
+      'this-month'
+    );
     expect(
       matchingPreset({ from: '2026-10-02', to: '2026-10-21' }, NOW)
     ).toBeNull();

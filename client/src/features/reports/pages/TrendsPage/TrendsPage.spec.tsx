@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -169,9 +175,10 @@ describe('TrendsPage', () => {
       'branch-makati',
       'token'
     );
-    expect(
-      screen.getByRole('button', { name: 'This month' })
-    ).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'This month' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
   });
 
   it('a Superadmin defaults to all branches and can pick one', async () => {
@@ -226,14 +233,18 @@ describe('TrendsPage', () => {
 
     expect(await screen.findByText('Dog bookings')).toBeInTheDocument();
     expect(screen.getByText('Cat bookings')).toBeInTheDocument();
-    expect(screen.getByText('Packages booked', { selector: 'dt' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Packages booked', { selector: 'dt' })
+    ).toBeInTheDocument();
 
     const groomers = screen.getByRole('list', { name: 'Bookings per groomer' });
     expect(within(groomers).getByText('Ana Groomer')).toBeInTheDocument();
     expect(within(groomers).getByText(/3 completed/)).toBeInTheDocument();
     expect(within(groomers).getByText('Unassigned')).toBeInTheDocument();
 
-    const vets = screen.getByRole('list', { name: 'Bookings per veterinarian' });
+    const vets = screen.getByRole('list', {
+      name: 'Bookings per veterinarian',
+    });
     expect(within(vets).getByText('Dr. Ben')).toBeInTheDocument();
 
     const topGrooming = screen.getByRole('list', {

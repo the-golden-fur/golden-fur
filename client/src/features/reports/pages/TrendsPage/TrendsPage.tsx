@@ -172,11 +172,7 @@ export function TrendsPage() {
       </header>
 
       <div className={styles.controls}>
-        <div
-          className={styles.presets}
-          role="group"
-          aria-label="Quick ranges"
-        >
+        <div className={styles.presets} role="group" aria-label="Quick ranges">
           {TRENDS_PRESETS.map((preset) => (
             <button
               key={preset.value}

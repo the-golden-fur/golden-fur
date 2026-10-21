@@ -116,7 +116,10 @@ export function VaccinationRecordForm({
   }
 
   return (
-    <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+    <form
+      className={styles.form}
+      onSubmit={(event) => void handleSubmit(event)}
+    >
       {requireCard ? (
         <p className={styles.copy}>
           The clinic will check your card and mark the record as verified.

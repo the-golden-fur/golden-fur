@@ -129,7 +129,9 @@ describe('FilterSortBar', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Logged' }));
-    await userEvent.click(screen.getByRole('button', { name: /Logged: Today/ }));
+    await userEvent.click(
+      screen.getByRole('button', { name: /Logged: Today/ })
+    );
 
     const dialog = screen.getByRole('dialog');
     expect(

@@ -488,9 +488,7 @@ export async function listPendingVaccinationRecords(
 
   if (petsError) throwWithStatus(400, petsError.message);
 
-  const petById = new Map(
-    (pets ?? []).map((pet) => [pet.id as string, pet])
-  );
+  const petById = new Map((pets ?? []).map((pet) => [pet.id as string, pet]));
   const customerIds = [
     ...new Set(
       (pets ?? []).map((pet) => pet.customer_id as string).filter(Boolean)

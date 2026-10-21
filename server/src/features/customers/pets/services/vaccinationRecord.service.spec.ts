@@ -241,7 +241,10 @@ describe('vaccinationRecord.service', () => {
       queueFromResults(
         { data: { role: 'Receptionist' }, error: null },
         OWNED_PET,
-        { data: buildRecord({ status: 'verified', proof_path: null }), error: null }
+        {
+          data: buildRecord({ status: 'verified', proof_path: null }),
+          error: null,
+        }
       );
 
       await createVaccinationRecord({

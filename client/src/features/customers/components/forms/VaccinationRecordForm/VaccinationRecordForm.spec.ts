@@ -24,7 +24,7 @@ function renderForm(requireCard: boolean) {
 }
 
 describe('VaccinationRecordForm', () => {
-  it('stops the date picker at today, and won\'t send a future date', async () => {
+  it("stops the date picker at today, and won't send a future date", async () => {
     const user = userEvent.setup();
     renderForm(true);
 
