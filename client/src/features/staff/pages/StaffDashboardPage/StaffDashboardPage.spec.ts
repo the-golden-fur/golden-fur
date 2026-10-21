@@ -511,9 +511,10 @@ describe('StaffDashboardPage', () => {
       'href',
       '/staff/bookings/new'
     );
+    // Archived for now (ASSESSMENT_BOOKINGS_PAUSED) - no widget.
     expect(
-      screen.getByRole('heading', { name: 'Assessment Queue' })
-    ).toBeInTheDocument();
+      screen.queryByRole('heading', { name: 'Assessment Queue' })
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: 'Cage Occupancy' })
     ).toBeInTheDocument();

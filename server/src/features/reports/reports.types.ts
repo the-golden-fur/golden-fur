@@ -42,6 +42,40 @@ export const CAGE_OCCUPANCY_READ_ROLES: readonly string[] = [
  * branch (Issue #103 dev notes). */
 export const ANALYTICS_READ_ROLES: readonly string[] = ['Superadmin'];
 
+/** Custom change (Trends page): same audience as the DSR - Admin/Supervisor
+ * for their own branch, Superadmin for any branch or all of them. Kept as
+ * its own name so Trends can be widened/narrowed without touching the DSR. */
+export const TRENDS_READ_ROLES: readonly string[] = REPORTS_READ_ROLES;
+
+export interface TrendsCountRow {
+  name: string;
+  count: number;
+}
+
+export interface TrendsStaffRow {
+  /** null for the per-role 'Unassigned' row. */
+  staff_id: string | null;
+  display_name: string;
+  role: 'Groomer' | 'Veterinarian';
+  bookings: number;
+  completed: number;
+}
+
+/** Shape of get_trends() (20261021276). Maps are keyed by category/pet
+ * type/archive reason; lists come already sorted. */
+export interface TrendsReport {
+  bookings_total: number;
+  bookings_by_category: Record<string, number>;
+  bookings_by_pet_type: Record<string, number>;
+  registered_pets_by_type: Record<string, number>;
+  new_pets_by_type: Record<string, number>;
+  packages_booked: TrendsCountRow[];
+  top_grooming_services: TrendsCountRow[];
+  staff_bookings: TrendsStaffRow[];
+  deleted_pet_reasons: Record<string, number>;
+  deleted_pet_other_notes: { note: string; archived_at: string }[];
+}
+
 export interface DailySalesReportBreakdownRow {
   service_category: string;
   payment_method: string;

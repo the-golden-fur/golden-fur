@@ -6,6 +6,7 @@ import type {
   DailySalesReport,
   GoalsReport,
   TransactionRecord,
+  TrendsReport,
 } from '../reports.types';
 
 interface ReportsApiResult<T> {
@@ -82,6 +83,31 @@ export async function getBookingActivityReport(
   }
 
   const result = await parseBody<{ report: BookingActivityReport }>(response);
+  return { data: result.data?.report ?? null, error: result.error };
+}
+
+export async function getTrendsReport(
+  dateFrom: string,
+  dateTo: string,
+  branchId: string | null,
+  accessToken: string
+): Promise<ReportsApiResult<TrendsReport>> {
+  const params = new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+  });
+  if (branchId) params.set('branch_id', branchId);
+
+  const response = await fetch(
+    `${API_BASE_URL}/reports/trends?${params.toString()}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ report: TrendsReport }>(response);
   return { data: result.data?.report ?? null, error: result.error };
 }
 

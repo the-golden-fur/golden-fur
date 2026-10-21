@@ -34,6 +34,9 @@ export const API_ROUTE_PREFIXES = [
   '/reports',
   '/rewards',
   '/staff',
+  // Staff's Vaccination Review queue (pet.routes.ts) - the one pet-record
+  // route not under /pets.
+  '/vaccination-records',
   '/veterinary',
 ] as const;
 

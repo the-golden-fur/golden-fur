@@ -12,7 +12,11 @@ import {
   updatePetValidator,
   updatePetValidatorStaff,
 } from './modules/validators/pet.validator.ts';
-import type { PetWeightClass } from './pet.types.ts';
+import {
+  PET_ARCHIVE_REASONS,
+  type PetArchiveReason,
+  type PetWeightClass,
+} from './pet.types.ts';
 import {
   repriceBookingsAwaitingAssessment,
   type AssessmentRepriceResult,
@@ -25,7 +29,43 @@ import {
   hardDeletePet,
   listArchivedPets,
   restorePet,
+  type PetArchiveReasonInput,
 } from './services/petArchive.service.ts';
+
+const ARCHIVE_REASON_OTHER_MAX_LENGTH = 200;
+
+/** Reads the optional { reason, reasonOther } body of DELETE /pets/:id.
+ * No reason at all is fine (undefined); a bad one is an error string. */
+function parseArchiveReason(
+  body: unknown
+): PetArchiveReasonInput | undefined | string {
+  const { reason, reasonOther } = (body ?? {}) as {
+    reason?: unknown;
+    reasonOther?: unknown;
+  };
+
+  if (reason === undefined || reason === null) return undefined;
+
+  if (!PET_ARCHIVE_REASONS.includes(reason as PetArchiveReason)) {
+    return 'Invalid delete reason';
+  }
+
+  if (reason !== 'other') {
+    return { code: reason as PetArchiveReason, other: null };
+  }
+
+  const other = typeof reasonOther === 'string' ? reasonOther.trim() : '';
+
+  if (!other) {
+    return 'Please tell us why you are deleting this pet';
+  }
+
+  if (other.length > ARCHIVE_REASON_OTHER_MAX_LENGTH) {
+    return `Delete reason must be ${ARCHIVE_REASON_OTHER_MAX_LENGTH} characters or fewer`;
+  }
+
+  return { code: 'other', other };
+}
 
 /** Postgres foreign_key_violation. pets.pet_type became a FK against the
  * admin-managed pet_types table (20260912191) instead of an enum-checked
@@ -442,6 +482,12 @@ export async function archivePetController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const reason = parseArchiveReason(req.body);
+
+  if (typeof reason === 'string') {
+    return res.status(400).json({ error: reason });
+  }
+
   try {
     const { data: pet, error: lookupError } = await resolvePet(petId as string);
 
@@ -459,7 +505,7 @@ export async function archivePetController(
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    await archivePet(petId as string);
+    await archivePet(petId as string, reason);
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

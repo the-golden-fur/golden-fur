@@ -20,7 +20,9 @@ import {
   Scissors,
   ShoppingBag,
   Stethoscope,
+  Syringe,
   Target,
+  TrendingUp,
   UserCog,
   Users,
   UserSearch,
@@ -28,6 +30,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { StaffRole } from '../staff.types';
+import { ASSESSMENT_BOOKINGS_PAUSED } from '../../booking/booking.types';
 
 export type StaffDashboardSlug =
   | 'admin'
@@ -79,6 +82,29 @@ export interface StaffDashboardConfig {
   heading: string;
   sections: DashboardSectionConfig[];
 }
+
+/** Archived for now (ASSESSMENT_BOOKINGS_PAUSED): no tile while
+ * Assessment bookings are paused; the page still opens by URL to finish
+ * bookings made before. Flipping the flag back brings every tile back. */
+const ASSESSMENT_QUEUE_TILES: DashboardTileConfig[] = ASSESSMENT_BOOKINGS_PAUSED
+  ? []
+  : [
+      {
+        title: 'Assessment Queue',
+        description:
+          "Start/complete a pet's Initial Assessment or Reassessment, recording weight and coat.",
+        to: '/staff/assessment/queue',
+      },
+    ];
+
+/** Customer-reported vaccinations waiting for staff to verify or reject -
+ * every role in the server's VACCINATION_MANAGER_ROLES gets it. */
+const VACCINATION_REVIEW_TILE: DashboardTileConfig = {
+  title: 'Vaccination Review',
+  description:
+    'Verify or reject vaccinations pet owners added, checked against their card photo.',
+  to: '/staff/vaccinations/review',
+};
 
 /**
  * Admin/Superadmin already pass the `ALLOWED_VIEWER_ROLES` gate (and the
@@ -132,17 +158,13 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Branch-wide booking queue - view every status, reschedule, or cancel.',
             to: '/staff/bookings/queue',
           },
-          {
-            title: 'Assessment Queue',
-            description:
-              "Start/complete a pet's Initial Assessment or Reassessment, recording weight and coat.",
-            to: '/staff/assessment/queue',
-          },
+          ...ASSESSMENT_QUEUE_TILES,
           {
             title: 'Cage Occupancy',
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
           },
+          VACCINATION_REVIEW_TILE,
         ],
       },
       {
@@ -286,6 +308,12 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/reports/cage-occupancy',
           },
           {
+            title: 'Trends',
+            description:
+              'Popular pets, services, and packages, groomer and vet bookings, and why pets were deleted.',
+            to: '/staff/reports/trends',
+          },
+          {
             title: 'Branch Comparison',
             description:
               'Compare revenue and bookings across every branch, side by side.',
@@ -331,12 +359,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Branch-wide booking queue - reschedule, cancel, or start a new walk-in booking.',
             to: '/staff/bookings/queue',
           },
-          {
-            title: 'Assessment Queue',
-            description:
-              "Start/complete a pet's Initial Assessment or Reassessment, recording weight and coat.",
-            to: '/staff/assessment/queue',
-          },
+          ...ASSESSMENT_QUEUE_TILES,
           {
             title: 'Boarding Checklist',
             description: 'End-of-day uncompleted care log flags.',
@@ -377,6 +400,13 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
           },
+          {
+            title: 'Trends',
+            description:
+              'Popular pets, services, and packages, groomer and vet bookings, and why pets were deleted.',
+            to: '/staff/reports/trends',
+          },
+          VACCINATION_REVIEW_TILE,
         ],
       },
     ],
@@ -414,17 +444,13 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Approve or deny returning a downpayment as credit for a Manual-review cancellation.',
             to: '/staff/bookings/credit-review-queue',
           },
-          {
-            title: 'Assessment Queue',
-            description:
-              "Start/complete a pet's Initial Assessment or Reassessment, recording weight and coat.",
-            to: '/staff/assessment/queue',
-          },
+          ...ASSESSMENT_QUEUE_TILES,
           {
             title: 'Cage Occupancy',
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
           },
+          VACCINATION_REVIEW_TILE,
         ],
       },
     ],
@@ -519,6 +545,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Every prescribed medication across every patient, searchable and groupable by medicine type.',
             to: '/staff/veterinary/prescriptions',
           },
+          VACCINATION_REVIEW_TILE,
         ],
       },
     ],
@@ -599,17 +626,13 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: "Today's confirmed bookings for the front desk.",
             to: '/staff/bookings/queue',
           },
-          {
-            title: 'Assessment Queue',
-            description:
-              "Start/complete a pet's Initial Assessment or Reassessment, recording weight and coat.",
-            to: '/staff/assessment/queue',
-          },
+          ...ASSESSMENT_QUEUE_TILES,
           {
             title: 'Cage Occupancy',
             description: 'Real-time cage availability by size category.',
             to: '/staff/reports/cage-occupancy',
           },
+          VACCINATION_REVIEW_TILE,
           {
             title: 'Checkout & Billing',
             description: 'Assemble charges, apply discounts, and take payment.',
@@ -731,6 +754,8 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Cage Occupancy': DoorOpen,
   'Branch Comparison': GitCompareArrows,
   Goals: Target,
+  Trends: TrendingUp,
+  'Vaccination Review': Syringe,
 };
 
 export interface SidebarReadySection {

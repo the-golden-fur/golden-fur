@@ -35,6 +35,39 @@ describe('toSidebarSections', () => {
     expect(supervisorTitles('Superadmin')).toContain('Goals');
     expect(supervisorTitles('Admin')).not.toContain('Goals');
   });
+
+  it('shows Trends to a Superadmin and an Admin under Supervisor, and to a Supervisor', () => {
+    expect(supervisorTitles('Superadmin')).toContain('Trends');
+    expect(supervisorTitles('Admin')).toContain('Trends');
+
+    const supervisorItems = toSidebarSections(
+      STAFF_DASHBOARD_CONFIG.supervisor,
+      'Supervisor'
+    ).flatMap((section) => section.items.map((item) => item.title));
+    expect(supervisorItems).toContain('Trends');
+  });
+
+  it('shows Vaccination Review to every role that can verify vaccinations', () => {
+    for (const slug of [
+      'admin',
+      'supervisor',
+      'receptionist',
+      'veterinarian',
+      'front-desk',
+    ] as const) {
+      const titles = STAFF_DASHBOARD_CONFIG[slug].sections.flatMap((section) =>
+        section.tiles.map((tile) => tile.title)
+      );
+      expect(titles).toContain('Vaccination Review');
+    }
+
+    for (const slug of ['groomer', 'cashier', 'pet-assistant'] as const) {
+      const titles = STAFF_DASHBOARD_CONFIG[slug].sections.flatMap((section) =>
+        section.tiles.map((tile) => tile.title)
+      );
+      expect(titles).not.toContain('Vaccination Review');
+    }
+  });
 });
 
 describe('Front Desk dashboard', () => {

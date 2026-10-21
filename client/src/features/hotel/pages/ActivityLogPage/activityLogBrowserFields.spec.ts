@@ -6,6 +6,7 @@ import {
   deriveActivityLogSortKey,
   matchesActivityLogQuery,
   ACTIVITY_LOG_COMPARATORS,
+  ACTIVITY_LOG_FILTER_FIELDS,
 } from './activityLogBrowserFields';
 import type { FilterTile } from '../../../../shared/components/FilterSortBar/filterField.types';
 import type { ActivityLogEntry } from '../../hotel.types';
@@ -26,6 +27,15 @@ function buildEntry(
     ...overrides,
   };
 }
+
+describe('ACTIVITY_LOG_FILTER_FIELDS', () => {
+  it('the Date filter only looks back - the log has nothing in the future', () => {
+    const dateField = ACTIVITY_LOG_FILTER_FIELDS.find(
+      (field) => field.id === 'date'
+    );
+    expect(dateField).toMatchObject({ type: 'date-range', pastOnly: true });
+  });
+});
 
 describe('applyActivityLogFilters', () => {
   const entries = [
@@ -95,6 +105,19 @@ describe('deriveActivityLogServerParams', () => {
     const params = deriveActivityLogServerParams(tiles);
     expect(params.dateFrom).toBeTruthy();
     expect(params.dateTo).toBeTruthy();
+  });
+
+  it('a "Last 7 days" tile ends today - never in the future', () => {
+    const tiles: FilterTile[] = [
+      {
+        fieldId: 'date',
+        value: { preset: 'last_7_days', from: null, to: null },
+      },
+    ];
+    const params = deriveActivityLogServerParams(tiles);
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    expect(params.dateTo).toBe(todayUtc);
+    expect(params.dateFrom! < params.dateTo!).toBe(true);
   });
 
   it('uses the custom from/to bounds as-is for a custom-preset tile', () => {

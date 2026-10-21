@@ -6,6 +6,7 @@ import { getCageOccupancyReport } from './services/cageOccupancy.service.ts';
 import { listTransactionHistory } from './services/transactionHistory.service.ts';
 import { getAnalyticsSummary } from './services/analytics.service.ts';
 import { getBranchComparison } from './services/branchComparison.service.ts';
+import { getTrends } from './services/trends.service.ts';
 import {
   getGoals,
   setGoalGrowthRate,
@@ -91,6 +92,41 @@ export async function bookingActivityReportController(
   try {
     const report = await getBookingActivityReport({
       requesterId,
+      requesterRole,
+      requesterBranchId,
+      branchId: queryParam(req, 'branch_id') ?? null,
+      dateFrom,
+      dateTo,
+    });
+
+    return res.status(200).json({ report });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function trendsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const dateFrom = queryParam(req, 'date_from');
+  const dateTo = queryParam(req, 'date_to');
+
+  if (!dateFrom || !dateTo) {
+    return res
+      .status(400)
+      .json({ error: 'date_from and date_to are required' });
+  }
+
+  try {
+    const report = await getTrends({
       requesterRole,
       requesterBranchId,
       branchId: queryParam(req, 'branch_id') ?? null,

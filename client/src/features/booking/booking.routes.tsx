@@ -35,6 +35,9 @@ export const bookingRoutes = (
         path="/staff/bookings/queue"
         element={<ReceptionistBookingsQueuePage />}
       />
+      {/* Archived for now (ASSESSMENT_BOOKINGS_PAUSED): no tile links here,
+          but the page still opens by URL to finish Assessment bookings
+          made before the pause. */}
       <Route path="/staff/assessment/queue" element={<AssessmentQueuePage />} />
       <Route
         path="/staff/bookings/credit-review-queue"

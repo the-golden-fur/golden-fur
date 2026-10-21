@@ -15,6 +15,7 @@ import * as customerApi from '../../../customers/api/customer.api';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as catalogApi from '../../../catalog/api/catalog.api';
 import * as bookingApi from '../../api/booking.api';
+import { ASSESSMENT_BOOKINGS_PAUSED } from '../../booking.types';
 import * as staffApi from '../../../staff/api/staff.api';
 import * as discountsApi from '../../../discounts/api/discounts.api';
 import * as veterinaryApi from '../../../veterinary/api/veterinary.api';
@@ -750,7 +751,13 @@ describe('CustomerBookingFlowPage', () => {
         expect(bookingForm().getByText('Grooming')).toBeInTheDocument()
       );
       expect(bookingForm().getByText('Hotel')).toBeInTheDocument();
-      expect(bookingForm().getByText('Assessment')).toBeInTheDocument();
+      // The Assessment Queue is archived for now - see
+      // ASSESSMENT_BOOKINGS_PAUSED - so the category isn't offered.
+      if (ASSESSMENT_BOOKINGS_PAUSED) {
+        expect(bookingForm().queryByText('Assessment')).not.toBeInTheDocument();
+      } else {
+        expect(bookingForm().getByText('Assessment')).toBeInTheDocument();
+      }
 
       await user.click(bookingForm().getByText('Grooming'));
       expect(await bookingForm().findByText('Bath')).toBeInTheDocument();
@@ -2607,7 +2614,8 @@ describe('CustomerBookingFlowPage', () => {
     expect(screen.queryByText('Downpayment amount')).not.toBeInTheDocument();
   });
 
-  it('Review offers no payment scheme for an Initial Assessment booking, even when the branch downpayment policy is enabled', async () => {
+  // Runs again once Assessment bookings are back (ASSESSMENT_BOOKINGS_PAUSED).
+  it.skipIf(ASSESSMENT_BOOKINGS_PAUSED)('Review offers no payment scheme for an Initial Assessment booking, even when the branch downpayment policy is enabled', async () => {
     vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
       data: {
         downpayment_enabled: true,
@@ -2824,6 +2832,30 @@ describe('CustomerBookingFlowPage', () => {
         expect(screen.getByText('Online Booking')).toBeInTheDocument()
       );
     }
+
+    it.runIf(ASSESSMENT_BOOKINGS_PAUSED)(
+      'an unassessed pet can only be booked Online by staff while Assessment bookings are paused',
+      async () => {
+        vi.mocked(customerApi.listCustomerPets).mockResolvedValue({
+          data: [{ ...UNASSESSED_PET, name: 'Max' }],
+          error: null,
+        });
+        const user = userEvent.setup();
+        renderStaffPage();
+
+        await goToBookingTypeStep(user);
+
+        const walkIn = screen.getByRole('button', { name: 'Walk-in' });
+        expect(walkIn).toBeDisabled();
+        expect(
+          screen.getByText(/Walk-in isn't available because Max/)
+        ).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'its profile' })).toHaveAttribute(
+          'href',
+          `/staff/pets/${UNASSESSED_PET.id}`
+        );
+      }
+    );
 
     it('a receptionist booking Daycare gets the Cage Picker, same as Hotel', async () => {
       vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({

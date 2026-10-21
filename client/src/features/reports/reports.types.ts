@@ -67,6 +67,35 @@ export interface BookingActivityReport {
   records: BookingActivityRecord[];
 }
 
+export interface TrendsCountRow {
+  name: string;
+  count: number;
+}
+
+export interface TrendsStaffRow {
+  /** null for the per-role 'Unassigned' row. */
+  staff_id: string | null;
+  display_name: string;
+  role: 'Groomer' | 'Veterinarian';
+  bookings: number;
+  completed: number;
+}
+
+/** GET /reports/trends - see get_trends() (20261021276). Maps are keyed by
+ * service category / pet type / delete reason; lists arrive sorted. */
+export interface TrendsReport {
+  bookings_total: number;
+  bookings_by_category: Record<string, number>;
+  bookings_by_pet_type: Record<string, number>;
+  registered_pets_by_type: Record<string, number>;
+  new_pets_by_type: Record<string, number>;
+  packages_booked: TrendsCountRow[];
+  top_grooming_services: TrendsCountRow[];
+  staff_bookings: TrendsStaffRow[];
+  deleted_pet_reasons: Record<string, number>;
+  deleted_pet_other_notes: { note: string; archived_at: string }[];
+}
+
 export interface CageOccupancyRow {
   size: 'S' | 'M' | 'L' | 'XL';
   status: 'Available' | 'Occupied' | 'Reserved' | 'Under Maintenance';

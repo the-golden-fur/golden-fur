@@ -60,6 +60,18 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
 ];
 
 /**
+ * The Assessment Queue is archived for now: the booking flow offers no
+ * Assessment category, and staff book an unassessed pet like a customer
+ * does (Online, estimate price, assessed on arrival through the Bookings
+ * Queue's Assess popup). The queue's sidebar tiles and dashboard widget
+ * are hidden too (staffDashboard.config.ts, StaffDashboardPage.tsx); the
+ * page still opens at /staff/assessment/queue to finish bookings made
+ * before. To restore everything: set this and the server's
+ * ASSESSMENT_BOOKINGS_PAUSED (server booking.types.ts) to false.
+ */
+export const ASSESSMENT_BOOKINGS_PAUSED = true;
+
+/**
  * Unified booking lifecycle (booking-status revision): no manual "staff
  * confirms a booking" step ever existed - status was always set
  * automatically - so 'Confirmed' was retired rather than relabeled.

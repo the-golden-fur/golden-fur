@@ -801,6 +801,17 @@ describe('booking.service (#51)', () => {
     expect(supabase.rpc).not.toHaveBeenCalled();
   });
 
+  it('refuses a new Assessment booking while the Assessment Queue is archived', async () => {
+    await expect(
+      createBooking({
+        requesterId: CUSTOMER_ID,
+        input: { ...BASE_INPUT, service_category: 'Assessment' },
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    // Refused before anything is looked up or written.
+    expect(supabase.from).not.toHaveBeenCalledWith('bookings');
+  });
+
   it('AC-6: a customer cannot book against another customer pet', async () => {
     queueFromResults({
       data: { ...PET, customer_id: 'someone-else' },

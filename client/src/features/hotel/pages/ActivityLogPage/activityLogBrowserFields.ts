@@ -45,6 +45,9 @@ export const ACTIVITY_LOG_FILTER_FIELDS: FilterField[] = [
     id: 'date',
     label: 'Date',
     type: 'date-range',
+    // The log only holds what already happened - so no "Tomorrow" or
+    // "This week" (next 7 days); Yesterday/Last 7/30 days instead.
+    pastOnly: true,
     // Matches the page's old always-on "Today" default - now a removable
     // pill instead of a fixed control (clearing it shows the most recent
     // 200 entries branch-wide, server-side default with no date bound).

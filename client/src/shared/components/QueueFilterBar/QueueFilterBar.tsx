@@ -31,6 +31,12 @@ export interface QueueFilterBarProps {
    * the toolbar so staff can see upcoming load without switching the Date
    * filter. Omitted/null hides the row. */
   presetCounts?: Record<CountedPreset, number> | null;
+  /** The Date select's choices - DATE_RANGE_PRESET_OPTIONS (looking ahead)
+   * by default; a history view passes PAST_DATE_RANGE_PRESET_OPTIONS. */
+  presetOptions?: Array<{ value: DateRangePreset; label: string }>;
+  /** Latest pickable custom date (YYYY-MM-DD) - e.g. today for a history
+   * view, so no future day can be picked. */
+  customDateMax?: string;
 }
 
 /**
@@ -50,6 +56,8 @@ export function QueueFilterBar({
   statusLabel = 'Status',
   children,
   presetCounts,
+  presetOptions = DATE_RANGE_PRESET_OPTIONS,
+  customDateMax,
 }: QueueFilterBarProps) {
   return (
     <>
@@ -66,7 +74,7 @@ export function QueueFilterBar({
               onDateRangePresetChange(event.target.value as DateRangePreset)
             }
           >
-            {DATE_RANGE_PRESET_OPTIONS.map((option) => (
+            {presetOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -81,6 +89,7 @@ export function QueueFilterBar({
               className={styles.filterSelect}
               type="date"
               value={customDate}
+              max={customDateMax}
               onChange={(event) => onCustomDateChange(event.target.value)}
             />
           </label>

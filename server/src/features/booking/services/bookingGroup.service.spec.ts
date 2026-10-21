@@ -477,6 +477,34 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     ).toBe(false);
   });
 
+  it('refuses a group with an Assessment booking while the Assessment Queue is archived', async () => {
+    queueFromResults({ data: [DEFAULT_POLICY], error: null }); // resolveEffectivePolicy
+
+    await expect(
+      createBookingGroup({
+        requesterId: CUSTOMER_ID,
+        input: {
+          branch_id: 'branch-1',
+          bookings: [
+            {
+              pet_id: PET.id,
+              service_category: 'Assessment',
+              items: [{ service_id: 'service-assessment' }],
+              scheduled_start: isoAt(0),
+              scheduled_end: isoAt(hours(1)),
+            },
+          ],
+        } as never,
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(
+      recordedWrites.some(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      )
+    ).toBe(false);
+  });
+
   it('(b) the in-request capacity guard rejects two sub-bookings competing for the same staff + overlapping window', async () => {
     vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
 

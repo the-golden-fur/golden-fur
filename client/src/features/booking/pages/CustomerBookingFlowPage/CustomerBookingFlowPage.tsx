@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import {
   BedDouble,
   ClipboardList,
@@ -64,6 +64,7 @@ import {
   BOOKING_MARK_PAID_ROLES,
   FOOD_QUANTITY_UNITS,
   MEDICATION_DOSE_UNITS,
+  ASSESSMENT_BOOKINGS_PAUSED,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingGroup,
@@ -1489,7 +1490,17 @@ export function CustomerBookingFlowPage() {
   // customer's behalf keep the old rule (Initial Assessment only): the pet is
   // usually in front of them, so they assess it first - and the server
   // refuses a Walk-in for an unassessed pet anyway.
-  const restrictedToAssessment = !isSelectedPetAssessed && isReceptionistMode;
+  // While Assessment bookings are paused (ASSESSMENT_BOOKINGS_PAUSED) staff
+  // get the customer's rule too: book Online at the estimate, assessed on
+  // arrival - a Walk-in is assessed on the pet's profile first (see the
+  // notice on the Service step).
+  const restrictedToAssessment =
+    !ASSESSMENT_BOOKINGS_PAUSED && !isSelectedPetAssessed && isReceptionistMode;
+  // The server refuses a walk-in for an unassessed pet, and with Assessment
+  // bookings paused there's nothing else to book it as - so Walk-in is
+  // offered only once the pet has been assessed.
+  const walkInNeedsAssessment =
+    ASSESSMENT_BOOKINGS_PAUSED && !isSelectedPetAssessed;
 
   const selectedBranch = useMemo(
     () => branches.find((branch) => branch.id === selectedBranchId) ?? null,
@@ -1531,6 +1542,8 @@ export function CustomerBookingFlowPage() {
       (candidate) =>
         (candidate !== 'Veterinary' ||
           (selectedBranch?.is_vet_branch ?? true)) &&
+        // The Assessment Queue is archived for now - nothing to book into.
+        (candidate !== 'Assessment' || !ASSESSMENT_BOOKINGS_PAUSED) &&
         (serviceTypeByKey.get(candidate)?.is_active ?? true)
     );
 
@@ -2360,10 +2373,11 @@ export function CustomerBookingFlowPage() {
       case 'branch':
         return selectedBranchId !== '';
       case 'bookingType':
-        // Always valid - bookingSource defaults to 'Online' so the step is
-        // never a hard blocker, matching "Default wizard state: bookingSource:
-        // 'Online'".
-        return true;
+        // Valid by default - bookingSource defaults to 'Online', matching
+        // "Default wizard state: bookingSource: 'Online'". The one block: a
+        // Walk-in left selected for a pet that turns out to be unassessed
+        // (picked, then the pet was changed) - see walkInNeedsAssessment.
+        return !(walkInNeedsAssessment && bookingSource === 'Walk-in');
       case 'availability':
         return (
           selectedSlot !== null &&
@@ -3481,6 +3495,10 @@ export function CustomerBookingFlowPage() {
                     bookingSource === 'Walk-in' ? styles.selected : ''
                   }`}
                   onClick={() => handleBookingSourceSelect('Walk-in')}
+                  disabled={walkInNeedsAssessment}
+                  aria-describedby={
+                    walkInNeedsAssessment ? 'walk-in-assessment-note' : undefined
+                  }
                 >
                   <Footprints
                     className={styles.categoryIcon}
@@ -3497,6 +3515,15 @@ export function CustomerBookingFlowPage() {
                 </span>
               </div>
             </div>
+            {walkInNeedsAssessment && selectedPet ? (
+              <p className={styles.copy} id="walk-in-assessment-note">
+                Walk-in isn&apos;t available because {selectedPet.name}{' '}
+                hasn&apos;t been assessed yet. Record {selectedPet.name}&apos;s
+                weight and coat on{' '}
+                <Link to={`/staff/pets/${selectedPet.id}`}>its profile</Link>{' '}
+                first, or book Online and assess {selectedPet.name} on arrival.
+              </p>
+            ) : null}
           </div>
         );
 
@@ -4935,11 +4962,7 @@ export function CustomerBookingFlowPage() {
                 payment scheme. The charge(s) are settled afterwards (at the
                 counter or from account credit).
               </p>
-            ) : (
-              <p className={styles.copy}>
-                No upfront payment is required for Veterinary bookings.
-              </p>
-            )}
+            ) : null}
 
             {showPaymentChoice ? (
               <fieldset className={styles.field}>
