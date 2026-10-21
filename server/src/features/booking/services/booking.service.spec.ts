@@ -9,6 +9,7 @@ import {
   overrideBookingStatus,
   recomputeBookingPaymentStatus,
   resolveBookingItems,
+  resolveFreePackageAward,
   resolvePackagePrice,
   resolveServicePrice,
   startBooking,
@@ -136,6 +137,8 @@ function queueFromResults(...results: QueryResult[]) {
       'gt',
       'gte',
       'order',
+      // Type-only in supabase-js (resolveFreePackageAward) - a pass-through.
+      'returns',
     ]) {
       builder[method] = vi.fn((column?: string, value?: string) => {
         if (isServiceTypes && column === 'key') requestedKey = value;
@@ -554,6 +557,142 @@ describe('booking.service (#51)', () => {
     });
   });
 
+  // Custom change (Hotel long-stay rate, 20261013260): the Hotel service is
+  // cheaper per night, automatically, once 5 nights or more are booked.
+  describe('Hotel long-stay rate (automatic at 5+ nights)', () => {
+    const OVERNIGHT = {
+      id: 'service-hotel',
+      category: 'Hotel',
+      name: 'Overnight Stay (Aircon Room)',
+      base_price: 850,
+      long_stay_nightly_price: 750,
+      duration_minutes: 1440,
+      min_nights_for_free_package: 5,
+      free_package_name: 'Golden Package',
+      is_active: true,
+      requires_assessed_pet: false,
+      service_pricing_tiers: [],
+      service_branch_availability: [
+        {
+          branch_id: 'branch-makati',
+          price_override: null,
+          long_stay_price_override: null,
+        },
+        {
+          branch_id: 'branch-southwoods',
+          price_override: 500,
+          long_stay_price_override: 450,
+        },
+      ],
+    } as never;
+    const START = '2026-08-03T01:00:00.000Z';
+
+    function priceFor(
+      nights: number,
+      branchId = 'branch-makati',
+      applyLongStayRate = true
+    ) {
+      const end = new Date(
+        new Date(START).getTime() + nights * 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      return resolveBookingItems(
+        [{ service_id: 'service-hotel' }],
+        PET as never,
+        true,
+        'Hotel' as never,
+        branchId,
+        START,
+        end,
+        true,
+        applyLongStayRate
+      ).then((items) => items[0].price_at_booking);
+    }
+
+    it('pay at checkout never gets the long-stay rate: 6 x 850 in Makati, 6 x 500 in Southwoods', async () => {
+      expect(await priceFor(6, 'branch-makati', false)).toBe(5100);
+      expect(await priceFor(6, 'branch-southwoods', false)).toBe(3000);
+    });
+
+    describe('free package (resolveFreePackageAward)', () => {
+      const SIX_NIGHTS = {
+        pet_id: PET.id,
+        branch_id: 'branch-makati',
+        service_category: 'Hotel',
+        items: [{ service_id: 'service-hotel' }],
+        scheduled_start: START,
+        scheduled_end: '2026-08-09T01:00:00.000Z',
+      };
+
+      it("a 5+ night stay gets the Superadmin's free package", async () => {
+        queueFromResults({
+          data: [
+            {
+              id: 'package-golden',
+              name: 'Golden Package',
+              package_branch_availability: [
+                { branch_id: 'branch-makati', is_available: true },
+              ],
+            },
+          ],
+          error: null,
+        });
+
+        expect(
+          await resolveFreePackageAward(SIX_NIGHTS as never)
+        ).toMatchObject({ packageId: 'package-golden', nights: 6 });
+      });
+
+      it('a pay-at-checkout stay gets no free package, however long', async () => {
+        expect(
+          await resolveFreePackageAward({
+            ...SIX_NIGHTS,
+            payment_scheme: 'pay_at_checkout',
+          } as never)
+        ).toBeNull();
+        expect(supabase.from).not.toHaveBeenCalledWith('packages');
+      });
+    });
+
+    beforeEach(() => {
+      vi.mocked(getFixedPrice).mockResolvedValue(null);
+      vi.mocked(getServiceById).mockResolvedValue(OVERNIGHT);
+    });
+
+    it('under 5 nights is the regular rate: 4 x 850 in Makati', async () => {
+      expect(await priceFor(4)).toBe(3400);
+    });
+
+    it('5 nights is already the long-stay rate: 5 x 750', async () => {
+      expect(await priceFor(5)).toBe(3750);
+    });
+
+    it('6 nights in Makati is 6 x 750', async () => {
+      expect(await priceFor(6)).toBe(4500);
+    });
+
+    it('Southwoods uses its own prices: 4 x 500, and 6 x 450 for a long stay', async () => {
+      expect(await priceFor(4, 'branch-southwoods')).toBe(2000);
+      expect(await priceFor(6, 'branch-southwoods')).toBe(2700);
+    });
+
+    it("a pet type's fixed price still wins over the long-stay rate", async () => {
+      vi.mocked(getFixedPrice).mockResolvedValue(400);
+
+      expect(await priceFor(6)).toBe(2400);
+    });
+
+    it('a Hotel service with no long-stay price stays on its regular rate at any length', async () => {
+      vi.mocked(getServiceById).mockResolvedValue({
+        ...(OVERNIGHT as object),
+        long_stay_nightly_price: null,
+        service_branch_availability: [],
+      } as never);
+
+      expect(await priceFor(9)).toBe(7650);
+    });
+  });
+
   it('AC-4: a Daycare booking starts Pending and holds its capacity slot immediately', async () => {
     vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
     queueFromResults(
@@ -662,6 +801,17 @@ describe('booking.service (#51)', () => {
     expect(supabase.rpc).not.toHaveBeenCalled();
   });
 
+  it('refuses a new Assessment booking while the Assessment Queue is archived', async () => {
+    await expect(
+      createBooking({
+        requesterId: CUSTOMER_ID,
+        input: { ...BASE_INPUT, service_category: 'Assessment' },
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    // Refused before anything is looked up or written.
+    expect(supabase.from).not.toHaveBeenCalledWith('bookings');
+  });
+
   it('AC-6: a customer cannot book against another customer pet', async () => {
     queueFromResults({
       data: { ...PET, customer_id: 'someone-else' },
@@ -674,36 +824,175 @@ describe('booking.service (#51)', () => {
   });
 
   describe('assessment gate (client interview finding: weight_class/coat_type are staff-only, and drive Grooming price/Hotel cage size)', () => {
-    it('rejects booking a normal service against an unassessed pet', async () => {
-      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
-      queueFromResults({ data: UNASSESSED_PET, error: null }); // pet ownership
+    // Custom change (book before assessment, 20261013264): an Online booking
+    // may now be made for a pet staff have not assessed yet. It is saved at
+    // an estimated price, "awaiting assessment", with nothing charged.
+    describe('booking online before the pet is assessed', () => {
+      function queueUnassessedCreation(policy: object = DEFAULT_POLICY) {
+        queueFromResults(
+          { data: UNASSESSED_PET, error: null }, // pet ownership
+          { data: [policy], error: null }, // resolveEffectivePolicy
+          { data: INSERTED_BOOKING, error: null }, // bookings insert
+          { data: null, error: null }, // booking_items insert
+          { data: null, error: null }, // staff_picker_preferences insert
+          { data: [{ id: 'booking-1' }], error: null }, // post-insert re-count
+          { data: INSERTED_BOOKING, error: null } // final fetch
+        );
+      }
 
-      await expect(
-        createBooking({
+      function bookingInsert() {
+        return recordedWrites.find(
+          (write) => write.table === 'bookings' && write.method === 'insert'
+        )?.payload;
+      }
+
+      it('accepts a normal service, at the estimated (base) price, marked awaiting assessment', async () => {
+        vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+        queueUnassessedCreation();
+
+        await createBooking({
           requesterId: CUSTOMER_ID,
           input: { ...BASE_INPUT, pet_id: UNASSESSED_PET.id },
-        })
-      ).rejects.toMatchObject({ statusCode: 403 });
-    });
+        });
 
-    it('rejects booking a package against an unassessed pet', async () => {
-      queueFromResults({ data: UNASSESSED_PET, error: null }); // pet ownership
+        expect(bookingInsert()).toMatchObject({
+          status: 'Pending',
+          awaiting_assessment: true,
+          // No size/coat cell can match yet - the service's own base price.
+          total_price: Number(
+            (GROOMING_SERVICE as { base_price: number }).base_price
+          ),
+          payment_status: 'Pending',
+        });
+      });
 
-      await expect(
-        createBooking({
+      it('creates no charge - nothing is paid online', async () => {
+        vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+        queueUnassessedCreation();
+
+        await createBooking({
+          requesterId: CUSTOMER_ID,
+          input: { ...BASE_INPUT, pet_id: UNASSESSED_PET.id },
+        });
+
+        expect(supabase.rpc).not.toHaveBeenCalledWith(
+          'create_initial_booking_charge',
+          expect.anything()
+        );
+      });
+
+      it("never requires a down payment, even where the branch's policy does - so it holds its slot unpaid", async () => {
+        vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+        queueUnassessedCreation({
+          ...DEFAULT_POLICY,
+          downpayment_enabled: true,
+          downpayment_type: 'Flat',
+          downpayment_amount: 100,
+        });
+
+        await createBooking({
           requesterId: CUSTOMER_ID,
           input: {
+            ...BASE_INPUT,
             pet_id: UNASSESSED_PET.id,
-            branch_id: 'branch-1',
-            service_category: 'Daycare',
-            items: [{ package_id: 'package-1' }],
-            scheduled_start: BASE_INPUT.scheduled_start,
-            scheduled_end: BASE_INPUT.scheduled_end,
+            payment_scheme: 'downpayment',
           },
-        })
-      ).rejects.toMatchObject({ statusCode: 403 });
+        });
 
-      expect(getPackageById).not.toHaveBeenCalled();
+        expect(bookingInsert()).toMatchObject({
+          awaiting_assessment: true,
+          downpayment_required: false,
+          downpayment_amount: null,
+          downpayment_due_at: null,
+        });
+      });
+
+      it('an assessed pet is an ordinary booking: not awaiting assessment, charged as usual', async () => {
+        vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+        queueFromResults(
+          { data: PET, error: null },
+          { data: [DEFAULT_POLICY], error: null },
+          { data: INSERTED_BOOKING, error: null },
+          { data: null, error: null },
+          { data: null, error: null },
+          { data: [{ id: 'booking-1' }], error: null },
+          { data: INSERTED_BOOKING, error: null }
+        );
+
+        await createBooking({ requesterId: CUSTOMER_ID, input: BASE_INPUT });
+
+        expect(bookingInsert()).toMatchObject({ awaiting_assessment: false });
+        expect(supabase.rpc).toHaveBeenCalledWith(
+          'create_initial_booking_charge',
+          expect.anything()
+        );
+      });
+
+      it('a Walk-in is still refused - the pet is at the counter, so staff assess it first', async () => {
+        vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        queueFromResults({ data: UNASSESSED_PET, error: null });
+
+        await expect(
+          createBooking({
+            requesterId: 'staff-1',
+            input: {
+              ...BASE_INPUT,
+              customer_id: CUSTOMER_ID,
+              pet_id: UNASSESSED_PET.id,
+              booking_source: 'Walk-in',
+            },
+          })
+        ).rejects.toMatchObject({ statusCode: 403 });
+      });
+    });
+
+    it('an unassessed pet can be priced for a package at its own (estimated) price', async () => {
+      vi.mocked(getPackageById).mockResolvedValue({
+        id: 'package-1',
+        name: 'Golden Package',
+        is_active: true,
+        bundled_price: 630,
+        use_pricing_matrix: true,
+        pricing_tiers: [{ weight_class: 'S', coat_type: 'SC', price: 700 }],
+        package_services: [],
+        package_branch_availability: [
+          { branch_id: 'branch-1', is_available: true },
+        ],
+      } as never);
+
+      const items = await resolveBookingItems(
+        [{ package_id: 'package-1' }],
+        UNASSESSED_PET as never,
+        false,
+        'Grooming' as never,
+        'branch-1',
+        BASE_INPUT.scheduled_start,
+        BASE_INPUT.scheduled_end,
+        false
+      );
+
+      expect(items[0]).toMatchObject({
+        package_id: 'package-1',
+        price_at_booking: 630,
+        needs_assessed_pet: true,
+      });
+    });
+
+    it('resolveBookingItems still refuses an unassessed pet unless the caller opts out (every other caller keeps the old rule)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+
+      await expect(
+        resolveBookingItems(
+          [{ service_id: 'service-1' }],
+          UNASSESSED_PET as never,
+          false,
+          'Grooming' as never,
+          'branch-1',
+          BASE_INPUT.scheduled_start,
+          BASE_INPUT.scheduled_end
+        )
+      ).rejects.toMatchObject({ statusCode: 403 });
     });
 
     it('allows booking the Initial Assessment service (requires_assessed_pet=false) against an unassessed pet', async () => {
@@ -1237,6 +1526,39 @@ describe('booking.service (#51)', () => {
       expect(builder.eq).toHaveBeenCalledWith('status', 'Pending');
     });
 
+    it("narrows to one customer's bookings for a staff caller", async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+      queueFromResults({ data: [], error: null });
+
+      await listBookings({
+        requesterId: 'staff-1',
+        filters: { customerId: 'customer-9' },
+      });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(builder.eq).toHaveBeenCalledWith('customer_id', 'customer-9');
+    });
+
+    it("never lets a customer caller read another customer's bookings through the customer filter", async () => {
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults({ data: [], error: null });
+
+      await listBookings({
+        requesterId: CUSTOMER_ID,
+        filters: { customerId: 'customer-9' },
+      });
+
+      const builder = vi.mocked(supabase.from).mock.results[0].value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(builder.eq).toHaveBeenCalledWith('customer_id', CUSTOMER_ID);
+      expect(builder.eq).not.toHaveBeenCalledWith('customer_id', 'customer-9');
+    });
+
     it('custom change (bookings/payments queue paid/unpaid filter): applies a payment_status filter independently of status', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
       queueFromResults({ data: [], error: null });
@@ -1266,6 +1588,7 @@ describe('booking.service (#51)', () => {
           ],
           error: null,
         }, // list query
+        { data: [], error: null }, // resolveEffectivePolicy -> documented 30-min default
         {
           data: [
             {
@@ -1287,6 +1610,118 @@ describe('booking.service (#51)', () => {
       // a "status = Pending" result even though the initial DB query (which
       // ran before the flip) matched it.
       expect(result).toHaveLength(0);
+    });
+
+    describe('Late booking status (lazy, read-time)', () => {
+      const minutesAgo = (minutes: number) =>
+        new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+      it('flips a Pending booking whose start just passed to Late, not No-show', async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        const start = minutesAgo(5);
+        queueFromResults(
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'Pending',
+                scheduled_start: start,
+              },
+            ],
+            error: null,
+          }, // list query
+          {
+            data: [{ branch_id: null, no_show_after_minutes: 30 }],
+            error: null,
+          }, // resolveEffectivePolicy
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'Late',
+                scheduled_start: start,
+              },
+            ],
+            error: null,
+          } // the Late bulk-update's own .select()
+        );
+
+        const result = await listBookings({
+          requesterId: 'staff-1',
+          filters: {},
+        });
+
+        expect(result.map((booking) => booking.status)).toEqual(['Late']);
+      });
+
+      it("flips a Late booking to No-show once the branch's threshold has passed", async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        const start = minutesAgo(20);
+        queueFromResults(
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'Late',
+                scheduled_start: start,
+              },
+            ],
+            error: null,
+          }, // list query
+          {
+            data: [{ branch_id: 'branch-1', no_show_after_minutes: 15 }],
+            error: null,
+          }, // resolveEffectivePolicy - the branch override wins
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'No-show',
+                scheduled_start: start,
+              },
+            ],
+            error: null,
+          } // the No-show bulk-update's own .select()
+        );
+
+        const result = await listBookings({
+          requesterId: 'staff-1',
+          filters: {},
+        });
+
+        expect(result.map((booking) => booking.status)).toEqual(['No-show']);
+      });
+
+      it('leaves a Late booking alone while it is still inside the threshold', async () => {
+        vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+        queueFromResults(
+          {
+            data: [
+              {
+                id: 'booking-late',
+                branch_id: 'branch-1',
+                status: 'Late',
+                scheduled_start: minutesAgo(10),
+              },
+            ],
+            error: null,
+          }, // list query
+          { data: [], error: null } // resolveEffectivePolicy -> 30-min default
+        );
+
+        const result = await listBookings({
+          requesterId: 'staff-1',
+          filters: {},
+        });
+
+        expect(result.map((booking) => booking.status)).toEqual(['Late']);
+        // Only the list + policy queries ran - no update for an unchanged row.
+        expect(supabase.from).toHaveBeenCalledTimes(2);
+      });
     });
 
     it('down-payment slot gate: auto-cancels an unpaid down-payment booking past its downpayment_due_at (lazy, read-time)', async () => {
@@ -1551,6 +1986,29 @@ describe('booking.service (#51)', () => {
       await expect(
         startBooking({ bookingId: 'booking-1' })
       ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('startBooking: refuses a booking still awaiting assessment, pointing staff at the assessment rather than the payment', async () => {
+      queueFromResults({
+        data: {
+          ...INSERTED_BOOKING,
+          status: 'Pending',
+          booking_source: 'Online',
+          payment_status: 'Pending',
+          awaiting_assessment: true,
+        },
+        error: null,
+      });
+
+      await expect(
+        startBooking({ bookingId: 'booking-1' })
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        message: expect.stringContaining("hasn't been assessed yet"),
+      });
+      expect(
+        recordedWrites.find((write) => write.method === 'update')
+      ).toBeUndefined();
     });
 
     it('startBooking: rejects an unpaid Online booking (Unconfirmed - checking it in would strand it)', async () => {
@@ -2291,6 +2749,7 @@ describe('booking.service (#51)', () => {
         { data: PET, error: null }, // pet ownership
         { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [], error: null }, // Hotel overlap - empty (filterSameSizeRows then short-circuits, no query)
+        { count: 0, error: null }, // countClosedCages - customer booking, no front-desk closures
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: [{ id: 'booking-1' }], error: null }, // re-count winner
@@ -2330,6 +2789,7 @@ describe('booking.service (#51)', () => {
         { data: PET, error: null },
         { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [], error: null },
+        { count: 0, error: null }, // countClosedCages
         { data: INSERTED_BOOKING, error: null },
         { data: null, error: null },
         { data: [{ id: 'booking-1' }], error: null },
@@ -2875,6 +3335,36 @@ describe('booking.service (#51)', () => {
       expect(price).toBe(350);
     });
 
+    it('resolveServicePrice / resolvePackagePrice: an Extra Long Coat pet on an item with no XLC prices pays the Long Coat cell (20261014265)', async () => {
+      const cells = [
+        { weight_class: 'S', coat_type: 'SC', price: 350 },
+        { weight_class: 'S', coat_type: 'LC', price: 420 },
+      ];
+      const xlcPet = { ...PET, weight_class: 'S', coat_type: 'XLC' };
+
+      expect(
+        resolveServicePrice(
+          {
+            category: 'Grooming',
+            base_price: 300,
+            use_pricing_matrix: true,
+            service_pricing_tiers: cells,
+          },
+          xlcPet as never
+        )
+      ).toBe(420);
+      expect(
+        await resolvePackagePrice(
+          {
+            bundled_price: 600,
+            use_pricing_matrix: true,
+            pricing_tiers: cells,
+          } as never,
+          xlcPet as never
+        )
+      ).toBe(420);
+    });
+
     it('resolveServicePrice: a non-matrix Grooming service ignores a matching tier (individual add-on services)', () => {
       const price = resolveServicePrice(
         {
@@ -2971,6 +3461,83 @@ describe('booking.service (#51)', () => {
       );
 
       expect(price).toBe(650);
+    });
+
+    // Custom change (Extra Long Coat, 20261013261): a third coat column.
+    it('resolvePackagePrice: an Extra Long Coat pet is charged its own cell, not the Long Coat one', async () => {
+      const price = await resolvePackagePrice(
+        {
+          bundled_price: 300,
+          use_pricing_matrix: true,
+          pricing_tiers: [
+            ...PACKAGE_CELLS,
+            {
+              weight_class: 'L',
+              coat_type: 'XLC',
+              price: 820,
+              is_custom: false,
+            },
+          ],
+        } as never,
+        { ...PET, weight_class: 'L', coat_type: 'XLC' } as never
+      );
+
+      expect(price).toBe(820);
+    });
+
+    // Custom change (package cat price, 20261013263): one separate price
+    // for a cat, set per package.
+    describe("resolvePackagePrice: a package's own cat price", () => {
+      const CAT = { ...PET, pet_type: 'Cat' };
+      const WITH_CAT_PRICE = {
+        bundled_price: 300,
+        use_pricing_matrix: true,
+        pricing_tiers: PACKAGE_CELLS,
+        cat_price: 650,
+      };
+
+      it('is what a cat is charged, ahead of the pet type fixed price and the grid', async () => {
+        expect(
+          await resolvePackagePrice(WITH_CAT_PRICE as never, CAT as never, 800)
+        ).toBe(650);
+        expect(
+          await resolvePackagePrice(WITH_CAT_PRICE as never, CAT as never)
+        ).toBe(650);
+      });
+
+      it('never applies to another pet type', async () => {
+        expect(
+          await resolvePackagePrice(
+            WITH_CAT_PRICE as never,
+            {
+              ...PET,
+              pet_type: 'Dog',
+              weight_class: 'L',
+              coat_type: 'SC',
+            } as never
+          )
+        ).toBe(375);
+      });
+
+      it('left empty, a cat is priced as before: the pet type fixed price', async () => {
+        expect(
+          await resolvePackagePrice(
+            { ...WITH_CAT_PRICE, cat_price: null } as never,
+            CAT as never,
+            800
+          )
+        ).toBe(800);
+      });
+
+      it('a cat price of zero is honoured, not treated as empty', async () => {
+        expect(
+          await resolvePackagePrice(
+            { ...WITH_CAT_PRICE, cat_price: 0 } as never,
+            CAT as never,
+            800
+          )
+        ).toBe(0);
+      });
     });
 
     it('resolvePackagePrice: falls back to bundled_price when the pet has no matching cell (not assessed yet)', async () => {

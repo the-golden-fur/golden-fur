@@ -54,10 +54,10 @@ describe('BookingPaymentsPanel', () => {
 
     renderPanel();
 
-    expect(
-      await screen.findByText('Payments for this booking')
-    ).toBeInTheDocument();
-    expect(screen.getByText('PHP 250.00')).toBeInTheDocument();
+    expect(screen.getByText('Payments for this booking')).toBeInTheDocument();
+    // The title shows at once; the payments load after - wait for them, not
+    // the title (on a slow CI runner the list was still loading).
+    expect(await screen.findByText('PHP 250.00')).toBeInTheDocument();
     expect(
       screen.getByText(/Down payment · GCash · Partially Paid/)
     ).toBeInTheDocument();

@@ -18,19 +18,26 @@ interface QueryResult {
 
 const orCalls: string[] = [];
 const eqCalls: Array<[string, unknown]> = [];
+const inCalls: Array<[string, unknown]> = [];
 
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
   orCalls.length = 0;
   eqCalls.length = 0;
+  inCalls.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'neq', 'in', 'lt', 'gt', 'order', 'is']) {
+    for (const method of ['select', 'neq', 'lt', 'gt', 'order', 'is']) {
       builder[method] = vi.fn(() => builder);
     }
+
+    builder.in = vi.fn((field: string, values: unknown) => {
+      inCalls.push([field, values]);
+      return builder;
+    });
 
     builder.eq = vi.fn((field: string, value: unknown) => {
       eqCalls.push([field, value]);
@@ -169,10 +176,92 @@ describe('capacity.service (#51)', () => {
       expect(result.available).toBe(true);
     });
 
-    it('requires the pet weight class', async () => {
-      await expect(
-        checkCapacity({ ...WINDOW, serviceCategory: 'Hotel' })
-      ).rejects.toMatchObject({ statusCode: 400 });
+    // Custom change (book before assessment, 20261013264): a pet staff have
+    // not assessed yet has no weight class, so no cage size can be reserved -
+    // the check is "does the branch have any cage free at all".
+    describe('a pet with no weight class yet', () => {
+      beforeEach(() => {
+        // 2 + 1 + 0 + 0 = 3 cages in total.
+        vi.stubEnv('HOTEL_CAGE_CAPACITY', '{"S":2,"M":1,"L":0,"XL":0}');
+      });
+
+      it('is available while overlapping stays of any size are fewer than all the cages', async () => {
+        queueFromResults({
+          data: [
+            { id: 'b1', pet_id: 'p1', created_at: '' },
+            { id: 'b2', pet_id: 'p2', created_at: '' },
+          ],
+          error: null,
+        });
+
+        expect(
+          await checkCapacity({ ...WINDOW, serviceCategory: 'Hotel' })
+        ).toEqual({ available: true });
+      });
+
+      it('is refused once every cage, whatever its size, is taken', async () => {
+        queueFromResults({
+          data: [
+            { id: 'b1', pet_id: 'p1', created_at: '' },
+            { id: 'b2', pet_id: 'p2', created_at: '' },
+            { id: 'b3', pet_id: 'p3', created_at: '' },
+          ],
+          error: null,
+        });
+
+        expect(
+          await checkCapacity({ ...WINDOW, serviceCategory: 'Hotel' })
+        ).toEqual({
+          available: false,
+          reason: 'No cages available for the requested dates',
+        });
+      });
+    });
+
+    // Custom change (front-desk cage override): a cage staff closed over the
+    // stay's start is one fewer cage for a customer - never for staff.
+    describe('front-desk closed cages', () => {
+      beforeEach(() => {
+        vi.stubEnv('HOTEL_CAGE_CAPACITY', '{"S":2}');
+      });
+
+      const ONE_SAME_SIZE_STAY = {
+        data: [{ id: 'b-other', pet_id: 'pet-2', created_at: '' }],
+        error: null,
+      };
+
+      it('refuses a customer once the remaining open cages are taken', async () => {
+        queueFromResults(
+          ONE_SAME_SIZE_STAY, // overlapping bookings
+          { data: null, error: null, count: 1 } as QueryResult, // closed cages
+          { data: [{ id: 'pet-2' }], error: null } // same-size pets
+        );
+
+        const result = await checkCapacity({
+          ...WINDOW,
+          serviceCategory: 'Hotel',
+          petWeightClass: 'S',
+          excludeClosedCages: true,
+        });
+
+        expect(result.available).toBe(false);
+      });
+
+      it('ignores closures for a staff booking (no closed-cage query at all)', async () => {
+        queueFromResults(ONE_SAME_SIZE_STAY, {
+          data: [{ id: 'pet-2' }],
+          error: null,
+        });
+
+        const result = await checkCapacity({
+          ...WINDOW,
+          serviceCategory: 'Hotel',
+          petWeightClass: 'S',
+        });
+
+        expect(result.available).toBe(true);
+        expect(supabase.from).toHaveBeenCalledTimes(2);
+      });
     });
 
     it('#78 (Sprint 4, M05): with no env override, capacity is the real count of cages of that size at the branch', async () => {
@@ -345,7 +434,9 @@ describe('capacity.service (#51)', () => {
       });
 
       expect(result).toEqual([row]);
-      expect(eqCalls).toContainEqual(['status', 'Pending']);
+      // A Late booking (start passed, not yet a no-show) is still an
+      // unpaid pencil booking too.
+      expect(inCalls).toContainEqual(['status', ['Pending', 'Late']]);
       expect(eqCalls).toContainEqual(['payment_status', 'Pending']);
       expect(eqCalls).toContainEqual(['downpayment_required', true]);
       // Deliberately does NOT use SLOT_HOLD_PAID_OR_FILTER's .or() - that

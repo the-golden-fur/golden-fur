@@ -1,0 +1,282 @@
+.page {
+  composes: animate-fade-in from global;
+  display: grid;
+  gap: var(--space-3);
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-2);
+}
+
+.header {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-heading);
+  font-size: var(--text-heading-lg);
+  font-weight: var(--weight-bold);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* One row of filters above everything they affect. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+.presets {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: 2px;
+}
+
+.presetButton {
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.presetButton:hover {
+  color: var(--color-text-primary);
+}
+
+.presetButton[aria-pressed='true'] {
+  background: var(--color-badge-bg-gold);
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.presetButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-0-5);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.control {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-1) var(--space-2);
+}
+
+.errorBanner {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+/* Headline numbers - plain figures in a row, no boxes, so the panels
+   below stay the main event. */
+.headline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+}
+
+.stat {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.statLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.statValue {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-heading);
+  font-size: var(--text-heading-lg);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.note {
+  margin: calc(var(--space-2) * -1) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+/* Panels sit on the page divided by a hairline, not boxed as cards. */
+.panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-4);
+}
+
+@media (max-width: 48rem) {
+  .panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-width: 0;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-2);
+}
+
+.panelTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.panelHint {
+  margin: calc(var(--space-1) * -1) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Label | bar | value. The bar column flexes; label and value keep their
+   text on one line where they can. */
+.barList {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(6rem, 38%) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.barLabel {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barTrack {
+  display: block;
+  height: 0.5rem;
+  border-radius: 4px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.barFill,
+.barFillMuted {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 4px;
+}
+
+.barFill {
+  background: var(--color-series-1);
+}
+
+.barFillMuted {
+  background: var(--color-text-muted);
+}
+
+.barValue {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.barNote {
+  color: var(--color-text-muted);
+  font-weight: var(--weight-normal);
+}
+
+/* Phone width: label on its own line above the bar, so long service and
+   package names aren't cut off. */
+@media (max-width: 30rem) {
+  .barRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: var(--space-0-5);
+  }
+
+  .barLabel {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+}
+
+.notesTitle {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.notes {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.noteRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.noteText {
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.noteDate {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}

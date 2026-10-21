@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import type { BookingDetails } from '../../booking.types';
+import { isNotStartedStatus, type BookingDetails } from '../../booking.types';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import { BookingStatusBadge } from '../shared/BookingStatusBadge/BookingStatusBadge';
 import { PaymentStatusBadge } from '../shared/PaymentStatusBadge/PaymentStatusBadge';
+import { AwaitingAssessmentBadge } from '../shared/AwaitingAssessmentBadge/AwaitingAssessmentBadge';
 import { NightTabs } from '../NightTabs/NightTabs';
 import { getHotelNightDates } from '../../utils/hotelNights';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import styles from './BookingDetailsView.module.css';
 
 interface BookingDetailsViewProps {
@@ -81,7 +83,7 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
   // the total is only the estimate the booking was created with.
   const awaitingCheckoutBill =
     booking.pay_at_checkout === true &&
-    (booking.status === 'Pending' || booking.status === 'In Progress');
+    (isNotStartedStatus(booking.status) || booking.status === 'In Progress');
   const isGrouped = data.group !== null;
   const hotelNightDates = isHotel
     ? getHotelNightDates(
@@ -107,16 +109,23 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
   return (
     <div className={styles.content}>
       <div className={styles.header}>
-        <div>
-          <h3 className={styles.title}>{booking.service_category} booking</h3>
-          <p className={styles.copy}>
-            {data.pet?.name ?? 'Unknown pet'}
-            {data.owner ? ` · ${data.owner.full_name}` : ''}
-          </p>
+        <div className={styles.identity}>
+          <PetAvatar
+            name={data.pet?.name ?? 'Unknown pet'}
+            photoUrl={data.pet?.photo_url}
+          />
+          <div>
+            <h3 className={styles.title}>{booking.service_category} booking</h3>
+            <p className={styles.copy}>
+              {data.pet?.name ?? 'Unknown pet'}
+              {data.owner ? ` · ${data.owner.full_name}` : ''}
+            </p>
+          </div>
         </div>
         <div className={styles.badgeGroup}>
           <BookingStatusBadge status={booking.status} />
           <PaymentStatusBadge status={booking.payment_status} />
+          {booking.awaiting_assessment ? <AwaitingAssessmentBadge /> : null}
         </div>
       </div>
 
@@ -224,6 +233,14 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
           <p className={styles.copy}>
             Part of a bundled booking — the discount, promo, total and payments
             below are shared across every booking in the group.
+          </p>
+        ) : null}
+        {booking.awaiting_assessment ? (
+          <p className={styles.copy}>
+            This pet has not been assessed yet, so nothing has been charged and
+            the amounts below are an estimate. The final price is set when staff
+            record the pet&apos;s weight and coat, and it is paid at the
+            counter.
           </p>
         ) : null}
         {awaitingCheckoutBill ? (

@@ -8,6 +8,7 @@ export const DAYCARE_ROLES: readonly string[] = [
   'Admin',
   'Supervisor',
   'Superadmin',
+  'Front Desk',
 ];
 
 /** Groomer/Pet Assistant advance rights: Daycare has no dedicated assigned-
@@ -62,4 +63,30 @@ export type DaycareCheckoutResult = DaycareSession & {
   /** Pay at checkout: true when this checkout posted the whole charge to the
    * cashier's Transactions list (the booking had no upfront charge). */
   billed_at_checkout: boolean;
+  /** A normal booking's extras this checkout posted to Transactions (extra
+   * hours, overdue fee, nights not picked up) - null for a walk-in or a
+   * pay-at-checkout booking, whose whole bill is posted instead. */
+  added_at_checkout: number | null;
+  /** What the booking's Transactions still say is owed after checkout -
+   * what the cashier will collect. Null for a walk-in (no booking). */
+  /** What the booking's Daycare hours were charged at booking - null for a
+   * walk-in or a pay-at-checkout booking. */
+  booked_charge: number | null;
+  amount_due: number | null;
 };
+
+/** The bill a session would get if it were checked out now
+ * (previewDaycareCheckout) - the same fields checkout reports, worked out
+ * without saving anything. */
+export interface DaycareCheckoutPreview {
+  charge_breakdown: DaycareChargeBreakdown;
+  computed_charge: number;
+  booked_charge: number | null;
+  added_at_checkout: number | null;
+  /** Pending on Transactions now + what checkout would add. */
+  amount_due: number | null;
+  billed_at_checkout: boolean;
+  /** When the preview was worked out (ISO) - the bill keeps growing with
+   * every overdue hour. */
+  as_of: string;
+}

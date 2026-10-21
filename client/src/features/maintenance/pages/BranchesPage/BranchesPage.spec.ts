@@ -142,13 +142,15 @@ describe('BranchesPage', () => {
     expect(branchesApi.listBranchesFull).not.toHaveBeenCalled();
   });
 
-  it('lists branches with name, address, type, and status', async () => {
+  it('lists branches with name, address, and status - no Branch type column', async () => {
     renderPage();
 
     expect(await screen.findByText('Makati')).toBeInTheDocument();
     expect(screen.getByText('123 Ayala Ave')).toBeInTheDocument();
-    expect(screen.getByText('Veterinary')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: 'Branch type' })
+    ).not.toBeInTheDocument();
   });
 
   it('adds a branch via the modal', async () => {

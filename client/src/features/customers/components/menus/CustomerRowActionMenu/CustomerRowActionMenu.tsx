@@ -2,6 +2,7 @@ import { useState } from 'react';
 import styles from './CustomerRowActionMenu.module.css';
 
 export type CustomerRowAction =
+  | 'overview'
   | 'checkProfile'
   | 'viewPets'
   | 'addPet'
@@ -50,6 +51,16 @@ export function CustomerRowActionMenu({
       </button>
       {isOpen ? (
         <ul className={styles.menu} role="menu">
+          <li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.item}
+              onClick={() => handleSelect('overview')}
+            >
+              View details
+            </button>
+          </li>
           <li role="none">
             <button
               type="button"

@@ -1,10 +1,22 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { getDailySalesReport } from './services/dailySalesReport.service.ts';
+import { getBookingActivityReport } from './services/bookingActivity.service.ts';
 import { getCageOccupancyReport } from './services/cageOccupancy.service.ts';
 import { listTransactionHistory } from './services/transactionHistory.service.ts';
 import { getAnalyticsSummary } from './services/analytics.service.ts';
 import { getBranchComparison } from './services/branchComparison.service.ts';
+import { getTrends } from './services/trends.service.ts';
+import {
+  getGoals,
+  setGoalGrowthRate,
+  setGoalMonthlyTarget,
+} from './services/goals.service.ts';
+import {
+  goalsQueryValidator,
+  setGoalGrowthRateValidator,
+  setGoalTargetValidator,
+} from './modules/validators/goals.validator.ts';
 
 function sendServiceError(res: Response, error: unknown) {
   const statusCode =
@@ -48,6 +60,78 @@ export async function dailySalesReportController(
       requesterBranchId,
       branchId: queryParam(req, 'branch_id') ?? null,
       reportDate,
+    });
+
+    return res.status(200).json({ report });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function bookingActivityReportController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterId || !requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const dateFrom = queryParam(req, 'date_from');
+  const dateTo = queryParam(req, 'date_to');
+
+  if (!dateFrom || !dateTo) {
+    return res
+      .status(400)
+      .json({ error: 'date_from and date_to are required' });
+  }
+
+  try {
+    const report = await getBookingActivityReport({
+      requesterId,
+      requesterRole,
+      requesterBranchId,
+      branchId: queryParam(req, 'branch_id') ?? null,
+      dateFrom,
+      dateTo,
+    });
+
+    return res.status(200).json({ report });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function trendsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const dateFrom = queryParam(req, 'date_from');
+  const dateTo = queryParam(req, 'date_to');
+
+  if (!dateFrom || !dateTo) {
+    return res
+      .status(400)
+      .json({ error: 'date_from and date_to are required' });
+  }
+
+  try {
+    const report = await getTrends({
+      requesterRole,
+      requesterBranchId,
+      branchId: queryParam(req, 'branch_id') ?? null,
+      dateFrom,
+      dateTo,
     });
 
     return res.status(200).json({ report });
@@ -191,6 +275,96 @@ export async function branchComparisonController(
     });
 
     return res.status(200).json({ branches });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function goalsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+
+  if (!requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = goalsQueryValidator.safeParse({
+    month: queryParam(req, 'month'),
+    branch_id: queryParam(req, 'branch_id'),
+  });
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const goals = await getGoals({
+      requesterRole,
+      month: parsed.data.month,
+      branchId: parsed.data.branch_id ?? null,
+    });
+
+    return res.status(200).json({ goals });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setGoalGrowthRateController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+
+  if (!requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = setGoalGrowthRateValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    await setGoalGrowthRate(requesterRole, req.user?.sub ?? null, parsed.data);
+    return res.status(204).send();
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setGoalTargetController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+
+  if (!requesterRole) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = setGoalTargetValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    await setGoalMonthlyTarget(
+      requesterRole,
+      req.user?.sub ?? null,
+      parsed.data
+    );
+    return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);
   }

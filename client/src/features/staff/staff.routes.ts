@@ -10,6 +10,7 @@ import { MySchedulePage } from './pages/MySchedulePage/MySchedulePage';
 import { UnavailabilityApprovalQueuePage } from './pages/UnavailabilityApprovalQueuePage/UnavailabilityApprovalQueuePage';
 import { MonthlySchedulePage } from './pages/MonthlySchedulePage/MonthlySchedulePage';
 import { AdminArchivePage } from './pages/AdminArchivePage/AdminArchivePage';
+import { VaccinationReviewPage } from './pages/VaccinationReviewPage/VaccinationReviewPage';
 
 export const staffRoutes = createElement(
   Fragment,
@@ -56,6 +57,10 @@ export const staffRoutes = createElement(
     createElement(Route, {
       path: '/staff/pets/:petId',
       element: createElement(StaffPetProfilePage),
+    }),
+    createElement(Route, {
+      path: '/staff/vaccinations/review',
+      element: createElement(VaccinationReviewPage),
     })
   )
 );

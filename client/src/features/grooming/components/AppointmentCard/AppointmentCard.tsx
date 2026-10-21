@@ -1,5 +1,7 @@
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import type { BookingStatus } from '../../../booking/booking.types';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
+import { AwaitingAssessmentBadge } from '../../../booking/components/shared/AwaitingAssessmentBadge/AwaitingAssessmentBadge';
 import type { GroomingSession } from '../../grooming.types';
 import type { GroomingTransitionTarget } from '../../api/grooming.api';
 import styles from './AppointmentCard.module.css';
@@ -23,6 +25,7 @@ const ADVANCE_ACTION: Partial<
 export interface AppointmentCardProps {
   session: GroomingSession;
   petName: string;
+  petPhotoUrl?: string | null;
   ownerName: string;
   breed: string | null;
   weightClass: string;
@@ -44,6 +47,7 @@ export interface AppointmentCardProps {
 export function AppointmentCard({
   session,
   petName,
+  petPhotoUrl,
   ownerName,
   breed,
   weightClass,
@@ -61,15 +65,28 @@ export function AppointmentCard({
   return (
     <li className={styles.card}>
       <div className={styles.header}>
-        <div className={styles.identity}>
-          <h3 className={styles.petName}>{petName}</h3>
-          <span className={styles.subtitle}>
-            Owner: {ownerName}
-            {breed ? ` · ${breed}` : ''}
-          </span>
+        <div className={styles.identityRow}>
+          <PetAvatar name={petName} photoUrl={petPhotoUrl} />
+          <div className={styles.identity}>
+            <h3 className={styles.petName}>{petName}</h3>
+            <span className={styles.subtitle}>
+              Owner: {ownerName}
+              {breed ? ` · ${breed}` : ''}
+            </span>
+          </div>
         </div>
         {bookingStatus ? <BookingStatusBadge status={bookingStatus} /> : null}
       </div>
+
+      {/* Book before assessment: listed so the groomer sees it coming, but
+          it cannot be started until front desk assesses the pet and the
+          bill is paid. */}
+      {session.booking?.awaiting_assessment ? (
+        <p className={styles.notArrived}>
+          <AwaitingAssessmentBadge /> Front desk records this pet&apos;s weight
+          and coat on arrival - it can&apos;t be started until then.
+        </p>
+      ) : null}
 
       {/* A paid booking shows on the queue before the customer arrives -
           say so, with the booked time, so it isn't mistaken for a pet
@@ -122,7 +139,11 @@ export function AppointmentCard({
         <button
           type="button"
           className={styles.primaryButton}
-          disabled={isAdvancing}
+          // Awaiting assessment: the server refuses to start it anyway -
+          // don't offer a button that can only fail.
+          disabled={
+            isAdvancing || session.booking?.awaiting_assessment === true
+          }
           onClick={() => onAdvance(session.id, advanceAction.target)}
         >
           {isAdvancing ? 'Updating...' : advanceAction.label}

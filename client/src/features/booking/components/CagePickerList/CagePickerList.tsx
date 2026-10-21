@@ -6,6 +6,13 @@ import type {
 } from '../../booking.types';
 import styles from './CagePickerList.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
+import { CageSizeWarningBadge } from '../../../../shared/components/CageSizeWarningBadge/CageSizeWarningBadge';
+import {
+  describeCageSizeMismatch,
+  getCageSizeFit,
+  isCageSizeMismatch,
+} from '../../../../shared/utils/cageSizeFit';
 
 interface CagePickerListProps {
   accessToken: string;
@@ -91,6 +98,13 @@ export function CagePickerList({
   // got the full search/filter/sort/group/view treatment), so search alone
   // is the proportionate amount of the pattern here.
   const [search, setSearch] = useState('');
+  // Staff mode only (restrictToPetSize off): a cage of a different size than
+  // the pet is still pickable, but asks for confirmation first - held here
+  // until the staff member confirms or cancels the warning popup.
+  const [pendingMismatch, setPendingMismatch] = useState<Extract<
+    CagePickerOption,
+    { type: 'specific' }
+  > | null>(null);
 
   const onUnavailableRef = useRef(onUnavailable);
   const onSelectRef = useRef(onSelect);
@@ -171,6 +185,20 @@ export function CagePickerList({
     );
   }
 
+  const pendingMismatchFit = getCageSizeFit(
+    recommendedSize,
+    pendingMismatch?.size
+  );
+  const pendingMismatchMessage =
+    pendingMismatch && recommendedSize && isCageSizeMismatch(pendingMismatchFit)
+      ? describeCageSizeMismatch(
+          pendingMismatchFit,
+          recommendedSize,
+          pendingMismatch.cage_label,
+          pendingMismatch.size
+        )
+      : null;
+
   return (
     <div className={styles.wrapper}>
       <span className={styles.heading}>Cage</span>
@@ -202,6 +230,10 @@ export function CagePickerList({
                 restrictToPetSize &&
                 option.type === 'specific' &&
                 option.size !== recommendedSize;
+              const fit =
+                option.type === 'specific' && !restrictToPetSize
+                  ? getCageSizeFit(recommendedSize, option.size)
+                  : 'unknown';
 
               return (
                 <button
@@ -214,13 +246,15 @@ export function CagePickerList({
                       : undefined
                   }
                   className={`${styles.card} ${active ? styles.selected : ''} ${isSizeLocked ? styles.locked : ''}`}
-                  onClick={() =>
-                    onSelect(
-                      option.type === 'no_preference'
-                        ? { type: 'no_preference' }
-                        : { type: 'specific', cage_id: option.cage_id }
-                    )
-                  }
+                  onClick={() => {
+                    if (option.type === 'no_preference') {
+                      onSelect({ type: 'no_preference' });
+                    } else if (isCageSizeMismatch(fit) && !active) {
+                      setPendingMismatch(option);
+                    } else {
+                      onSelect({ type: 'specific', cage_id: option.cage_id });
+                    }
+                  }}
                 >
                   {option.type === 'no_preference' ? (
                     <span
@@ -245,6 +279,8 @@ export function CagePickerList({
                     <span className={styles.recommendedBadge}>Recommended</span>
                   ) : isSizeLocked ? (
                     <span className={styles.lockedBadge}>Staff only</span>
+                  ) : isCageSizeMismatch(fit) ? (
+                    <CageSizeWarningBadge fit={fit} />
                   ) : null}
                 </button>
               );
@@ -252,6 +288,20 @@ export function CagePickerList({
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        isOpen={pendingMismatch !== null}
+        title="Cage size doesn't match"
+        body={pendingMismatchMessage}
+        confirmLabel="Use this cage anyway"
+        onConfirm={() => {
+          if (pendingMismatch) {
+            onSelect({ type: 'specific', cage_id: pendingMismatch.cage_id });
+          }
+          setPendingMismatch(null);
+        }}
+        onCancel={() => setPendingMismatch(null)}
+      />
     </div>
   );
 }

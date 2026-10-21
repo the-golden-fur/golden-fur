@@ -48,6 +48,7 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Supervisor',
   'Superadmin',
   'Receptionist',
+  'Front Desk',
 ]);
 
 type ViewMode = 'table' | 'list' | 'board';

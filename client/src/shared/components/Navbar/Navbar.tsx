@@ -206,6 +206,7 @@ export function Navbar({
         <Link
           to={HOME_PATH_BY_ROLE[role]}
           className={styles.iconLink}
+          data-tour="nav:home"
           aria-label="Home"
           onClick={() => setIsMenuOpen(false)}
         >
@@ -215,6 +216,7 @@ export function Navbar({
         <Link
           to={SETTINGS_PATH_BY_ROLE[role]}
           className={styles.iconLink}
+          data-tour="nav:settings"
           aria-label="Settings"
           onClick={() => setIsMenuOpen(false)}
         >

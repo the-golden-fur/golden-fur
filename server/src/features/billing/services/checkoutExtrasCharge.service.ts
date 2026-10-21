@@ -1,0 +1,220 @@
+import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  recomputeBookingGroupPaymentStatus,
+  recomputeBookingPaymentStatus,
+} from '../../booking/services/booking.service.ts';
+import type { LineItemType, Transaction } from '../billing.types.ts';
+
+function throwWithStatus(statusCode: number, message: string): never {
+  const error = new Error(message);
+  (error as Error & { statusCode?: number }).statusCode = statusCode;
+  throw error;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+export interface CheckoutExtraLine {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  /** Defaults to 'service'. */
+  line_item_type?: LineItemType;
+}
+
+interface PostCheckoutExtrasParams {
+  bookingId: string;
+  /** Everything this checkout adds on top of what was charged at booking. */
+  lines: CheckoutExtraLine[];
+  /** Who checked the pet out - recorded on a newly-created charge. */
+  requesterId?: string;
+}
+
+interface BookingRow {
+  id: string;
+  customer_id: string;
+  branch_id: string;
+  total_price: number;
+  booking_group_id: string | null;
+}
+
+/**
+ * Puts what a late checkout charges on top of what was charged at booking -
+ * a Daycare overdue fee / extra hours / night not picked up, or a Hotel late
+ * checkout fee - onto the booking's `transactions`, so the cashier sees it
+ * and can collect it. A booking's charges are created up front, at booking
+ * time, so nothing else would ever add these. Mirrors how
+ * extendStay.service.ts reconciles a Hotel extension:
+ *
+ * - if the booking (or, for a multi-booking checkout, its booking group)
+ *   still has an open Pending 'balance' transaction, the extras are added to
+ *   that one, each with its own line item;
+ * - otherwise a new Pending 'balance' transaction is created for just the
+ *   extras.
+ *
+ * The total the booking is paid up against grows by the same amount
+ * (bookings.total_price / booking_groups.net_total), so a booking that was
+ * Fully Paid for what it booked correctly reads Partially Paid until the
+ * extras are collected.
+ */
+export async function postCheckoutExtras({
+  bookingId,
+  lines,
+  requesterId,
+}: PostCheckoutExtrasParams): Promise<Transaction> {
+  const extraCharge = round2(
+    lines.reduce((sum, line) => sum + line.line_total, 0)
+  );
+
+  const { data: bookingRow, error: bookingError } = await supabase
+    .from('bookings')
+    .select('id, customer_id, branch_id, total_price, booking_group_id')
+    .eq('id', bookingId)
+    .maybeSingle();
+
+  if (bookingError) throwWithStatus(400, bookingError.message);
+  if (!bookingRow) throwWithStatus(404, 'Booking not found');
+
+  const booking = bookingRow as BookingRow;
+  const groupId = booking.booking_group_id;
+  const nowIso = new Date().toISOString();
+
+  const { error: updateBookingError } = await supabase
+    .from('bookings')
+    .update({
+      total_price: round2(Number(booking.total_price) + extraCharge),
+      updated_at: nowIso,
+    })
+    .eq('id', bookingId);
+
+  if (updateBookingError) throwWithStatus(400, updateBookingError.message);
+
+  if (groupId) {
+    const { data: groupRow, error: groupError } = await supabase
+      .from('booking_groups')
+      .select('net_total')
+      .eq('id', groupId)
+      .maybeSingle();
+
+    if (groupError) throwWithStatus(400, groupError.message);
+
+    if (groupRow) {
+      const { error: updateGroupError } = await supabase
+        .from('booking_groups')
+        .update({
+          net_total: round2(
+            Number((groupRow as { net_total: number }).net_total) + extraCharge
+          ),
+          updated_at: nowIso,
+        })
+        .eq('id', groupId);
+
+      if (updateGroupError) throwWithStatus(400, updateGroupError.message);
+    }
+  }
+
+  // A grouped booking's transactions hang off the group, never the booking
+  // (transactions_booking_id_matches_type) - so that is where the extras go.
+  const ownerColumn = groupId ? 'booking_group_id' : 'booking_id';
+  const ownerId = groupId ?? bookingId;
+
+  const { data: openBalanceRow, error: openBalanceError } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq(ownerColumn, ownerId)
+    .eq('transaction_type', 'booking_payment')
+    .eq('payment_choice', 'balance')
+    .eq('payment_status', 'Pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (openBalanceError) throwWithStatus(400, openBalanceError.message);
+
+  let transaction: Transaction;
+
+  if (openBalanceRow) {
+    const existing = openBalanceRow as Transaction;
+
+    const { data: updatedTxn, error: updateTxnError } = await supabase
+      .from('transactions')
+      .update({
+        subtotal_amount: round2(Number(existing.subtotal_amount) + extraCharge),
+        total_amount: round2(Number(existing.total_amount) + extraCharge),
+        updated_at: nowIso,
+      })
+      .eq('id', existing.id)
+      .select('*')
+      .maybeSingle();
+
+    if (updateTxnError || !updatedTxn) {
+      throwWithStatus(
+        400,
+        updateTxnError?.message ?? 'Failed to update the balance transaction'
+      );
+    }
+
+    transaction = updatedTxn as Transaction;
+  } else {
+    const { data: newTxn, error: newTxnError } = await supabase
+      .from('transactions')
+      .insert({
+        booking_id: groupId ? null : bookingId,
+        booking_group_id: groupId,
+        customer_id: booking.customer_id,
+        branch_id: booking.branch_id,
+        transaction_type: 'booking_payment',
+        // Placeholder, overwritten when the money is collected - same as
+        // create_initial_booking_charge's own Pending rows.
+        payment_method: 'Cash',
+        payment_status: 'Pending',
+        payment_choice: 'balance',
+        subtotal_amount: extraCharge,
+        total_amount: extraCharge,
+        processed_by_staff_id: requesterId ?? null,
+      })
+      .select('*')
+      .maybeSingle();
+
+    if (newTxnError || !newTxn) {
+      throwWithStatus(
+        400,
+        newTxnError?.message ?? 'Failed to create the checkout charge'
+      );
+    }
+
+    transaction = newTxn as Transaction;
+  }
+
+  const { error: lineItemError } = await supabase
+    .from('transaction_line_items')
+    .insert(
+      lines.map(({ line_item_type, ...line }) => ({
+        transaction_id: transaction.id,
+        line_item_type: line_item_type ?? 'service',
+        reference_id: null,
+        ...line,
+      }))
+    );
+
+  if (lineItemError) throwWithStatus(400, lineItemError.message);
+
+  // The charge itself is already saved; a failed status roll-up must not
+  // undo it (same best-effort stance as checkoutBooking).
+  try {
+    if (groupId) {
+      await recomputeBookingGroupPaymentStatus(groupId);
+    } else {
+      await recomputeBookingPaymentStatus(bookingId);
+    }
+  } catch (rollupError) {
+    console.error(
+      `postCheckoutExtras: failed to roll up payment_status for booking ${bookingId}:`,
+      rollupError
+    );
+  }
+
+  return transaction;
+}

@@ -1,12 +1,19 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { checkOutHotelStay } from '../../api/hotel.api';
+import {
+  checkOutHotelStay,
+  getHotelCheckoutPreview,
+} from '../../api/hotel.api';
 import { HotelStayPicker } from '../../components/HotelStayPicker/HotelStayPicker';
 import { HotelCheckoutPanel } from './HotelCheckoutPanel';
 
 vi.mock('../../api/hotel.api', () => ({
   checkOutHotelStay: vi.fn(),
+  // No preview unless a test sets one - the panel then just confirms.
+  getHotelCheckoutPreview: vi
+    .fn()
+    .mockResolvedValue({ data: null, error: 'no preview' }),
 }));
 
 vi.mock('../../components/HotelStayPicker/HotelStayPicker', () => ({
@@ -92,5 +99,41 @@ describe('HotelCheckoutPanel', () => {
     expect(
       await screen.findByText('Stay checked out. Cage released.')
     ).toBeInTheDocument();
+  });
+
+  it('shows the bill if checked out now before confirming, for the stay about to be checked out', async () => {
+    setupMocks();
+    vi.mocked(getHotelCheckoutPreview).mockResolvedValue({
+      data: {
+        breakdown: {
+          nights: 3,
+          nightly_rate: 850,
+          stay_charge: 2550,
+          discount: 0,
+          late_nights: 2,
+          late_rate: 850,
+          late_charge: 1700,
+          total: 4250,
+          pay_at_checkout: false,
+        },
+        downpayment_collected: 250,
+        added_at_checkout: 1700,
+        amount_due: 4000,
+        as_of: '2026-10-19T01:00:00.000Z',
+      },
+      error: null,
+    });
+
+    renderPanel(null);
+    fireEvent.click(await screen.findByText('Pick stay'));
+
+    expect(
+      await screen.findByText('Late checkout - 2 nights × ₱850')
+    ).toBeInTheDocument();
+    expect(getHotelCheckoutPreview).toHaveBeenCalledWith('stay-1', 'token');
+    expect(
+      screen.getByText('To collect at the cashier').nextElementSibling
+    ).toHaveTextContent('₱4000');
+    expect(checkOutHotelStay).not.toHaveBeenCalled();
   });
 });

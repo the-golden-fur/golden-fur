@@ -49,7 +49,8 @@ per-module tasks.
 `20260803080`, `20260903167`),
 `service_types` + `service_type_branch_availability` (`20260809113`,
 `20260818133`), `policy_configurations` defaults, `promo_cap_configuration`
-default row, `pricing_configuration`.
+default row, `pricing_configuration`, `landing_content` + `landing_sections` +
+`landing_reviews` (the editable landing page, `20261017272`).
 
 **App-only — do NOT seed** (state machines + triggers must stay honest):
 `bookings`, `booking_items`, `transactions`, `transaction_line_items`,
@@ -61,7 +62,9 @@ messages / drafts / attachments, `staff_unavailability_blocks`,
 `pet_vaccination_records`, `pet_medical_notes`, `pet_health_conditions`,
 `service_pricing_cell_overrides` / `package_pricing_cell_overrides` (a
 Superadmin's own weight x coat prices; no rows = every cell follows the
-`pricing_configuration` formula).
+`pricing_configuration` formula), `goal_growth_rates` /
+`goal_monthly_targets` (a Superadmin's own goal settings; no rows = every
+goal is the previous month + 10%).
 If a demo genuinely needs one of these pre-filled, say so and get a nod
 first — then seed it in its own clearly-labelled `mNN-<slug>/` folder and
 keep it out of `seed:all` if it would interfere with tests.

@@ -16,6 +16,7 @@ import { listBookings } from '../../../booking/api/booking.api';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
   BOOKING_STATUSES,
+  isNotStartedStatus,
   type Booking,
   type BookingStatus,
 } from '../../../booking/booking.types';
@@ -31,6 +32,7 @@ import {
 import { listHotelStays } from '../../api/hotel.api';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import styles from './HotelBookingPicker.module.css';
 
 type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
@@ -43,12 +45,17 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: 'owner-name', label: 'Sort: Owner name (A-Z)' },
 ];
 
+/** Default view: every booking that still needs a check-in - Pending ones,
+ * plus walk-ins (created already In Progress) that have no stay yet. Not a
+ * real bookings.status, so it's resolved client-side (see needsCheckIn). */
+const AWAITING_CHECK_IN = 'Awaiting';
+
+type StatusFilter = BookingStatus | 'All' | typeof AWAITING_CHECK_IN;
+
 const STATUS_OPTIONS: QueueStatusOption[] = [
-  { value: 'Pending', label: 'Pending' },
+  { value: AWAITING_CHECK_IN, label: 'Awaiting check-in' },
   { value: 'All', label: 'All statuses' },
-  ...BOOKING_STATUSES.filter((status) => status !== 'Pending').map(
-    (status) => ({ value: status, label: status })
-  ),
+  ...BOOKING_STATUSES.map((status) => ({ value: status, label: status })),
 ];
 
 // Same gap noted on Consultation Queue/Groomer Dashboard/Bookings Queue: no
@@ -61,6 +68,7 @@ const REFRESH_INTERVAL_MS = 15_000;
 interface EnrichedBooking {
   booking: Booking;
   petName: string;
+  petPhotoUrl: string | null;
   weightClass: string;
   ownerName: string;
   ownerContact: string;
@@ -90,6 +98,23 @@ interface HotelBookingPickerProps {
   selectedBookingId?: string | null;
 }
 
+/** Whether a booking can still be checked in: Pending, or In Progress with
+ * no stay behind it (a walk-in, which is created already In Progress). An
+ * In Progress booking is never checkinable while the stays lookup is still
+ * loading (stayByBookingId null). */
+function needsCheckIn(
+  booking: Booking,
+  stayByBookingId: Record<string, string> | null
+): boolean {
+  if (isNotStartedStatus(booking.status)) return true;
+
+  return (
+    booking.status === 'In Progress' &&
+    stayByBookingId !== null &&
+    !(booking.id in stayByBookingId)
+  );
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
 }
@@ -108,12 +133,12 @@ function formatDateTime(iso: string): string {
  * ReceptionistBookingsQueuePage - the original version of this step only
  * ever queried today's date, so a booking made for any other day (or found
  * via a slightly different "today" boundary) was simply invisible with no
- * way to widen the search. Only Pending bookings are selectable (matches
- * the server's check-in gate - a Hotel booking becomes checkinable once
- * booked and stops being checkinable the moment it's checked in, since
- * check-in itself advances bookings.status to 'In Progress'); other
- * statuses are shown (when the status filter is widened) so a receptionist
- * can see *why* a booking isn't checkinable yet, or that it already was.
+ * way to widen the search. A booking is checkinable while it has no stay
+ * yet (matches the server's check-in gate): a Pending booking, or a walk-in,
+ * which is created already 'In Progress' but still has to go through
+ * check-in for its stay and cage claim. Other statuses are shown (when the
+ * status filter is widened) so a receptionist can see *why* a booking isn't
+ * checkinable, or that it already was.
  */
 export function HotelBookingPicker({
   accessToken,
@@ -128,9 +153,8 @@ export function HotelBookingPicker({
   const [customDate, setCustomDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
-  const [statusFilter, setStatusFilter] = useState<BookingStatus | 'All'>(
-    'Pending'
-  );
+  const [statusFilter, setStatusFilter] =
+    useState<StatusFilter>(AWAITING_CHECK_IN);
 
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
@@ -141,9 +165,13 @@ export function HotelBookingPicker({
   const [pets, setPets] = useState<Record<string, Pet>>({});
   const [owners, setOwners] = useState<Record<string, CustomerProfile>>({});
   const [serviceNames, setServiceNames] = useState<Record<string, string>>({});
-  const [stayByBookingId, setStayByBookingId] = useState<
-    Record<string, string>
-  >({});
+  // Null until the stays lookup first succeeds - an In Progress booking is
+  // only treated as "not checked in yet" once we actually know it has no
+  // stay, never while that answer is still loading.
+  const [stayByBookingId, setStayByBookingId] = useState<Record<
+    string,
+    string
+  > | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,26 +194,6 @@ export function HotelBookingPicker({
       });
     });
   }, [accessToken]);
-
-  // Cross-references every branch stay (regardless of its booking's status)
-  // against booking_id, so a booking that already has a hotel_stays row -
-  // whatever stage its stay has reached - can show "Go to checkout" (still
-  // In Progress) or "Checked out" (Completed/Paid) instead of offering
-  // check-in again.
-  useEffect(() => {
-    void listHotelStays(accessToken).then((result) => {
-      if (!result.data) return;
-
-      const map: Record<string, string> = {};
-      for (const stay of result.data) {
-        // Every Hotel stay always has a booking_id (booking_id is only ever
-        // null for a Daycare walk-in) - listHotelStays only ever returns
-        // Hotel-type stays.
-        if (stay.booking_id) map[stay.booking_id] = stay.id;
-      }
-      setStayByBookingId(map);
-    });
-  }, [accessToken, branchId]);
 
   useEffect(() => {
     const token = accessToken;
@@ -244,9 +252,33 @@ export function HotelBookingPicker({
         dateFrom: dateRange.from ?? undefined,
         dateTo: dateRange.to ?? undefined,
         serviceCategory: 'Hotel',
-        status: statusFilter === 'All' ? undefined : statusFilter,
+        // "Awaiting check-in" spans two statuses (Pending + not-yet-checked-
+        // in walk-ins), so it's fetched unfiltered and narrowed below.
+        status:
+          statusFilter === 'All' || statusFilter === AWAITING_CHECK_IN
+            ? undefined
+            : statusFilter,
         excludeUnpaidDownpayment: true,
       }).then(handleQueueResult);
+
+      // Cross-references every branch stay (regardless of its booking's
+      // status) against booking_id, so a booking that already has a
+      // hotel_stays row - whatever stage its stay has reached - can show "Go
+      // to checkout" (still In Progress) or its status badge (Completed/
+      // Paid) instead of offering check-in again. Refreshed with the queue
+      // so a check-in done on another screen is picked up too.
+      void listHotelStays(token).then((result) => {
+        if (!isMounted || !result.data) return;
+
+        const map: Record<string, string> = {};
+        for (const stay of result.data) {
+          // Every Hotel stay always has a booking_id (booking_id is only
+          // ever null for a Daycare walk-in) - listHotelStays only ever
+          // returns Hotel-type stays.
+          if (stay.booking_id) map[stay.booking_id] = stay.id;
+        }
+        setStayByBookingId(map);
+      });
     }
 
     fetchQueue();
@@ -260,25 +292,34 @@ export function HotelBookingPicker({
 
   const enriched = useMemo<EnrichedBooking[]>(
     () =>
-      bookings.map((booking) => {
-        const pet = pets[booking.pet_id];
-        const owner = owners[booking.customer_id];
-        const itemNames = (booking.booking_items ?? [])
-          .map((item) => serviceNames[item.service_id ?? item.package_id ?? ''])
-          .filter((name): name is string => Boolean(name));
+      bookings
+        .filter(
+          (booking) =>
+            statusFilter !== AWAITING_CHECK_IN ||
+            needsCheckIn(booking, stayByBookingId)
+        )
+        .map((booking) => {
+          const pet = pets[booking.pet_id];
+          const owner = owners[booking.customer_id];
+          const itemNames = (booking.booking_items ?? [])
+            .map(
+              (item) => serviceNames[item.service_id ?? item.package_id ?? '']
+            )
+            .filter((name): name is string => Boolean(name));
 
-        return {
-          booking,
-          petName: pet?.name ?? 'Unknown pet',
-          weightClass: pet?.weight_class ?? '—',
-          ownerName: owner?.full_name ?? 'Unknown owner',
-          ownerContact: owner?.contact_number ?? owner?.account_email ?? '—',
-          serviceLabel:
-            itemNames.length > 0 ? itemNames.join(', ') : 'Hotel stay',
-          existingStayId: stayByBookingId[booking.id] ?? null,
-        };
-      }),
-    [bookings, pets, owners, serviceNames, stayByBookingId]
+          return {
+            booking,
+            petName: pet?.name ?? 'Unknown pet',
+            petPhotoUrl: pet?.photo_url ?? null,
+            weightClass: pet?.weight_class ?? '—',
+            ownerName: owner?.full_name ?? 'Unknown owner',
+            ownerContact: owner?.contact_number ?? owner?.account_email ?? '—',
+            serviceLabel:
+              itemNames.length > 0 ? itemNames.join(', ') : 'Hotel stay',
+            existingStayId: stayByBookingId?.[booking.id] ?? null,
+          };
+        }),
+    [bookings, pets, owners, serviceNames, stayByBookingId, statusFilter]
   );
 
   const {
@@ -327,14 +368,14 @@ export function HotelBookingPicker({
         onClear: () => setDateRangePreset('today'),
       });
     }
-    if (statusFilter !== 'Pending') {
+    if (statusFilter !== AWAITING_CHECK_IN) {
       chips.push({
         id: 'status',
         label: `Status: ${
           STATUS_OPTIONS.find((option) => option.value === statusFilter)
             ?.label ?? statusFilter
         }`,
-        onClear: () => setStatusFilter('Pending'),
+        onClear: () => setStatusFilter(AWAITING_CHECK_IN),
       });
     }
     if (search.trim() !== '') {
@@ -365,9 +406,7 @@ export function HotelBookingPicker({
         customDate={customDate}
         onCustomDateChange={setCustomDate}
         statusValue={statusFilter}
-        onStatusChange={(value) =>
-          setStatusFilter(value as BookingStatus | 'All')
-        }
+        onStatusChange={(value) => setStatusFilter(value as StatusFilter)}
         statusOptions={STATUS_OPTIONS}
       >
         <SearchSortBar
@@ -404,10 +443,11 @@ export function HotelBookingPicker({
       {!isLoading && filteredAndSorted.length > 0 ? (
         <ul className={styles.list}>
           {filteredAndSorted.map((item) => {
-            // A Pending booking has, by definition, never been checked in
-            // (check-in advances bookings.status to 'In Progress'), so no
-            // separate existingStayId check is needed here.
-            const isCheckinable = item.booking.status === 'Pending';
+            const isCheckinable = needsCheckIn(item.booking, stayByBookingId);
+            // A walk-in: already In Progress, but no stay (and no cage)
+            // behind it until it's checked in here.
+            const isWalkInAwaitingCheckIn =
+              isCheckinable && item.booking.status === 'In Progress';
             // Still checked in (has a stay, and that stay's booking hasn't
             // reached Completed/Paid yet) - offer the checkout shortcut.
             const isCheckedIn =
@@ -428,6 +468,11 @@ export function HotelBookingPicker({
                     } ${!isCheckinable ? styles.disabledCard : ''}`}
                   >
                     <div className={styles.cardHeader}>
+                      <PetAvatar
+                        name={item.petName}
+                        photoUrl={item.petPhotoUrl}
+                        size="sm"
+                      />
                       <span className={styles.petName}>{item.petName}</span>
                       <span className={styles.weightBadge}>
                         {item.weightClass}
@@ -435,6 +480,10 @@ export function HotelBookingPicker({
                       {isCheckedIn ? (
                         <span className={styles.checkedInBadge}>
                           Already checked in
+                        </span>
+                      ) : isWalkInAwaitingCheckIn ? (
+                        <span className={styles.awaitingBadge}>
+                          Not checked in yet
                         </span>
                       ) : !isCheckinable ? (
                         <BookingStatusBadge status={item.booking.status} />

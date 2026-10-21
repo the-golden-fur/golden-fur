@@ -7,7 +7,10 @@ import {
   suggestCage,
 } from './cageAssignment.service.ts';
 import { recordActivity } from './activityLog.service.ts';
-import type { HotelBookingPreferences } from '../../booking/booking.types.ts';
+import {
+  isNotStartedStatus,
+  type HotelBookingPreferences,
+} from '../../booking/booking.types.ts';
 import type { CheckInInput } from '../modules/validators/hotel.validator.ts';
 import type {
   CareFeedingInstruction,
@@ -80,7 +83,7 @@ export async function checkInHotelStay({
   // needs to go through this same check-in action for cage assignment/care
   // instructions, so 'In Progress' is accepted alongside the normal Pending
   // (online, first-time check-in) case.
-  if (booking.status !== 'Pending' && booking.status !== 'In Progress') {
+  if (!isNotStartedStatus(booking.status) && booking.status !== 'In Progress') {
     throwWithStatus(409, `A ${booking.status} booking cannot be checked in`);
   }
   if (booking.branch_id !== branchId) {
@@ -138,7 +141,7 @@ export async function checkInHotelStay({
     // walk-in booking is already 'In Progress' at this point (createBooking
     // sets that directly), so startBooking - which only accepts a 'Pending'
     // booking - is skipped rather than called redundantly.
-    if (booking.status === 'Pending') {
+    if (isNotStartedStatus(booking.status)) {
       await startBooking({ bookingId: booking.id });
     }
 

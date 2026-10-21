@@ -23,8 +23,15 @@
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(6.5rem, auto) minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-2);
+  /* One column for the weight label, then one equal column per coat type.
+     --coat-columns is set by the component from COAT_TYPES.length, so adding
+     a coat type never leaves this layout a column short. The label column is
+     narrower than a price column (long labels like "Extra Large (XL)" wrap)
+     so three price boxes still fit inside the form's modal. */
+  grid-template-columns:
+    minmax(4.5rem, 0.7fr)
+    repeat(var(--coat-columns, 3), minmax(0, 1fr));
+  gap: var(--space-2) var(--space-1);
   align-items: start;
 }
 

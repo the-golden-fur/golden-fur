@@ -4,7 +4,11 @@ export type DateRangePreset =
   | 'this_week'
   | 'this_month'
   | 'custom'
-  | 'all';
+  | 'all'
+  // Backward-looking - for history views (PAST_DATE_RANGE_PRESET_OPTIONS).
+  | 'yesterday'
+  | 'last_7_days'
+  | 'last_30_days';
 
 export interface DateRangeBounds {
   /** YYYY-MM-DD, inclusive. Null means unbounded. */
@@ -25,6 +29,22 @@ export const DATE_RANGE_PRESET_OPTIONS: Array<{
   { value: 'all', label: 'All dates' },
 ];
 
+/** For a view of what already happened (e.g. Grooming's Past bookings):
+ * every preset looks back from today, never forward. The server still caps
+ * such a view at "now", so "This month"/"All dates" never reach the future. */
+export const PAST_DATE_RANGE_PRESET_OPTIONS: Array<{
+  value: DateRangePreset;
+  label: string;
+}> = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last_7_days', label: 'Last 7 days' },
+  { value: 'last_30_days', label: 'Last 30 days' },
+  { value: 'this_month', label: 'This month' },
+  { value: 'custom', label: 'Custom date' },
+  { value: 'all', label: 'All dates' },
+];
+
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -33,8 +53,9 @@ function isoDate(date: Date): string {
  * the chip text always matches the select's own option label. */
 export function dateRangePresetLabel(preset: DateRangePreset): string {
   return (
-    DATE_RANGE_PRESET_OPTIONS.find((option) => option.value === preset)
-      ?.label ?? preset
+    [...DATE_RANGE_PRESET_OPTIONS, ...PAST_DATE_RANGE_PRESET_OPTIONS].find(
+      (option) => option.value === preset
+    )?.label ?? preset
   );
 }
 
@@ -84,6 +105,18 @@ export function resolveDateRangePreset(
     return { from: iso, to: iso };
   }
 
+  if (preset === 'yesterday') {
+    const iso = isoDate(new Date(today.getTime() - 86400000));
+    return { from: iso, to: iso };
+  }
+
+  // Today plus the days before it - "Last 7 days" is today and the 6 before.
+  if (preset === 'last_7_days' || preset === 'last_30_days') {
+    const days = preset === 'last_7_days' ? 7 : 30;
+    const start = new Date(today.getTime() - (days - 1) * 86400000);
+    return { from: isoDate(start), to: isoDate(today) };
+  }
+
   if (preset === 'this_week') {
     const weekEnd = new Date(today.getTime() + 6 * 86400000);
     return { from: isoDate(today), to: isoDate(weekEnd) };
@@ -96,4 +129,57 @@ export function resolveDateRangePreset(
     Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0)
   );
   return { from: isoDate(first), to: isoDate(last) };
+}
+
+/** Presets the "how many bookings" summary row under QueueFilterBar counts. */
+export const COUNTED_PRESETS = [
+  'today',
+  'tomorrow',
+  'this_week',
+  'this_month',
+] as const;
+
+export type CountedPreset = (typeof COUNTED_PRESETS)[number];
+
+/**
+ * One date range spanning every counted preset (the 1st of the month through
+ * the later of today+6 and month end), so a single fetch can feed all four
+ * counts via countByDatePreset().
+ */
+export function countsFetchRange(now: Date = new Date()): DateRangeBounds {
+  const ranges = COUNTED_PRESETS.map((preset) =>
+    resolveDateRangePreset(preset, now)
+  );
+  const froms = ranges.map((range) => range.from as string).sort();
+  const tos = ranges.map((range) => range.to as string).sort();
+  return { from: froms[0], to: tos[tos.length - 1] };
+}
+
+/**
+ * Counts how many of `dates` (ISO timestamps, e.g. a booking's
+ * scheduled_start) fall in each counted preset. Compares UTC calendar days,
+ * the same day boundary resolveDateRangePreset() and the server use, so each
+ * count matches what selecting that preset would list.
+ */
+export function countByDatePreset(
+  dates: string[],
+  now: Date = new Date()
+): Record<CountedPreset, number> {
+  const ranges = COUNTED_PRESETS.map(
+    (preset) => [preset, resolveDateRangePreset(preset, now)] as const
+  );
+  const counts = Object.fromEntries(
+    COUNTED_PRESETS.map((preset) => [preset, 0])
+  ) as Record<CountedPreset, number>;
+
+  for (const date of dates) {
+    const day = new Date(date).toISOString().slice(0, 10);
+    for (const [preset, range] of ranges) {
+      if (range.from && range.to && day >= range.from && day <= range.to) {
+        counts[preset] += 1;
+      }
+    }
+  }
+
+  return counts;
 }

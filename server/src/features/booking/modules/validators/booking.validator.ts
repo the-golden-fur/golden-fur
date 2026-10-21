@@ -22,6 +22,7 @@ const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
 const CREDIT_EXPIRY_MODES = ['none', 'rolling', 'fixed_date'] as const;
 const CREDIT_REVIEW_MODES = ['Automatic', 'Manual'] as const;
 const CREDIT_REVIEW_DECISIONS = ['approved', 'denied'] as const;
+const NO_SHOW_AFTER_MINUTES_OPTIONS: readonly number[] = [15, 30, 60, 120];
 /** Which notice-period floor the availability endpoints apply. */
 const BOOKING_INTENTS = ['new_booking', 'reschedule'] as const;
 
@@ -112,6 +113,16 @@ function requireNoDuplicateItems(
       code: 'custom',
       path: ['items'],
       message: 'Duplicate services or packages are not allowed in one booking',
+    });
+  }
+
+  // A booking holds at most one package (any number of individual services
+  // may still sit alongside it) - mirrors togglePackageSelect on the client.
+  if (new Set(packageIds).size > 1) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['items'],
+      message: 'Only one package can be selected per booking',
     });
   }
 }
@@ -484,6 +495,9 @@ export const updatePolicyValidator = z
     // Advisor addendum #10: percent of the paid amount returned as credit on
     // a qualifying cancellation. NOT NULL in the DB (default 100), 0-100.
     cancellation_credit_conversion_rate: z.number().min(0).max(100).optional(),
+    // Cancellation grace for last-minute bookings (20261016269). NOT NULL in
+    // the DB (default 60), CHECK 0-1440 - up to a day; 0 turns it off.
+    cancellation_grace_minutes: z.number().int().min(0).max(1440).optional(),
     downpayment_enabled: z.boolean().optional(),
     downpayment_type: z.enum(DOWNPAYMENT_TYPES).nullable().optional(),
     downpayment_amount: z.number().positive().nullable().optional(),
@@ -509,6 +523,17 @@ export const updatePolicyValidator = z
     // Customers aren't branch-scoped, so only the system-default row's
     // value is ever actually read - see getCustomerAutoDeletePolicyDays.
     customer_deactivation_auto_delete_days: z.number().int().min(1).optional(),
+    // Late booking status (20261015267): how long a booking stays Late
+    // before it becomes No-show - the Policy page's "Mark as no-show after"
+    // presets, or wait until the branch closes.
+    no_show_after_minutes: z
+      .number()
+      .int()
+      .refine((value) => NO_SHOW_AFTER_MINUTES_OPTIONS.includes(value), {
+        message: 'Choose 15, 30, 60 or 120 minutes',
+      })
+      .optional(),
+    no_show_at_closing: z.boolean().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -665,16 +690,10 @@ export const availabilityQueryValidator = z
     // notice_period_days (default 3). Omitted = new_booking.
     intent: z.enum(BOOKING_INTENTS).optional(),
   })
-  .strict()
-  .superRefine((input, ctx) => {
-    if (input.service_category === 'Hotel' && !input.pet_weight_class) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['pet_weight_class'],
-        message: 'pet_weight_class is required for Hotel availability',
-      });
-    }
-  });
+  // pet_weight_class is no longer required for Hotel (book before
+  // assessment, 20261013264): a pet staff have not assessed yet has none, and
+  // availability is then measured against every cage rather than one size.
+  .strict();
 
 /**
  * #22: which Morning/Afternoon/Evening walk/play blocks the hotel Care
@@ -700,6 +719,9 @@ export const catalogQueryValidator = z.object({
 
 export const listBookingsQueryValidator = z.object({
   branch_id: z.uuid().optional(),
+  // Staff-only: one customer's bookings (Customer Management's booking
+  // history). Ignored for a customer caller, who only ever sees their own.
+  customer_id: z.uuid().optional(),
   date: z.iso.date().optional(),
   // Inclusive date-range bounds, either may be given alone. Distinct from
   // `date` (kept for existing exact-day callers, e.g. Daycare Check-in).

@@ -129,9 +129,9 @@ export async function rescheduleBooking({
   }
 
   // A Pending booking whose own appointment time has already passed is
-  // effectively a no-show waiting to be lazily flipped on next read (see
-  // applyNoShowTransition) - reschedule must not let it slip through in the
-  // gap before that read happens.
+  // effectively a Late booking waiting to be lazily flipped on next read (see
+  // applyLateAndNoShowTransition) - reschedule must not let it slip through
+  // in the gap before that read happens.
   if (new Date(booking.scheduled_start).getTime() <= Date.now()) {
     throwWithStatus(
       409,
@@ -287,7 +287,8 @@ export async function rescheduleBooking({
               input.cage_preference.cage_id!,
               targetBranchId,
               pet.pet_type as string,
-              isStaff ? undefined : ((pet.weight_class as string) ?? undefined)
+              isStaff ? undefined : ((pet.weight_class as string) ?? undefined),
+              !isStaff
             )
           : null;
     }

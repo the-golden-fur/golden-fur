@@ -7,6 +7,7 @@ import {
   listMedicalNotes,
   listPetConsultationResults,
   listPetPrescriptions,
+  listPetServiceHistory,
   listPetTypes,
   listVaccinationRecords,
   updatePet,
@@ -14,6 +15,16 @@ import {
 } from '../../../api/customer.api';
 import type { Pet } from '../../../customer.types';
 import { PetDetailPanel } from './PetDetailPanel';
+
+vi.mock(
+  '../../../../maintenance/api/maintenance.api',
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    listBranchLetterheads: vi.fn(() =>
+      Promise.resolve({ data: [], error: null })
+    ),
+  })
+);
 
 vi.mock('../../../api/customer.api', () => ({
   updatePet: vi.fn(),
@@ -23,6 +34,7 @@ vi.mock('../../../api/customer.api', () => ({
   listMedicalNotes: vi.fn(),
   listPetPrescriptions: vi.fn(),
   listPetConsultationResults: vi.fn(),
+  listPetServiceHistory: vi.fn(),
   listBreeds: vi.fn(),
   listPetTypes: vi.fn(),
 }));
@@ -76,6 +88,10 @@ describe('PetDetailPanel', () => {
       error: null,
     });
     vi.mocked(listPetConsultationResults).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(listPetServiceHistory).mockResolvedValue({
       data: [],
       error: null,
     });
@@ -178,6 +194,42 @@ describe('PetDetailPanel', () => {
     );
     expect(uploadPetPhoto).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(onUpdated).toHaveBeenCalledWith(updatedPet));
+  });
+
+  it('session 120: a failed photo upload does not block the save - it closes the form and shows a warning', async () => {
+    const onUpdated = vi.fn();
+    const updatedPet = buildPet({ name: 'Buddy II' });
+    vi.mocked(updatePet).mockResolvedValue({ data: updatedPet, error: null });
+    vi.mocked(uploadPetPhoto).mockResolvedValue({
+      data: null,
+      error: 'Bucket not found',
+    });
+
+    render(
+      createElement(PetDetailPanel, {
+        pet: buildPet(),
+        accessToken: 'token',
+        canEdit: true,
+        onUpdated,
+      })
+    );
+
+    await screen.findByText('Dog');
+    fireEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    fireEvent.change(screen.getByLabelText('Add photo'), {
+      target: {
+        files: [new File(['x'], 'buddy.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await vi.waitFor(() => expect(onUpdated).toHaveBeenCalledWith(updatedPet));
+    expect(
+      screen.queryByRole('button', { name: /save changes/i })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Changes saved, but the photo could not be uploaded: Bucket not found'
+    );
   });
 
   it('blocks saving with no breed selected', async () => {

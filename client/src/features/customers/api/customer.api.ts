@@ -6,13 +6,17 @@ import type {
   Pet,
   PetConsultationResultEntry,
   PetCreatePayloadStaff,
+  PetDeletePayload,
   PetHealthCondition,
   PetMedicalNote,
   PetPrescriptionHistoryEntry,
+  PetServiceHistoryEntry,
   PetType,
   PetTypeRow,
   PetUpdatePayloadStaff,
   PetVaccinationRecord,
+  PendingVaccinationRecord,
+  VaccinationRecordInput,
 } from '../customer.types';
 
 interface CustomerApiResult<T> {
@@ -323,12 +327,22 @@ export async function deactivatePet(
  * first (see petArchive.service.ts's archivePet guard). */
 export async function archivePet(
   petId: string,
-  accessToken: string
+  accessToken: string,
+  reason?: PetDeletePayload
 ): Promise<CustomerApiResult<null>> {
-  const response = await fetch(`${API_BASE_URL}/pets/${petId}`, {
-    method: 'DELETE',
-    headers: authHeaders(accessToken),
-  });
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}`,
+    reason
+      ? {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders(accessToken),
+          },
+          body: JSON.stringify(reason),
+        }
+      : { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };
@@ -476,6 +490,130 @@ export async function listVaccinationRecords(
   }
 
   const result = await parseBody<{ records: PetVaccinationRecord[] }>(response);
+  return { data: result.data?.records ?? null, error: result.error };
+}
+
+/** Multipart, since it may carry the card photo. Empty optional fields are
+ * sent as '' - on an edit the server reads that as "cleared". */
+function vaccinationFormData(input: VaccinationRecordInput): FormData {
+  const form = new FormData();
+  form.set('vaccine_name', input.vaccine_name.trim());
+  form.set('date_administered', input.date_administered);
+  form.set('next_due_date', input.next_due_date);
+  form.set('notes', input.notes.trim());
+  if (input.proof) form.set('proof', input.proof);
+  return form;
+}
+
+/** An owner's record is saved 'pending' until staff review it; staff's is
+ * verified straight away. */
+export async function createVaccinationRecord(
+  petId: string,
+  accessToken: string,
+  input: VaccinationRecordInput
+): Promise<CustomerApiResult<PetVaccinationRecord>> {
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/vaccination-records`,
+    {
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: vaccinationFormData(input),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ record: PetVaccinationRecord }>(response);
+  return { data: result.data?.record ?? null, error: result.error };
+}
+
+/** Owners can only change their own unverified records; changing a
+ * rejected one sends it back for review. */
+export async function updateVaccinationRecord(
+  petId: string,
+  recordId: string,
+  accessToken: string,
+  input: VaccinationRecordInput
+): Promise<CustomerApiResult<PetVaccinationRecord>> {
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/vaccination-records/${recordId}`,
+    {
+      method: 'PATCH',
+      headers: authHeaders(accessToken),
+      body: vaccinationFormData(input),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ record: PetVaccinationRecord }>(response);
+  return { data: result.data?.record ?? null, error: result.error };
+}
+
+export async function deleteVaccinationRecord(
+  petId: string,
+  recordId: string,
+  accessToken: string
+): Promise<CustomerApiResult<null>> {
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/vaccination-records/${recordId}`,
+    { method: 'DELETE', headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: null, error: null };
+}
+
+/** Staff: verify or reject an owner's pending record (a reason is required
+ * to reject). The owner is notified. */
+export async function reviewVaccinationRecord(
+  petId: string,
+  recordId: string,
+  accessToken: string,
+  review: { decision: 'verify' | 'reject'; reason?: string }
+): Promise<CustomerApiResult<PetVaccinationRecord>> {
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/vaccination-records/${recordId}/review`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(accessToken),
+      },
+      body: JSON.stringify(review),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ record: PetVaccinationRecord }>(response);
+  return { data: result.data?.record ?? null, error: result.error };
+}
+
+/** Staff: every owner-added record waiting for review, oldest first. */
+export async function listPendingVaccinationRecords(
+  accessToken: string
+): Promise<CustomerApiResult<PendingVaccinationRecord[]>> {
+  const response = await fetch(`${API_BASE_URL}/vaccination-records/pending`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ records: PendingVaccinationRecord[] }>(
+    response
+  );
   return { data: result.data?.records ?? null, error: result.error };
 }
 
@@ -666,4 +804,25 @@ export async function listPetConsultationResults(
     response
   );
   return { data: result.data?.results ?? null, error: result.error };
+}
+
+/** A pet's past Completed/Cancelled/No-show bookings, newest first - read by
+ * the owning customer and staff alike. */
+export async function listPetServiceHistory(
+  petId: string,
+  accessToken: string
+): Promise<CustomerApiResult<PetServiceHistoryEntry[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/pets/${petId}/service-history`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ history: PetServiceHistoryEntry[] }>(
+    response
+  );
+  return { data: result.data?.history ?? null, error: result.error };
 }

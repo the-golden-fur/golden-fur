@@ -11,6 +11,10 @@ export interface StayCheckoutEmailParams {
   /** Only for a Daycare booking that isn't pay-at-checkout - the only stay
    * that runs up an hourly overdue fee. null leaves the fee out. */
   overdueFee: { feePerHour: number; graceMinutes: number } | null;
+  /** The reminder's lead time in words ("15 minutes", "1 hour") - the
+   * customer's chosen checkout_reminder offset. Only the reminder email uses
+   * it. */
+  reminderLead?: string;
 }
 
 function overdueFeeParagraph(
@@ -26,8 +30,8 @@ function overdueFeeParagraph(
 
 /**
  * Custom change (checkout countdown notifications): sent once per stay by
- * stayCheckout.job.ts 15 minutes before a booked Hotel or Daycare pet's
- * checkout time.
+ * stayCheckout.job.ts a customer-chosen lead time (default 15 minutes)
+ * before a booked Hotel or Daycare pet's checkout time.
  */
 export async function sendCheckoutReminderEmail({
   to,
@@ -36,11 +40,12 @@ export async function sendCheckoutReminderEmail({
   stayLabel,
   checkoutTime,
   overdueFee,
+  reminderLead = '15 minutes',
 }: StayCheckoutEmailParams): Promise<void> {
-  const subject = `Golden Fur - ${petName}'s checkout is in 15 minutes`;
+  const subject = `Golden Fur - ${petName}'s checkout is in ${reminderLead}`;
 
   const html = `
-    <p>${petName}'s ${stayLabel} at Golden Fur ${branchName} is booked until ${checkoutTime} - 15 minutes from now.</p>
+    <p>${petName}'s ${stayLabel} at Golden Fur ${branchName} is booked until ${checkoutTime} - ${reminderLead} from now.</p>
     ${overdueFeeParagraph(overdueFee)}
     <p>Please be on your way to pick ${petName} up.</p>
   `.trim();

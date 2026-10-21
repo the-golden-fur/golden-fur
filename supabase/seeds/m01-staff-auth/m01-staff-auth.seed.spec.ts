@@ -106,15 +106,15 @@ describe('m01-staff-auth seed', () => {
   });
 
   describe('seedStaff + seedBranches together', () => {
-    it('creates 2 accounts per staff_role per branch (2 branches x 8 roles x 2 = 32 total)', async () => {
+    it('creates 2 accounts per staff_role per branch (2 branches x 9 roles x 2 = 36 total)', async () => {
       await seedFullModule(supabase);
 
       const rows = [...supabase.state.staffProfiles.values()];
 
-      expect(rows).toHaveLength(32);
+      expect(rows).toHaveLength(36);
 
       const roles = rows.map((r) => r.role);
-      expect(new Set(roles).size).toBe(8);
+      expect(new Set(roles).size).toBe(9);
       for (const role of new Set(roles)) {
         expect(roles.filter((r) => r === role)).toHaveLength(4); // 2 branches x 2 accounts
       }
@@ -125,8 +125,8 @@ describe('m01-staff-auth seed', () => {
       const southwoodsCount = rows.filter(
         (r) => r.branch_id === 'branch-southwoods'
       ).length;
-      expect(makatiCount).toBe(16);
-      expect(southwoodsCount).toBe(16);
+      expect(makatiCount).toBe(18);
+      expect(southwoodsCount).toBe(18);
     });
 
     it('generates the branch.roleN@goldenfur.com email pattern', async () => {
@@ -146,8 +146,8 @@ describe('m01-staff-auth seed', () => {
       await seedFullModule(supabase);
       await expect(seedFullModule(supabase)).resolves.not.toThrow();
 
-      expect(supabase.state.staffProfiles.size).toBe(32);
-      expect(supabase.auth.admin.createUser).toHaveBeenCalledTimes(32);
+      expect(supabase.state.staffProfiles.size).toBe(36);
+      expect(supabase.auth.admin.createUser).toHaveBeenCalledTimes(36);
     });
   });
 });

@@ -1,5 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
-import type { HotelBookingPreferences } from '../../booking/booking.types.ts';
+import {
+  isNotStartedStatus,
+  type HotelBookingPreferences,
+} from '../../booking/booking.types.ts';
 import type { CheckInInput } from '../modules/validators/daycare.validator.ts';
 import type { DaycareSession, DaycareStatus } from '../daycare.types.ts';
 import { startBooking } from '../../booking/services/booking.service.ts';
@@ -181,7 +184,10 @@ export async function checkInDaycareSession({
     // created already In Progress (no Pending state to pass through), and
     // still needs to go through this same check-in action for cage
     // assignment/care instructions.
-    if (booking.status !== 'Pending' && booking.status !== 'In Progress') {
+    if (
+      !isNotStartedStatus(booking.status) &&
+      booking.status !== 'In Progress'
+    ) {
       throwWithStatus(409, `A ${booking.status} booking cannot be checked in`);
     }
 
@@ -197,22 +203,41 @@ export async function checkInDaycareSession({
 
   const { data: branch, error: branchError } = await supabase
     .from('branches')
-    .select('name, timezone, daycare_checkin_cutoff')
+    .select('timezone, operating_hours')
     .eq('id', branchId)
     .maybeSingle();
 
   if (branchError) throwWithStatus(400, branchError.message);
   if (!branch) throwWithStatus(404, 'Branch not found');
 
+  // Check-in closes two hours before today's closing time (the same rule
+  // booking applies - daycareCutoff.util.ts). A day with no operating hours
+  // set has no closing time to count back from, so it isn't blocked here.
   const now = new Date();
-  const cutoffTime = resolveDaycareCutoffTime(branch);
-  const cutoffInstant = resolveCutoffInstant(branch.timezone, cutoffTime, now);
+  const today = new Intl.DateTimeFormat('en-US', {
+    timeZone: branch.timezone,
+    weekday: 'long',
+  })
+    .format(now)
+    .toLowerCase();
+  const closeTime = (
+    branch.operating_hours as Record<string, { close: string } | undefined>
+  )?.[today]?.close;
 
-  if (now > cutoffInstant) {
-    throwWithStatus(
-      400,
-      `Check-in unavailable after ${formatDaycareCutoff(cutoffTime)}`
+  if (closeTime) {
+    const cutoffTime = resolveDaycareCutoffTime(closeTime);
+    const cutoffInstant = resolveCutoffInstant(
+      branch.timezone,
+      cutoffTime,
+      now
     );
+
+    if (now > cutoffInstant) {
+      throwWithStatus(
+        400,
+        `Check-in unavailable after ${formatDaycareCutoff(cutoffTime)}`
+      );
+    }
   }
 
   // Custom change (Daycare/Hotel parity): Daycare now claims a real cage the
@@ -257,7 +282,7 @@ export async function checkInDaycareSession({
     // (createBooking sets that directly), so startBooking - which only
     // accepts a 'Pending' booking - is skipped rather than called
     // redundantly.
-    if (bookingId && bookingStatus === 'Pending') {
+    if (bookingId && bookingStatus && isNotStartedStatus(bookingStatus)) {
       await startBooking({ bookingId });
     }
 

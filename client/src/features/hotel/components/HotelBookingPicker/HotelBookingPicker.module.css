@@ -118,6 +118,17 @@
   padding: 0 var(--space-1);
 }
 
+.awaitingBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: 0 var(--space-1);
+}
+
 .checkoutLink {
   color: var(--color-accent-gold-link, var(--color-accent-gold-primary));
   font-size: var(--text-sm);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createPetValidator,
   createPetValidatorStaff,
@@ -11,6 +11,7 @@ describe('createPetValidator (customer-facing)', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
       pet_type: 'Dog',
+      gender: 'Male',
     });
 
     expect(result.success).toBe(true);
@@ -29,6 +30,29 @@ describe('createPetValidator (customer-facing)', () => {
     expect(result.success).toBe(true);
   });
 
+  it('requires gender when adding a pet', () => {
+    const result = createPetValidator.safeParse({
+      name: 'Buddy',
+      pet_type: 'Dog',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({
+      path: ['gender'],
+      message: 'Gender is required',
+    });
+  });
+
+  it('rejects a gender outside Male/Female', () => {
+    expect(
+      createPetValidator.safeParse({
+        name: 'Buddy',
+        pet_type: 'Dog',
+        gender: 'Unknown',
+      }).success
+    ).toBe(false);
+  });
+
   it('AC-2: rejects a payload missing a required field', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
@@ -41,6 +65,7 @@ describe('createPetValidator (customer-facing)', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
       pet_type: 'Bird',
+      gender: 'Male',
     });
 
     expect(result.success).toBe(true);
@@ -59,6 +84,7 @@ describe('createPetValidator (customer-facing)', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
       pet_type: 'Dog',
+      gender: 'Male',
       branch_id: 'branch-a',
     });
 
@@ -69,6 +95,7 @@ describe('createPetValidator (customer-facing)', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
       pet_type: 'Dog',
+      gender: 'Male',
       health_conditions: 'Allergies',
     });
 
@@ -79,6 +106,7 @@ describe('createPetValidator (customer-facing)', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
       pet_type: 'Dog',
+      gender: 'Male',
       weight_class: 'M',
       coat_type: 'SC',
     });
@@ -87,11 +115,66 @@ describe('createPetValidator (customer-facing)', () => {
   });
 });
 
+describe('date_of_birth', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects a date of birth after today (Asia/Manila) on create and update', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-18T04:00:00.000Z')); // 12:00 Manila
+
+    expect(
+      createPetValidator.safeParse({
+        name: 'Buddy',
+        pet_type: 'Dog',
+        gender: 'Male',
+        date_of_birth: '2026-10-19',
+      }).success
+    ).toBe(false);
+    expect(
+      updatePetValidator.safeParse({ date_of_birth: '2027-01-01' }).success
+    ).toBe(false);
+  });
+
+  it('accepts today and past dates', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-18T04:00:00.000Z'));
+
+    for (const date_of_birth of ['2026-10-18', '2020-02-29']) {
+      expect(
+        createPetValidator.safeParse({
+          name: 'Buddy',
+          pet_type: 'Dog',
+          gender: 'Male',
+          date_of_birth,
+        }).success
+      ).toBe(true);
+    }
+  });
+
+  it("uses Manila's date, not UTC's - today's Manila date is accepted before 08:00 Manila", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-17T18:00:00.000Z')); // 02:00 Oct 18 Manila
+
+    expect(
+      updatePetValidator.safeParse({ date_of_birth: '2026-10-18' }).success
+    ).toBe(true);
+  });
+
+  it('rejects a value that is not YYYY-MM-DD', () => {
+    expect(
+      updatePetValidator.safeParse({ date_of_birth: 'yesterday' }).success
+    ).toBe(false);
+  });
+});
+
 describe('createPetValidatorStaff', () => {
   it('accepts weight_class/coat_type in addition to the customer-facing fields', () => {
     const result = createPetValidatorStaff.safeParse({
       name: 'Buddy',
       pet_type: 'Dog',
+      gender: 'Male',
       weight_class: 'M',
       coat_type: 'SC',
     });
@@ -99,10 +182,35 @@ describe('createPetValidatorStaff', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts every coat type, Extra Long Coat included, and rejects an unknown one', () => {
+    for (const coat_type of ['SC', 'LC', 'XLC']) {
+      expect(
+        createPetValidatorStaff.safeParse({
+          name: 'Buddy',
+          pet_type: 'Dog',
+          gender: 'Male',
+          weight_class: 'M',
+          coat_type,
+        }).success
+      ).toBe(true);
+    }
+
+    expect(
+      createPetValidatorStaff.safeParse({
+        name: 'Buddy',
+        pet_type: 'Dog',
+        gender: 'Male',
+        weight_class: 'M',
+        coat_type: 'XXL',
+      }).success
+    ).toBe(false);
+  });
+
   it('still accepts a payload without weight_class/coat_type (unassessed pet)', () => {
     const result = createPetValidatorStaff.safeParse({
       name: 'Buddy',
       pet_type: 'Dog',
+      gender: 'Male',
     });
 
     expect(result.success).toBe(true);
@@ -112,6 +220,7 @@ describe('createPetValidatorStaff', () => {
     const result = createPetValidatorStaff.safeParse({
       name: 'Buddy',
       pet_type: 'Dog',
+      gender: 'Male',
       weight_kg: 14.2,
       coat_type: 'SC',
     });
@@ -125,6 +234,7 @@ describe('createPetValidatorStaff', () => {
         createPetValidatorStaff.safeParse({
           name: 'Buddy',
           pet_type: 'Dog',
+          gender: 'Male',
           weight_kg,
         }).success
       ).toBe(false);
@@ -137,6 +247,7 @@ describe('createPetValidator (customer-facing) - weight_kg', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
       pet_type: 'Dog',
+      gender: 'Male',
       weight_kg: 4,
     });
 
@@ -148,6 +259,12 @@ describe('updatePetValidator (customer-facing)', () => {
   it('accepts a partial payload', () => {
     const result = updatePetValidator.safeParse({ name: 'New Name' });
     expect(result.success).toBe(true);
+  });
+
+  it('does not require gender - pets added before it was required stay editable', () => {
+    expect(updatePetValidator.safeParse({ name: 'New Name' }).success).toBe(
+      true
+    );
   });
 
   it('accepts an empty payload', () => {

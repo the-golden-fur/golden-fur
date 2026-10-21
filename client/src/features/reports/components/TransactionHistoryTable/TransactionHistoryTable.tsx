@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Navigate, useNavigate } from 'react-router';
 import { Columns3, Table } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
@@ -13,6 +14,11 @@ import {
   MoreOptionsMenu,
   type MoreOptionsMenuItem,
 } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
+import { TransactionReceiptPrintout } from '../../../../shared/components/TransactionReceiptPrintout/TransactionReceiptPrintout';
+import {
+  listBranchLetterheads,
+  type BranchLetterhead,
+} from '../../../maintenance/api/maintenance.api';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   listCustomerPets,
@@ -49,11 +55,13 @@ import {
   STAFF_SORT_FIELDS,
 } from './transactionFilterFields';
 import {
+  isBookingCancelled,
   paymentChoiceLabel,
   paymentStatusLabel,
   paymentTone,
   transactionTypeLabel,
 } from './transactionDisplay';
+import { receiptPropsFor } from './transactionReceipt';
 import {
   GROUP_BY_OPTIONS,
   groupTransactions,
@@ -76,6 +84,7 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Supervisor',
   'Receptionist',
   'Cashier',
+  'Front Desk',
 ]);
 
 /** The Record-payment modal lets a cashier settle straight from the
@@ -117,6 +126,13 @@ export function TransactionHistoryTable() {
 
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);
   const [pets, setPets] = useState<Pet[]>([]);
+
+  // The transaction whose receipt is being printed - see
+  // TransactionReceiptPrintout. Branches are only for its letterhead.
+  const [printing, setPrinting] = useState<TransactionRecord | null>(null);
+  const [branches, setBranches] = useState<Map<string, BranchLetterhead>>(
+    () => new Map()
+  );
 
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
@@ -251,6 +267,12 @@ export function TransactionHistoryTable() {
       if (isMounted && result.data) setCustomers(result.data);
     });
 
+    void listBranchLetterheads().then((result) => {
+      if (isMounted && result.data) {
+        setBranches(new Map(result.data.map((branch) => [branch.id, branch])));
+      }
+    });
+
     return () => {
       isMounted = false;
     };
@@ -355,6 +377,7 @@ export function TransactionHistoryTable() {
       list = list.filter(
         (t) =>
           (t.customer_name ?? '').toLowerCase().includes(query) ||
+          (t.bookings?.pets?.name ?? '').toLowerCase().includes(query) ||
           (t.misc_sale_description ?? '').toLowerCase().includes(query) ||
           t.payment_method.toLowerCase().includes(query) ||
           t.payment_status.toLowerCase().includes(query) ||
@@ -372,6 +395,13 @@ export function TransactionHistoryTable() {
 
   const payable = payableBalances(transactions);
 
+  function printReceipt(transaction: TransactionRecord) {
+    // The sheet has to be in the page before the print dialog opens, so its
+    // render is flushed rather than left for the next paint.
+    flushSync(() => setPrinting(transaction));
+    window.print();
+  }
+
   function buildMenuItems(
     transaction: TransactionRecord
   ): MoreOptionsMenuItem[] {
@@ -381,7 +411,8 @@ export function TransactionHistoryTable() {
     const canPay =
       transaction.payment_status === 'Pending' &&
       transaction.transaction_type === 'booking_payment' &&
-      Boolean(transaction.booking_id || transaction.booking_group_id);
+      Boolean(transaction.booking_id || transaction.booking_group_id) &&
+      !isBookingCancelled(transaction);
     return [
       ...(transaction.booking_id
         ? [
@@ -395,6 +426,7 @@ export function TransactionHistoryTable() {
       ...(canPay
         ? [{ label: 'Pay', onSelect: () => openPay(transaction) }]
         : []),
+      { label: 'Print receipt', onSelect: () => printReceipt(transaction) },
     ];
   }
 
@@ -421,7 +453,7 @@ export function TransactionHistoryTable() {
         onChangeSort={setSortTile}
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search by customer, method, status..."
+        searchPlaceholder="Search by customer, pet, method, status..."
       >
         <ViewSwitcher
           ariaLabel="Transactions view"
@@ -699,6 +731,13 @@ export function TransactionHistoryTable() {
             </div>
           </section>
         </div>
+      ) : null}
+
+      {printing ? (
+        <TransactionReceiptPrintout
+          {...receiptPropsFor(printing, branches.get(printing.branch_id))}
+          onDone={() => setPrinting(null)}
+        />
       ) : null}
     </main>
   );

@@ -12,6 +12,7 @@ import * as customerApi from '../../../customers/api/customer.api';
 import * as bookingApi from '../../api/booking.api';
 import * as policyApi from '../../api/policy.api';
 import * as daycareApi from '../../../daycare/api/daycare.api';
+import * as hotelApi from '../../../hotel/api/hotel.api';
 import type { Booking } from '../../booking.types';
 import { ReceptionistBookingsQueuePage } from './ReceptionistBookingsQueuePage';
 
@@ -21,11 +22,13 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
+  getPetWeightClassConfiguration: vi.fn(),
 }));
 
 vi.mock('../../../customers/api/customer.api', () => ({
   getPet: vi.fn(),
   getCustomerProfile: vi.fn(),
+  updatePet: vi.fn(),
 }));
 
 vi.mock('../../api/booking.api', () => ({
@@ -39,6 +42,9 @@ vi.mock('../../api/booking.api', () => ({
 // Reschedule button gating (#24) reads policy_configurations - only the
 // fetch is mocked; resolveEffectivePolicy stays the real pure function so
 // its default-vs-branch-override precedence is still exercised as written.
+vi.mock('../../../hotel/api/hotel.api', () => ({
+  listHotelStays: vi.fn().mockResolvedValue({ data: [], error: null }),
+}));
 vi.mock('../../../daycare/api/daycare.api', () => ({
   listDaycareSessions: vi.fn().mockResolvedValue({ data: [], error: null }),
   checkOutDaycareSession: vi.fn(),
@@ -157,9 +163,20 @@ function renderPage() {
   );
 }
 
+/** Booking rows only - skips QueueFilterBar's per-preset counts list. */
+function bookingRows() {
+  return screen
+    .getAllByRole('listitem')
+    .filter((item) => !item.closest('[aria-label="Bookings by date range"]'));
+}
+
 describe('ReceptionistBookingsQueuePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(maintenanceApi.getPetWeightClassConfiguration).mockResolvedValue({
+      data: { m_min_kg: 9.5, l_min_kg: 22, xl_min_kg: 41 },
+      error: null,
+    } as never);
     vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
       data: [
         { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
@@ -834,12 +851,10 @@ describe('ReceptionistBookingsQueuePage', () => {
 
     renderPage();
 
-    await waitFor(() =>
-      expect(screen.getAllByRole('listitem')).toHaveLength(2)
-    );
+    await waitFor(() => expect(bookingRows()).toHaveLength(2));
 
     // Latest service on top by default.
-    let rows = screen.getAllByRole('listitem');
+    let rows = bookingRows();
     expect(rows[0].textContent).toContain('Late Riser');
     expect(rows[1].textContent).toContain('Early Bird');
 
@@ -848,7 +863,7 @@ describe('ReceptionistBookingsQueuePage', () => {
       'soonest'
     );
 
-    rows = screen.getAllByRole('listitem');
+    rows = bookingRows();
     expect(rows[0].textContent).toContain('Early Bird');
     expect(rows[1].textContent).toContain('Late Riser');
   });
@@ -1023,6 +1038,88 @@ describe('ReceptionistBookingsQueuePage', () => {
         await waitFor(() =>
           expect(daycareApi.listDaycareSessions).toHaveBeenCalled()
         );
+        expect(screen.queryByText('Check In')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Hotel: Check In opens the check-in form (cage + care instructions)', () => {
+      beforeEach(() => {
+        vi.mocked(staffApi.listStaff).mockResolvedValue({
+          data: [buildViewer('Front Desk')],
+          error: null,
+        });
+        vi.mocked(hotelApi.listHotelStays).mockResolvedValue({
+          data: [],
+          error: null,
+        });
+      });
+
+      it('a confirmed Pending Hotel booking goes to the form instead of being started here', async () => {
+        const user = userEvent.setup();
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Hotel',
+              status: 'Pending',
+              payment_status: 'Fully Paid',
+            }),
+          ],
+          error: null,
+        });
+
+        renderPage();
+
+        await user.click(await screen.findByText('Check In'));
+
+        expect(navigateMock).toHaveBeenCalledWith(
+          '/staff/hotel/queue/check-in/booking-1?from=bookings'
+        );
+        expect(bookingApi.startBooking).not.toHaveBeenCalled();
+      });
+
+      it('a walk-in Hotel booking (already In Progress, not checked in yet) still offers Check In', async () => {
+        const user = userEvent.setup();
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Hotel',
+              booking_source: 'Walk-in',
+              status: 'In Progress',
+            }),
+          ],
+          error: null,
+        });
+
+        renderPage();
+
+        await user.click(await screen.findByText('Check In'));
+
+        expect(navigateMock).toHaveBeenCalledWith(
+          '/staff/hotel/queue/check-in/booking-1?from=bookings'
+        );
+      });
+
+      it('no Check In once the Hotel pet has a stay', async () => {
+        vi.mocked(hotelApi.listHotelStays).mockResolvedValue({
+          data: [{ id: 'stay-1', booking_id: 'booking-1' }] as never,
+          error: null,
+        });
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [
+            buildBooking({
+              service_category: 'Hotel',
+              status: 'In Progress',
+            }),
+          ],
+          error: null,
+        });
+
+        renderPage();
+
+        await waitFor(() =>
+          expect(screen.getByText(/Buddy/)).toBeInTheDocument()
+        );
+        await waitFor(() => expect(hotelApi.listHotelStays).toHaveBeenCalled());
         expect(screen.queryByText('Check In')).not.toBeInTheDocument();
       });
     });
@@ -1260,9 +1357,7 @@ describe('ReceptionistBookingsQueuePage', () => {
 
       renderPage();
 
-      await waitFor(() =>
-        expect(screen.getAllByRole('listitem')).toHaveLength(2)
-      );
+      await waitFor(() => expect(bookingRows()).toHaveLength(2));
 
       await user.selectOptions(screen.getByLabelText('Status'), 'Unconfirmed');
 
@@ -1272,12 +1367,123 @@ describe('ReceptionistBookingsQueuePage', () => {
           expect.objectContaining({ status: 'Pending' })
         )
       );
+      await waitFor(() => expect(bookingRows()).toHaveLength(1));
+      expect(bookingRows()[0].textContent).toContain('Unconfirmed');
+    });
+  });
+
+  // Book before assessment: Front Desk assesses the pet from its row.
+  describe('assess an unassessed pet', () => {
+    const UNASSESSED_PET = {
+      id: 'pet-12345678',
+      customer_id: 'cust-12345678',
+      name: 'Buddy',
+      pet_type: 'Dog',
+      breed_id: 'breed-1',
+      photo_url: null,
+      gender: 'Male',
+      date_of_birth: null,
+      weight_class: null,
+      coat_type: null,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+
+    beforeEach(() => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Receptionist')],
+        error: null,
+      });
+      vi.mocked(customerApi.getPet).mockResolvedValue({
+        data: UNASSESSED_PET,
+        error: null,
+      } as never);
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [buildBooking({ awaiting_assessment: true })],
+        error: null,
+      });
+    });
+
+    async function openAssessPopup() {
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(
+        await screen.findByRole('button', { name: 'Assess pet' })
+      );
+      const dialog = screen.getByRole('dialog', {
+        name: 'Record pet assessment',
+      });
+      await user.type(within(dialog).getByRole('spinbutton'), '12');
+      await user.selectOptions(
+        within(dialog).getByRole('combobox', { name: 'Coat type' }),
+        'LC'
+      );
+      return { user, dialog };
+    }
+
+    it('shows the badge and an Assess pet button only for a booking awaiting assessment', async () => {
+      vi.mocked(bookingApi.listBookings).mockResolvedValue({
+        data: [
+          buildBooking({ awaiting_assessment: true }),
+          buildBooking({ id: 'booking-2', awaiting_assessment: false }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+
+      const assessButtons = await screen.findAllByRole('button', {
+        name: 'Assess pet',
+      });
+      expect(assessButtons).toHaveLength(1);
+      expect(assessButtons[0].closest('li')).toHaveTextContent(
+        'Awaiting assessment'
+      );
+    });
+
+    it('saves the weight and coat, closes the popup and re-fetches the repriced queue', async () => {
+      vi.mocked(customerApi.updatePet).mockResolvedValue({
+        data: { ...UNASSESSED_PET, weight_class: 'M', coat_type: 'LC' },
+        error: null,
+      } as never);
+
+      const { user, dialog } = await openAssessPopup();
+      const fetchesBefore = vi.mocked(bookingApi.listBookings).mock.calls
+        .length;
+
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+      expect(customerApi.updatePet).toHaveBeenCalledWith(
+        'pet-12345678',
+        'token',
+        { weight_kg: 12, coat_type: 'LC' }
+      );
+      expect(
+        await screen.findByText(
+          'Buddy assessed - the booking now has its final price.'
+        )
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       await waitFor(() =>
-        expect(screen.getAllByRole('listitem')).toHaveLength(1)
+        expect(
+          vi.mocked(bookingApi.listBookings).mock.calls.length
+        ).toBeGreaterThan(fetchesBefore)
       );
-      expect(screen.getAllByRole('listitem')[0].textContent).toContain(
-        'Unconfirmed'
-      );
+    });
+
+    it('keeps the popup open with the error when saving fails', async () => {
+      vi.mocked(customerApi.updatePet).mockResolvedValue({
+        data: null,
+        error: 'Weight is too low',
+      });
+
+      const { user, dialog } = await openAssessPopup();
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+      expect(
+        await within(dialog).findByText('Weight is too low')
+      ).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
   });
 });

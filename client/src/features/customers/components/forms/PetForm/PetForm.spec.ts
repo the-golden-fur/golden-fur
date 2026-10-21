@@ -106,6 +106,79 @@ describe('PetForm', () => {
     expect(createPet).not.toHaveBeenCalled();
   });
 
+  it('blocks submission when no gender is selected', async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Lab' } });
+    fireEvent.click(await screen.findByText('Labrador Retriever'));
+
+    fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
+
+    expect(
+      await screen.findByText('Please select a gender.')
+    ).toBeInTheDocument();
+    expect(createPet).not.toHaveBeenCalled();
+  });
+
+  it('blocks submission when the date of birth is in the future', async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Lab' } });
+    fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
+
+    const nextYear = new Date().getFullYear() + 1;
+    const dateInput = screen.getByLabelText(
+      /Date of birth/
+    ) as HTMLInputElement;
+    fireEvent.change(dateInput, { target: { value: `${nextYear}-01-01` } });
+
+    // The `max` attribute makes the browser itself refuse the submit...
+    expect(dateInput.validity.rangeOverflow).toBe(true);
+
+    // ...and the form's own check still catches it if that is bypassed.
+    fireEvent.submit(
+      screen.getByRole('button', { name: /add pet/i }).closest('form')!
+    );
+
+    expect(
+      await screen.findByText('Date of birth cannot be in the future.')
+    ).toBeInTheDocument();
+    expect(createPet).not.toHaveBeenCalled();
+  });
+
   it("client interview finding: does not render weight class/coat type inputs for a customer's own (non-staff) create", async () => {
     render(
       createElement(PetForm, {
@@ -159,6 +232,9 @@ describe('PetForm', () => {
     fireEvent.focus(breedInput);
     fireEvent.change(breedInput, { target: { value: 'Lab' } });
     fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
 
@@ -167,10 +243,72 @@ describe('PetForm', () => {
         name: 'Buddy',
         pet_type: 'Dog',
         breed_id: 'breed-1',
+        gender: 'Male',
       })
     );
     expect(uploadPetPhoto).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(onCreated).toHaveBeenCalledWith(pet));
+    await vi.waitFor(() =>
+      expect(onCreated).toHaveBeenCalledWith(pet, undefined)
+    );
+  });
+
+  it('session 120: still creates the pet but reports a failed photo upload to onCreated', async () => {
+    const pet = {
+      id: 'pet-1',
+      customer_id: 'customer-1',
+      name: 'Buddy',
+      pet_type: 'Dog' as const,
+      breed_id: 'breed-1',
+      photo_url: null,
+      gender: null,
+      date_of_birth: null,
+      weight_class: null,
+      coat_type: null,
+      assessed_by: null,
+      assessed_at: null,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+    vi.mocked(createPet).mockResolvedValue({ data: pet, error: null });
+    vi.mocked(uploadPetPhoto).mockResolvedValue({
+      data: null,
+      error: 'Bucket not found',
+    });
+    const onCreated = vi.fn();
+
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated,
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Lab' } });
+    fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
+    fireEvent.change(screen.getByLabelText('Photo (optional)'), {
+      target: {
+        files: [new File(['x'], 'buddy.png', { type: 'image/png' })],
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
+
+    await vi.waitFor(() =>
+      expect(onCreated).toHaveBeenCalledWith(pet, 'Bucket not found')
+    );
   });
 
   it('a staff-authorized caller sees and can submit weight class/coat type', async () => {
@@ -219,6 +357,9 @@ describe('PetForm', () => {
     fireEvent.focus(breedInput);
     fireEvent.change(breedInput, { target: { value: 'Lab' } });
     fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
 
@@ -229,5 +370,54 @@ describe('PetForm', () => {
         expect.objectContaining({ weight_class: 'M', coat_type: 'SC' })
       )
     );
+  });
+
+  it('staff can record every coat type, Extra Long Coat (XLC) included', () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-2',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+        isStaff: true,
+      })
+    );
+
+    const coatSelect = screen.getByLabelText(/Coat type/) as HTMLSelectElement;
+
+    expect([...coatSelect.options].map((option) => option.value)).toEqual([
+      '',
+      'SC',
+      'LC',
+      'XLC',
+    ]);
+
+    fireEvent.change(coatSelect, { target: { value: 'XLC' } });
+    expect(coatSelect).toHaveValue('XLC');
+  });
+
+  it('shows the age under Date of birth as soon as a date is entered', async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    expect(screen.queryByText(/^Age:/)).not.toBeInTheDocument();
+
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    const dateOfBirth = [
+      twoYearsAgo.getFullYear(),
+      String(twoYearsAgo.getMonth() + 1).padStart(2, '0'),
+      String(twoYearsAgo.getDate()).padStart(2, '0'),
+    ].join('-');
+
+    fireEvent.change(screen.getByLabelText(/Date of birth/), {
+      target: { value: dateOfBirth },
+    });
+
+    expect(await screen.findByText('Age: 2 yr')).toBeInTheDocument();
   });
 });

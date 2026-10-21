@@ -13,6 +13,7 @@ export const BOOKING_POLICY_READ_ROLES: readonly string[] = [
   'Veterinarian',
   'Cashier',
   'Pet Assistant',
+  'Front Desk',
 ];
 
 export const BOOKING_POLICY_WRITE_ROLES: readonly string[] = [
@@ -39,6 +40,7 @@ export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Supervisor',
   'Receptionist',
   'Cashier',
+  'Front Desk',
 ];
 
 /** Direct status override (forward OR backward) - Admin/Superadmin only,
@@ -73,15 +75,30 @@ export type ServiceCategory =
   | 'Assessment';
 
 /**
+ * The Assessment Queue is archived for now: no new Assessment-category
+ * bookings (createBooking refuses them). Pets are still assessed - on
+ * arrival through the Bookings Queue's Assess popup, or on the staff pet
+ * profile before a walk-in. Bookings already made are untouched and can be
+ * finished at /staff/assessment/queue. To restore everything: set this
+ * and the client's ASSESSMENT_BOOKINGS_PAUSED (client booking.types.ts) to
+ * false - the client's flag also brings back the queue's tiles and widget.
+ */
+export const ASSESSMENT_BOOKINGS_PAUSED = true;
+
+/**
  * Unified booking lifecycle (booking-status revision): no manual "staff
  * confirms a booking" step ever existed - status was always set
  * automatically - so 'Confirmed' was retired rather than relabeled.
  * Pending (booked, appointment hasn't started) -> In Progress (Start
  * action, or physical check-in for Hotel/Daycare) -> Completed (Complete
- * action or checkout). No-show is a lazy, read-time transition applied by
- * applyNoShowTransition in booking.service.ts (no cron infra exists in this
- * app): any Pending booking whose scheduled_start has passed is flipped to
- * No-show the next time it's read. Cancelled is unchanged.
+ * action or checkout). Late and No-show are lazy, read-time transitions
+ * applied by applyLateAndNoShowTransition in booking.service.ts (no cron
+ * infra exists in this app): a Pending booking whose scheduled_start has
+ * passed is flipped to Late the next time it's read (custom change,
+ * 20261015266 - the customer may still show up, so it can still be started,
+ * checked in, rescheduled or cancelled), and to No-show once the branch's
+ * no-show threshold (policy_configurations.no_show_after_minutes /
+ * no_show_at_closing) has also passed. Cancelled is unchanged.
  *
  * 'Paid' was retired as a status value (staff-queue-overhaul): payment is
  * now tracked exclusively via the independent `payment_status` column/enum
@@ -90,6 +107,7 @@ export type ServiceCategory =
  */
 export type BookingStatus =
   | 'Pending'
+  | 'Late'
   | 'In Progress'
   | 'Completed'
   | 'Cancelled'
@@ -97,6 +115,7 @@ export type BookingStatus =
 
 export const BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
   'Cancelled',
@@ -106,11 +125,12 @@ export const BOOKING_STATUSES: readonly BookingStatus[] = [
 /** Holds a real capacity/staff-time slot - mirrors the
  * bookings_staff_active_idx partial index predicate and
  * get_staff_availability()'s Check 2 (migrations 20260728058/...062/
- * ...083). NOTE: down-payment slot gate (20260829146-148) adds a second
+ * ...083, plus 'Late' since 20261015268). NOTE: down-payment slot gate (20260829146-148) adds a second
  * condition on top of this status list - a booking only actually holds its
  * slot when it ALSO passes SLOT_HOLD_PAID_OR_FILTER below. */
 export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
 ];
@@ -147,8 +167,22 @@ export const FINISHED_BOOKING_STATUSES: readonly BookingStatus[] = [
 
 export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
+
+/** Booked but not started yet - 'Late' (start time passed, customer may
+ * still show up) behaves exactly like 'Pending' everywhere a booking can be
+ * started, checked in, edited or billed ahead of its service. Use this
+ * instead of comparing against 'Pending' alone. */
+export const NOT_STARTED_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'Late',
+];
+
+export function isNotStartedStatus(status: string): boolean {
+  return (NOT_STARTED_BOOKING_STATUSES as readonly string[]).includes(status);
+}
 
 /**
  * Independent of `status` above - tracks only how much of the booking's
@@ -206,7 +240,8 @@ export const PAYMENT_STATUSES: readonly PaymentStatus[] = [
 /** Only before the service has started - matches "shouldn't be able to
  * reschedule a booking that's already underway or past due" (past-due is
  * additionally enforced by scheduled_start, not just status, in
- * reschedule.service.ts). */
+ * reschedule.service.ts). 'Late' is deliberately absent - its start time
+ * has already passed, which reschedule refuses anyway. */
 export const RESCHEDULABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
 ];
@@ -218,8 +253,6 @@ export const PAYMENT_METHODS = [
   'Maya',
   'Card',
   'Bank Transfer',
-  'Grabmart',
-  'Pickaroo',
 ] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
@@ -390,6 +423,11 @@ export interface Booking {
    * with no upfront charge. total_price is only an estimate until checkout
    * posts the real bill (payAtCheckoutCharge.service.ts). */
   pay_at_checkout: boolean;
+  /** Custom change (book before assessment, 20261013264): the booking was
+   * made for a pet staff have not assessed yet - total_price is an estimate
+   * and no charge exists. Cleared, with the booking repriced and its bill
+   * posted, when the pet's weight class and coat type are recorded. */
+  awaiting_assessment: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only) rather than
@@ -470,6 +508,11 @@ export interface BookingGroup {
   /** Pay at checkout (20261005244): every member is billed at its own
    * checkout - no shared upfront charge. Mirrored onto each member row. */
   pay_at_checkout: boolean;
+  /** Custom change (book before assessment, 20261013264): the booking was
+   * made for a pet staff have not assessed yet - total_price is an estimate
+   * and no charge exists. Cleared, with the booking repriced and its bill
+   * posted, when the pet's weight class and coat type are recorded. */
+  awaiting_assessment: boolean;
   payment_status: PaymentStatus;
   paid_at: string | null;
   created_at: string;
@@ -536,6 +579,12 @@ export interface PolicyConfiguration {
    * addendum #10). Default 100 = full conversion; lower it to keep part of
    * the payment as a cancellation charge. Applied in cancellation.service.ts. */
   cancellation_credit_conversion_rate: number;
+  /** Custom change (20261016269): a booking made less than
+   * notice_period_days ahead can never meet the notice period, so a
+   * cancellation within this many minutes of it being made is treated as if
+   * notice was met. 0 = no grace. Default 60. Applied in
+   * cancellation.service.ts. */
+  cancellation_grace_minutes: number;
   /** Per-transaction downpayment config, applied against a booking's whole
    * total_price at creation time - see resolveDownpaymentPolicy in
    * staffPicker.service.ts and createBooking in booking.service.ts.
@@ -587,6 +636,14 @@ export interface PolicyConfiguration {
    * branch-scoped, so only this system-default row's value is ever read -
    * see getCustomerAutoDeletePolicyDays. */
   customer_deactivation_auto_delete_days: number;
+  /** Custom change (Late booking status, 20261015267): minutes after
+   * scheduled_start that a booking stays 'Late' (still startable) before it
+   * becomes 'No-show'. Default 30. Ignored when no_show_at_closing is true.
+   * Read by applyLateAndNoShowTransition in booking.service.ts. */
+  no_show_after_minutes: number;
+  /** When true, a Late booking becomes No-show at the branch's closing time
+   * on the booking's day instead. Default false. */
+  no_show_at_closing: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -612,6 +669,7 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_days'
   | 'credit_expiry_fixed_date'
   | 'cancellation_credit_conversion_rate'
+  | 'cancellation_grace_minutes'
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
@@ -624,6 +682,8 @@ export type EffectivePolicy = Pick<
   | 'care_log_daily_report_enabled'
   | 'credit_review_mode'
   | 'customer_deactivation_auto_delete_days'
+  | 'no_show_after_minutes'
+  | 'no_show_at_closing'
 >;
 
 /** event_type is plain text, not an enum, matching transaction_line_items'
@@ -711,6 +771,7 @@ export interface BookingDetailsPet {
   name: string;
   weight_class: string | null;
   coat_type: string | null;
+  photo_url: string | null;
 }
 
 export interface BookingDetailsOwner {

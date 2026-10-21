@@ -3,8 +3,11 @@ import { Route } from 'react-router';
 import { StaffAuthGuard } from '../auth/staff/guards/StaffAuthGuard/StaffAuthGuard';
 import { CustomerAuthGuard } from '../auth/customer/guards/CustomerAuthGuard/CustomerAuthGuard';
 import { DailySalesReportPage } from './pages/DailySalesReportPage/DailySalesReportPage';
+import { BookingActivityReportPage } from './pages/BookingActivityReportPage/BookingActivityReportPage';
 import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage/AnalyticsDashboardPage';
 import { BranchComparisonPage } from './pages/BranchComparisonPage/BranchComparisonPage';
+import { GoalsPage } from './pages/GoalsPage/GoalsPage';
+import { TrendsPage } from './pages/TrendsPage/TrendsPage';
 import { CustomerTransactionHistoryPage } from './pages/CustomerTransactionHistoryPage/CustomerTransactionHistoryPage';
 import { CageOccupancyReport } from './components/CageOccupancyReport/CageOccupancyReport';
 import { TransactionHistoryTable } from './components/TransactionHistoryTable/TransactionHistoryTable';
@@ -28,6 +31,10 @@ export const reportsRoutes = (
     <Route element={<StaffAuthGuard />}>
       <Route path="/staff/reports/dsr" element={<DailySalesReportPage />} />
       <Route
+        path="/staff/reports/booking-activity"
+        element={<BookingActivityReportPage />}
+      />
+      <Route
         path="/staff/reports/analytics"
         element={<AnalyticsDashboardPage />}
       />
@@ -35,6 +42,8 @@ export const reportsRoutes = (
         path="/staff/reports/branch-comparison"
         element={<BranchComparisonPage />}
       />
+      <Route path="/staff/reports/goals" element={<GoalsPage />} />
+      <Route path="/staff/reports/trends" element={<TrendsPage />} />
       <Route
         path="/staff/reports/cage-occupancy"
         element={<CageOccupancyReport />}

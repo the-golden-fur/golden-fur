@@ -9,6 +9,11 @@ import {
   DAYCARE_OVERDUE_FEE_PER_HOUR,
   DAYCARE_OVERDUE_GRACE_MINUTES,
 } from '../../daycare/modules/daycareCharge.util.ts';
+import {
+  CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS,
+  DEFAULT_CHECKOUT_REMINDER_OFFSET_MINUTES,
+  type NotificationPreferences,
+} from '../../notifications/notifications.types.ts';
 
 /**
  * Custom change (checkout countdown notifications, grown out of the Daycare
@@ -16,8 +21,12 @@ import {
  * or Daycare pet about its checkout time - the booking's scheduled_end,
  * which is also what the Cage Occupancy page counts down to:
  *
- * 1. 'checkout_reminder' - 15 minutes before the checkout time, so the owner
- *    still has time to make it.
+ * 1. 'checkout_reminder' - the customer's chosen lead time before the
+ *    checkout time (Settings > Preferences > Notifications, default 15
+ *    minutes), so the owner still has time to make it. Skipped when that
+ *    moment had already passed by the time the pet was checked in (e.g. a
+ *    "1 day before" lead on a same-day Daycare drop-off) - sending it the
+ *    instant the pet arrives would just be noise.
  * 2. 'daycare_overdue' - once the countdown is complete (the checkout time
  *    has arrived) and the pet is still checked in. The event keeps its
  *    original name so existing notification preferences still apply, but
@@ -42,7 +51,11 @@ import {
  * poll could be up to 5 minutes late, a third of the reminder's lead time. */
 const POLL_INTERVAL_MS = 60 * 1000;
 
-export const CHECKOUT_REMINDER_LEAD_MINUTES = 15;
+/** The longest lead any customer can pick - the bookings pre-filter has to
+ * reach this far ahead. */
+const MAX_REMINDER_LEAD_MINUTES = Math.max(
+  ...CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS
+);
 
 const DEFAULT_TIMEZONE = 'Asia/Manila';
 
@@ -52,7 +65,38 @@ interface ActiveStayRow {
   pet_id: string;
   branch_id: string;
   stay_type: 'Hotel' | 'Daycare';
+  check_in_at: string | null;
   checkout_reminder_notified_at: string | null;
+}
+
+interface CustomerPreferencesRow {
+  id: string;
+  notification_preferences: Partial<NotificationPreferences> | null;
+}
+
+/** "15 minutes", "1 hour", "3 hours", "1 day" - for the reminder's title,
+ * message and email. */
+export function formatReminderLead(minutes: number): string {
+  const [amount, unit] =
+    minutes % 1440 === 0
+      ? [minutes / 1440, 'day']
+      : minutes % 60 === 0
+        ? [minutes / 60, 'hour']
+        : [minutes, 'minute'];
+
+  return `${amount} ${unit}${amount === 1 ? '' : 's'}`;
+}
+
+function reminderLeadMinutes(
+  preferences: Partial<NotificationPreferences> | null | undefined
+): number {
+  const offset = preferences?.checkout_reminder?.reminder_offset_minutes;
+  return typeof offset === 'number' &&
+    (CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS as readonly number[]).includes(
+      offset
+    )
+    ? offset
+    : DEFAULT_CHECKOUT_REMINDER_OFFSET_MINUTES;
 }
 
 interface DueBookingRow {
@@ -72,7 +116,7 @@ export async function runStayCheckoutJob(
   const { data: stayRows, error } = await supabase
     .from('stays')
     .select(
-      'id, booking_id, pet_id, branch_id, stay_type, checkout_reminder_notified_at'
+      'id, booking_id, pet_id, branch_id, stay_type, check_in_at, checkout_reminder_notified_at'
     )
     .eq('status', 'Active')
     .in('stay_type', ['Hotel', 'Daycare'])
@@ -89,7 +133,7 @@ export async function runStayCheckoutJob(
   if (stays.length === 0) return 0;
 
   const reminderFrom = new Date(
-    now.getTime() + CHECKOUT_REMINDER_LEAD_MINUTES * 60 * 1000
+    now.getTime() + MAX_REMINDER_LEAD_MINUTES * 60 * 1000
   );
 
   const { data: bookingRows, error: bookingsError } = await supabase
@@ -105,8 +149,22 @@ export async function runStayCheckoutJob(
     throw new Error(`Stay checkout job failed: ${bookingsError.message}`);
   }
 
-  const dueBookingById = new Map(
-    ((bookingRows ?? []) as DueBookingRow[]).map((row) => [row.id, row])
+  const dueBookings = (bookingRows ?? []) as DueBookingRow[];
+  if (dueBookings.length === 0) return 0;
+
+  const dueBookingById = new Map(dueBookings.map((row) => [row.id, row]));
+
+  // Each owner's chosen reminder lead, one query for the whole batch.
+  const { data: customerRows } = await supabase
+    .from('customer_profiles')
+    .select('id, notification_preferences')
+    .in('id', [...new Set(dueBookings.map((row) => row.customer_id))]);
+
+  const preferencesByCustomerId = new Map(
+    ((customerRows ?? []) as CustomerPreferencesRow[]).map((row) => [
+      row.id,
+      row.notification_preferences,
+    ])
   );
 
   let sentCount = 0;
@@ -115,11 +173,21 @@ export async function runStayCheckoutJob(
     const booking = dueBookingById.get(stay.booking_id);
     if (!booking) continue;
 
-    const isTimeReached =
-      new Date(booking.scheduled_end).getTime() <= now.getTime();
+    const checkoutAt = new Date(booking.scheduled_end).getTime();
+    const isTimeReached = checkoutAt <= now.getTime();
+    const leadMinutes = reminderLeadMinutes(
+      preferencesByCustomerId.get(booking.customer_id)
+    );
 
-    if (!isTimeReached && stay.checkout_reminder_notified_at !== null) {
-      continue;
+    if (!isTimeReached) {
+      if (stay.checkout_reminder_notified_at !== null) continue;
+
+      const remindAt = checkoutAt - leadMinutes * 60 * 1000;
+      if (now.getTime() < remindAt) continue;
+      // The reminder moment came before the pet was even checked in.
+      if (stay.check_in_at && new Date(stay.check_in_at).getTime() > remindAt) {
+        continue;
+      }
     }
 
     const notice: CheckoutNotice = isTimeReached ? 'time_reached' : 'reminder';
@@ -139,7 +207,7 @@ export async function runStayCheckoutJob(
     // A concurrent run already claimed this notice - not our send.
     if (!claimed) continue;
 
-    await sendStayCheckoutNotification(notice, stay, booking);
+    await sendStayCheckoutNotification(notice, stay, booking, leadMinutes);
     sentCount += 1;
   }
 
@@ -157,7 +225,8 @@ function formatCheckoutTime(scheduledEnd: string, timeZone: string): string {
 async function sendStayCheckoutNotification(
   notice: CheckoutNotice,
   stay: ActiveStayRow,
-  booking: DueBookingRow
+  booking: DueBookingRow,
+  leadMinutes: number
 ): Promise<void> {
   try {
     const [{ data: customer }, { data: branch }, { data: pet }] =
@@ -193,6 +262,7 @@ async function sendStayCheckoutNotification(
             graceMinutes: DAYCARE_OVERDUE_GRACE_MINUTES,
           }
         : null;
+    const reminderLead = formatReminderLead(leadMinutes);
     const feeSentence = overdueFee
       ? ` An overdue fee of ₱${overdueFee.feePerHour} per hour applies once pickup is more than ${overdueFee.graceMinutes} minutes late and is added to your bill at checkout.`
       : '';
@@ -205,6 +275,7 @@ async function sendStayCheckoutNotification(
           stayLabel,
           checkoutTime,
           overdueFee,
+          reminderLead,
         }
       : null;
 
@@ -212,8 +283,8 @@ async function sendStayCheckoutNotification(
       await createNotification({
         recipientCustomerId: booking.customer_id,
         eventType: 'checkout_reminder',
-        title: 'Checkout in 15 minutes',
-        message: `${petName}'s ${stayLabel} checkout time is ${checkoutTime} - ${CHECKOUT_REMINDER_LEAD_MINUTES} minutes from now.${feeSentence}`,
+        title: `Checkout in ${reminderLead}`,
+        message: `${petName}'s ${stayLabel} checkout time is ${checkoutTime} - ${reminderLead} from now.${feeSentence}`,
         relatedBookingId: booking.id,
         sendEmail: emailParams
           ? () => sendCheckoutReminderEmail(emailParams)

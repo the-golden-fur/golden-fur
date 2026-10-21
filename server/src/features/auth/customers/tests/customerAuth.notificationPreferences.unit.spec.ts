@@ -112,7 +112,49 @@ describe('customerNotificationPreferencesController', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'Invalid reminder offset' });
   });
 
-  it('rejects a reminder_offset_minutes update for any event type other than appointment_reminder', async () => {
+  it('rejects a checkout_reminder offset outside its own presets (no 2-day lead)', async () => {
+    const req = buildReq({
+      event_type: 'checkout_reminder',
+      reminder_offset_minutes: 2880,
+    });
+    const res = mockResponse();
+
+    await customerNotificationPreferencesController(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid reminder offset' });
+  });
+
+  it('accepts a checkout_reminder lead time', async () => {
+    const { update } = mockClient(
+      { data: { notification_preferences: {} }, error: null },
+      {
+        data: {
+          notification_preferences: {
+            checkout_reminder: { reminder_offset_minutes: 60 },
+          },
+        },
+        error: null,
+      }
+    );
+
+    const req = buildReq({
+      event_type: 'checkout_reminder',
+      reminder_offset_minutes: 60,
+    });
+    const res = mockResponse();
+
+    await customerNotificationPreferencesController(req, res);
+
+    expect(update).toHaveBeenCalledWith({
+      notification_preferences: {
+        checkout_reminder: { reminder_offset_minutes: 60 },
+      },
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects a reminder_offset_minutes update for an event type without a lead time', async () => {
     const req = buildReq({
       event_type: 'booking_confirmed',
       reminder_offset_minutes: 60,

@@ -25,6 +25,7 @@ import { DaysOffWidget } from '../../components/dashboard/DaysOffWidget/DaysOffW
 import { DashboardTile } from '../../components/dashboard/DashboardTile/DashboardTile';
 import { ReceptionistBookingsQueueWidget } from '../../components/dashboard/ReceptionistBookingsQueueWidget/ReceptionistBookingsQueueWidget';
 import { AssessmentQueueWidget } from '../../components/dashboard/AssessmentQueueWidget/AssessmentQueueWidget';
+import { ASSESSMENT_BOOKINGS_PAUSED } from '../../../booking/booking.types';
 import { CreditReviewQueueWidget } from '../../components/dashboard/CreditReviewQueueWidget/CreditReviewQueueWidget';
 import { CageOccupancyWidget } from '../../components/dashboard/CageOccupancyWidget/CageOccupancyWidget';
 import { BoardingChecklistWidget } from '../../components/dashboard/BoardingChecklistWidget/BoardingChecklistWidget';
@@ -103,6 +104,7 @@ export function StaffDashboardPage() {
   const isSupervisor = role === 'Supervisor';
   const isGroomer = role === 'Groomer';
   const isCashier = role === 'Cashier';
+  const isFrontDesk = role === 'Front Desk';
 
   useEffect(() => {
     if (!isSuperadmin) return;
@@ -227,10 +229,13 @@ export function StaffDashboardPage() {
                 to="/staff/bookings/new"
                 icon={CalendarPlus}
               />
-              <AssessmentQueueWidget
-                branchId={branchId}
-                accessToken={accessToken}
-              />
+              {/* Archived for now - see ASSESSMENT_BOOKINGS_PAUSED. */}
+              {ASSESSMENT_BOOKINGS_PAUSED ? null : (
+                <AssessmentQueueWidget
+                  branchId={branchId}
+                  accessToken={accessToken}
+                />
+              )}
               <CreditReviewQueueWidget accessToken={accessToken} />
             </div>
           </div>
@@ -291,6 +296,56 @@ export function StaffDashboardPage() {
                 icon={Coins}
               />
               <CreditReviewQueueWidget accessToken={accessToken} />
+            </div>
+          </div>
+        </div>
+      ) : isFrontDesk && branchId ? (
+        <div className={styles.widgetsSection}>
+          <div className={styles.receptionistTop}>
+            <ReceptionistBookingsQueueWidget
+              branchId={branchId}
+              accessToken={accessToken}
+            />
+
+            <div className={styles.receptionistQuickGrid}>
+              <DashboardTile
+                title="New Walk-in Customer"
+                description="Register a walk-in customer and their pet."
+                to="/staff/admin/customers"
+                icon={UserPlus}
+              />
+              <DashboardTile
+                title="New Booking"
+                description="Book a service for a walk-in or phone-in customer."
+                to="/staff/bookings/new"
+                icon={CalendarPlus}
+              />
+              {/* Archived for now - see ASSESSMENT_BOOKINGS_PAUSED. */}
+              {ASSESSMENT_BOOKINGS_PAUSED ? null : (
+                <AssessmentQueueWidget
+                  branchId={branchId}
+                  accessToken={accessToken}
+                />
+              )}
+              <CreditReviewQueueWidget accessToken={accessToken} />
+            </div>
+          </div>
+
+          <CageOccupancyWidget branchId={branchId} accessToken={accessToken} />
+
+          <div className={styles.splitTop}>
+            <TransactionsWidget accessToken={accessToken} />
+
+            <div className={styles.splitGrid}>
+              <div className={styles.splitWide}>
+                <MyScheduleWidget staffId={user.id} accessToken={accessToken} />
+              </div>
+              <DashboardTile
+                title="Credit Management"
+                description="Look up a customer's branch credit balance, history, and expiry."
+                to="/staff/credits"
+                icon={Coins}
+              />
             </div>
           </div>
         </div>

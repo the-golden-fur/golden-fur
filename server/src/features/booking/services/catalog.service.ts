@@ -3,7 +3,10 @@ import { listPackages } from '../../maintenance/services/packages.service.ts';
 import { listPromos } from '../../maintenance/services/promos.service.ts';
 import { listPromoCapConfigurations } from '../../maintenance/services/promoCap.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
-import { servicePriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
+import {
+  longStayPriceAtBranch,
+  servicePriceAtBranch,
+} from '../../maintenance/utils/branchServicePrice.ts';
 import type {
   Package,
   Promo,
@@ -78,9 +81,12 @@ export async function getBookingCatalog({
   // servicePriceAtBranch) - the booking flow only ever looks at one branch,
   // so it is handed that branch's price as base_price and needs no notion of
   // overrides itself. createBooking resolves the same figure server-side.
+  // Same for the Hotel long-stay rate (longStayPriceAtBranch): the flow gets
+  // this branch's long-stay nightly price, or null when there is none.
   const branchPricedServices = services.map((service) => ({
     ...service,
     base_price: servicePriceAtBranch(service, branchId),
+    long_stay_nightly_price: longStayPriceAtBranch(service, branchId),
   }));
 
   return {

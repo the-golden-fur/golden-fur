@@ -55,11 +55,59 @@ describe('CagePickerList', () => {
     const mCage = screen.getByRole('button', { name: /Makati-M-01/ });
     expect(mCage).not.toBeDisabled();
 
+    const sCage = screen.getByRole('button', { name: /Makati-S-01/ });
+    fireEvent.click(sCage);
+    expect(onSelect).toHaveBeenCalledWith({
+      type: 'specific',
+      cage_id: 'cage-s',
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('staff picking a different-size cage see a warning sign and must confirm the popup', async () => {
+    mockOptions();
+    const onSelect = vi.fn();
+
+    render(
+      createElement(CagePickerList, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        petId: 'pet-1',
+        serviceCategory: 'Hotel',
+        selected: null,
+        onSelect,
+        recommendedSize: 'S',
+        restrictToPetSize: false,
+      })
+    );
+
+    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3));
+
+    const mCage = screen.getByRole('button', { name: /Makati-M-01/ });
+    expect(mCage).toHaveTextContent('Too large');
+
+    onSelect.mockClear();
     fireEvent.click(mCage);
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Cage Makati-M-01 is size M, but this pet is size S.'
+    );
+    expect(onSelect).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    fireEvent.click(mCage);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use this cage anyway' })
+    );
+
     expect(onSelect).toHaveBeenCalledWith({
       type: 'specific',
       cage_id: 'cage-m',
     });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it("asks for the given service category's cages (Daycare holds a cage too)", async () => {

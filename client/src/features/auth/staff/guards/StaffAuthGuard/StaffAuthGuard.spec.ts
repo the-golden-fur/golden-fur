@@ -336,6 +336,37 @@ describe('StaffAuthGuard', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows the mandatory MFA setup popup for an unenrolled Front Desk staff member', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Front Desk', mfa_enrolled: false },
+      error: null,
+    });
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Front Desk' }),
+      error: null,
+    });
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'frontdesk@example.com' },
+        },
+        user: { id: 'user-1', email: 'frontdesk@example.com' },
+        accessToken: 'access',
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    expect(
+      await screen.findByRole('dialog', {
+        name: /set up multi-factor authentication/i,
+      })
+    ).toBeInTheDocument();
+  });
+
   // aal is a JWT claim, not a session.user field - encode a fake token whose
   // payload carries { aal: 'aal2' } so these unrelated timeout tests don't
   // get redirected to the MFA challenge page.

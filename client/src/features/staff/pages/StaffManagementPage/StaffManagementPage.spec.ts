@@ -519,6 +519,89 @@ describe('StaffManagementPage (#75)', () => {
     ).toBeInTheDocument();
   });
 
+  it('clicking a staff card opens a details dialog with that staff member’s full profile', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildProfile({
+          id: 'admin-1',
+          display_name: 'Signed-in Viewer',
+          role: 'Superadmin',
+          branch_id: 'branch-2',
+        }),
+        buildProfile({
+          id: 'staff-1',
+          display_name: 'Jamie Cruz',
+          phone_number: '09171234567',
+        }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Jamie Cruz' })
+    );
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Staff details - Jamie Cruz',
+    });
+    expect(within(dialog).getByText('jcruz@example.com')).toBeInTheDocument();
+    expect(within(dialog).getByText('jcruz')).toBeInTheDocument();
+    expect(within(dialog).getByText('Makati')).toBeInTheDocument();
+    expect(within(dialog).getByText('09171234567')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('Groomer').length).toBeGreaterThan(0);
+  });
+
+  it('the details dialog leads into the existing "Manage account" modal', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Admin'),
+        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Jamie Cruz' })
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Manage account' })
+    );
+
+    expect(
+      screen.getByRole('dialog', { name: 'Manage account - Jamie Cruz' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('dialog', { name: 'Staff details - Jamie Cruz' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('Table view: clicking a staff name opens the same details dialog', async () => {
+    vi.mocked(getSupabaseClient).mockReturnValue(null);
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [
+        buildViewerProfile('Admin'),
+        buildProfile({ id: 'staff-1', display_name: 'Jamie Cruz' }),
+      ],
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByText('Jamie Cruz');
+    await userEvent.click(screen.getByRole('button', { name: 'Table' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Jamie Cruz' }));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Staff details - Jamie Cruz' })
+    ).toBeInTheDocument();
+  });
+
   it('Board view groups by Role by default, and a Sort groups control offers Manual/Alphabetical', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.listStaff).mockResolvedValue({

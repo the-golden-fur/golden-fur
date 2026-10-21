@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import {
   BedDouble,
   ClipboardList,
@@ -18,16 +18,22 @@ import {
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import {
+  findPetCell,
   isPricedByPetCell,
+  packageFixedPriceForPet,
   packagePriceForPet,
+  variesByWeightAndCoat,
+  withLongStayPrice,
   servicePriceForPet,
 } from '../../utils/petMatrixPrice';
+import { PriceMatrixTable } from '../../components/PriceMatrixTable/PriceMatrixTable';
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
 import { CustomerPicker } from '../../components/CustomerPicker/CustomerPicker';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type {
   BranchSummary,
   Package,
+  PricingCell,
   Promo,
   Service,
   ServiceType,
@@ -41,6 +47,7 @@ import {
 } from '../../components/BookingSummaryPanel/BookingSummaryPanel';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StorePoliciesModal } from '../../components/StorePoliciesModal/StorePoliciesModal';
+import { Modal } from '../../../../shared/components/Modal/Modal';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
 import { CagePickerList } from '../../components/CagePickerList/CagePickerList';
@@ -57,6 +64,7 @@ import {
   BOOKING_MARK_PAID_ROLES,
   FOOD_QUANTITY_UNITS,
   MEDICATION_DOSE_UNITS,
+  ASSESSMENT_BOOKINGS_PAUSED,
   SERVICE_CATEGORIES,
   type Booking,
   type BookingGroup,
@@ -112,6 +120,7 @@ import { getHotelNightDates, formatNightLabel } from '../../utils/hotelNights';
 import { formatDuration } from '../../../../shared/utils/formatDuration';
 import styles from './CustomerBookingFlowPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 /** Stable reference for selectedServiceIds/selectedPackageIds' no-category/
  * no-picks-yet case, so those useMemo values don't return a fresh empty
@@ -133,6 +142,7 @@ const WEIGHT_CLASS_LABEL: Record<NonNullable<Pet['weight_class']>, string> = {
 const COAT_TYPE_LABEL: Record<NonNullable<Pet['coat_type']>, string> = {
   SC: 'Short coat',
   LC: 'Long coat',
+  XLC: 'Extra long coat',
 };
 
 /**
@@ -199,7 +209,6 @@ interface StepDef {
     | 'customer'
     | 'pet'
     | 'branch'
-    | 'category'
     | 'bookingType'
     | 'availability'
     | 'items'
@@ -211,10 +220,9 @@ interface StepDef {
     // scheme stay shared across the whole list - see the "OR to make things
     // easier" decision this feature is built from.
     | 'bookingsList'
-    // Promos & Coupons multiselect step (session 86): shown right before
-    // Review, once per checkout (single booking or the whole
-    // bookingsList) - see PromoCouponMultiSelect below.
-    | 'promos'
+    // Review - also where the one promo/coupon for the whole checkout
+    // (single booking or the whole bookingsList) is picked, see
+    // PromoCouponMultiSelect below.
     | 'payment';
   label: string;
 }
@@ -270,6 +278,18 @@ interface SubBookingDraft {
    * `itemsTotal` at commit time. Summed across every entry for the shared
    * Review step's group pricing. */
   itemsSubtotal: number;
+  /** The same subtotal without the Hotel long-stay rate - what it costs if
+   * the checkout is paid at checkout, which never gets that rate. Absent on
+   * a draft saved before this existed (itemsSubtotal is used instead). */
+  itemsSubtotalRegular?: number;
+  /** The free package this Hotel stay unlocks at its length (null when
+   * none) - lost when the checkout is paid at checkout. */
+  longStayFreePackage?: string | null;
+  /** Book before assessment: this booking is for a pet staff have not
+   * assessed yet and includes something priced by size/coat, so
+   * itemsSubtotal is only an estimate - nothing is paid online and it is
+   * submitted on its own. Absent on a draft saved before this existed. */
+  awaitingAssessment?: boolean;
 }
 
 const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
@@ -281,7 +301,7 @@ const CATEGORY_ICONS: Record<ServiceCategory, LucideIcon> = {
 };
 
 /** A general, plain-language definition of what each service type is, shown
- * in the Service Type step's ⓘ popover above the read-only list of services
+ * in the service type card's ⓘ popover above the read-only list of services
  * actually offered at the chosen branch. Keyed by the hardcoded
  * ServiceCategory - a custom Service Types row (key outside this list) just
  * shows its service list with no definition line. */
@@ -322,10 +342,16 @@ const DAYCARE_HOUR_PRESETS = [2, 4];
 const MAX_DAYCARE_HOURS = 12;
 
 /** Per-item weight x coat pricing: the line under a card whose price is the
- * pet's own weight x coat price, e.g. "Price for Large (L), Long Coat". */
-function petCellHint(pet: Pick<Pet, 'weight_class' | 'coat_type'>): string {
+ * pet's own weight x coat price, e.g. "Price for Large (L), Long Coat".
+ * Names the coat of the cell actually charged (findPetCell) - an Extra Long
+ * Coat pet on an item with no XLC prices reads "Long coat". */
+function petCellHint(
+  pet: Pick<Pet, 'weight_class' | 'coat_type'>,
+  cells: PricingCell[] | undefined
+): string {
   if (!pet.weight_class || !pet.coat_type) return '';
-  return `Price for ${WEIGHT_CLASS_LABEL[pet.weight_class]} (${pet.weight_class}), ${COAT_TYPE_LABEL[pet.coat_type]}`;
+  const coatType = findPetCell(cells, pet)?.coat_type ?? pet.coat_type;
+  return `Price for ${WEIGHT_CLASS_LABEL[pet.weight_class]} (${pet.weight_class}), ${COAT_TYPE_LABEL[coatType]}`;
 }
 
 /** What a Daycare booking costs for the hours booked: the service's own
@@ -513,9 +539,13 @@ function bookingDraftStorageKey(
   // v3: care instruction units + photos added quantity_unit/dose_unit as
   // required feeding/medication row fields - a pre-v3 draft's rows would
   // rehydrate missing them, same lapse-instead-of-migrate precedent as v2.
+  // v4: the Service Type step was merged into Services - a pre-v4 draft
+  // could be parked on the removed 'category' step key, so it lapses too.
+  // v5: Promos & Coupons was merged into Review - same again for a draft
+  // parked on the removed 'promos' step key.
   return isReceptionistMode
-    ? `booking-draft:staff:v3:${userId}`
-    : `booking-draft:customer:v3:${userId}`;
+    ? `booking-draft:staff:v5:${userId}`
+    : `booking-draft:customer:v5:${userId}`;
 }
 
 function readBookingDraft(key: string): PersistedBookingDraft | null {
@@ -637,6 +667,7 @@ export function CustomerBookingFlowPage() {
   const isBranchLockedStaff =
     isReceptionistMode &&
     (viewerRole === 'Receptionist' ||
+      viewerRole === 'Front Desk' ||
       viewerRole === 'Admin' ||
       viewerRole === 'Veterinarian');
 
@@ -660,7 +691,9 @@ export function CustomerBookingFlowPage() {
   // access here.
   const restrictsToPlayWalkOnly =
     isReceptionistMode &&
-    (viewerRole === 'Receptionist' || viewerRole === 'Groomer');
+    (viewerRole === 'Receptionist' ||
+      viewerRole === 'Front Desk' ||
+      viewerRole === 'Groomer');
 
   useEffect(() => {
     if (!isVeterinarianStaff || !accessToken) return;
@@ -971,6 +1004,12 @@ export function CustomerBookingFlowPage() {
   );
 
   const [showStorePolicies, setShowStorePolicies] = useState(false);
+  // Book before assessment: the notice shown when leaving the Pet step with
+  // a pet staff have not assessed yet. Acknowledged once per pet, so going
+  // Back and Next again doesn't nag.
+  const [showUnassessedNotice, setShowUnassessedNotice] = useState(false);
+  const [acknowledgedUnassessedPetIds, setAcknowledgedUnassessedPetIds] =
+    useState<string[]>([]);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1072,7 +1111,7 @@ export function CustomerBookingFlowPage() {
     });
   }, []);
 
-  // Custom change: Service Types addendum - drives the Service Type step's
+  // Custom change: Service Types addendum - drives the Services step's type picker's
   // active/inactive filtering and customer-facing labels below. An empty/
   // failed result degrades to every hardcoded ServiceCategory shown under
   // its own literal name (today's behavior, unchanged) rather than hiding
@@ -1203,8 +1242,9 @@ export function CustomerBookingFlowPage() {
     };
   }, [accessToken, selectedBranchId, canApplyDiscounts]);
 
-  // Promos & Coupons step (session 86): the acting customer's own unused,
-  // unexpired coupons - for isReceptionistMode this is the customer being
+  // Promos & Coupons picker on Review (session 86): the acting customer's
+  // own unused, unexpired coupons - for isReceptionistMode this is the
+  // customer being
   // booked FOR (effectiveCustomerId), not the logged-in staff member, same
   // resolution every other customer-scoped fetch on this page already uses.
   useEffect(() => {
@@ -1444,6 +1484,23 @@ export function CustomerBookingFlowPage() {
   const isSelectedPetAssessed = Boolean(
     selectedPet?.weight_class && selectedPet.coat_type
   );
+  // Custom change (book before assessment): a CUSTOMER may now book anything
+  // for a pet that hasn't been assessed yet - at an estimated price, paid at
+  // the counter once the pet is assessed on arrival. Staff booking on a
+  // customer's behalf keep the old rule (Initial Assessment only): the pet is
+  // usually in front of them, so they assess it first - and the server
+  // refuses a Walk-in for an unassessed pet anyway.
+  // While Assessment bookings are paused (ASSESSMENT_BOOKINGS_PAUSED) staff
+  // get the customer's rule too: book Online at the estimate, assessed on
+  // arrival - a Walk-in is assessed on the pet's profile first (see the
+  // notice on the Service step).
+  const restrictedToAssessment =
+    !ASSESSMENT_BOOKINGS_PAUSED && !isSelectedPetAssessed && isReceptionistMode;
+  // The server refuses a walk-in for an unassessed pet, and with Assessment
+  // bookings paused there's nothing else to book it as - so Walk-in is
+  // offered only once the pet has been assessed.
+  const walkInNeedsAssessment =
+    ASSESSMENT_BOOKINGS_PAUSED && !isSelectedPetAssessed;
 
   const selectedBranch = useMemo(
     () => branches.find((branch) => branch.id === selectedBranchId) ?? null,
@@ -1473,7 +1530,7 @@ export function CustomerBookingFlowPage() {
     // requires_assessed_pet=false (Initial Assessment) - Grooming/Hotel/
     // Daycare/Veterinary are always dead ends for it, so don't even offer
     // those tabs.
-    if (!isSelectedPetAssessed) {
+    if (restrictedToAssessment) {
       return ['Assessment'] as ServiceCategory[];
     }
 
@@ -1485,6 +1542,8 @@ export function CustomerBookingFlowPage() {
       (candidate) =>
         (candidate !== 'Veterinary' ||
           (selectedBranch?.is_vet_branch ?? true)) &&
+        // The Assessment Queue is archived for now - nothing to book into.
+        (candidate !== 'Assessment' || !ASSESSMENT_BOOKINGS_PAUSED) &&
         (serviceTypeByKey.get(candidate)?.is_active ?? true)
     );
 
@@ -1504,7 +1563,7 @@ export function CustomerBookingFlowPage() {
       .map((type) => type.key as ServiceCategory);
 
     return [...seeded, ...custom];
-  }, [selectedBranch, isSelectedPetAssessed, serviceTypeByKey, serviceTypes]);
+  }, [selectedBranch, restrictedToAssessment, serviceTypeByKey, serviceTypes]);
 
   // For an unassessed pet, Initial Assessment is the only thing bookable at
   // all (see availableCategories above) - once the branch's catalog has
@@ -1512,7 +1571,7 @@ export function CustomerBookingFlowPage() {
   // and click the one option in an otherwise-empty-looking Service step.
   useEffect(() => {
     if (
-      isSelectedPetAssessed ||
+      !restrictedToAssessment ||
       !selectedBranchId ||
       allServices.length === 0
     ) {
@@ -1541,24 +1600,30 @@ export function CustomerBookingFlowPage() {
     // would re-run this effect on every render instead of only when the
     // pet/branch/catalog actually change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSelectedPetAssessed, selectedPetId, selectedBranchId, allServices]);
+  }, [restrictedToAssessment, selectedPetId, selectedBranchId, allServices]);
 
   // Every service bookable for this pet (requires_assessed_pet=false ones -
   // Initial Assessment - exist ONLY for an unassessed pet; once assessed
   // they're already done and hidden, leaving only requires_assessed_pet
-  // services visible), grouped by category. Powers the Service Type step's
-  // ⓘ popover, which previews each category's list before one is picked.
+  // services visible), grouped by category. Powers the service type
+  // cards' ⓘ popover, which previews each category's list before one is picked.
   // Empty until the branch's catalog has loaded.
   const bookableServicesByCategory = useMemo(() => {
     const byCategory = new Map<string, Service[]>();
     for (const service of allServices) {
-      if (service.requires_assessed_pet !== isSelectedPetAssessed) continue;
+      // An assessed pet never sees Initial Assessment (already done); a
+      // staff-booked unassessed pet sees ONLY it. A customer's unassessed
+      // pet sees everything (book before assessment).
+      const hidden = isSelectedPetAssessed
+        ? !service.requires_assessed_pet
+        : restrictedToAssessment && service.requires_assessed_pet;
+      if (hidden) continue;
       const list = byCategory.get(service.category) ?? [];
       list.push(service);
       byCategory.set(service.category, list);
     }
     return byCategory;
-  }, [allServices, isSelectedPetAssessed]);
+  }, [allServices, isSelectedPetAssessed, restrictedToAssessment]);
 
   // The selected category's own slice of the map above - the single source
   // of truth for "what can this pet book here" so the Services step and the
@@ -1610,7 +1675,11 @@ export function CustomerBookingFlowPage() {
         price:
           category === 'Daycare'
             ? daycareBookingPrice(service, daycareHours)
-            : servicePriceForPet(service, selectedPet, serviceFixedPrice),
+            : servicePriceForPet(
+                withLongStayPrice(service, hotelNights),
+                selectedPet,
+                serviceFixedPrice
+              ),
       })),
       ...selectedPackages.map((pkg) => ({
         id: pkg.id,
@@ -1625,9 +1694,31 @@ export function CustomerBookingFlowPage() {
       serviceFixedPrice,
       category,
       daycareHours,
+      hotelNights,
       selectedPet,
     ]
   );
+
+  /** What a Hotel service card says about a long stay, e.g. "5+ nights:
+   * PHP 750.00/night + free Golden Package" - the cheaper nightly rate
+   * and/or the free package, whichever the service has. The rate is left
+   * out for a pet type on a fixed price, which the long-stay rate never
+   * replaces. null = nothing to say. */
+  function longStayNote(service: Service): string | null {
+    const minNights = service.min_nights_for_free_package;
+    if (!minNights) return null;
+
+    const perks = [
+      service.long_stay_nightly_price != null && serviceFixedPrice == null
+        ? `PHP ${Number(service.long_stay_nightly_price).toFixed(2)}/night`
+        : null,
+      service.free_package_name ? `free ${service.free_package_name}` : null,
+    ].filter(Boolean);
+
+    return perks.length > 0
+      ? `${minNights}+ nights: ${perks.join(' + ')}`
+      : null;
+  }
 
   const serviceNameById = useMemo(
     () => new Map(allServices.map((service) => [service.id, service.name])),
@@ -1673,6 +1764,18 @@ export function CustomerBookingFlowPage() {
         : packagesForCategory,
     [packagesForCategory, itemSearchQuery]
   );
+
+  // Book before assessment: the booking being configured is only an
+  // ESTIMATE when the pet is unassessed and something picked is priced by
+  // its size/coat (any package, or a service that needs an assessed pet).
+  // Initial Assessment alone is an ordinary booking, as before. Mirrors
+  // createBooking's own awaitingAssessment.
+  const currentBookingAwaitsAssessment =
+    Boolean(selectedPet) &&
+    !isSelectedPetAssessed &&
+    !isReceptionistMode &&
+    (selectedPackageIds.length > 0 ||
+      selectedServices.some((service) => service.requires_assessed_pet));
 
   // Hotel (one cage) and Daycare (one session) only ever hold a single item;
   // Grooming/Veterinary stay multi-select.
@@ -1786,13 +1889,25 @@ export function CustomerBookingFlowPage() {
   // Per-item weight x coat pricing: an item that varies by weight and coat
   // costs the pet's own cell (servicePriceForPet / packagePriceForPet), the
   // same price the server charges.
-  const itemsTotal =
+  //
+  // Hotel long-stay rate: once enough nights are chosen the Hotel service's
+  // nightly price drops to its long-stay price (withLongStayPrice), again
+  // exactly as the server does.
+  //
+  // Pay at checkout never gets the long-stay rate, so the same total is also
+  // worked out without it (longStay = false) - the Review step uses that one
+  // once "Pay at checkout" is picked.
+  const itemsTotalFor = (longStay: boolean) =>
     (selectedServices.reduce(
       (sum, service) =>
         sum +
         (category === 'Daycare'
           ? daycareBookingPrice(service, daycareHours)
-          : servicePriceForPet(service, selectedPet, serviceFixedPrice)),
+          : servicePriceForPet(
+              longStay ? withLongStayPrice(service, hotelNights) : service,
+              selectedPet,
+              serviceFixedPrice
+            )),
       0
     ) +
       selectedPackages.reduce(
@@ -1801,6 +1916,19 @@ export function CustomerBookingFlowPage() {
         0
       )) *
     hotelNightsMultiplier;
+  const itemsTotal = itemsTotalFor(true);
+
+  // The free package this Hotel stay unlocks at its length - lost with pay
+  // at checkout (mirrors resolveFreePackageAward).
+  const longStayFreePackage =
+    category === 'Hotel'
+      ? (selectedServices.find(
+          (service) =>
+            service.free_package_name &&
+            service.min_nights_for_free_package &&
+            hotelNights >= service.min_nights_for_free_package
+        )?.free_package_name ?? null)
+      : null;
 
   // ---- Multi-booking checkout: group-level pricing (Review step) ----
   //
@@ -1815,21 +1943,88 @@ export function CustomerBookingFlowPage() {
   // selectedServices/selectedPackages themselves are left untouched above -
   // the 'items' step still shows a running total for whichever booking is
   // currently being configured, which is exactly what those describe.
-  const groupServiceIds = useMemo(
-    () => bookingsList.flatMap((entry) => entry.selectedServiceIds),
+  // Book before assessment: a booking made for a pet staff have not
+  // assessed yet has only an estimated price and is paid at the counter, so
+  // it takes no part in this checkout's pricing - no promo, discount, down
+  // payment or payment scheme. Everything below prices `payableBookings`
+  // only; the awaiting ones are listed with their estimate and submitted on
+  // their own (handleSubmit).
+  const payableBookings = useMemo(
+    () => bookingsList.filter((entry) => !entry.awaitingAssessment),
     [bookingsList]
+  );
+  const awaitingAssessmentBookings = useMemo(
+    () => bookingsList.filter((entry) => entry.awaitingAssessment),
+    [bookingsList]
+  );
+  const groupServiceIds = useMemo(
+    () => payableBookings.flatMap((entry) => entry.selectedServiceIds),
+    [payableBookings]
   );
   const groupPackageIds = useMemo(
-    () => bookingsList.flatMap((entry) => entry.selectedPackageIds),
-    [bookingsList]
+    () => payableBookings.flatMap((entry) => entry.selectedPackageIds),
+    [payableBookings]
   );
   const groupCategories = useMemo(
-    () => new Set(bookingsList.map((entry) => entry.category)),
-    [bookingsList]
+    () => new Set(payableBookings.map((entry) => entry.category)),
+    [payableBookings]
   );
-  const groupSubtotal = useMemo(
-    () => bookingsList.reduce((sum, entry) => sum + entry.itemsSubtotal, 0),
-    [bookingsList]
+  // The payment scheme, decided before any group pricing below because pay
+  // at checkout changes what a Hotel stay costs (no long-stay rate).
+  //
+  // Walk-in booking flow: createBooking forces downpayment_required=false
+  // for a Walk-in booking regardless of policy_configurations - mirrored
+  // here as "skip only if EVERY booking in the list is Walk-in".
+  const downpaymentRequired =
+    payableBookings.some((entry) => entry.bookingSource !== 'Walk-in') &&
+    (downpaymentStatus?.downpayment_enabled ?? false);
+  // Shown whenever the branch requires a down payment: the customer picks
+  // whether the checkout's initial charge is the down payment (balance
+  // recorded later at the counter) or the full amount. No payment method is
+  // chosen here any more - that happens per transaction on the Transactions
+  // page.
+  //
+  // Pay at checkout: a third scheme, offered only to staff for a checkout
+  // made up entirely of walk-in Hotel/Daycare bookings (see paymentChoice.ts
+  // - a walk-in never has a down payment, so there it sits beside "Full
+  // payment" alone).
+  const payAtCheckoutAvailable = isPayAtCheckoutAvailable({
+    isStaff: isReceptionistMode,
+    enabled: downpaymentStatus?.pay_at_checkout_enabled ?? false,
+    bookings: payableBookings,
+  });
+  const effectivePaymentChoice = resolvePaymentChoice(paymentChoice, {
+    downpaymentRequired,
+    payAtCheckoutAvailable,
+  });
+  const payingAtCheckout = effectivePaymentChoice === 'pay_at_checkout';
+
+  /** A list entry's subtotal for the chosen payment scheme: pay at checkout
+   * never gets the Hotel long-stay rate (the server prices it the same way -
+   * resolveBookingItems' applyLongStayRate), so every night is the regular
+   * price there. */
+  function entrySubtotal(entry: SubBookingDraft): number {
+    return payingAtCheckout
+      ? (entry.itemsSubtotalRegular ?? entry.itemsSubtotal)
+      : entry.itemsSubtotal;
+  }
+
+  // Whether pay at checkout costs any booking in the list its long-stay
+  // rate or free package - drives the note on the Review step.
+  const payAtCheckoutLosesLongStay =
+    payingAtCheckout &&
+    payableBookings.some(
+      (entry) =>
+        (entry.itemsSubtotalRegular ?? entry.itemsSubtotal) !==
+          entry.itemsSubtotal || Boolean(entry.longStayFreePackage)
+    );
+  const payAtCheckoutLostFreePackage =
+    payingAtCheckout &&
+    payableBookings.some((entry) => Boolean(entry.longStayFreePackage));
+
+  const groupSubtotal = payableBookings.reduce(
+    (sum, entry) => sum + entrySubtotal(entry),
+    0
   );
 
   // Selectable at the payment step (booking-time discount/promo revision) -
@@ -2002,11 +2197,6 @@ export function CustomerBookingFlowPage() {
     setSelectedCouponIds([]);
   }
 
-  // What the Review step calls the chosen promo/coupon.
-  const selectedReductionName =
-    applicablePromos.find((promo) => promo.id === selectedPromoIds[0])?.name ??
-    (selectedCouponIds.length > 0 ? 'Coupon' : 'Promo');
-
   // No booking is made free by its reductions: the server refuses a
   // discount + promos + coupons selection that takes off more than the
   // allowed share (resolveDiscountAndPromos) - said here first, and Confirm
@@ -2020,7 +2210,7 @@ export function CustomerBookingFlowPage() {
   // shows/collects a shared charge even though a Veterinary entry's own
   // share is excluded server-side - see createBookingGroup's
   // requiresUpfrontCharge handling).
-  const requiresPayment = bookingsList.some(
+  const requiresPayment = payableBookings.some(
     (entry) => entry.category !== 'Veterinary'
   );
 
@@ -2041,48 +2231,27 @@ export function CustomerBookingFlowPage() {
   // (no slot-holding risk - the customer/pet is already here); mirrored
   // here as "skip only if EVERY booking in the list is Walk-in" - a group
   // with even one Online booking still needs the down-payment decision.
-  const downpaymentRequired =
-    bookingsList.some((entry) => entry.bookingSource !== 'Walk-in') &&
-    (downpaymentStatus?.downpayment_enabled ?? false);
+  // (downpaymentRequired itself is computed above groupSubtotal.)
   const downpaymentAmount = downpaymentRequired
     ? downpaymentStatus?.downpayment_type === 'Percentage'
       ? estimatedTotal * ((downpaymentStatus.downpayment_amount ?? 0) / 100)
       : Math.min(downpaymentStatus?.downpayment_amount ?? 0, estimatedTotal)
     : null;
-  // Shown whenever the branch requires a down payment: the customer picks
-  // whether the checkout's initial charge is the down payment (balance
-  // recorded later at the counter) or the full amount. No payment method is
-  // chosen here any more - that happens per transaction on the Transactions
-  // page.
-  //
-  // Pay at checkout: a third scheme, offered only to staff for a checkout
-  // made up entirely of walk-in Hotel/Daycare bookings (see paymentChoice.ts
-  // - a walk-in never has a down payment, so there it sits beside "Full
-  // payment" alone).
-  const payAtCheckoutAvailable = isPayAtCheckoutAvailable({
-    isStaff: isReceptionistMode,
-    enabled: downpaymentStatus?.pay_at_checkout_enabled ?? false,
-    bookings: bookingsList,
-  });
   // An Initial Assessment has no payment scheme to choose - it's the pet's
   // onsite first check, not a slot held by a down payment. Only when EVERY
   // booking in the list is one: a mixed group still needs the decision.
   const isAssessmentOnly =
-    bookingsList.length > 0 &&
-    bookingsList.every((entry) => entry.category === 'Assessment');
+    payableBookings.length > 0 &&
+    payableBookings.every((entry) => entry.category === 'Assessment');
   const showPaymentChoice =
     !isAssessmentOnly && (downpaymentRequired || payAtCheckoutAvailable);
-  const effectivePaymentChoice = resolvePaymentChoice(paymentChoice, {
-    downpaymentRequired,
-    payAtCheckoutAvailable,
-  });
-  const payingAtCheckout = effectivePaymentChoice === 'pay_at_checkout';
 
   // ---- Steps ----
 
   // Order (Architectural-Change-History, "Rearrange booking steps"):
-  //   Branch > Customer > Pet > Service Type > Services/Packages >
-  //   Online/Walk-in > Date & Time (+ Staff/Cage) > Confirmation.
+  //   Branch > Customer > Pet > Services (service type + its services/
+  //   packages, one step) > Online/Walk-in > Date & Time (+ Staff/Cage) >
+  //   Confirmation.
   // Services now precede the availability step so the real, item-derived
   // slot duration (slotDurationMinutes, accumulating across every selected
   // service/package) is known when the slot is picked - the availability
@@ -2106,11 +2275,8 @@ export function CustomerBookingFlowPage() {
     }
 
     list.push({ key: 'pet', label: 'Pet' });
-    // vet-bookings-queue-access: a New Consultation booking already has its
-    // service type fixed by lockedServiceCategory - nothing left to pick.
-    if (!lockedServiceCategory) {
-      list.push({ key: 'category', label: 'Service Type' });
-    }
+    // Service type and its services share this one step - the type cards sit
+    // above the services they filter (see the 'items' render case).
     list.push({ key: 'items', label: 'Services' });
 
     // Walk-in booking flow: receptionist-only, sits right before Date &
@@ -2149,15 +2315,12 @@ export function CustomerBookingFlowPage() {
     // (jumps back to 'pet') before moving on to the shared Review step.
     list.push({ key: 'bookingsList', label: 'Your bookings' });
 
-    list.push({ key: 'promos', label: 'Promos & Coupons' });
-
     list.push({ key: 'payment', label: 'Review' });
 
     return list;
   }, [
     isBranchLockedStaff,
     isReceptionistMode,
-    lockedServiceCategory,
     category,
     cagePreference,
     staffPickerUnavailable,
@@ -2209,13 +2372,12 @@ export function CustomerBookingFlowPage() {
         return selectedPetId !== '';
       case 'branch':
         return selectedBranchId !== '';
-      case 'category':
-        return category !== '';
       case 'bookingType':
-        // Always valid - bookingSource defaults to 'Online' so the step is
-        // never a hard blocker, matching "Default wizard state: bookingSource:
-        // 'Online'".
-        return true;
+        // Valid by default - bookingSource defaults to 'Online', matching
+        // "Default wizard state: bookingSource: 'Online'". The one block: a
+        // Walk-in left selected for a pet that turns out to be unassessed
+        // (picked, then the pet was changed) - see walkInNeedsAssessment.
+        return !(walkInNeedsAssessment && bookingSource === 'Walk-in');
       case 'availability':
         return (
           selectedSlot !== null &&
@@ -2264,6 +2426,20 @@ export function CustomerBookingFlowPage() {
       return;
     }
 
+    // Book before assessment: leaving the Pet step with a pet staff have not
+    // assessed yet stops on a notice first - handleUnassessedNoticeAgree does
+    // the actual advance.
+    if (
+      !isReceptionistMode &&
+      currentStep.key === 'pet' &&
+      selectedPet &&
+      !isSelectedPetAssessed &&
+      !acknowledgedUnassessedPetIds.includes(selectedPet.id)
+    ) {
+      setShowUnassessedNotice(true);
+      return;
+    }
+
     // Multi-booking checkout: leaving this booking's LAST configured step
     // ('availability' for Grooming/Veterinary/Assessment, 'hotelDetails' for
     // Hotel/Daycare) commits it into bookingsList right here, before
@@ -2284,6 +2460,14 @@ export function CustomerBookingFlowPage() {
 
   function handleStorePoliciesAgree() {
     setShowStorePolicies(false);
+    advanceTo(currentStepIndex + 1);
+  }
+
+  function handleUnassessedNoticeAgree() {
+    if (selectedPet) {
+      setAcknowledgedUnassessedPetIds((prev) => [...prev, selectedPet.id]);
+    }
+    setShowUnassessedNotice(false);
     advanceTo(currentStepIndex + 1);
   }
 
@@ -2475,12 +2659,15 @@ export function CustomerBookingFlowPage() {
         packageIds: [packageId],
       }));
     } else {
+      // Only one package per booking, even in the multi-select categories -
+      // picking another replaces the current one. Individual services stay
+      // selectable alongside it (minus the ones the package already covers).
       updateCategorySelection(category, (current) => ({
         ...current,
         serviceIds: current.serviceIds.filter(
           (id) => !packageMemberServiceIds(packageId).has(id)
         ),
-        packageIds: [...current.packageIds, packageId],
+        packageIds: [packageId],
       }));
     }
   }
@@ -2762,6 +2949,9 @@ export function CustomerBookingFlowPage() {
       hotelUniformInstructions,
       hotelPreferencesPayload,
       itemsSubtotal: itemsTotal,
+      itemsSubtotalRegular: itemsTotalFor(false),
+      longStayFreePackage,
+      awaitingAssessment: currentBookingAwaitsAssessment,
     };
 
     setBookingsList((prev) => [...prev, entry]);
@@ -2906,40 +3096,88 @@ export function CustomerBookingFlowPage() {
           : {}),
       };
 
-      // A list of exactly one booking (nobody clicked "Add another
-      // booking") still goes through the plain single-booking endpoint,
-      // unchanged - see the "group-of-1 bypasses booking_groups entirely"
-      // decision.
-      if (bookingsList.length === 1) {
+      const created: Booking[] = [];
+      const submittedEntryIds: string[] = [];
+      let createdGroup: BookingGroup | null = null;
+
+      /** One request failed part-way through. Whatever was already created
+       * stays created, so those entries leave the list - a retry then sends
+       * only what is still outstanding, never a duplicate. */
+      const stopWithError = (error: string | null) => {
+        if (submittedEntryIds.length > 0) {
+          setBookingsList((prev) =>
+            prev.filter((entry) => !submittedEntryIds.includes(entry.id))
+          );
+        }
+        const reason = friendlyBookingError(error);
+        setSubmitError(
+          created.length > 0
+            ? `${created.length} booking${created.length === 1 ? ' was' : 's were'} created, but another could not be: ${reason} The rest are still listed here - you can try again.`
+            : reason
+        );
+      };
+
+      // The bookings paid for online, exactly as before: a list of exactly
+      // one (nobody clicked "Add another booking") still goes through the
+      // plain single-booking endpoint, unchanged - see the "group-of-1
+      // bypasses booking_groups entirely" decision.
+      if (payableBookings.length === 1) {
         const result = await createBooking(accessToken, {
           ...sharedFields,
           branch_id: selectedBranchId,
-          ...subBookingDraftToPayload(bookingsList[0]),
+          ...subBookingDraftToPayload(payableBookings[0]),
         });
 
         if (result.error || !result.data) {
-          setSubmitError(friendlyBookingError(result.error));
+          stopWithError(result.error);
           return;
         }
 
-        setConfirmedBookings([result.data]);
-      } else {
+        created.push(result.data);
+        submittedEntryIds.push(payableBookings[0].id);
+      } else if (payableBookings.length > 1) {
         const groupPayload: CreateBookingGroupPayload = {
           ...sharedFields,
           branch_id: selectedBranchId,
-          bookings: bookingsList.map(subBookingDraftToPayload),
+          bookings: payableBookings.map(subBookingDraftToPayload),
         };
 
         const result = await createBookingGroup(accessToken, groupPayload);
 
         if (result.error || !result.data) {
-          setSubmitError(friendlyBookingError(result.error));
+          stopWithError(result.error);
           return;
         }
 
-        setConfirmedBookings(result.data.bookings);
-        setConfirmedBookingGroup(result.data.booking_group);
+        created.push(...result.data.bookings);
+        createdGroup = result.data.booking_group;
+        submittedEntryIds.push(...payableBookings.map((entry) => entry.id));
       }
+
+      // Book before assessment: each booking for a not-yet-assessed pet is
+      // its own booking - no shared payment to group it under, since nothing
+      // is paid online. No payment scheme, discount, promo or coupon either:
+      // its price is only an estimate until the pet is assessed.
+      for (const entry of awaitingAssessmentBookings) {
+        const result = await createBooking(accessToken, {
+          ...(isReceptionistMode && walkInCustomer
+            ? { customer_id: walkInCustomer.id }
+            : {}),
+          branch_id: selectedBranchId,
+          ...subBookingDraftToPayload(entry),
+        });
+
+        if (result.error || !result.data) {
+          stopWithError(result.error);
+          return;
+        }
+
+        created.push(result.data);
+        submittedEntryIds.push(entry.id);
+      }
+
+      setConfirmedBookings(created);
+      setConfirmedBookingGroup(createdGroup);
 
       if (draftStorageKey) clearBookingDraft(draftStorageKey);
     } catch {
@@ -2985,15 +3223,17 @@ export function CustomerBookingFlowPage() {
               timeStyle: 'short',
             })}
             .{' '}
-            {!isGroup
-              ? booking.pay_at_checkout
-                ? 'Nothing is charged yet - the bill goes to the cashier at checkout.'
-                : requiresPayment
-                  ? booking.payment_status === 'Fully Paid'
-                    ? 'Your payment has been received.'
-                    : 'Payment is due at the counter.'
-                  : "You're all set!"
-              : null}
+            {booking.awaiting_assessment
+              ? 'Nothing is charged yet. Your pet will be assessed when you arrive, and you pay the final price at the counter.'
+              : !isGroup
+                ? booking.pay_at_checkout
+                  ? 'Nothing is charged yet - the bill goes to the cashier at checkout.'
+                  : requiresPayment
+                    ? booking.payment_status === 'Fully Paid'
+                      ? 'Your payment has been received.'
+                      : 'Payment is due at the counter.'
+                    : "You're all set!"
+                : null}
           </p>
         ))}
         {isGroup ? (
@@ -3109,25 +3349,30 @@ export function CustomerBookingFlowPage() {
                     } ${hasConflict ? styles.readOnly : ''}`}
                     onClick={() => handlePetSelect(pet.id)}
                   >
-                    <span className={styles.optionTitle}>{pet.name}</span>
-                    <span className={styles.optionMeta}>
-                      {PET_TYPE_LABEL[pet.pet_type]}
-                      {pet.weight_class && pet.coat_type ? (
-                        <>
-                          {' '}
-                          &middot; {WEIGHT_CLASS_LABEL[pet.weight_class]} (
-                          {pet.weight_class}) &middot;{' '}
-                          {COAT_TYPE_LABEL[pet.coat_type]}
-                        </>
-                      ) : (
-                        <> &middot; Not yet assessed</>
-                      )}
-                    </span>
-                    {hasConflict ? (
-                      <span className={styles.optionMeta}>
-                        Already has an unresolved booking
+                    <span className={styles.petOption}>
+                      <PetAvatar name={pet.name} photoUrl={pet.photo_url} />
+                      <span className={styles.petOptionText}>
+                        <span className={styles.optionTitle}>{pet.name}</span>
+                        <span className={styles.optionMeta}>
+                          {PET_TYPE_LABEL[pet.pet_type]}
+                          {pet.weight_class && pet.coat_type ? (
+                            <>
+                              {' '}
+                              &middot; {WEIGHT_CLASS_LABEL[pet.weight_class]} (
+                              {pet.weight_class}) &middot;{' '}
+                              {COAT_TYPE_LABEL[pet.coat_type]}
+                            </>
+                          ) : (
+                            <> &middot; Not yet assessed</>
+                          )}
+                        </span>
+                        {hasConflict ? (
+                          <span className={styles.optionMeta}>
+                            Already has an unresolved booking
+                          </span>
+                        ) : null}
                       </span>
-                    ) : null}
+                    </span>
                   </button>
 
                   {conflict && isConflictExpanded ? (
@@ -3215,93 +3460,9 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
-      case 'category':
-        return (
-          <div className={styles.serviceStep}>
-            <div className={styles.categoryGrid}>
-              {availableCategories.map((candidate) => {
-                // A custom Service Types row (key outside SERVICE_CATEGORIES)
-                // has no dedicated icon - fall back to the generic one rather
-                // than rendering `undefined` as a component.
-                const Icon = CATEGORY_ICONS[candidate] ?? ClipboardList;
-                // Custom change: Service Types addendum - the row's `name`
-                // is only ever a display-label override (Admin Settings >
-                // Service Types); `candidate` (the real ServiceCategory
-                // value) is still what's submitted/compared everywhere else.
-                const label =
-                  serviceTypeByKey.get(candidate)?.name ?? candidate;
-                const description = CATEGORY_DESCRIPTIONS[candidate] ?? null;
-                const bookableServices =
-                  bookableServicesByCategory.get(candidate) ?? [];
-                return (
-                  // The ⓘ popover is a sibling of the card <button>, not a
-                  // child - a button can't nest inside a button (same layout
-                  // as the Booking Type step).
-                  <div key={candidate} className={styles.infoCardWrap}>
-                    <button
-                      type="button"
-                      aria-pressed={category === candidate}
-                      className={`${styles.categoryCard} ${
-                        category === candidate ? styles.selected : ''
-                      }`}
-                      onClick={() => handleCategorySelect(candidate)}
-                    >
-                      <Icon
-                        className={styles.categoryIcon}
-                        aria-hidden="true"
-                      />
-                      <span className={styles.categoryLabel}>{label}</span>
-                    </button>
-                    <span className={styles.infoCardBadge}>
-                      <InfoPopover label={`About ${label}`}>
-                        {description ? (
-                          <p className={styles.infoText}>{description}</p>
-                        ) : null}
-                        <p className={styles.infoHeading}>
-                          Services at this branch
-                        </p>
-                        {allServices.length === 0 ? (
-                          // Catalog still loading - don't claim the branch
-                          // offers nothing until we actually know.
-                          <LoadingState
-                            label="Loading services…"
-                            size="inline"
-                          />
-                        ) : bookableServices.length > 0 ? (
-                          // Names only - prices vary by category (Daycare is
-                          // hourly, Hotel is per-night, Grooming can use a
-                          // size/coat matrix), so the accurate figure is left
-                          // to the Services step rather than shown flat here.
-                          <ul className={styles.infoServiceList}>
-                            {bookableServices.map((service) => (
-                              <li key={service.id}>{service.name}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className={styles.infoText}>
-                            No services are listed for this branch yet.
-                          </p>
-                        )}
-                      </InfoPopover>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {selectedPet && !isSelectedPetAssessed ? (
-              <p className={styles.copy}>
-                {selectedPet.name} hasn&apos;t been assessed by staff yet
-                (weight class and coat type are recorded onsite). Only Initial
-                Assessment can be booked for this pet until then.
-              </p>
-            ) : null}
-          </div>
-        );
-
       // Walk-in booking flow: receptionist-only (steps only ever include
-      // this key in receptionist mode). Mirrors the 'category' step's own
-      // single-choice card pattern above.
+      // this key in receptionist mode). Mirrors the Services step's own
+      // single-choice service type cards below.
       case 'bookingType':
         return (
           <div className={styles.serviceStep}>
@@ -3334,6 +3495,12 @@ export function CustomerBookingFlowPage() {
                     bookingSource === 'Walk-in' ? styles.selected : ''
                   }`}
                   onClick={() => handleBookingSourceSelect('Walk-in')}
+                  disabled={walkInNeedsAssessment}
+                  aria-describedby={
+                    walkInNeedsAssessment
+                      ? 'walk-in-assessment-note'
+                      : undefined
+                  }
                 >
                   <Footprints
                     className={styles.categoryIcon}
@@ -3350,6 +3517,15 @@ export function CustomerBookingFlowPage() {
                 </span>
               </div>
             </div>
+            {walkInNeedsAssessment && selectedPet ? (
+              <p className={styles.copy} id="walk-in-assessment-note">
+                Walk-in isn&apos;t available because {selectedPet.name}{' '}
+                hasn&apos;t been assessed yet. Record {selectedPet.name}&apos;s
+                weight and coat on{' '}
+                <Link to={`/staff/pets/${selectedPet.id}`}>its profile</Link>{' '}
+                first, or book Online and assess {selectedPet.name} on arrival.
+              </p>
+            ) : null}
           </div>
         );
 
@@ -3569,6 +3745,102 @@ export function CustomerBookingFlowPage() {
       case 'items':
         return (
           <div className={styles.serviceStep}>
+            {/* vet-bookings-queue-access: a New Consultation booking already
+                has its service type fixed by lockedServiceCategory - nothing
+                left to pick, so only the services themselves show. */}
+            {!lockedServiceCategory ? (
+              <div className={styles.serviceTypePicker}>
+                <div className={styles.categoryGrid}>
+                  {availableCategories.map((candidate) => {
+                    // A custom Service Types row (key outside
+                    // SERVICE_CATEGORIES) has no dedicated icon - fall back
+                    // to the generic one rather than rendering `undefined`
+                    // as a component.
+                    const Icon = CATEGORY_ICONS[candidate] ?? ClipboardList;
+                    // Custom change: Service Types addendum - the row's
+                    // `name` is only ever a display-label override (Admin
+                    // Settings > Service Types); `candidate` (the real
+                    // ServiceCategory value) is still what's submitted/
+                    // compared everywhere else.
+                    const label =
+                      serviceTypeByKey.get(candidate)?.name ?? candidate;
+                    const description =
+                      CATEGORY_DESCRIPTIONS[candidate] ?? null;
+                    const bookableServices =
+                      bookableServicesByCategory.get(candidate) ?? [];
+                    return (
+                      // The ⓘ popover is a sibling of the card <button>,
+                      // not a child - a button can't nest inside a button
+                      // (same layout as the Booking Type step).
+                      <div key={candidate} className={styles.infoCardWrap}>
+                        <button
+                          type="button"
+                          aria-pressed={category === candidate}
+                          className={`${styles.categoryCard} ${
+                            category === candidate ? styles.selected : ''
+                          }`}
+                          onClick={() => handleCategorySelect(candidate)}
+                        >
+                          <Icon
+                            className={styles.categoryIcon}
+                            aria-hidden="true"
+                          />
+                          <span className={styles.categoryLabel}>{label}</span>
+                        </button>
+                        <span className={styles.infoCardBadge}>
+                          <InfoPopover label={`About ${label}`}>
+                            {description ? (
+                              <p className={styles.infoText}>{description}</p>
+                            ) : null}
+                            <p className={styles.infoHeading}>
+                              Services at this branch
+                            </p>
+                            {allServices.length === 0 ? (
+                              // Catalog still loading - don't claim the
+                              // branch offers nothing until we actually know.
+                              <LoadingState
+                                label="Loading services…"
+                                size="inline"
+                              />
+                            ) : bookableServices.length > 0 ? (
+                              // Names only - prices vary by category
+                              // (Daycare is hourly, Hotel is per-night,
+                              // Grooming can use a size/coat matrix), so the
+                              // accurate figure is left to the service cards
+                              // below rather than shown flat here.
+                              <ul className={styles.infoServiceList}>
+                                {bookableServices.map((service) => (
+                                  <li key={service.id}>{service.name}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className={styles.infoText}>
+                                No services are listed for this branch yet.
+                              </p>
+                            )}
+                          </InfoPopover>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {selectedPet && !isSelectedPetAssessed ? (
+                  <p className={styles.copy}>
+                    {restrictedToAssessment
+                      ? `${selectedPet.name} hasn't been assessed by staff yet (weight class and coat type are recorded onsite). Only Initial Assessment can be booked for this pet until then.`
+                      : `${selectedPet.name} hasn't been assessed yet, so the prices shown are estimates. The final price is set when ${selectedPet.name} is assessed at the branch, and you pay at the counter.`}
+                  </p>
+                ) : null}
+
+                {!category ? (
+                  <p className={styles.copy}>
+                    Choose a service type to see its services.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {category ? (
               <div className={styles.tabRow}>
                 <button
@@ -3580,7 +3852,7 @@ export function CustomerBookingFlowPage() {
                 >
                   Individual service
                 </button>
-                {packagesForCategory.length > 0 && isSelectedPetAssessed ? (
+                {packagesForCategory.length > 0 && !restrictedToAssessment ? (
                   <button
                     type="button"
                     className={`${styles.tab} ${
@@ -3599,6 +3871,12 @@ export function CustomerBookingFlowPage() {
                 {category === 'Hotel'
                   ? 'One cage per booking - selecting another will replace your current pick.'
                   : 'One session per booking - selecting another will replace your current pick.'}
+              </p>
+            ) : selectionMode === 'package' &&
+              packagesForCategory.length > 1 ? (
+              <p className={styles.copy}>
+                One package per booking - selecting another will replace your
+                current pick.
               </p>
             ) : null}
 
@@ -3639,8 +3917,22 @@ export function CustomerBookingFlowPage() {
                     service.id
                   );
                   const isDisabled = coveredByPackageName !== undefined;
+                  // Book before assessment: a grid-priced card can't show
+                  // this pet's own price yet - say it may vary and offer the
+                  // full weight x coat table behind an ⓘ.
+                  const showMatrixInfo =
+                    Boolean(selectedPet) &&
+                    !isSelectedPetAssessed &&
+                    variesByWeightAndCoat(
+                      {
+                        use_pricing_matrix: service.use_pricing_matrix,
+                        category: service.category,
+                        cells: service.service_pricing_tiers,
+                      },
+                      serviceFixedPrice
+                    );
 
-                  return (
+                  const card = (
                     <button
                       key={service.id}
                       type="button"
@@ -3652,7 +3944,11 @@ export function CustomerBookingFlowPage() {
                       } ${isDisabled ? styles.readOnly : ''}`}
                       onClick={() => toggleServiceSelect(service.id)}
                     >
-                      <span className={styles.optionTitleRow}>
+                      <span
+                        className={`${styles.optionTitleRow} ${
+                          showMatrixInfo ? styles.optionTitleRowWithInfo : ''
+                        }`}
+                      >
                         <span className={styles.optionTitle}>
                           {service.name}
                         </span>
@@ -3689,7 +3985,15 @@ export function CustomerBookingFlowPage() {
                         serviceFixedPrice
                       ) ? (
                         <span className={styles.optionMeta}>
-                          {petCellHint(selectedPet)}
+                          {petCellHint(
+                            selectedPet,
+                            service.service_pricing_tiers
+                          )}
+                        </span>
+                      ) : null}
+                      {category === 'Hotel' && longStayNote(service) ? (
+                        <span className={styles.optionMeta}>
+                          {longStayNote(service)}
                         </span>
                       ) : null}
                       {category === 'Daycare' ? (
@@ -3708,7 +4012,37 @@ export function CustomerBookingFlowPage() {
                           Included in {coveredByPackageName}
                         </span>
                       ) : null}
+                      {showMatrixInfo ? (
+                        <span className={styles.priceVariesNote}>
+                          Prices may vary with coat length and weight
+                        </span>
+                      ) : null}
                     </button>
+                  );
+
+                  if (!showMatrixInfo) return card;
+
+                  // The ⓘ is a sibling of the card <button>, not a child - a
+                  // button can't nest inside a button.
+                  return (
+                    <div key={service.id} className={styles.infoCardWrap}>
+                      {card}
+                      <span className={styles.infoCardBadge}>
+                        <InfoPopover label={`Full prices for ${service.name}`}>
+                          <span className={styles.priceInfoIntro}>
+                            The final price is set when {selectedPet?.name} is
+                            assessed at the branch.
+                          </span>
+                          <PriceMatrixTable
+                            cells={service.service_pricing_tiers}
+                            fallbackPrice={service.base_price}
+                            showExtraLongCoat={Boolean(
+                              service.has_extra_long_coat
+                            )}
+                          />
+                        </InfoPopover>
+                      </span>
+                    </div>
                   );
                 })}
               </div>
@@ -3722,8 +4056,25 @@ export function CustomerBookingFlowPage() {
                 ) : null}
                 {visiblePackagesForCategory.map((pkg) => {
                   const isChecked = selectedPackageIds.includes(pkg.id);
+                  // Book before assessment - same ⓘ price table as the
+                  // service cards. A cat's own package price is flat, so a
+                  // cat never gets it.
+                  const showMatrixInfo =
+                    Boolean(selectedPet) &&
+                    !isSelectedPetAssessed &&
+                    variesByWeightAndCoat(
+                      {
+                        use_pricing_matrix: pkg.use_pricing_matrix,
+                        cells: pkg.pricing_tiers,
+                      },
+                      packageFixedPriceForPet(
+                        pkg,
+                        selectedPet,
+                        catalogFixedPrice
+                      )
+                    );
 
-                  return (
+                  const card = (
                     <button
                       key={pkg.id}
                       type="button"
@@ -3733,7 +4084,13 @@ export function CustomerBookingFlowPage() {
                       }`}
                       onClick={() => togglePackageSelect(pkg.id)}
                     >
-                      <span className={styles.optionTitle}>{pkg.name}</span>
+                      <span
+                        className={`${styles.optionTitle} ${
+                          showMatrixInfo ? styles.optionTitleRowWithInfo : ''
+                        }`}
+                      >
+                        {pkg.name}
+                      </span>
                       <span className={styles.optionMeta}>
                         {category === 'Hotel'
                           ? `PHP ${packagePriceForPet(pkg, selectedPet, catalogFixedPrice).toFixed(2)}/night`
@@ -3746,10 +4103,16 @@ export function CustomerBookingFlowPage() {
                           cells: pkg.pricing_tiers,
                         },
                         selectedPet,
-                        catalogFixedPrice
+                        // A package's own cat price is flat too - no "price
+                        // for Large, long coat" hint for a cat on it.
+                        packageFixedPriceForPet(
+                          pkg,
+                          selectedPet,
+                          catalogFixedPrice
+                        )
                       ) ? (
                         <span className={styles.optionMeta}>
-                          {petCellHint(selectedPet)}
+                          {petCellHint(selectedPet, pkg.pricing_tiers)}
                         </span>
                       ) : null}
                       {category !== 'Hotel' ? (
@@ -3766,8 +4129,39 @@ export function CustomerBookingFlowPage() {
                             {serviceNameById.get(entry.service_id) ?? 'Service'}
                           </li>
                         ))}
+                        {/* Package extras: inclusions that are not
+                            individual services, named in Config > Packages. */}
+                        {(pkg.extras ?? []).map((extra) => (
+                          <li key={`extra:${extra}`}>{extra}</li>
+                        ))}
                       </ul>
+                      {showMatrixInfo ? (
+                        <span className={styles.priceVariesNote}>
+                          Prices may vary with coat length and weight
+                        </span>
+                      ) : null}
                     </button>
+                  );
+
+                  if (!showMatrixInfo) return card;
+
+                  return (
+                    <div key={pkg.id} className={styles.infoCardWrap}>
+                      {card}
+                      <span className={styles.infoCardBadge}>
+                        <InfoPopover label={`Full prices for ${pkg.name}`}>
+                          <span className={styles.priceInfoIntro}>
+                            The final price is set when {selectedPet?.name} is
+                            assessed at the branch.
+                          </span>
+                          <PriceMatrixTable
+                            cells={pkg.pricing_tiers}
+                            fallbackPrice={pkg.bundled_price}
+                            showExtraLongCoat={Boolean(pkg.has_extra_long_coat)}
+                          />
+                        </InfoPopover>
+                      </span>
+                    </div>
                   );
                 })}
               </div>
@@ -3776,7 +4170,9 @@ export function CustomerBookingFlowPage() {
             {category ? (
               <div className={styles.pricingRowTotal}>
                 <span>
-                  Running total (before promos/discounts)
+                  {currentBookingAwaitsAssessment
+                    ? 'Estimated total (final price after assessment)'
+                    : 'Running total (before promos/discounts)'}
                   {category === 'Hotel' && hotelNightsMultiplier > 1
                     ? ` × ${hotelNightsMultiplier} nights`
                     : category === 'Daycare' && daycareHours > 1
@@ -3798,16 +4194,20 @@ export function CustomerBookingFlowPage() {
               </div>
             ) : null}
 
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>
-                Special instructions (optional)
-              </span>
-              <textarea
-                className={styles.input}
-                value={specialInstructions}
-                onChange={(event) => setSpecialInstructions(event.target.value)}
-              />
-            </label>
+            {category ? (
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  Special instructions (optional)
+                </span>
+                <textarea
+                  className={styles.input}
+                  value={specialInstructions}
+                  onChange={(event) =>
+                    setSpecialInstructions(event.target.value)
+                  }
+                />
+              </label>
+            ) : null}
           </div>
         );
 
@@ -4433,31 +4833,6 @@ export function CustomerBookingFlowPage() {
           </div>
         );
 
-      case 'promos':
-        return (
-          <div>
-            <p className={styles.copy}>
-              Choose one promo or coupon - only one can be used per booking.
-            </p>
-            <PromoCouponMultiSelect
-              promos={applicablePromos}
-              coupons={applicableCoupons}
-              selectedPromoIds={selectedPromoIds}
-              selectedCouponIds={selectedCouponIds}
-              onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
-              onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
-              cap={promoCap}
-              cappedTotal={promoDiscount}
-              groupSubtotal={groupSubtotal}
-            />
-            {reductionOverLimit ? (
-              <p className={styles.errorBanner} role="alert">
-                {REDUCTION_LIMIT_MESSAGE}
-              </p>
-            ) : null}
-          </div>
-        );
-
       case 'payment':
         return (
           <div className={styles.paymentStep}>
@@ -4476,10 +4851,21 @@ export function CustomerBookingFlowPage() {
                     </div>
                   ))}
                   <div className={styles.pricingRow}>
-                    <span>Subtotal</span>
-                    <span>PHP {entry.itemsSubtotal.toFixed(2)}</span>
+                    <span>
+                      {entry.awaitingAssessment ? 'Estimate' : 'Subtotal'}
+                    </span>
+                    <span>PHP {entrySubtotal(entry).toFixed(2)}</span>
                   </div>
-                  {entry.category === 'Grooming' &&
+                  {entry.awaitingAssessment ? (
+                    <p className={styles.copy}>
+                      {entry.petName} hasn&apos;t been assessed yet. This is an
+                      estimate - the final price is set at the branch after
+                      assessment, and it is paid at the counter. It is not part
+                      of the total below.
+                    </p>
+                  ) : null}
+                  {!entry.awaitingAssessment &&
+                  entry.category === 'Grooming' &&
                   entry.selectedServiceNames.length > 0 ? (
                     <p className={styles.copy}>
                       Grooming price may be adjusted for your pet's size and
@@ -4510,10 +4896,33 @@ export function CustomerBookingFlowPage() {
                   </div>
                 );
               })}
-              <div className={styles.pricingRowTotal}>
-                <span>Estimated total</span>
-                <span>PHP {estimatedTotal.toFixed(2)}</span>
-              </div>
+              {payableBookings.length > 0 ? (
+                <div className={styles.pricingRowTotal}>
+                  <span>Estimated total</span>
+                  <span>PHP {estimatedTotal.toFixed(2)}</span>
+                </div>
+              ) : null}
+              {payAtCheckoutLosesLongStay ? (
+                <p className={styles.copy}>
+                  The long-stay rate doesn&apos;t apply to pay at checkout -
+                  every night is the regular price
+                  {payAtCheckoutLostFreePackage
+                    ? ', and there is no free package'
+                    : ''}
+                  .
+                </p>
+              ) : null}
+              {awaitingAssessmentBookings.length > 0 ? (
+                <div className={styles.pricingRowTotal}>
+                  <span>Pay at the counter after assessment</span>
+                  <span>
+                    from PHP{' '}
+                    {awaitingAssessmentBookings
+                      .reduce((sum, entry) => sum + entry.itemsSubtotal, 0)
+                      .toFixed(2)}
+                  </span>
+                </div>
+              ) : null}
               {showPaymentChoice &&
               effectivePaymentChoice === 'downpayment' &&
               downpaymentAmount !== null ? (
@@ -4555,11 +4964,7 @@ export function CustomerBookingFlowPage() {
                 payment scheme. The charge(s) are settled afterwards (at the
                 counter or from account credit).
               </p>
-            ) : (
-              <p className={styles.copy}>
-                No upfront payment is required for Veterinary bookings.
-              </p>
-            )}
+            ) : null}
 
             {showPaymentChoice ? (
               <fieldset className={styles.field}>
@@ -4634,25 +5039,25 @@ export function CustomerBookingFlowPage() {
               </fieldset>
             ) : null}
 
-            {/* Multiselect (session 86): picking promos/coupons moved to its
-                own step ('promos', right before this one) - this is just a
-                summary + a way back to change the selection. */}
+            {/* Promos & Coupons are picked right here, next to the totals
+                they change - they used to be a step of their own just
+                before this one. */}
             <div className={styles.field}>
               <span className={styles.fieldLabel}>Promos &amp; Coupons</span>
               <p className={styles.copy}>
-                {selectedPromoIds.length + selectedCouponIds.length === 0
-                  ? 'None selected.'
-                  : `${selectedReductionName}, -PHP ${promoDiscount.toFixed(2)}.`}
+                Choose one promo or coupon - only one can be used per booking.
               </p>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() =>
-                  advanceTo(steps.findIndex((step) => step.key === 'promos'))
-                }
-              >
-                Change
-              </button>
+              <PromoCouponMultiSelect
+                promos={applicablePromos}
+                coupons={applicableCoupons}
+                selectedPromoIds={selectedPromoIds}
+                selectedCouponIds={selectedCouponIds}
+                onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
+                onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
+                cap={promoCap}
+                cappedTotal={promoDiscount}
+                groupSubtotal={groupSubtotal}
+              />
             </div>
 
             {reductionOverLimit ? (
@@ -4701,7 +5106,6 @@ export function CustomerBookingFlowPage() {
     bookingsListStepIndex >= 0 && currentStepIndex >= bookingsListStepIndex;
   const perBookingStepKeys = new Set<StepDef['key']>([
     'pet',
-    'category',
     'items',
     'bookingType',
     'availability',
@@ -4716,13 +5120,18 @@ export function CustomerBookingFlowPage() {
         return walkInCustomer ? [{ text: walkInCustomer.full_name }] : [];
       case 'pet':
         return selectedPet ? [{ text: selectedPet.name }] : [];
-      case 'category':
-        return category ? [{ text: category }] : [];
       case 'items': {
-        const lines: BookingSummaryLine[] = selectedItemsSummary.map(
-          (item) => ({ text: item.name, amount: item.price })
-        );
-        if (category === 'Hotel' && hotelNights > 1 && lines.length > 0) {
+        if (!category) return [];
+        // The service type leads the row (it no longer has a step of its
+        // own), using the same display-label override the type cards show.
+        const lines: BookingSummaryLine[] = [
+          { text: serviceTypeByKey.get(category)?.name ?? category },
+          ...selectedItemsSummary.map((item) => ({
+            text: item.name,
+            amount: item.price,
+          })),
+        ];
+        if (category === 'Hotel' && hotelNights > 1 && lines.length > 1) {
           lines.push({ text: `× ${hotelNights} nights` });
         }
         if (category === 'Daycare' && daycareRateService && daycareHours > 1) {
@@ -4781,7 +5190,9 @@ export function CustomerBookingFlowPage() {
               },
             ]
           : [];
-      case 'promos': {
+      // Review - carries what the Promos & Coupons row used to: the
+      // discount/promo/coupon applied to the whole checkout.
+      case 'payment': {
         const lines: BookingSummaryLine[] = [];
         if (selectedDiscount) lines.push({ text: selectedDiscount.name });
         for (const promo of promos) {
@@ -4796,8 +5207,6 @@ export function CustomerBookingFlowPage() {
         }
         return lines;
       }
-      case 'payment':
-        return [];
     }
   }
 
@@ -4836,11 +5245,11 @@ export function CustomerBookingFlowPage() {
         ? formatSlotStart(entry.selectedSlot.start)
         : 'No date/time selected',
     ],
-    subtotal: entry.itemsSubtotal,
+    subtotal: entrySubtotal(entry),
   }));
 
   const summarySubtotal =
-    bookingsList.reduce((sum, entry) => sum + entry.itemsSubtotal, 0) +
+    bookingsList.reduce((sum, entry) => sum + entrySubtotal(entry), 0) +
     itemsTotal;
 
   return (
@@ -4924,6 +5333,51 @@ export function CustomerBookingFlowPage() {
               onAgree={handleStorePoliciesAgree}
             />
           ) : null}
+
+          <Modal
+            isOpen={showUnassessedNotice}
+            title={`${selectedPet?.name ?? 'This pet'} hasn't been assessed yet`}
+            onClose={() => setShowUnassessedNotice(false)}
+          >
+            <div className={styles.unassessedNotice}>
+              <p className={styles.copy}>
+                You can still book now. Here is what to expect:
+              </p>
+              <ul className={styles.unassessedNoticeList}>
+                <li>
+                  <strong>Prices may be different.</strong> Some services are
+                  priced by your pet&apos;s size and coat, so what you see while
+                  booking is an estimate.
+                </li>
+                <li>
+                  <strong>Assessment comes first.</strong> When you first arrive
+                  at the branch, our staff will weigh your pet and check its
+                  coat before the service starts.
+                </li>
+                <li>
+                  <strong>You pay at the counter.</strong> Nothing is charged
+                  online. The final price is confirmed after the assessment, and
+                  payment is made at the front desk.
+                </li>
+              </ul>
+              <div className={styles.unassessedNoticeActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setShowUnassessedNotice(false)}
+                >
+                  Go back
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={handleUnassessedNoticeAgree}
+                >
+                  I understand
+                </button>
+              </div>
+            </div>
+          </Modal>
         </section>
 
         <div className={styles.summaryColumn}>
@@ -4931,6 +5385,7 @@ export function CustomerBookingFlowPage() {
             rows={summaryRows}
             committedEntries={summaryCommittedEntries}
             subtotal={summarySubtotal}
+            reduction={discountAmount + promoDiscount}
           />
         </div>
       </div>

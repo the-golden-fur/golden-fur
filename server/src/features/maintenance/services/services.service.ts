@@ -8,7 +8,11 @@ import type {
   ServiceBranchAvailability,
 } from '../maintenance.types.ts';
 import { mergePriceCells } from '../utils/mergePriceCells.ts';
-import { assertCanSetPricingMatrix } from '../utils/assertCanSetPricingMatrix.ts';
+import {
+  assertCanSetPricingMatrix,
+  EXTRA_LONG_COAT_SUPERADMIN_ONLY,
+} from '../utils/assertCanSetPricingMatrix.ts';
+import { dropExtraLongCoat } from '../utils/extraLongCoat.ts';
 import type {
   CreateServiceInput,
   UpdateServiceInput,
@@ -25,6 +29,50 @@ function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
   (error as Error & { statusCode?: number }).statusCode = statusCode;
   throw error;
+}
+
+/**
+ * Custom change (Hotel long-stay rate, 20261013260): which package a long
+ * stay gives away, and what a long-stay night costs, are Superadmin-only -
+ * both are cross-branch business decisions, like a branch's own price
+ * (setServiceBranchPrice). An Admin's save that leaves them exactly as they
+ * were still goes through, so Admins keep editing everything else on the
+ * service - same stance as assertCanSetPricingMatrix. `requesterRole`
+ * undefined = an internal caller, which isn't checked.
+ */
+function assertCanSetLongStayDeal({
+  requesterRole,
+  next,
+  current,
+}: {
+  requesterRole: string | undefined;
+  next: {
+    free_package_name?: string | null;
+    long_stay_nightly_price?: number | null;
+  };
+  current: {
+    free_package_name: string | null;
+    long_stay_nightly_price: number | null;
+  };
+}): void {
+  if (requesterRole === undefined || requesterRole === 'Superadmin') return;
+
+  const packageChanged =
+    next.free_package_name !== undefined &&
+    (next.free_package_name ?? null) !== (current.free_package_name ?? null);
+  const nextPrice = next.long_stay_nightly_price;
+  const currentPrice = current.long_stay_nightly_price;
+  const priceChanged =
+    nextPrice !== undefined &&
+    (nextPrice === null ? null : Number(nextPrice)) !==
+      (currentPrice == null ? null : Number(currentPrice));
+
+  if (packageChanged || priceChanged) {
+    throwWithStatus(
+      403,
+      'Only a Superadmin can change the long-stay price or the free package'
+    );
+  }
 }
 
 interface ListServicesParams {
@@ -86,9 +134,12 @@ function attachPricingMatrix(
     return { ...service, service_pricing_tiers: [] };
   }
 
-  const matrix = mergePriceCells(
-    deriveGroomingMatrix(Number(service.base_price), pricingConfiguration),
-    overrides
+  const matrix = dropExtraLongCoat(
+    mergePriceCells(
+      deriveGroomingMatrix(Number(service.base_price), pricingConfiguration),
+      overrides
+    ),
+    Boolean(service.has_extra_long_coat)
   );
 
   return {
@@ -190,6 +241,17 @@ export async function createService({
     next: input.use_pricing_matrix,
     current: false,
   });
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: input.has_extra_long_coat,
+    current: false,
+    message: EXTRA_LONG_COAT_SUPERADMIN_ONLY,
+  });
+  assertCanSetLongStayDeal({
+    requesterRole,
+    next: input,
+    current: { free_package_name: null, long_stay_nightly_price: null },
+  });
 
   // Custom change (Daycare fee configuration follow-up): base_price isn't
   // admin-entered for Daycare - the validator requires first_hour_fee
@@ -248,7 +310,9 @@ export async function updateService({
 }: UpdateServiceParams): Promise<Service> {
   const { data: existing, error: lookupError } = await supabase
     .from('services')
-    .select('id, category, first_hour_fee, archived_at, use_pricing_matrix')
+    .select(
+      'id, category, first_hour_fee, archived_at, use_pricing_matrix, has_extra_long_coat, free_package_name, long_stay_nightly_price'
+    )
     .eq('id', serviceId)
     .maybeSingle();
 
@@ -262,6 +326,20 @@ export async function updateService({
     requesterRole,
     next: updates.use_pricing_matrix,
     current: Boolean(existing.use_pricing_matrix),
+  });
+  assertCanSetPricingMatrix({
+    requesterRole,
+    next: updates.has_extra_long_coat,
+    current: Boolean(existing.has_extra_long_coat),
+    message: EXTRA_LONG_COAT_SUPERADMIN_ONLY,
+  });
+  assertCanSetLongStayDeal({
+    requesterRole,
+    next: updates,
+    current: {
+      free_package_name: existing.free_package_name ?? null,
+      long_stay_nightly_price: existing.long_stay_nightly_price ?? null,
+    },
   });
 
   // Custom change (Daycare fee configuration follow-up): keep base_price
@@ -368,6 +446,9 @@ interface SetBranchPriceParams {
   branchId: string;
   /** null clears the branch's own price, back to the service's base_price. */
   priceOverride: number | null;
+  /** The branch's own Hotel long-stay nightly price (20261013260).
+   * undefined = leave it as it is; null clears it. */
+  longStayPriceOverride?: number | null;
   requesterRole: string;
 }
 
@@ -384,8 +465,16 @@ export async function setServiceBranchPrice({
   serviceId,
   branchId,
   priceOverride,
+  longStayPriceOverride,
   requesterRole,
 }: SetBranchPriceParams): Promise<ServiceBranchAvailability> {
+  const prices = {
+    price_override: priceOverride,
+    ...(longStayPriceOverride !== undefined
+      ? { long_stay_price_override: longStayPriceOverride }
+      : {}),
+  };
+
   if (requesterRole !== 'Superadmin') {
     throwWithStatus(403, "Only a Superadmin can set a branch's own price");
   }
@@ -404,7 +493,7 @@ export async function setServiceBranchPrice({
 
   const { data: updated, error: updateError } = await supabase
     .from('service_branch_availability')
-    .update({ price_override: priceOverride })
+    .update(prices)
     .eq('service_id', serviceId)
     .eq('branch_id', branchId)
     .select('*')
@@ -419,7 +508,7 @@ export async function setServiceBranchPrice({
       service_id: serviceId,
       branch_id: branchId,
       is_available: false,
-      price_override: priceOverride,
+      ...prices,
     })
     .select('*')
     .maybeSingle();

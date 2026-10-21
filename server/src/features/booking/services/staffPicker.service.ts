@@ -35,6 +35,8 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   credit_expiry_days: 30,
   credit_expiry_fixed_date: null,
   cancellation_credit_conversion_rate: 100,
+  // Mirrors the column default (20261016269).
+  cancellation_grace_minutes: 60,
   // Mirrors the seeded system-default row (20260902161): downpayment enabled
   // system-wide at 50% of the discounted net total. Only used if that row is
   // deleted out-of-band.
@@ -59,6 +61,10 @@ const DOCUMENTED_DEFAULTS: EffectivePolicy = {
   // Mirrors the column default (20260915204). Not branch-scoped in
   // practice - see getCustomerAutoDeletePolicyDays.
   customer_deactivation_auto_delete_days: 30,
+  // Mirrors the column defaults (20261015267): a booking stays Late for 30
+  // minutes after its start before it becomes No-show.
+  no_show_after_minutes: 30,
+  no_show_at_closing: false,
 };
 
 export interface ServiceTypeStaffConfig {
@@ -580,6 +586,7 @@ export async function updatePolicyConfiguration({
     credit_expiry_fixed_date: resolved.credit_expiry_fixed_date,
     cancellation_credit_conversion_rate:
       resolved.cancellation_credit_conversion_rate,
+    cancellation_grace_minutes: resolved.cancellation_grace_minutes,
     downpayment_enabled: resolved.downpayment_enabled,
     downpayment_type: resolved.downpayment_type,
     downpayment_amount: resolved.downpayment_amount,
@@ -594,6 +601,8 @@ export async function updatePolicyConfiguration({
     credit_review_mode: resolved.credit_review_mode,
     customer_deactivation_auto_delete_days:
       resolved.customer_deactivation_auto_delete_days,
+    no_show_after_minutes: resolved.no_show_after_minutes,
+    no_show_at_closing: resolved.no_show_at_closing,
   };
 
   const { data, error } = await supabase

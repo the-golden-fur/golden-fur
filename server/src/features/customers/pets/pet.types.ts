@@ -1,7 +1,29 @@
+import type {
+  BookingStatus,
+  ServiceCategory,
+} from '../../booking/booking.types.ts';
+import type {
+  PaymentChoice,
+  PaymentMethod,
+  PaymentStatus,
+  TransactionType,
+} from '../../billing/billing.types.ts';
+
 export type PetType = 'Dog' | 'Cat';
 export type PetGender = 'Male' | 'Female';
 export type PetWeightClass = 'S' | 'M' | 'L' | 'XL';
-export type PetCoatType = 'SC' | 'LC';
+export type PetCoatType = 'SC' | 'LC' | 'XLC';
+
+/** Why a customer deleted (archived) a pet - mirrors the archive_reason
+ * check constraint in ...275_custom_pet_archive_reason.sql. */
+export const PET_ARCHIVE_REASONS = [
+  'passed_away',
+  'rehomed',
+  'duplicate',
+  'no_longer_using_clinic',
+  'other',
+] as const;
+export type PetArchiveReason = (typeof PET_ARCHIVE_REASONS)[number];
 
 export interface Breed {
   id: string;
@@ -34,6 +56,10 @@ export interface Pet {
   assessed_at: string | null;
   is_active: boolean;
   archived_at: string | null;
+  /** Set when archived, cleared on restore. Not displayed yet - reserved
+   * for a future Trends tab. archive_reason_other is only set for 'other'. */
+  archive_reason: PetArchiveReason | null;
+  archive_reason_other: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -46,6 +72,12 @@ export interface PetHealthCondition {
   updated_at: string;
 }
 
+/** 'verified': entered by staff, or a customer's record staff confirmed.
+ * 'pending': added by the owner, awaiting review. 'rejected': staff turned
+ * it down (see rejection_reason). Information only - nothing in booking
+ * reads it (20261021277). */
+export type VaccinationRecordStatus = 'verified' | 'pending' | 'rejected';
+
 export interface PetVaccinationRecord {
   id: string;
   pet_id: string;
@@ -55,6 +87,23 @@ export interface PetVaccinationRecord {
   administered_by: string | null;
   notes: string | null;
   created_at: string;
+  status: VaccinationRecordStatus;
+  /** Set when the pet's owner added it themselves. */
+  reported_by_customer_id: string | null;
+  /** The card photo's path in the private 'vaccination-proofs' bucket. */
+  proof_path: string | null;
+  reviewed_by_staff_id: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  /** Short-lived signed link to the card photo - added when read, never
+   * stored. */
+  proof_url?: string | null;
+}
+
+/** A pending record in the staff review queue, with display names. */
+export interface PendingVaccinationRecord extends PetVaccinationRecord {
+  pet_name: string | null;
+  owner_name: string | null;
 }
 
 export type MedicalNoteCategory =
@@ -102,6 +151,56 @@ export interface PetPrescriptionHistoryEntry {
     quantity?: number | null;
     quantity_unit?: string | null;
     refills?: number | null;
+  }>;
+}
+
+/** One past booking on a pet's Service History - Completed, Cancelled or
+ * No-show only (upcoming bookings live on the Bookings page). Built by
+ * services/petServiceHistory.service.ts; read by both the owning customer and
+ * staff, so it stays a flat display slice rather than the whole booking. */
+export interface PetServiceHistoryEntry {
+  booking_id: string;
+  /** completed_at when the service finished, else scheduled_start. */
+  date: string;
+  service_category: ServiceCategory;
+  status: Extract<BookingStatus, 'Completed' | 'Cancelled' | 'No-show'>;
+  /** Service/package names from booking_items. */
+  items: string[];
+  branch_name: string | null;
+  /** Assigned groomer/vet; null for Hotel/Daycare/Assessment. */
+  staff_name: string | null;
+  total_price: number;
+  cancellation_reason: string | null;
+  /** Paid (Partially/Fully) transactions for this booking - its own, plus a
+   * multi-booking checkout's group transaction - oldest first. Each one is a
+   * reprintable receipt. */
+  payments: PetServiceHistoryPayment[];
+}
+
+/** The slice of a transaction its printed receipt needs. Field names match
+ * the client's TransactionRecord so the same receipt builder reads both. */
+export interface PetServiceHistoryPayment {
+  id: string;
+  booking_id: string | null;
+  booking_group_id: string | null;
+  branch_id: string;
+  transaction_type: TransactionType;
+  payment_method: PaymentMethod;
+  payment_status: Exclude<PaymentStatus, 'Pending'>;
+  payment_choice: PaymentChoice | null;
+  total_amount: number;
+  misc_sale_description: string | null;
+  created_at: string;
+  customer_name: string | null;
+  bookings: {
+    service_category: ServiceCategory;
+    pets: { name: string } | null;
+  } | null;
+  transaction_line_items: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
   }>;
 }
 

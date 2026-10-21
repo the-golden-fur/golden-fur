@@ -1,4 +1,8 @@
 import type { Transaction } from '../billing/billing.types.ts';
+import type {
+  BookingStatus,
+  ServiceCategory,
+} from '../booking/booking.types.ts';
 
 /** Admin/Supervisor see their own branch only; Superadmin gets the
  * toggle/combined option - enforced at the application layer in each
@@ -19,6 +23,7 @@ export const REPORTS_READ_ROLES: readonly string[] = [
 export const TRANSACTION_HISTORY_READ_ROLES: readonly string[] = [
   ...REPORTS_READ_ROLES,
   'Cashier',
+  'Front Desk',
 ];
 
 /** Custom change (occupied/vacant cages view for Receptionist): cage
@@ -29,12 +34,47 @@ export const TRANSACTION_HISTORY_READ_ROLES: readonly string[] = [
 export const CAGE_OCCUPANCY_READ_ROLES: readonly string[] = [
   ...REPORTS_READ_ROLES,
   'Receptionist',
+  'Front Desk',
 ];
 
 /** Modules-Features is explicit the analytics dashboard is Superadmin-only,
  * distinct from the DSR which Admin/Supervisor can also see for their own
  * branch (Issue #103 dev notes). */
 export const ANALYTICS_READ_ROLES: readonly string[] = ['Superadmin'];
+
+/** Custom change (Trends page): same audience as the DSR - Admin/Supervisor
+ * for their own branch, Superadmin for any branch or all of them. Kept as
+ * its own name so Trends can be widened/narrowed without touching the DSR. */
+export const TRENDS_READ_ROLES: readonly string[] = REPORTS_READ_ROLES;
+
+export interface TrendsCountRow {
+  name: string;
+  count: number;
+}
+
+export interface TrendsStaffRow {
+  /** null for the per-role 'Unassigned' row. */
+  staff_id: string | null;
+  display_name: string;
+  role: 'Groomer' | 'Veterinarian';
+  bookings: number;
+  completed: number;
+}
+
+/** Shape of get_trends() (20261021276). Maps are keyed by category/pet
+ * type/archive reason; lists come already sorted. */
+export interface TrendsReport {
+  bookings_total: number;
+  bookings_by_category: Record<string, number>;
+  bookings_by_pet_type: Record<string, number>;
+  registered_pets_by_type: Record<string, number>;
+  new_pets_by_type: Record<string, number>;
+  packages_booked: TrendsCountRow[];
+  top_grooming_services: TrendsCountRow[];
+  staff_bookings: TrendsStaffRow[];
+  deleted_pet_reasons: Record<string, number>;
+  deleted_pet_other_notes: { note: string; archived_at: string }[];
+}
 
 export interface DailySalesReportBreakdownRow {
   service_category: string;
@@ -69,6 +109,43 @@ export interface DailySalesReport {
   misc_sales_total: number;
 }
 
+/** Custom change (Booking Activity Report): bookings, check-ins, check-outs,
+ * no-shows and lates for a date range - reuses REPORTS_READ_ROLES rather
+ * than a dedicated role list since the viewer set is identical to the DSR's. */
+export interface BookingActivityRecord {
+  id: string;
+  branch_id: string;
+  customer_name: string | null;
+  pet_name: string | null;
+  service_category: ServiceCategory;
+  scheduled_start: string;
+  scheduled_end: string;
+  status: BookingStatus;
+  /** Set once the booking is checked in (status moves to 'In Progress') -
+   * null means it never has been, regardless of its current status. */
+  started_at: string | null;
+  /** Set once the booking is checked out (status 'Completed'). */
+  completed_at: string | null;
+}
+
+export interface BookingActivityTotals {
+  total_bookings: number;
+  pending: number;
+  late: number;
+  checked_in: number;
+  checked_out: number;
+  no_show: number;
+  cancelled: number;
+}
+
+export interface BookingActivityReport {
+  branch_id: string | null;
+  date_from: string;
+  date_to: string;
+  totals: BookingActivityTotals;
+  records: BookingActivityRecord[];
+}
+
 export interface CageOccupancyRow {
   size: 'S' | 'M' | 'L' | 'XL';
   status: 'Available' | 'Occupied' | 'Reserved' | 'Under Maintenance';
@@ -80,6 +157,13 @@ export interface CageOccupancyRow {
  * when the referenced customer_profiles row is somehow missing. */
 export interface TransactionHistoryRecord extends Transaction {
   customer_name: string | null;
+  /** The bill's itemized lines (transaction_line_items) - for the receipt. */
+  transaction_line_items?: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
 }
 
 export interface TransactionHistoryFilters {
@@ -131,4 +215,51 @@ export interface BranchComparisonRow {
   bookings_availed_total: number;
   bookings_availed_by_category: Record<string, number>;
   new_customers: number;
+}
+
+/** Custom change (Goals page): Superadmin-only, read and configure alike. */
+export const GOALS_ROLES: readonly string[] = ['Superadmin'];
+
+/** One period's block of get_goal_stats() (20261011258). */
+export interface GoalPeriodStats {
+  appointments: number;
+  by_category: Record<string, number>;
+  revenue: number;
+  /** Booking payments only - counter sales belong to no service. */
+  revenue_by_category: Record<string, number>;
+  new_customers: number;
+  packages: Record<string, number>;
+}
+
+export interface GoalStats {
+  current: GoalPeriodStats;
+  previous: GoalPeriodStats;
+}
+
+/** One goal line: a metric's actual for the selected month, the month
+ * before, and the goal it's measured against. */
+export interface GoalRow {
+  /** metric_key - what a saved growth rate/target is stored under. */
+  key: string;
+  label: string;
+  actual: number;
+  previous: number;
+  goal: number;
+  /** 'target' = an exact number typed for this month; 'growth' = previous
+   * month + growth_rate %. */
+  goal_source: 'target' | 'growth';
+  growth_rate: number;
+  target: number | null;
+}
+
+export interface GoalsReport {
+  /** YYYY-MM */
+  month: string;
+  branch_id: string | null;
+  appointments: GoalRow;
+  services: GoalRow[];
+  revenue: GoalRow;
+  revenue_services: GoalRow[];
+  new_customers: GoalRow;
+  packages: GoalRow[];
 }

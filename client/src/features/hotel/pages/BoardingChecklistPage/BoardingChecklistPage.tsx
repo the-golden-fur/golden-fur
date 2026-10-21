@@ -16,6 +16,7 @@ import { listDaycareSessions } from '../../../daycare/api/daycare.api';
 import { BoardingChecklistKanban } from '../../components/BoardingChecklistKanban/BoardingChecklistKanban';
 import styles from './BoardingChecklistPage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 
 const ALLOWED_VIEWER_ROLES = new Set([
   'Pet Assistant',
@@ -152,6 +153,9 @@ export function BoardingChecklistPage() {
           </Link>
         ) : null}
         <h1 className={styles.title}>
+          {petId && pet ? (
+            <PetAvatar name={pet.name} photoUrl={pet.photo_url} />
+          ) : null}
           {petId
             ? `Boarding Checklist — ${pet?.name ?? 'Pet'}`
             : 'Boarding Checklist'}

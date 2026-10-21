@@ -50,8 +50,15 @@ export async function sendEmail({
   subject,
   html,
 }: SendEmailParams): Promise<void> {
-  const fromHeader =
-    process.env.BREVO_FROM_EMAIL ?? 'Golden Fur <noreply@goldenfur.com>';
+  // No default sender: Brevo rejects any address that isn't verified in the
+  // account, so a made-up fallback only turned a missing setting into a
+  // vague "sender is not valid" rejection.
+  const fromHeader = process.env.BREVO_FROM_EMAIL;
+
+  if (!fromHeader) {
+    throw new Error('BREVO_FROM_EMAIL is not configured');
+  }
+
   const match = fromHeader.match(/^\s*(.*?)\s*<\s*(.+?)\s*>\s*$/);
   const senderName = match ? match[1] || undefined : undefined;
   const senderEmail = match ? match[2] : fromHeader.trim();

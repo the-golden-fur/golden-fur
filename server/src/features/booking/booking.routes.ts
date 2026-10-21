@@ -229,7 +229,7 @@ router.post(
 
 // Manual status-advance actions (booking-status revision, replacing the
 // retired 'Confirmed' payment gate): Start/Complete open to any staff role
-// except Cashier. No-show has no route - it's a lazy transition applied on
+// except Cashier. Late/No-show have no route - they're lazy transitions applied on
 // read (see booking.service.ts).
 router.post('/bookings/:id/start', statusAdvance, startBookingController);
 router.post('/bookings/:id/complete', statusAdvance, completeBookingController);

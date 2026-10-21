@@ -10,12 +10,14 @@ interface BookingConfirmationBadgeProps {
     | 'booking_source'
     | 'service_category'
     | 'cancellation_reason'
-  >;
+  > &
+    Pick<Booking, 'awaiting_assessment'>;
 }
 
 const STATE_CLASSNAME: Record<BookingConfirmationState, keyof typeof styles> = {
   Unconfirmed: 'unconfirmed',
   Confirmed: 'confirmed',
+  Late: 'late',
   'In service': 'inService',
   Completed: 'completed',
   Expired: 'expired',
@@ -36,5 +38,14 @@ export function BookingConfirmationBadge({
   booking,
 }: BookingConfirmationBadgeProps) {
   const state = deriveBookingConfirmationState(booking);
-  return <span className={styles[STATE_CLASSNAME[state]]}>{state}</span>;
+
+  // Book before assessment: an unpaid booking made for a pet staff have not
+  // assessed yet isn't "Unconfirmed" in the usual sense (nobody is late
+  // paying) - it is waiting on the assessment that sets its price.
+  const label =
+    state === 'Unconfirmed' && booking.awaiting_assessment
+      ? 'Awaiting assessment'
+      : state;
+
+  return <span className={styles[STATE_CLASSNAME[state]]}>{label}</span>;
 }

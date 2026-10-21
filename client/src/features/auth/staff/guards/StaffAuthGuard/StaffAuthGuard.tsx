@@ -15,6 +15,7 @@ import {
 } from '../../../../staff/config/staffDashboard.config';
 import type { StaffRole } from '../../../../staff/staff.types';
 import { useAuth } from '../../../../../shared/auth/providers/AuthProvider/useAuth';
+import { MANDATORY_MFA_ROLES } from '../../../../../shared/auth/mandatoryMfaRoles';
 import { getMfaStatus } from '../../../../../shared/api/mfa.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
 import { getStoredDeviceToken } from '../../../../../shared/auth/api/trustedDevice.api';
@@ -47,10 +48,11 @@ const ROLE_TIMEOUT_MS: Record<string, number> = {
   Groomer: 8 * 60 * 60 * 1000,
   Veterinarian: 8 * 60 * 60 * 1000,
   'Pet Assistant': 8 * 60 * 60 * 1000,
+  'Front Desk': 4 * 60 * 60 * 1000,
 };
 
 function requiresMfa(role: string | null) {
-  return role === 'Admin' || role === 'Supervisor' || role === 'Superadmin';
+  return Boolean(role && MANDATORY_MFA_ROLES.has(role));
 }
 
 export function StaffAuthGuard() {

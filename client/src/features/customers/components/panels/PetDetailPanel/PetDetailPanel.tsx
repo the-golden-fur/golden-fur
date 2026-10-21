@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import {
   listPetTypes,
   updatePet,
@@ -6,6 +6,10 @@ import {
 } from '../../../api/customer.api';
 import { formatRelativeTime } from '../../../../../shared/utils/formatRelativeTime';
 import { formatWeight } from '../../../../../shared/utils/petWeight';
+import {
+  isFutureDate,
+  todayDateKey,
+} from '../../../../../shared/utils/isFutureDate';
 import { ThemeContext } from '../../../../../shared/providers/ThemeProvider/themeContext';
 import { PetHealthConditionBadge } from '../../badges/PetHealthConditionBadge/PetHealthConditionBadge';
 import { BreedSelect } from '../../forms/BreedSelect/BreedSelect';
@@ -14,6 +18,7 @@ import { MedicalNoteList } from '../../lists/MedicalNoteList/MedicalNoteList';
 import { VaccinationRecordList } from '../../lists/VaccinationRecordList/VaccinationRecordList';
 import { PrescriptionList } from '../../lists/PrescriptionList/PrescriptionList';
 import { ConsultationResultList } from '../../lists/ConsultationResultList/ConsultationResultList';
+import { ServiceHistoryList } from '../../lists/ServiceHistoryList/ServiceHistoryList';
 import type {
   Pet,
   PetCoatType,
@@ -22,10 +27,12 @@ import type {
   PetTypeRow,
   PetWeightClass,
 } from '../../../customer.types';
+import { PET_COAT_TYPES } from '../../../customer.types';
+import { PetAvatar } from '../../../../../shared/components/PetAvatar/PetAvatar';
 import styles from './PetDetailPanel.module.css';
 
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
-const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
+const COAT_TYPE_OPTIONS: PetCoatType[] = PET_COAT_TYPES;
 
 interface PetDetailPanelProps {
   pet: Pet;
@@ -78,7 +85,27 @@ export function PetDetailPanel({
   );
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The photo is optional - a failed upload never blocks the save, it's
+  // just reported here once the panel is back in view mode.
+  const [photoWarning, setPhotoWarning] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // A local preview of the picked file, so the new photo shows in place
+  // before it's saved. jsdom has no createObjectURL.
+  const photoPreview = useMemo(
+    () =>
+      photoFile && typeof URL.createObjectURL === 'function'
+        ? URL.createObjectURL(photoFile)
+        : null,
+    [photoFile]
+  );
+  useEffect(
+    () => () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+    },
+    [photoPreview]
+  );
+  const shownPhoto = (isEditing ? photoPreview : null) ?? pet.photo_url;
 
   // Pet Types admin CRUD (20260912191): the edit dropdown reads the
   // admin-managed list instead of a hardcoded ['Dog', 'Cat'] array.
@@ -109,12 +136,18 @@ export function PetDetailPanel({
     setCoatType(pet.coat_type ?? '');
     setPhotoFile(null);
     setError(null);
+    setPhotoWarning(null);
     setIsEditing(true);
   }
 
   async function handleSave() {
     if (!name.trim() || !breedId) {
       setError(!name.trim() ? 'Name is required.' : 'Please select a breed.');
+      return;
+    }
+
+    if (dateOfBirth && isFutureDate(dateOfBirth)) {
+      setError('Date of birth cannot be in the future.');
       return;
     }
 
@@ -149,6 +182,10 @@ export function PetDetailPanel({
 
       if (photoResult.data?.photo_url) {
         updatedPet = { ...updatedPet, photo_url: photoResult.data.photo_url };
+      } else {
+        setPhotoWarning(
+          `Changes saved, but the photo could not be uploaded: ${photoResult.error ?? 'Photo upload failed.'}`
+        );
       }
     }
 
@@ -159,267 +196,291 @@ export function PetDetailPanel({
 
   return (
     <>
-      {pet.photo_url ? (
-        <img
-          className={styles.photo}
-          src={pet.photo_url}
-          alt={`${pet.name}'s photo`}
-        />
-      ) : null}
-
       <PetHealthConditionBadge petId={pet.id} accessToken={accessToken} />
 
-      <section className={styles.panel}>
-        {isEditing ? (
-          <div className={styles.editForm}>
-            <label className={styles.field}>
-              <span className={styles.label}>Name</span>
+      {photoWarning && !isEditing ? (
+        <p className={styles.errorBanner} role="status">
+          {photoWarning}
+        </p>
+      ) : null}
+
+      <div className={styles.layout}>
+        <section className={styles.panel}>
+          {isEditing ? (
+            <div className={styles.editForm}>
+              <label className={styles.field}>
+                <span className={styles.label}>Name</span>
+                <input
+                  className={styles.input}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              <label className={styles.field}>
+                <span className={styles.label}>Pet Type</span>
+                <select
+                  className={styles.input}
+                  value={petType}
+                  onChange={(event) => {
+                    setPetType(event.target.value as PetType);
+                    setBreedId(null);
+                  }}
+                >
+                  {petTypeOptions.map((option) => (
+                    <option key={option.id} value={option.key}>
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.field}>
+                <span className={styles.label}>Breed</span>
+                <BreedSelect
+                  petType={petType}
+                  value={breedId}
+                  onChange={setBreedId}
+                />
+              </label>
+              <label className={styles.field}>
+                <span className={styles.label}>Gender</span>
+                <select
+                  className={styles.input}
+                  value={gender}
+                  onChange={(event) =>
+                    setGender(event.target.value as PetGender)
+                  }
+                >
+                  <option value="">Not specified</option>
+                  {GENDER_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.field}>
+                <span className={styles.label}>Date of birth</span>
+                <input
+                  className={styles.input}
+                  type="date"
+                  max={todayDateKey()}
+                  value={dateOfBirth}
+                  onChange={(event) => setDateOfBirth(event.target.value)}
+                />
+              </label>
+              {isStaff ? (
+                <>
+                  <PetWeightAssessmentFields
+                    key={weightFieldsKey}
+                    accessToken={accessToken}
+                    initialKg={weightKg}
+                    onCanonicalKgChange={setWeightKg}
+                    weightClass={weightClass}
+                    onWeightClassChange={setWeightClass}
+                    overridden={weightClassOverridden}
+                    onOverriddenChange={setWeightClassOverridden}
+                    fieldClassName={styles.field}
+                    labelClassName={styles.label}
+                    inputClassName={styles.input}
+                  />
+                  <label className={styles.field}>
+                    <span className={styles.label}>Coat type</span>
+                    <select
+                      className={styles.input}
+                      value={coatType}
+                      onChange={(event) =>
+                        setCoatType(event.target.value as PetCoatType)
+                      }
+                    >
+                      <option value="">Not yet assessed</option>
+                      {COAT_TYPE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+
+              {error ? (
+                <p className={styles.errorBanner} role="alert">
+                  {error}
+                </p>
+              ) : null}
+
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.button}
+                  disabled={isSaving}
+                  onClick={() => void handleSave()}
+                >
+                  {isSaving ? 'Saving...' : 'Save changes'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.cancelButton}
+                  disabled={isSaving}
+                  onClick={() => setIsEditing(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <dl className={styles.attributes}>
+                <div className={styles.attribute}>
+                  <dt className={styles.attributeLabel}>Pet Type</dt>
+                  <dd className={styles.attributeValue}>{pet.pet_type}</dd>
+                </div>
+                {pet.gender ? (
+                  <div className={styles.attribute}>
+                    <dt className={styles.attributeLabel}>Gender</dt>
+                    <dd className={styles.attributeValue}>{pet.gender}</dd>
+                  </div>
+                ) : null}
+                {pet.date_of_birth ? (
+                  <div className={styles.attribute}>
+                    <dt className={styles.attributeLabel}>Date of birth</dt>
+                    <dd className={styles.attributeValue}>
+                      {pet.date_of_birth}
+                    </dd>
+                  </div>
+                ) : null}
+                <div className={styles.attribute}>
+                  <dt className={styles.attributeLabel}>Weight</dt>
+                  <dd className={styles.attributeValue}>
+                    {pet.weight_kg != null
+                      ? formatWeight(pet.weight_kg, weightUnit)
+                      : 'Not recorded'}
+                  </dd>
+                </div>
+                <div className={styles.attribute}>
+                  <dt className={styles.attributeLabel}>Weight class</dt>
+                  <dd className={styles.attributeValue}>
+                    {pet.weight_class ?? 'Not yet assessed'}
+                  </dd>
+                </div>
+                <div className={styles.attribute}>
+                  <dt className={styles.attributeLabel}>Coat type</dt>
+                  <dd className={styles.attributeValue}>
+                    {pet.coat_type ?? 'Not yet assessed'}
+                  </dd>
+                </div>
+                {pet.assessed_at ? (
+                  <div className={styles.attribute}>
+                    <dt className={styles.attributeLabel}>Last assessed</dt>
+                    <dd className={styles.attributeValue}>
+                      {formatRelativeTime(pet.assessed_at)}
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+              {!pet.weight_class || !pet.coat_type ? (
+                <p className={styles.copy}>
+                  This pet needs an Initial Assessment visit before most
+                  services can be booked.
+                  {isStaff
+                    ? ' Use Edit above to record the weight class and coat type once the pet has been physically weighed and checked.'
+                    : ''}
+                </p>
+              ) : null}
+
+              {canEdit ? (
+                <button
+                  type="button"
+                  className={styles.editButton}
+                  onClick={startEditing}
+                >
+                  Edit
+                </button>
+              ) : null}
+            </>
+          )}
+
+          <section
+            className={styles.section}
+            aria-labelledby="vaccination-records-title"
+          >
+            <h2 className={styles.sectionTitle} id="vaccination-records-title">
+              Vaccination Records
+            </h2>
+            <VaccinationRecordList
+              petId={pet.id}
+              accessToken={accessToken}
+              mode={isStaff ? 'staff' : canEdit ? 'owner' : 'readonly'}
+            />
+          </section>
+
+          <section
+            className={styles.section}
+            aria-labelledby="medical-notes-title"
+          >
+            <h2 className={styles.sectionTitle} id="medical-notes-title">
+              Medical Notes
+            </h2>
+            <MedicalNoteList petId={pet.id} accessToken={accessToken} />
+          </section>
+
+          <section
+            className={styles.section}
+            aria-labelledby="prescriptions-title"
+          >
+            <h2 className={styles.sectionTitle} id="prescriptions-title">
+              Prescriptions
+            </h2>
+            <PrescriptionList petId={pet.id} accessToken={accessToken} />
+          </section>
+
+          <section
+            className={styles.section}
+            aria-labelledby="consultation-results-title"
+          >
+            <h2 className={styles.sectionTitle} id="consultation-results-title">
+              Consultation Results
+            </h2>
+            <ConsultationResultList petId={pet.id} accessToken={accessToken} />
+          </section>
+
+          <section
+            className={styles.section}
+            aria-labelledby="service-history-title"
+          >
+            <h2 className={styles.sectionTitle} id="service-history-title">
+              Service History
+            </h2>
+            <ServiceHistoryList petId={pet.id} accessToken={accessToken} />
+          </section>
+        </section>
+
+        <aside className={styles.photoCard} aria-label={`${pet.name}'s photo`}>
+          {shownPhoto ? (
+            <img
+              className={styles.photo}
+              src={shownPhoto}
+              alt={`${pet.name}'s photo`}
+            />
+          ) : (
+            <PetAvatar name={pet.name} size="profile" />
+          )}
+          {isEditing ? (
+            <label className={styles.photoButton}>
+              {shownPhoto ? 'Change photo' : 'Add photo'}
               <input
-                className={styles.input}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Pet Type</span>
-              <select
-                className={styles.input}
-                value={petType}
-                onChange={(event) => {
-                  setPetType(event.target.value as PetType);
-                  setBreedId(null);
-                }}
-              >
-                {petTypeOptions.map((option) => (
-                  <option key={option.id} value={option.key}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Breed</span>
-              <BreedSelect
-                petType={petType}
-                value={breedId}
-                onChange={setBreedId}
-              />
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Photo (optional)</span>
-              <input
-                className={styles.input}
+                className={styles.fileInput}
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
+                disabled={isSaving}
                 onChange={(event) =>
                   setPhotoFile(event.target.files?.[0] ?? null)
                 }
               />
             </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Gender</span>
-              <select
-                className={styles.input}
-                value={gender}
-                onChange={(event) => setGender(event.target.value as PetGender)}
-              >
-                <option value="">Not specified</option>
-                {GENDER_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={styles.field}>
-              <span className={styles.label}>Date of birth</span>
-              <input
-                className={styles.input}
-                type="date"
-                value={dateOfBirth}
-                onChange={(event) => setDateOfBirth(event.target.value)}
-              />
-            </label>
-            {isStaff ? (
-              <>
-                <PetWeightAssessmentFields
-                  key={weightFieldsKey}
-                  accessToken={accessToken}
-                  initialKg={weightKg}
-                  onCanonicalKgChange={setWeightKg}
-                  weightClass={weightClass}
-                  onWeightClassChange={setWeightClass}
-                  overridden={weightClassOverridden}
-                  onOverriddenChange={setWeightClassOverridden}
-                  fieldClassName={styles.field}
-                  labelClassName={styles.label}
-                  inputClassName={styles.input}
-                />
-                <label className={styles.field}>
-                  <span className={styles.label}>Coat type</span>
-                  <select
-                    className={styles.input}
-                    value={coatType}
-                    onChange={(event) =>
-                      setCoatType(event.target.value as PetCoatType)
-                    }
-                  >
-                    <option value="">Not yet assessed</option>
-                    {COAT_TYPE_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            ) : null}
-
-            {error ? (
-              <p className={styles.errorBanner} role="alert">
-                {error}
-              </p>
-            ) : null}
-
-            <div className={styles.actions}>
-              <button
-                type="button"
-                className={styles.button}
-                disabled={isSaving}
-                onClick={() => void handleSave()}
-              >
-                {isSaving ? 'Saving...' : 'Save changes'}
-              </button>
-              <button
-                type="button"
-                className={styles.cancelButton}
-                disabled={isSaving}
-                onClick={() => setIsEditing(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <dl className={styles.attributes}>
-              <div className={styles.attribute}>
-                <dt className={styles.attributeLabel}>Pet Type</dt>
-                <dd className={styles.attributeValue}>{pet.pet_type}</dd>
-              </div>
-              {pet.gender ? (
-                <div className={styles.attribute}>
-                  <dt className={styles.attributeLabel}>Gender</dt>
-                  <dd className={styles.attributeValue}>{pet.gender}</dd>
-                </div>
-              ) : null}
-              {pet.date_of_birth ? (
-                <div className={styles.attribute}>
-                  <dt className={styles.attributeLabel}>Date of birth</dt>
-                  <dd className={styles.attributeValue}>{pet.date_of_birth}</dd>
-                </div>
-              ) : null}
-              <div className={styles.attribute}>
-                <dt className={styles.attributeLabel}>Weight</dt>
-                <dd className={styles.attributeValue}>
-                  {pet.weight_kg != null
-                    ? formatWeight(pet.weight_kg, weightUnit)
-                    : 'Not recorded'}
-                </dd>
-              </div>
-              <div className={styles.attribute}>
-                <dt className={styles.attributeLabel}>Weight class</dt>
-                <dd className={styles.attributeValue}>
-                  {pet.weight_class ?? 'Not yet assessed'}
-                </dd>
-              </div>
-              <div className={styles.attribute}>
-                <dt className={styles.attributeLabel}>Coat type</dt>
-                <dd className={styles.attributeValue}>
-                  {pet.coat_type ?? 'Not yet assessed'}
-                </dd>
-              </div>
-              {pet.assessed_at ? (
-                <div className={styles.attribute}>
-                  <dt className={styles.attributeLabel}>Last assessed</dt>
-                  <dd className={styles.attributeValue}>
-                    {formatRelativeTime(pet.assessed_at)}
-                  </dd>
-                </div>
-              ) : null}
-            </dl>
-            {!pet.weight_class || !pet.coat_type ? (
-              <p className={styles.copy}>
-                This pet needs an Initial Assessment visit before most services
-                can be booked.
-                {isStaff
-                  ? ' Use Edit above to record the weight class and coat type once the pet has been physically weighed and checked.'
-                  : ''}
-              </p>
-            ) : null}
-
-            {canEdit ? (
-              <button
-                type="button"
-                className={styles.editButton}
-                onClick={startEditing}
-              >
-                Edit
-              </button>
-            ) : null}
-          </>
-        )}
-
-        <section
-          className={styles.section}
-          aria-labelledby="vaccination-records-title"
-        >
-          <h2 className={styles.sectionTitle} id="vaccination-records-title">
-            Vaccination Records
-          </h2>
-          <VaccinationRecordList petId={pet.id} accessToken={accessToken} />
-        </section>
-
-        <section
-          className={styles.section}
-          aria-labelledby="medical-notes-title"
-        >
-          <h2 className={styles.sectionTitle} id="medical-notes-title">
-            Medical Notes
-          </h2>
-          <MedicalNoteList petId={pet.id} accessToken={accessToken} />
-        </section>
-
-        <section
-          className={styles.section}
-          aria-labelledby="prescriptions-title"
-        >
-          <h2 className={styles.sectionTitle} id="prescriptions-title">
-            Prescriptions
-          </h2>
-          <PrescriptionList petId={pet.id} accessToken={accessToken} />
-        </section>
-
-        <section
-          className={styles.section}
-          aria-labelledby="consultation-results-title"
-        >
-          <h2 className={styles.sectionTitle} id="consultation-results-title">
-            Consultation Results
-          </h2>
-          <ConsultationResultList petId={pet.id} accessToken={accessToken} />
-        </section>
-
-        <section
-          className={styles.section}
-          aria-labelledby="service-history-title"
-        >
-          <h2 className={styles.sectionTitle} id="service-history-title">
-            Service History
-          </h2>
-          <p className={styles.copy}>No service history yet.</p>
-        </section>
-      </section>
+          ) : null}
+        </aside>
+      </div>
     </>
   );
 }

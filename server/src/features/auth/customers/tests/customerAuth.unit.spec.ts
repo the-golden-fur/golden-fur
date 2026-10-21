@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   customerSignupController,
   customerLoginController,
+  customerForgotPasswordController,
   customerMfaEnrollController,
   customerMfaEmailRequestCodeController,
   customerMfaVerifyController,
@@ -99,6 +100,12 @@ vi.mock(
     return { ...actual, getAuthUserEmail: vi.fn() };
   }
 );
+
+vi.mock('../../../../shared/email/passwordResetEmail.ts', () => ({
+  sendPasswordResetEmail: vi.fn(),
+}));
+
+import * as passwordResetEmailModule from '../../../../shared/email/passwordResetEmail.ts';
 
 describe('customerAuth.controller', () => {
   beforeEach(() => {
@@ -718,6 +725,111 @@ describe('customerAuth.controller', () => {
           error: expect.stringContaining('no confirmed email address'),
         })
       );
+    });
+  });
+
+  describe('customerForgotPasswordController', () => {
+    it('returns 400 for an invalid email payload', async () => {
+      const req = mockRequest({ account_email: 'not-an-email' });
+      const res = mockResponse();
+
+      await customerForgotPasswordController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: 'Invalid email address' })
+      );
+    });
+
+    it('returns 200 safe response when no customer_profiles row exists (user enumeration prevention)', async () => {
+      const req = mockRequest({ account_email: 'unknown@example.com' });
+      const res = mockResponse();
+
+      (supabase.from as any).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+        }),
+      });
+
+      await customerForgotPasswordController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.any(String) })
+      );
+      expect(
+        passwordResetEmailModule.sendPasswordResetEmail
+      ).not.toHaveBeenCalled();
+    });
+
+    it('returns 200 and sends the reset email when a customer account exists', async () => {
+      const req = mockRequest({ account_email: 'customer@example.com' });
+      const res = mockResponse();
+
+      (supabase.from as any).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi
+              .fn()
+              .mockResolvedValue({ data: { id: 'cust-1' }, error: null }),
+          }),
+        }),
+      });
+
+      (supabase.auth.admin as any).generateLink = vi.fn().mockResolvedValue({
+        data: {
+          properties: {
+            action_link:
+              'https://supabase.co/auth/v1/verify?token=abc123&type=recovery&redirect_to=http://localhost:5173/reset-password',
+          },
+        },
+        error: null,
+      });
+
+      vi.mocked(
+        passwordResetEmailModule.sendPasswordResetEmail
+      ).mockResolvedValue(undefined);
+
+      await customerForgotPasswordController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.any(String) })
+      );
+      expect(
+        passwordResetEmailModule.sendPasswordResetEmail
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'customer@example.com' })
+      );
+    });
+
+    it('returns 200 safe response when Supabase fails to generate a link (best-effort, no email sent)', async () => {
+      const req = mockRequest({ account_email: 'customer@example.com' });
+      const res = mockResponse();
+
+      (supabase.from as any).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi
+              .fn()
+              .mockResolvedValue({ data: { id: 'cust-1' }, error: null }),
+          }),
+        }),
+      });
+
+      (supabase.auth.admin as any).generateLink = vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'rate limited' },
+      });
+
+      await customerForgotPasswordController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(
+        passwordResetEmailModule.sendPasswordResetEmail
+      ).not.toHaveBeenCalled();
     });
   });
 });

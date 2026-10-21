@@ -12,12 +12,15 @@ import {
   careLogEntriesController,
   checkInController,
   checkoutController,
+  closeCageOverrideController,
   completeCareLogEntryController,
   createCageController,
   currentPrescriptionController,
   hardDeleteCageController,
   listArchivedCagesController,
   listHotelStaysController,
+  previewCheckoutController,
+  reopenCageOverrideController,
   reopenCareLogEntryController,
   restoreCageController,
   startCareLogEntryController,
@@ -25,7 +28,11 @@ import {
   updateCageController,
   updateCageStatusController,
 } from './hotel.controller.ts';
-import { HOTEL_ADMIN_ROLES, HOTEL_ADVANCE_ROLES } from './hotel.types.ts';
+import {
+  HOTEL_ADMIN_ROLES,
+  HOTEL_ADVANCE_ROLES,
+  HOTEL_FRONT_DESK_ROLES,
+} from './hotel.types.ts';
 
 const router = Router();
 // Care-log-only browsing (today's checklist, the stays/cages lists needed to
@@ -159,6 +166,27 @@ router.patch(
   updateCageStatusController
 );
 
+// Custom change (front-desk cage override): front desk can close a cage to
+// customers for a short time (and reopen it early) - unlike the Admin-only
+// Under Maintenance toggle above.
+router.patch(
+  '/hotel/cage/:id/override',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_FRONT_DESK_ROLES]),
+  requireBranch,
+  closeCageOverrideController
+);
+
+router.delete(
+  '/hotel/cage/:id/override',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_FRONT_DESK_ROLES]),
+  requireBranch,
+  reopenCageOverrideController
+);
+
 // Custom change (Cage CRUD, Settings > Config)
 router.post(
   '/hotel/cages',
@@ -234,6 +262,15 @@ router.post(
   requireRole([...HOTEL_ADVANCE_ROLES]),
   requireBranch,
   checkoutController
+);
+
+router.get(
+  '/hotel/stays/:id/checkout-preview',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...HOTEL_ADVANCE_ROLES]),
+  requireBranch,
+  previewCheckoutController
 );
 
 // #79's food/medication catalogs moved to features/catalog/ (Sprint 5

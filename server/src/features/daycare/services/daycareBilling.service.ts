@@ -1,6 +1,8 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { sendStayCheckedOutNotification } from '../../hotel/services/careLogNotifications.service.ts';
 import type {
   DaycareChargeBreakdown,
+  DaycareCheckoutPreview,
   DaycareCheckoutResult,
 } from '../daycare.types.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
@@ -14,6 +16,7 @@ import { assertChecklistComplete } from '../../hotel/services/careLogCompletion.
 import { recordActivity } from '../../hotel/services/activityLog.service.ts';
 import { postDaycareOverdueCharge } from './daycareOverdueCharge.service.ts';
 import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
+import { loadRemainingBalance } from '../../billing/services/transactionPayment.service.ts';
 import { resolveEffectivePolicy } from '../../booking/services/staffPicker.service.ts';
 import { servicePriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
 
@@ -230,14 +233,22 @@ async function resolveDaycareFeeSchedule(serviceId: string | null): Promise<{
  * A session with no booking has no agreed pickup time, so no overdue fee;
  * neither does a pay-at-checkout booking, whose end time was only an
  * estimate. */
-async function resolveBookingBillingTerms(
-  bookingId: string | null
-): Promise<{ expectedCheckoutAt: Date | null; payAtCheckout: boolean }> {
-  if (!bookingId) return { expectedCheckoutAt: null, payAtCheckout: false };
+async function resolveBookingBillingTerms(bookingId: string | null): Promise<{
+  expectedCheckoutAt: Date | null;
+  payAtCheckout: boolean;
+  bookingGroupId: string | null;
+}> {
+  if (!bookingId) {
+    return {
+      expectedCheckoutAt: null,
+      payAtCheckout: false,
+      bookingGroupId: null,
+    };
+  }
 
   const { data } = await supabase
     .from('bookings')
-    .select('scheduled_end, pay_at_checkout')
+    .select('scheduled_end, pay_at_checkout, booking_group_id')
     .eq('id', bookingId)
     .maybeSingle();
 
@@ -249,7 +260,34 @@ async function resolveBookingBillingTerms(
         ? new Date(data.scheduled_end)
         : null,
     payAtCheckout,
+    bookingGroupId: data?.booking_group_id ?? null,
   };
+}
+
+/**
+ * What the booking was charged, at booking time, for its Daycare hours - the
+ * price on its own Daycare item. Null when the booking has no item to read
+ * it from, in which case checkout has nothing to compare the hours against.
+ */
+async function resolveBookedDaycareCharge(
+  bookingId: string,
+  serviceId: string | null
+): Promise<number | null> {
+  const { data: itemRows, error: itemsError } = await supabase
+    .from('booking_items')
+    .select('id, service_id, price_at_booking')
+    .eq('booking_id', bookingId);
+
+  if (itemsError) throwWithStatus(400, itemsError.message);
+
+  const items = (itemRows ?? []) as Array<{
+    service_id: string | null;
+    price_at_booking: number;
+  }>;
+  const daycareItem =
+    items.find((item) => item.service_id === serviceId) ?? items[0];
+
+  return daycareItem ? Number(daycareItem.price_at_booking) : null;
 }
 
 /**
@@ -314,6 +352,129 @@ async function postPayAtCheckoutBill(
   });
 }
 
+interface DaycareSessionRow {
+  id: string;
+  booking_id: string | null;
+  branch_id: string;
+  service_id?: string | null;
+  check_in_at: string;
+}
+
+/**
+ * The Daycare bill for a session checked out at `at`: the itemized charge
+ * plus the booking terms that decide how it is posted. Shared by checkout
+ * and its preview, so what staff are shown before checking a pet out is
+ * exactly what checkout then charges.
+ */
+async function buildDaycareBill(
+  session: DaycareSessionRow,
+  at: Date
+): Promise<{
+  breakdown: DaycareChargeBreakdown;
+  payAtCheckout: boolean;
+  bookingGroupId: string | null;
+}> {
+  const { firstHourFee, succeedingHourFee, dailyOvernightFee } =
+    await resolveDaycareFeeSchedule(session.service_id ?? null);
+  const { expectedCheckoutAt, payAtCheckout, bookingGroupId } =
+    await resolveBookingBillingTerms(session.booking_id);
+  const graceMinutes = payAtCheckout
+    ? (await resolveEffectivePolicy(session.branch_id))
+        .pay_at_checkout_grace_minutes
+    : 0;
+  const breakdown = await computeDaycareChargeBreakdown(
+    new Date(session.check_in_at),
+    at,
+    session.branch_id,
+    firstHourFee,
+    succeedingHourFee,
+    dailyOvernightFee,
+    expectedCheckoutAt,
+    graceMinutes
+  );
+
+  return { breakdown, payAtCheckout, bookingGroupId };
+}
+
+/** What a normal (not pay-at-checkout) booking's checkout adds on top of
+ * what was charged at booking: hours beyond those booked (never negative - a
+ * pet picked up early is not refunded here), the overdue fee and any night
+ * not picked up. */
+function daycareCheckoutExtras(
+  breakdown: DaycareChargeBreakdown,
+  bookedCharge: number | null
+): { additionalHoursCharge: number; total: number } {
+  const additionalHoursCharge =
+    bookedCharge === null
+      ? 0
+      : Math.max(0, breakdown.hourly_charge - bookedCharge);
+
+  return {
+    additionalHoursCharge,
+    total:
+      additionalHoursCharge +
+      breakdown.overdue_charge +
+      breakdown.overnight_charge,
+  };
+}
+
+/**
+ * The bill a Daycare session would get if it were checked out right now -
+ * shown in the check-out confirmation so staff see every line (booked hours,
+ * overdue hours, nights not picked up) before confirming. Writes nothing.
+ * For a booked session, amount_due is what Transactions would then say is
+ * owed: what is already pending plus the extras checkout would post.
+ */
+export async function previewDaycareCheckout(
+  sessionId: string
+): Promise<DaycareCheckoutPreview> {
+  const { data: session, error } = await supabase
+    .from('stays')
+    .select('*')
+    .eq('id', sessionId)
+    .eq('stay_type', 'Daycare')
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!session) throwWithStatus(404, 'Daycare session not found');
+  if (session.status === 'Completed') {
+    throwWithStatus(409, 'This daycare session is already checked out');
+  }
+
+  const now = new Date();
+  const { breakdown, payAtCheckout, bookingGroupId } = await buildDaycareBill(
+    session as DaycareSessionRow,
+    now
+  );
+
+  let bookedCharge: number | null = null;
+  let addedAtCheckout: number | null = null;
+  let amountDue: number | null = null;
+
+  if (session.booking_id && !payAtCheckout) {
+    bookedCharge = await resolveBookedDaycareCharge(
+      session.booking_id,
+      session.service_id ?? null
+    );
+    addedAtCheckout = daycareCheckoutExtras(breakdown, bookedCharge).total;
+    amountDue =
+      (await loadRemainingBalance(
+        bookingGroupId ? null : session.booking_id,
+        bookingGroupId
+      )) + addedAtCheckout;
+  }
+
+  return {
+    charge_breakdown: breakdown,
+    computed_charge: breakdown.total,
+    booked_charge: bookedCharge,
+    added_at_checkout: addedAtCheckout,
+    amount_due: amountDue,
+    billed_at_checkout: payAtCheckout,
+    as_of: now.toISOString(),
+  };
+}
+
 interface CheckOutParams {
   sessionId: string;
   /** Custom change (activity logbook): who performed the checkout - optional
@@ -359,23 +520,9 @@ export async function checkOutDaycareSession({
   await assertChecklistComplete(sessionId);
 
   const now = new Date();
-  const { firstHourFee, succeedingHourFee, dailyOvernightFee } =
-    await resolveDaycareFeeSchedule(session.service_id);
-  const { expectedCheckoutAt, payAtCheckout } =
-    await resolveBookingBillingTerms(session.booking_id);
-  const graceMinutes = payAtCheckout
-    ? (await resolveEffectivePolicy(session.branch_id))
-        .pay_at_checkout_grace_minutes
-    : 0;
-  const breakdown = await computeDaycareChargeBreakdown(
-    new Date(session.check_in_at),
-    now,
-    session.branch_id,
-    firstHourFee,
-    succeedingHourFee,
-    dailyOvernightFee,
-    expectedCheckoutAt,
-    graceMinutes
+  const { breakdown, payAtCheckout, bookingGroupId } = await buildDaycareBill(
+    session as DaycareSessionRow,
+    now
   );
   const charge = breakdown.total;
 
@@ -411,6 +558,22 @@ export async function checkOutDaycareSession({
     .update({ status: 'Available', updated_at: now.toISOString() })
     .eq('id', session.cage_id);
 
+  // The stay is durably Completed here - tell the owner before the booking
+  // sync and billing below.
+  await sendStayCheckedOutNotification({
+    stayType: 'Daycare',
+    petId: session.pet_id,
+    branchId: session.branch_id,
+    bookingId: session.booking_id,
+    checkedOutAt: now,
+  });
+
+  // What this checkout added to the booking's Transactions (a normal
+  // booking's late extras), and what its Daycare hours were charged at
+  // booking - both null when there is nothing to compare against.
+  let addedAtCheckout: number | null = null;
+  let bookedChargeAtBooking: number | null = null;
+
   // Booking-status revision: sync the linked booking to Completed/Paid now
   // that checkout happened. Walk-ins (booking_id is null) have no booking
   // row to sync at all.
@@ -438,10 +601,12 @@ export async function checkOutDaycareSession({
     }
 
     // The booking's charges were created at booking time from the hours
-    // booked, so nothing else would ever put the overdue fee on the cashier's
-    // Transactions list - post it there now. By this point the checkout
-    // itself is already saved, so a failure here is reported as exactly
-    // that rather than as a failed checkout.
+    // booked, so nothing else would ever put what checkout adds on top -
+    // hours beyond those booked (e.g. an early check-in), the overdue fee and
+    // any night(s) not picked up - on the cashier's Transactions list: post
+    // it there now, so the booking's transactions add up to computed_charge.
+    // By this point the checkout itself is already saved, so a failure here
+    // is reported as exactly that rather than as a failed checkout.
     if (payAtCheckout) {
       try {
         await postPayAtCheckoutBill(
@@ -460,22 +625,51 @@ export async function checkOutDaycareSession({
           `The pet was checked out, but the ₱${charge} bill could not be sent to the cashier - please add it at the cashier manually`
         );
       }
-    } else if (breakdown.overdue_charge > 0) {
+    } else {
+      let additionalHoursCharge = 0;
+      let lateChargesTotal =
+        breakdown.overdue_charge + breakdown.overnight_charge;
+
       try {
-        await postDaycareOverdueCharge({
-          bookingId: session.booking_id,
-          overdueHours: breakdown.overdue_hours,
-          overdueFee: breakdown.overdue_charge,
-          requesterId,
-        });
+        bookedChargeAtBooking = await resolveBookedDaycareCharge(
+          session.booking_id,
+          session.service_id ?? null
+        );
+        const extras = daycareCheckoutExtras(breakdown, bookedChargeAtBooking);
+        additionalHoursCharge = extras.additionalHoursCharge;
+        lateChargesTotal = extras.total;
+        addedAtCheckout = lateChargesTotal;
+
+        if (lateChargesTotal > 0) {
+          await postDaycareOverdueCharge({
+            bookingId: session.booking_id,
+            overdueHours: breakdown.overdue_hours,
+            overdueFee: breakdown.overdue_charge,
+            additionalHours:
+              additionalHoursCharge > 0
+                ? { charge: additionalHoursCharge }
+                : undefined,
+            overnight:
+              breakdown.overnight_charge > 0 && breakdown.nightly_rate !== null
+                ? {
+                    nights: breakdown.nights,
+                    nightlyRate: breakdown.nightly_rate,
+                    charge: breakdown.overnight_charge,
+                  }
+                : undefined,
+            requesterId,
+          });
+        }
       } catch (chargeError) {
         console.error(
-          `checkOutDaycareSession: failed to post the overdue fee for booking ${session.booking_id}:`,
+          `checkOutDaycareSession: failed to post the late checkout charges for booking ${session.booking_id}:`,
           chargeError
         );
         throwWithStatus(
           500,
-          `The pet was checked out, but the ₱${breakdown.overdue_charge} overdue checkout fee could not be added to the bill - please add it at the cashier manually`
+          breakdown.overnight_charge > 0 || additionalHoursCharge > 0
+            ? `The pet was checked out, but the ₱${lateChargesTotal} in extra checkout charges could not be added to the bill - please add it at the cashier manually`
+            : `The pet was checked out, but the ₱${breakdown.overdue_charge} overdue checkout fee could not be added to the bill - please add it at the cashier manually`
         );
       }
     }
@@ -499,9 +693,23 @@ export async function checkOutDaycareSession({
     ].join(', ')})`,
   });
 
+  // What is still owed is read back off Transactions, so the checkout screen
+  // shows the same figure the cashier will collect - computed_charge is the
+  // whole session, most of which a normal booking already paid at booking.
+  // A walk-in has no booking, so no Transactions to read.
+  const amountDue = session.booking_id
+    ? await loadRemainingBalance(
+        bookingGroupId ? null : session.booking_id,
+        bookingGroupId
+      )
+    : null;
+
   return {
     ...updated,
     charge_breakdown: breakdown,
     billed_at_checkout: payAtCheckout,
+    added_at_checkout: addedAtCheckout,
+    booked_charge: bookedChargeAtBooking,
+    amount_due: amountDue,
   } as DaycareCheckoutResult;
 }

@@ -69,6 +69,10 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** The queue's second bookings query - In Progress grooms on any date -
+ * coming back with nothing beyond what the date-ranged query found. */
+const NO_OTHER_IN_PROGRESS: QueryResult = { data: [], error: null };
+
 function bookingRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'booking-1',
@@ -217,6 +221,7 @@ describe('grooming.service (#64, booking-status revision)', () => {
           data: [{ id: 'booking-1', assigned_staff_id: GROOMER_ID }],
           error: null,
         }, // bookings
+        NO_OTHER_IN_PROGRESS,
         { data: [], error: null }, // existing sessions
         { data: null, error: null }, // insert
         {
@@ -266,6 +271,7 @@ describe('grooming.service (#64, booking-status revision)', () => {
           ],
           error: null,
         }, // bookings
+        NO_OTHER_IN_PROGRESS,
         { data: [], error: null }, // existing sessions
         { data: null, error: null }, // insert
         {
@@ -297,6 +303,48 @@ describe('grooming.service (#64, booking-status revision)', () => {
       ).toBe(true);
     });
 
+    // Custom change (book before assessment, 20261013264): such a booking
+    // cannot be paid until the pet arrives and is assessed - it is still
+    // listed, so its groomer sees the appointment coming.
+    it('includes an unpaid Pending booking that is awaiting assessment', async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              assigned_staff_id: GROOMER_ID,
+              status: 'Pending',
+              payment_status: 'Pending',
+              awaiting_assessment: true,
+            },
+          ],
+          error: null,
+        }, // bookings
+        NO_OTHER_IN_PROGRESS,
+        { data: [], error: null }, // existing sessions
+        { data: null, error: null }, // insert
+        {
+          data: [
+            {
+              ...sessionRow(),
+              booking: bookingRow({
+                scheduled_start: '2026-07-19T02:00:00.000Z',
+              }),
+            },
+          ],
+          error: null,
+        } // sessions select
+      );
+
+      const result = await listGroomingQueue({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      });
+
+      expect(result).toHaveLength(1);
+    });
+
     it('leaves out a Pending booking that has not been paid for - not a secured appointment yet', async () => {
       queueFromResults({
         data: [
@@ -321,7 +369,7 @@ describe('grooming.service (#64, booking-status revision)', () => {
       expect(recordedWrites).toHaveLength(0);
     });
 
-    it('asks for Pending and In Progress bookings, still scoped to the requesting groomer', async () => {
+    it('asks for Pending, Late and In Progress bookings, still scoped to the requesting groomer', async () => {
       const inSpy = vi.fn();
       const eqSpy = vi.fn();
 
@@ -353,12 +401,16 @@ describe('grooming.service (#64, booking-status revision)', () => {
         requesterBranchId: 'branch-1',
       });
 
-      expect(inSpy).toHaveBeenCalledWith('status', ['Pending', 'In Progress']);
+      expect(inSpy).toHaveBeenCalledWith('status', [
+        'Pending',
+        'Late',
+        'In Progress',
+      ]);
       expect(eqSpy).toHaveBeenCalledWith('assigned_staff_id', GROOMER_ID);
     });
 
-    describe('history view', () => {
-      it('lists Completed bookings, newest completion first, without the unpaid-downpayment filter', async () => {
+    describe('history view ("Past bookings")', () => {
+      it('lists Completed, No-show and Cancelled bookings, newest first, without the unpaid-downpayment filter or any session writes', async () => {
         const inSpy = vi.fn();
         const orSpy = vi.fn();
         const results: QueryResult[] = [
@@ -369,33 +421,39 @@ describe('grooming.service (#64, booking-status revision)', () => {
                 assigned_staff_id: GROOMER_ID,
                 status: 'Completed',
                 payment_status: 'Pending',
+                scheduled_start: '2026-07-19T01:00:00.000Z',
+                completed_at: '2026-07-19T03:00:00.000Z',
+                created_at: '2026-07-01T00:00:00.000Z',
               },
               {
                 id: 'booking-2',
                 assigned_staff_id: GROOMER_ID,
                 status: 'Completed',
                 payment_status: 'Fully Paid',
+                scheduled_start: '2026-07-19T07:00:00.000Z',
+                completed_at: '2026-07-19T09:00:00.000Z',
+                created_at: '2026-07-01T00:00:00.000Z',
+              },
+              {
+                // Never completed, never reached the queue - no session row.
+                id: 'booking-3',
+                assigned_staff_id: GROOMER_ID,
+                status: 'No-show',
+                payment_status: 'Pending',
+                scheduled_start: '2026-07-19T05:00:00.000Z',
+                completed_at: null,
+                created_at: '2026-07-01T00:00:00.000Z',
               },
             ],
             error: null,
           }, // bookings
           {
-            data: [{ booking_id: 'booking-1' }, { booking_id: 'booking-2' }],
-            error: null,
-          }, // existing sessions - nothing to create
-          {
             data: [
-              {
-                ...sessionRow({ id: 'session-1', booking_id: 'booking-1' }),
-                booking: { completed_at: '2026-07-19T03:00:00.000Z' },
-              },
-              {
-                ...sessionRow({ id: 'session-2', booking_id: 'booking-2' }),
-                booking: { completed_at: '2026-07-19T09:00:00.000Z' },
-              },
+              sessionRow({ id: 'session-1', booking_id: 'booking-1' }),
+              sessionRow({ id: 'session-2', booking_id: 'booking-2' }),
             ],
             error: null,
-          }, // sessions select
+          }, // existing sessions
         ];
 
         vi.mocked(supabase.from).mockImplementation(((table: string) => {
@@ -426,12 +484,184 @@ describe('grooming.service (#64, booking-status revision)', () => {
           view: 'history',
         });
 
-        expect(inSpy).toHaveBeenCalledWith('status', ['Completed']);
+        expect(inSpy).toHaveBeenCalledWith('status', [
+          'Completed',
+          'No-show',
+          'Cancelled',
+        ]);
         expect(orSpy).not.toHaveBeenCalled();
-        // The unpaid Completed booking is still part of the record.
+        expect(recordedWrites).toHaveLength(0);
+        // Newest first - completed_at, or scheduled_start for the No-show.
+        // The unpaid Completed booking is still part of the record, and the
+        // No-show comes back keyed by its booking id.
         expect(result.map((session) => session.id)).toEqual([
           'session-2',
+          'booking-3',
           'session-1',
+        ]);
+        expect(result[1].booking?.status).toBe('No-show');
+      });
+    });
+
+    it('history never reaches past now, even for "All dates"', async () => {
+      const ltSpy = vi.fn();
+
+      vi.mocked(supabase.from).mockImplementation((() => {
+        const builder: Record<string, unknown> = {};
+        for (const method of ['select', 'eq', 'in', 'gte', 'or']) {
+          builder[method] = vi.fn(() => builder);
+        }
+        builder.lt = vi.fn((column: string, value: unknown) => {
+          ltSpy(column, value);
+          return builder;
+        });
+        builder.then = (resolve: (_result: QueryResult) => void) =>
+          resolve({ data: [], error: null });
+        return builder;
+      }) as never);
+
+      const before = Date.now();
+      await listGroomingQueue({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+        allDates: true,
+        view: 'history',
+      });
+      const after = Date.now();
+
+      const [, upperBound] = ltSpy.mock.calls[0] as [string, string];
+      const upperMs = new Date(upperBound).getTime();
+      expect(upperMs).toBeGreaterThanOrEqual(before);
+      expect(upperMs).toBeLessThanOrEqual(after);
+    });
+
+    describe('started but not completed (In Progress)', () => {
+      it('is listed even when scheduled outside the date range, and only once if both queries find it', async () => {
+        queueFromResults(
+          {
+            data: [
+              {
+                id: 'booking-today',
+                assigned_staff_id: GROOMER_ID,
+                status: 'In Progress',
+                payment_status: 'Fully Paid',
+              },
+            ],
+            error: null,
+          }, // today's bookings
+          {
+            data: [
+              {
+                id: 'booking-today',
+                assigned_staff_id: GROOMER_ID,
+                status: 'In Progress',
+                payment_status: 'Fully Paid',
+              },
+              {
+                id: 'booking-yesterday',
+                assigned_staff_id: GROOMER_ID,
+                status: 'In Progress',
+                payment_status: 'Fully Paid',
+              },
+            ],
+            error: null,
+          }, // every In Progress groom
+          {
+            data: [
+              { booking_id: 'booking-today' },
+              { booking_id: 'booking-yesterday' },
+            ],
+            error: null,
+          }, // existing sessions
+          { data: [], error: null } // sessions select
+        );
+
+        await listGroomingQueue({
+          requesterId: GROOMER_ID,
+          requesterRole: 'Groomer',
+          requesterBranchId: 'branch-1',
+        });
+
+        const sessionsSelect = vi.mocked(supabase.from).mock.results[3]
+          .value as { in: ReturnType<typeof vi.fn> };
+        expect(sessionsSelect.in).toHaveBeenCalledWith('booking_id', [
+          'booking-today',
+          'booking-yesterday',
+        ]);
+      });
+
+      it('always sorts first, ahead of a lower queue_position - the longest-running at the top', async () => {
+        queueFromResults(
+          {
+            data: [
+              { id: 'booking-1', assigned_staff_id: GROOMER_ID },
+              { id: 'booking-2', assigned_staff_id: GROOMER_ID },
+              { id: 'booking-3', assigned_staff_id: GROOMER_ID },
+            ],
+            error: null,
+          },
+          NO_OTHER_IN_PROGRESS,
+          {
+            data: [
+              { booking_id: 'booking-1' },
+              { booking_id: 'booking-2' },
+              { booking_id: 'booking-3' },
+            ],
+            error: null,
+          },
+          {
+            data: [
+              {
+                ...sessionRow({
+                  id: 'session-pending',
+                  booking_id: 'booking-1',
+                }),
+                queue_position: 1,
+                booking: bookingRow({
+                  status: 'Pending',
+                  scheduled_start: '2026-07-19T01:00:00.000Z',
+                }),
+              },
+              {
+                ...sessionRow({
+                  id: 'session-started-late',
+                  booking_id: 'booking-2',
+                }),
+                queue_position: 5,
+                booking: bookingRow({
+                  status: 'In Progress',
+                  scheduled_start: '2026-07-19T05:00:00.000Z',
+                  started_at: '2026-07-19T05:10:00.000Z',
+                }),
+              },
+              {
+                ...sessionRow({
+                  id: 'session-started-early',
+                  booking_id: 'booking-3',
+                }),
+                queue_position: 9,
+                booking: bookingRow({
+                  status: 'In Progress',
+                  scheduled_start: '2026-07-18T05:00:00.000Z',
+                  started_at: '2026-07-18T05:10:00.000Z',
+                }),
+              },
+            ],
+            error: null,
+          }
+        );
+
+        const result = await listGroomingQueue({
+          requesterId: GROOMER_ID,
+          requesterRole: 'Groomer',
+          requesterBranchId: 'branch-1',
+        });
+
+        expect(result.map((session) => session.id)).toEqual([
+          'session-started-early',
+          'session-started-late',
+          'session-pending',
         ]);
       });
     });
@@ -514,6 +744,7 @@ describe('grooming.service (#64, booking-status revision)', () => {
           ],
           error: null,
         },
+        NO_OTHER_IN_PROGRESS,
         {
           data: [{ booking_id: 'booking-1' }, { booking_id: 'booking-2' }],
           error: null,

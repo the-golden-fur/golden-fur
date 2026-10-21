@@ -1,10 +1,27 @@
+/* Full width of the content area - the pet table has six columns plus
+   Delete, and a centred 60rem column made it scroll sideways on desktop. */
 .page {
   composes: animate-fade-in from global;
   display: grid;
   gap: var(--space-4);
-  max-width: 40rem;
-  margin: 0 auto;
+  min-width: 0;
   padding: var(--space-4) var(--space-2);
+}
+
+@media (min-width: 64rem) {
+  .page {
+    padding-inline: var(--space-4);
+  }
+}
+
+/* Title on the left, "Add a pet" on the right - wraps under the title on
+   a narrow screen. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
 .title {
@@ -21,14 +38,34 @@
   font-size: var(--text-sm);
 }
 
+/* Sits straight on the page (no card chrome). min-width: 0 lets the grid
+   track shrink to the screen instead of growing to the table's width. */
 .panel {
   display: grid;
   gap: var(--space-3);
-  background: var(--color-bg-secondary);
+  min-width: 0;
+}
+
+/* The Add a pet form keeps a comfortable field width inside the wider
+   page. */
+/* "Add a pet" popup's Cancel - outlined, below the form's own Add pet. */
+.cancelButton {
+  margin-top: var(--space-2);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-  padding: var(--space-4);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-button);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-3);
+  width: fit-content;
+}
+
+.cancelButton:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-text-secondary);
 }
 
 .petsGrid {
@@ -72,6 +109,9 @@
 }
 
 .petLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--color-text-primary);
   font-weight: var(--weight-semibold);
   text-decoration: none;
@@ -115,6 +155,127 @@
   transform: translateY(-1px);
   filter: brightness(1.05);
   box-shadow: var(--shadow-md);
+}
+
+/* A pet's unresolved booking - a pill-shaped button in the pending-booking
+   colours, so it reads as "something's still open" and as clickable. */
+.bookingLink {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--color-booking-pending-bg);
+  color: var(--color-booking-pending-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-2);
+  text-align: left;
+}
+
+.bookingLink:hover {
+  border-color: var(--color-booking-pending-text);
+}
+
+.bookingLink:focus-visible {
+  outline: 2px solid var(--color-booking-pending-text);
+  outline-offset: 2px;
+}
+
+/* Table's trailing Delete action - labelled and in the error colour so
+   it reads as a destructive button at a glance, outlined (not filled) so
+   it doesn't compete with the pet's name. */
+.deleteButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Centred in its cell (the shared table right-aligns action cells). */
+  width: fit-content;
+  margin-inline: auto;
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-error-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  text-align: center;
+  padding: var(--space-1) var(--space-2);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.deleteButton:hover,
+.deleteButton:focus-visible {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+.deleteButton:focus-visible {
+  outline: 2px solid var(--color-error-text);
+  outline-offset: 2px;
+}
+
+.deleteWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.deleteWarningIcon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--color-error-text);
+}
+
+/* Delete dialog's "why" question - plain stacked radios under the
+   warning, no extra box, so the warning stays the first thing read. */
+.reasonGroup {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.reasonLegend {
+  margin-bottom: var(--space-1);
+  padding: 0;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.reasonOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.reasonOther {
+  display: grid;
+  gap: var(--space-0-5);
+  margin-top: var(--space-1);
+}
+
+.reasonTextarea {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+  resize: vertical;
 }
 
 .errorBanner,

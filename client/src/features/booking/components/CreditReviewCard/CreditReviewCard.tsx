@@ -1,9 +1,11 @@
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import type { CreditReviewQueueItem } from '../../booking.types';
 import styles from './CreditReviewCard.module.css';
 
 interface CreditReviewCardProps {
   item: CreditReviewQueueItem;
   petName: string;
+  petPhotoUrl?: string | null;
   ownerName: string;
   onApprove: () => void;
   onDeny: () => void;
@@ -23,6 +25,7 @@ function formatDate(iso: string | null): string {
 export function CreditReviewCard({
   item,
   petName,
+  petPhotoUrl,
   ownerName,
   onApprove,
   onDeny,
@@ -37,7 +40,10 @@ export function CreditReviewCard({
   return (
     <article className={styles.card}>
       <div className={styles.header}>
-        <h3 className={styles.name}>{petName}</h3>
+        <div className={styles.identity}>
+          <PetAvatar name={petName} photoUrl={petPhotoUrl} size="sm" />
+          <h3 className={styles.name}>{petName}</h3>
+        </div>
         <span className={styles.categoryBadge}>{booking.service_category}</span>
       </div>
 

@@ -116,6 +116,97 @@ export async function setCageMaintenanceStatus(
   return withFlattenedPetTypes(updated);
 }
 
+/**
+ * Custom change (front-desk cage override, 20261019273): closes an Available
+ * cage to customers until now + minutes. Front desk/admin roles only -
+ * enforced at the route layer, like setCageMaintenanceStatus. Calling it on
+ * a cage that is already closed simply replaces the end time, so the same
+ * action extends or shortens a closure. Reopens on its own once
+ * closed_until passes; reopenCage ends it early.
+ */
+export async function closeCageTemporarily({
+  cageId,
+  branchId,
+  minutes,
+  staffId,
+}: {
+  cageId: string;
+  branchId: string;
+  minutes: number;
+  staffId: string;
+}): Promise<Cage> {
+  const now = Date.now();
+
+  const { data: updated, error } = await supabase
+    .from('cages')
+    .update({
+      closed_until: new Date(now + minutes * 60_000).toISOString(),
+      closed_by_staff_id: staffId,
+      updated_at: new Date(now).toISOString(),
+    })
+    .eq('id', cageId)
+    .eq('branch_id', branchId)
+    .is('archived_at', null)
+    .eq('status', 'Available')
+    .select(CAGE_SELECT_WITH_PET_TYPES)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!updated) {
+    throwWithStatus(409, 'Only an Available cage can be closed temporarily');
+  }
+
+  return withFlattenedPetTypes(updated);
+}
+
+/** Custom change (front-desk cage override): ends a temporary closure early.
+ *
+ * Also frees a cage left stuck as Occupied with no pet in it - a check-in
+ * that claimed the cage (assignCage) but died before its stays row was
+ * written or its releaseCage ran. Only when no Active stay points at the
+ * cage, so a cage with a real pet in it is never freed. */
+export async function reopenCage(
+  cageId: string,
+  branchId: string
+): Promise<Cage> {
+  const { count: activeStays, error: staysError } = await supabase
+    .from('stays')
+    .select('id', { count: 'exact', head: true })
+    .eq('cage_id', cageId)
+    .eq('status', 'Active');
+
+  if (staysError) throwWithStatus(400, staysError.message);
+
+  if (!activeStays) {
+    const { error: releaseError } = await supabase
+      .from('cages')
+      .update({ status: 'Available', updated_at: new Date().toISOString() })
+      .eq('id', cageId)
+      .eq('branch_id', branchId)
+      .eq('status', 'Occupied');
+
+    if (releaseError) throwWithStatus(400, releaseError.message);
+  }
+
+  const { data: updated, error } = await supabase
+    .from('cages')
+    .update({
+      closed_until: null,
+      closed_by_staff_id: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', cageId)
+    .eq('branch_id', branchId)
+    .is('archived_at', null)
+    .select(CAGE_SELECT_WITH_PET_TYPES)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!updated) throwWithStatus(404, 'Cage not found');
+
+  return withFlattenedPetTypes(updated);
+}
+
 interface CreateCageParams {
   branchId: string;
   cageLabel: string;

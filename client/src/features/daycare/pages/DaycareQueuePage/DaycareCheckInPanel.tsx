@@ -3,6 +3,12 @@ import type { Booking } from '../../../booking/booking.types';
 import { checkInDaycareSession } from '../../api/daycare.api';
 import { getCageSuggestion } from '../../../hotel/api/hotel.api';
 import { CageStatusGrid } from '../../../hotel/components/CageStatusGrid/CageStatusGrid';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
+import {
+  describeCageSizeMismatch,
+  getCageSizeFit,
+  isCageSizeMismatch,
+} from '../../../../shared/utils/cageSizeFit';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import { formatTimeValue } from '../../../hotel/components/TimeInput/formatTimeValue';
 import type {
@@ -133,7 +139,11 @@ export function DaycareCheckInPanel({
 }: DaycareCheckInPanelProps) {
   const [suggestedCages, setSuggestedCages] = useState<Cage[]>([]);
   const [suggestedSize, setSuggestedSize] = useState<string | null>(null);
-  const [selectedCageId, setSelectedCageId] = useState<string | null>(null);
+  // The whole cage, not just its id - its size/label are what the
+  // wrong-size warning popup below compares against the pet's own size.
+  const [selectedCage, setSelectedCage] = useState<Cage | null>(null);
+  const selectedCageId = selectedCage?.id ?? null;
+  const [isSizeWarningOpen, setIsSizeWarningOpen] = useState(false);
 
   const [feeding, setFeeding] = useState<FeedingUiState[]>(() =>
     initialFeeding(booking)
@@ -162,7 +172,7 @@ export function DaycareCheckInPanel({
       if (result.data) {
         setSuggestedSize(result.data.suggestedSize);
         setSuggestedCages(result.data.availableCages);
-        setSelectedCageId(result.data.availableCages[0]?.id ?? null);
+        setSelectedCage(result.data.availableCages[0] ?? null);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -330,6 +340,19 @@ export function DaycareCheckInPanel({
 
   const canSubmit = Boolean(selectedCageId);
 
+  // Staff may knowingly use a different-size cage (e.g. the pet's own size
+  // is full), so a mismatch asks for confirmation instead of blocking.
+  const selectedCageFit = getCageSizeFit(suggestedSize, selectedCage?.size);
+
+  function handleCheckInClick() {
+    if (isCageSizeMismatch(selectedCageFit)) {
+      setIsSizeWarningOpen(true);
+      return;
+    }
+
+    void submitCheckIn();
+  }
+
   return (
     <>
       {blockedMessage ? (
@@ -352,9 +375,10 @@ export function DaycareCheckInPanel({
         <CageStatusGrid
           accessToken={accessToken}
           viewerRole={role}
-          onSelectCage={(cage) => setSelectedCageId(cage.id)}
+          onSelectCage={(cage) => setSelectedCage(cage)}
           selectedCageId={selectedCageId}
           suggestedCageIds={suggestedCages.map((cage) => cage.id)}
+          petSize={suggestedSize}
         />
       </section>
 
@@ -626,10 +650,32 @@ export function DaycareCheckInPanel({
         type="button"
         className={styles.primaryButton}
         disabled={!canSubmit || isSubmitting}
-        onClick={() => void submitCheckIn()}
+        onClick={handleCheckInClick}
       >
         {isSubmitting ? 'Checking in...' : 'Check in'}
       </button>
+
+      <ConfirmDialog
+        isOpen={isSizeWarningOpen}
+        title="Cage size doesn't match"
+        body={
+          selectedCage && suggestedSize && isCageSizeMismatch(selectedCageFit)
+            ? describeCageSizeMismatch(
+                selectedCageFit,
+                suggestedSize,
+                selectedCage.cage_label,
+                selectedCage.size
+              )
+            : null
+        }
+        confirmLabel="Check in anyway"
+        cancelLabel="Choose another cage"
+        onConfirm={() => {
+          setIsSizeWarningOpen(false);
+          void submitCheckIn();
+        }}
+        onCancel={() => setIsSizeWarningOpen(false)}
+      />
     </>
   );
 }

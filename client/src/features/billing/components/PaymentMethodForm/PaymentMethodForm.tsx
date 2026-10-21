@@ -29,7 +29,7 @@ interface PaymentMethodFormProps {
 /**
  * Issue #86: renders the correct minimal form per selected payment method -
  * Cash shows a tendered-amount field and computed change; every other method
- * (GCash, Maya, Card, Bank Transfer, Grabmart, Pickaroo) shows a
+ * (GCash, Maya, Card, Bank Transfer) shows a
  * reference-number field (Bank Transfer additionally shows a BPI/BDO
  * selector) and is confirmed by the cashier the moment the form is
  * submitted.

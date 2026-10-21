@@ -17,6 +17,8 @@ const CONFIGURATION: PricingConfiguration = {
   size_xl_rule_value: 1.5,
   coat_long_rule_type: 'flat',
   coat_long_rule_value: 50,
+  coat_extra_long_rule_type: 'flat',
+  coat_extra_long_rule_value: 50,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -48,7 +50,21 @@ describe('PricingMatrixEditor', () => {
     expect(screen.getByLabelText('Large (L), long coat price')).toHaveValue(
       425
     );
-    expect(screen.getAllByText('Formula')).toHaveLength(8);
+    expect(screen.getAllByText('Formula')).toHaveLength(12);
+  });
+
+  it('has an Extra long coat column, priced by its own rule and editable like the others', () => {
+    const { onChange } = renderEditor();
+
+    // L = 300 x 1.25 = 375, + 50 (this fixture's extra long coat add-on).
+    const largeExtraLong = screen.getByLabelText(
+      'Large (L), extra long coat price'
+    );
+    expect(largeExtraLong).toHaveValue(425);
+
+    fireEvent.change(largeExtraLong, { target: { value: '900' } });
+
+    expect(onChange).toHaveBeenCalledWith({ 'L:XLC': '900' });
   });
 
   it('typing over a cell makes it the item’s own price', () => {

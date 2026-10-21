@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -10,6 +10,7 @@ import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as customerApi from '../../../customers/api/customer.api';
 import * as reportsApi from '../../api/reports.api';
 import * as billingApi from '../../../billing/api/billing.api';
+import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import type { TransactionRecord } from '../../reports.types';
 import { TransactionHistoryTable } from './TransactionHistoryTable';
 
@@ -23,6 +24,9 @@ vi.mock('../../../billing/api/billing.api', () => ({
   recordTransactionPayment: vi.fn(),
   payTransactionWithCredit: vi.fn(),
   addBookingPayment: vi.fn(),
+}));
+vi.mock('../../../maintenance/api/maintenance.api', () => ({
+  listBranchLetterheads: vi.fn(),
 }));
 
 function buildViewer(role: StaffRole): StaffProfile {
@@ -104,6 +108,19 @@ function renderTable() {
 describe('TransactionHistoryTable', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // jsdom has no print dialog.
+    window.print = vi.fn();
+    vi.mocked(maintenanceApi.listBranchLetterheads).mockResolvedValue({
+      data: [
+        {
+          id: 'branch-makati',
+          name: 'Makati Branch',
+          address: '123 Ayala Ave, Makati',
+          contact_number: '0917 000 0000',
+        },
+      ],
+      error: null,
+    });
     vi.mocked(staffApi.listStaff).mockResolvedValue({
       data: [buildViewer('Cashier')],
       error: null,
@@ -255,6 +272,30 @@ describe('TransactionHistoryTable', () => {
     expect(screen.queryByText('View booking')).not.toBeInTheDocument();
   });
 
+  it('does not offer Pay on a charge whose booking was cancelled', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          payment_status: 'Pending',
+          bookings: {
+            pet_id: 'pet-1',
+            service_category: 'Grooming',
+            status: 'Cancelled',
+          } as TransactionRecord['bookings'],
+        }),
+      ],
+      error: null,
+    });
+    renderTable();
+
+    await screen.findByText('PHP 500.00');
+    await userEvent.click(
+      screen.getByRole('button', { name: /options for this transaction/i })
+    );
+    expect(await screen.findByText('Print receipt')).toBeInTheDocument();
+    expect(screen.queryByText('Pay')).not.toBeInTheDocument();
+  });
+
   it('adds a Transaction type filter tile and passes it to the API', async () => {
     renderTable();
     await screen.findByText('PHP 500.00');
@@ -333,7 +374,7 @@ describe('TransactionHistoryTable', () => {
     expect(await screen.findByText('PHP 2.00')).toBeInTheDocument();
   });
 
-  it('offers "View booking" in the row menu for a booking payment, and no menu for a misc sale', async () => {
+  it('offers "View booking" in the row menu for a booking payment, but not for a misc sale', async () => {
     vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
       data: [
         buildTransaction({ id: 'txn-1', booking_id: 'booking-9' }),
@@ -352,15 +393,146 @@ describe('TransactionHistoryTable', () => {
     renderTable();
     await screen.findByText('Leash');
 
-    // The misc sale (no booking) gets no "..." menu; the booking payment does.
+    // Both rows have a "..." menu (a receipt can be printed for either), in
+    // the default Booking grouping's order: the booking payment, then the
+    // misc sale.
     const menus = screen.getAllByRole('button', {
       name: /options for this transaction/i,
     });
-    expect(menus).toHaveLength(1);
+    expect(menus).toHaveLength(2);
+
+    // The misc sale has no booking to view.
+    await userEvent.click(menus[1]);
+    expect(await screen.findByText('Print receipt')).toBeInTheDocument();
+    expect(screen.queryByText('View booking')).not.toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
 
     await userEvent.click(menus[0]);
     await userEvent.click(await screen.findByText('View booking'));
     expect(await screen.findByText('Booking details')).toBeInTheDocument();
+  });
+
+  it('prints a receipt for a paid transaction from the row menu', async () => {
+    renderTable();
+    await screen.findByText('PHP 500.00');
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /options for this transaction/i })
+    );
+    await userEvent.click(await screen.findByText('Print receipt'));
+
+    expect(window.print).toHaveBeenCalledTimes(1);
+    const sheet = screen.getByRole('document', { name: 'Receipt' });
+    for (const detail of [
+      // The letterhead is the transaction's own branch.
+      'Makati Branch',
+      '123 Ayala Ave, Makati',
+      '0917 000 0000',
+      'Ada Lovelace',
+      'Grooming',
+      'Full payment',
+      'GCash',
+      '₱500.00',
+    ]) {
+      expect(within(sheet).getByText(detail)).toBeInTheDocument();
+    }
+    // The barcode carries this transaction's own reference.
+    expect(
+      within(sheet).getByRole('img', { name: 'Barcode TXN1' })
+    ).toBeInTheDocument();
+
+    // The sheet is taken down again once the print dialog closes.
+    act(() => {
+      window.dispatchEvent(new Event('afterprint'));
+    });
+    expect(
+      screen.queryByRole('document', { name: 'Receipt' })
+    ).not.toBeInTheDocument();
+  });
+
+  it("itemizes a Daycare receipt with the bill's own lines - overdue hours and the night not picked up", async () => {
+    const lines = [
+      {
+        description: 'Daycare overdue checkout fee (1 hour x ₱50)',
+        quantity: 1,
+        unit_price: 50,
+        line_total: 50,
+      },
+      {
+        description: 'Daycare overnight stay - not picked up (1 night x ₱850)',
+        quantity: 1,
+        unit_price: 850,
+        line_total: 850,
+      },
+    ];
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          total_amount: 900,
+          bookings: { pet_id: 'pet-1', service_category: 'Daycare' } as never,
+          transaction_line_items: lines,
+        }),
+        // A Grooming receipt stays a single amount.
+        buildTransaction({
+          id: 'txn-2',
+          total_amount: 300,
+          transaction_line_items: [
+            {
+              description: 'Full groom',
+              quantity: 1,
+              unit_price: 300,
+              line_total: 300,
+            },
+          ],
+        }),
+      ],
+      error: null,
+    });
+    renderTable();
+    await screen.findByText('PHP 900.00');
+
+    const menus = screen.getAllByRole('button', {
+      name: /options for this transaction/i,
+    });
+    await userEvent.click(menus[0]);
+    await userEvent.click(await screen.findByText('Print receipt'));
+
+    const bill = within(
+      screen.getByRole('document', { name: 'Receipt' })
+    ).getByRole('table', { name: 'Bill' });
+    expect(bill).toHaveTextContent(
+      'Daycare overdue checkout fee (1 hour x ₱50)'
+    );
+    expect(bill).toHaveTextContent(
+      'Daycare overnight stay - not picked up (1 night x ₱850)'
+    );
+
+    act(() => {
+      window.dispatchEvent(new Event('afterprint'));
+    });
+    await userEvent.click(menus[1]);
+    await userEvent.click(await screen.findByText('Print receipt'));
+    expect(
+      screen.queryByRole('table', { name: 'Bill' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('prints an unpaid transaction as "Payment Due", with no payment method', async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [buildTransaction({ payment_status: 'Pending' })],
+      error: null,
+    });
+    renderTable();
+    await screen.findByText('PHP 500.00');
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /options for this transaction/i })
+    );
+    await userEvent.click(await screen.findByText('Print receipt'));
+
+    const sheet = screen.getByRole('document', { name: 'Payment Due' });
+    expect(within(sheet).getByText('Due payment')).toBeInTheDocument();
+    expect(within(sheet).queryByText('GCash')).not.toBeInTheDocument();
   });
 
   it('sorts rows by amount from the Sort menu', async () => {
@@ -463,6 +635,51 @@ describe('TransactionHistoryTable', () => {
     expect(screen.getByRole('combobox', { name: 'Group by' })).toHaveValue(
       'booking'
     );
+  });
+
+  it("finds a booking's transactions by the pet's name", async () => {
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [
+        buildTransaction({
+          id: 'a',
+          booking_id: 'booking-1',
+          bookings: {
+            pet_id: 'pet-1',
+            service_category: 'Grooming',
+            payment_status: 'Fully Paid',
+            total_price: 1000,
+            discount_amount: 0,
+            promo_amount: 0,
+            pets: { name: 'Buddy' },
+          },
+        }),
+        buildTransaction({
+          id: 'b',
+          booking_id: 'booking-2',
+          bookings: {
+            pet_id: 'pet-2',
+            service_category: 'Hotel',
+            payment_status: 'Fully Paid',
+            total_price: 2000,
+            discount_amount: 0,
+            promo_amount: 0,
+            pets: { name: 'Mochi' },
+          },
+        }),
+      ],
+      error: null,
+    });
+
+    renderTable();
+
+    expect(await screen.findByText('Grooming · Buddy')).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByPlaceholderText(/search by customer, pet/i),
+      'mochi'
+    );
+
+    expect(await screen.findByText('Hotel · Mochi')).toBeInTheDocument();
+    expect(screen.queryByText('Grooming · Buddy')).not.toBeInTheDocument();
   });
 
   it('drops the group headers when Group by is set to None', async () => {

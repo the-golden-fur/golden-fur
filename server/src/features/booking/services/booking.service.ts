@@ -7,8 +7,12 @@ import {
   sendStaffAssignedNotification,
 } from './bookingNotifications.service.ts';
 import { getServiceById } from '../../maintenance/services/services.service.ts';
-import { servicePriceAtBranch } from '../../maintenance/utils/branchServicePrice.ts';
+import {
+  nightlyPriceAtBranch,
+  servicePriceAtBranch,
+} from '../../maintenance/utils/branchServicePrice.ts';
 import { getPackageById } from '../../maintenance/services/packages.service.ts';
+import { findPetCell } from '../../maintenance/utils/extraLongCoat.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import {
@@ -29,8 +33,11 @@ import {
   notifyStaffRoleAtBranch,
 } from '../../notifications/services/notification.service.ts';
 import {
+  ASSESSMENT_BOOKINGS_PAUSED,
   BOOKING_MARK_PAID_ROLES,
   DOWNPAYMENT_EXPIRED_CANCELLATION_REASON,
+  isNotStartedStatus,
+  NOT_STARTED_BOOKING_STATUSES,
   OVERRIDABLE_BOOKING_STATUSES,
   PAY_AT_CHECKOUT_CATEGORIES,
   sanitizeHotelPreferencesForStaffRole,
@@ -70,6 +77,7 @@ import { daycareHourlyCharge } from '../../daycare/modules/daycareCharge.util.ts
 import {
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
+  closingInstantOn,
 } from './availability.service.ts';
 
 const BOOKING_SELECT = '*, booking_items(*), staff_picker_preferences(*)';
@@ -92,7 +100,7 @@ export interface PetRow {
    * FK against the admin-managed pet_types table (20260912191). */
   pet_type: string;
   weight_class: 'S' | 'M' | 'L' | 'XL' | null;
-  coat_type: 'SC' | 'LC' | null;
+  coat_type: 'SC' | 'LC' | 'XLC' | null;
 }
 
 /** Client interview finding: weight_class/coat_type are staff-only-set
@@ -150,10 +158,9 @@ export function resolveServicePrice(
   if (fixedPriceOverride !== null) return fixedPriceOverride;
 
   if (service.category === 'Grooming' && service.use_pricing_matrix) {
-    const tier = (service.service_pricing_tiers ?? []).find(
-      (row) =>
-        row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
-    );
+    // Optional Extra Long Coat (20261014265): an XLC pet on a service with
+    // no XLC prices pays its size's Long Coat cell.
+    const tier = findPetCell(service.service_pricing_tiers, pet);
 
     if (tier) return Number(tier.price);
   }
@@ -161,11 +168,20 @@ export function resolveServicePrice(
   return Number(service.base_price);
 }
 
+/** pets.pet_type for a cat - the seeded pet type key a package's
+ * cat_price applies to (packages.cat_price, 20261013263). */
+const CAT_PET_TYPE = 'Cat';
+
 export interface ResolvedBookingItem {
   service_id: string | null;
   package_id: string | null;
   price_at_booking: number;
   duration_minutes_at_booking: number;
+  /** Whether this item's real price depends on the pet being assessed (a
+   * service flagged requires_assessed_pet, or any package). Not a
+   * booking_items column - createBooking reads it to decide whether an
+   * unassessed pet's booking is "awaiting assessment". */
+  needs_assessed_pet?: boolean;
 }
 
 /**
@@ -209,7 +225,9 @@ async function resolveBookingItem(
   branchId: string,
   scheduledStart: string,
   scheduledEnd: string,
-  fixedPriceOverride: number | null
+  fixedPriceOverride: number | null,
+  enforceAssessmentGate: boolean,
+  applyLongStayRate: boolean
 ): Promise<ResolvedBookingItem> {
   if ('service_id' in itemInput) {
     const service = await getServiceById(itemInput.service_id);
@@ -225,7 +243,11 @@ async function resolveBookingItem(
       );
     }
 
-    if (!petAssessed && service.requires_assessed_pet) {
+    if (
+      enforceAssessmentGate &&
+      !petAssessed &&
+      service.requires_assessed_pet
+    ) {
       throwWithStatus(
         403,
         `This pet must be assessed by staff (weight class and coat type recorded onsite) before booking "${service.name}"`
@@ -261,6 +283,7 @@ async function resolveBookingItem(
           ).charge
         ),
         duration_minutes_at_booking: durationMinutes,
+        needs_assessed_pet: service.requires_assessed_pet,
       };
     }
 
@@ -282,21 +305,32 @@ async function resolveBookingItem(
     return {
       service_id: service.id,
       package_id: null,
-      // The booking branch may charge its own price for this service
-      // (servicePriceAtBranch) - it stands in for base_price, so a pet-type
-      // fixed price and the Grooming matrix still take precedence as before.
+      // The booking branch may charge its own price for this service, and
+      // a Hotel service booked for a long stay has a cheaper nightly rate
+      // (nightlyPriceAtBranch - for every other category `quantity` is 1 and
+      // there is no long-stay rate, so this is just the branch's price). It
+      // stands in for base_price, so a pet-type fixed price and the Grooming
+      // matrix still take precedence as before.
       price_at_booking: round2(
         resolveServicePrice(
-          { ...service, base_price: servicePriceAtBranch(service, branchId) },
+          {
+            ...service,
+            // Pay at checkout never gets the long-stay rate - every night
+            // is the branch's regular price.
+            base_price: applyLongStayRate
+              ? nightlyPriceAtBranch(service, branchId, quantity)
+              : servicePriceAtBranch(service, branchId),
+          },
           pet,
           serviceFixedPrice
         ) * quantity
       ),
       duration_minutes_at_booking: durationMinutes,
+      needs_assessed_pet: service.requires_assessed_pet,
     };
   }
 
-  if (!petAssessed) {
+  if (enforceAssessmentGate && !petAssessed) {
     throwWithStatus(
       403,
       'This pet must be assessed by staff (weight class and coat type recorded onsite) before booking a package'
@@ -369,6 +403,8 @@ async function resolveBookingItem(
     package_id: pkg.id,
     price_at_booking: round2(packagePrice * packageQuantity),
     duration_minutes_at_booking: packageDurationMinutes,
+    // A package is always priced for an assessed pet.
+    needs_assessed_pet: true,
   };
 }
 
@@ -396,10 +432,18 @@ export async function resolvePackagePrice(
   pkg: Pick<
     Awaited<ReturnType<typeof getPackageById>>,
     'bundled_price' | 'use_pricing_matrix' | 'pricing_tiers'
-  >,
+  > & { cat_price?: number | null },
   pet: PetRow,
   fixedPriceOverride: number | null = null
 ): Promise<number> {
+  // Custom change (package cat price, 20261013263): a package may name its
+  // own price for a cat. It is the most specific price there is - this
+  // package, this pet type - so it wins ahead of the pet type's fixed price
+  // (one figure for every package) and the weight x coat grid.
+  if (pet.pet_type === CAT_PET_TYPE && pkg.cat_price != null) {
+    return Number(pkg.cat_price);
+  }
+
   if (fixedPriceOverride !== null) return fixedPriceOverride;
 
   if (!pkg.use_pricing_matrix) {
@@ -408,10 +452,8 @@ export async function resolvePackagePrice(
 
   // Per-item weight x coat pricing: the package's own cells (formula, with
   // any Superadmin-set cell in its place) - attached by getPackageById.
-  const cell = (pkg.pricing_tiers ?? []).find(
-    (row) =>
-      row.weight_class === pet.weight_class && row.coat_type === pet.coat_type
-  );
+  // An XLC pet on a package with no XLC prices pays the Long Coat cell.
+  const cell = findPetCell(pkg.pricing_tiers, pet);
 
   return cell ? Number(cell.price) : Number(pkg.bundled_price);
 }
@@ -423,7 +465,23 @@ export async function resolveBookingItems(
   serviceCategory: ServiceCategory,
   branchId: string,
   scheduledStart: string,
-  scheduledEnd: string
+  scheduledEnd: string,
+  /**
+   * Whether an unassessed pet is refused the items that need an assessed one
+   * (403). On by default - every caller keeps the old rule unless it opts
+   * out. createBooking opts out for an Online booking (book before
+   * assessment, 20261013264): the pet is then priced at the estimate the
+   * price functions fall back to anyway (base/package price, no size or coat
+   * cell) and the booking is marked awaiting assessment.
+   */
+  enforceAssessmentGate = true,
+  /**
+   * Hotel long-stay rate (20261013260): whether a stay booked for the
+   * long-stay night count gets the cheaper nightly price. False for a
+   * pay-at-checkout booking - it never gets the long-stay rate (or the free
+   * package), every night is the regular price.
+   */
+  applyLongStayRate = true
 ): Promise<ResolvedBookingItem[]> {
   const resolved: ResolvedBookingItem[] = [];
 
@@ -450,7 +508,9 @@ export async function resolveBookingItems(
         branchId,
         scheduledStart,
         scheduledEnd,
-        fixedPriceOverride
+        fixedPriceOverride,
+        enforceAssessmentGate,
+        applyLongStayRate
       )
     );
   }
@@ -485,6 +545,9 @@ export async function resolveFreePackageAward(
   input: CreateBookingInput
 ): Promise<FreePackageAward | null> {
   if (input.service_category !== 'Hotel') return null;
+  // A pay-at-checkout stay gets no long-stay perks: no cheaper nightly rate
+  // (resolveBookingItems) and no free package.
+  if (input.payment_scheme === 'pay_at_checkout') return null;
 
   const hotelServiceItem = input.items.find(
     (item): item is { service_id: string } => 'service_id' in item
@@ -1001,6 +1064,14 @@ export async function createBooking({
     throwWithStatus(403, 'Only staff may create a walk-in booking');
   }
 
+  // The Assessment Queue is archived for now - see ASSESSMENT_BOOKINGS_PAUSED.
+  if (ASSESSMENT_BOOKINGS_PAUSED && input.service_category === 'Assessment') {
+    throwWithStatus(
+      409,
+      'Assessment bookings are paused. Book the service itself - the pet is assessed when it arrives.'
+    );
+  }
+
   // Pay at checkout (20261005244): nothing is charged up front - the bill is
   // posted at checkout from the time the pet actually stayed. Walk-in only
   // (so staff-only, per the check above) and only for the two categories
@@ -1049,8 +1120,23 @@ export async function createBooking({
     input.service_category,
     input.branch_id,
     input.scheduled_start,
-    input.scheduled_end
+    input.scheduled_end,
+    // Book before assessment (20261013264): an Online booking may be made
+    // for a pet staff have not assessed yet. A Walk-in still may not - the
+    // pet is at the counter, so staff assess it first.
+    bookingSource !== 'Online',
+    !payAtCheckout
   );
+
+  // The booking is "awaiting assessment" when the pet is unassessed AND at
+  // least one item's real price depends on its size/coat. Its price is then
+  // only an estimate: no discount/promo, no down payment and no charge now -
+  // all settled at the counter once the pet is assessed
+  // (assessmentReprice.service.ts). An unassessed pet booking only items
+  // that never needed an assessment (the seeded "Initial Assessment") is an
+  // ordinary booking, exactly as before.
+  const awaitingAssessment =
+    !petAssessed && resolvedItems.some((item) => item.needs_assessed_pet);
 
   const freePackageAward = await resolveFreePackageAward(input);
 
@@ -1073,14 +1159,25 @@ export async function createBooking({
   // downpayment is calculated"). resolveDiscountAndPromos doesn't depend on
   // the down payment, so it runs first and the down payment is taken
   // against the discounted net total, not the gross sum of items.
+  //
+  // Skipped entirely while awaiting assessment: the real price isn't known
+  // yet, so there is nothing to take a discount or promo off (and a coupon
+  // must not be spent against an estimate).
   const { selectedDiscountId, discountAmount, promoSelections, promoAmount } =
-    await resolveDiscountAndPromos(
-      input,
-      staffRole,
-      resolvedItems,
-      totalPrice,
-      customerId
-    );
+    awaitingAssessment
+      ? {
+          selectedDiscountId: null,
+          discountAmount: 0,
+          promoSelections: [],
+          promoAmount: 0,
+        }
+      : await resolveDiscountAndPromos(
+          input,
+          staffRole,
+          resolvedItems,
+          totalPrice,
+          customerId
+        );
 
   const netTotal = round2(totalPrice - discountAmount - promoAmount);
 
@@ -1158,7 +1255,10 @@ export async function createBooking({
       input.branch_id
     );
 
-    downpaymentRequired = policy.downpayment_enabled;
+    // Never for a booking awaiting assessment: nothing is paid online, the
+    // whole (real) amount is paid at the counter. It therefore holds its slot
+    // unpaid, like any booking with no down payment.
+    downpaymentRequired = !awaitingAssessment && policy.downpayment_enabled;
     downpaymentHoldHours = policy.downpayment_hold_hours ?? 24;
     downpaymentAmount = downpaymentRequired
       ? round2(
@@ -1213,7 +1313,8 @@ export async function createBooking({
   // add_booking_payment both refuse a zero-owed booking). Never true for a
   // pay-at-checkout booking: its total is only an estimate until checkout,
   // which decides for itself whether anything is owed.
-  const nothingOwed = !payAtCheckout && netTotal <= 0;
+  // Nor for one awaiting assessment: its total is an estimate too.
+  const nothingOwed = !payAtCheckout && !awaitingAssessment && netTotal <= 0;
 
   // Whether this booking reserves its capacity/staff-time slot. A
   // down-payment-required Online booking holds no slot until a payment lands
@@ -1256,7 +1357,8 @@ export async function createBooking({
           input.cage_preference.cage_id!,
           input.branch_id,
           (pet as PetRow).pet_type,
-          staffRole ? undefined : ((pet as PetRow).weight_class ?? undefined)
+          staffRole ? undefined : ((pet as PetRow).weight_class ?? undefined),
+          !staffRole
         )
       : null;
 
@@ -1279,7 +1381,12 @@ export async function createBooking({
       serviceCategory: input.service_category,
       scheduledStart: input.scheduled_start,
       scheduledEnd: input.scheduled_end,
-      petWeightClass: (pet as PetRow).weight_class!,
+      // Undefined for a pet not assessed yet - checkCapacity then asks
+      // whether the branch has any cage free at all (no size to reserve).
+      petWeightClass: (pet as PetRow).weight_class ?? undefined,
+      // Front-desk cage override: a temporarily closed cage blocks customers
+      // only, never a staff-created booking.
+      excludeClosedCages: !staffRole,
     });
 
     if (!capacity.available) {
@@ -1312,6 +1419,7 @@ export async function createBooking({
       downpayment_required: downpaymentRequired,
       downpayment_due_at: downpaymentDueAt,
       pay_at_checkout: payAtCheckout,
+      awaiting_assessment: awaitingAssessment,
       payment_status: nothingOwed ? 'Fully Paid' : 'Pending',
       ...(nothingOwed ? { paid_at: new Date().toISOString() } : {}),
       payment_method: null,
@@ -1450,7 +1558,14 @@ export async function createBooking({
   // not undo the booking; the cashier can add the charge manually). A
   // fully-discounted booking (nothingOwed) owes nothing, and a
   // pay-at-checkout booking is billed at checkout instead.
-  if (paymentScheme !== 'pay_at_checkout' && !nothingOwed && netTotal > 0) {
+  // Nor a booking awaiting assessment - its bill is posted when the pet is
+  // assessed, at the real price.
+  if (
+    paymentScheme !== 'pay_at_checkout' &&
+    !awaitingAssessment &&
+    !nothingOwed &&
+    netTotal > 0
+  ) {
     try {
       const { error: chargeRpcError } = await supabase.rpc(
         'create_initial_booking_charge',
@@ -1484,14 +1599,16 @@ export async function createBooking({
       relatedBookingId: booking.id,
     });
 
-    await notifyStaffRoleAtBranch({
-      role: 'Receptionist',
-      branchId: booking.branch_id,
-      eventType: 'booking_confirmed',
-      title: 'Free package unlocked for a Hotel booking',
-      message: `${message} (Booking ${booking.id})`,
-      relatedBookingId: booking.id,
-    });
+    for (const role of ['Receptionist', 'Front Desk']) {
+      await notifyStaffRoleAtBranch({
+        role,
+        branchId: booking.branch_id,
+        eventType: 'booking_confirmed',
+        title: 'Free package unlocked for a Hotel booking',
+        message: `${message} (Booking ${booking.id})`,
+        relatedBookingId: booking.id,
+      });
+    }
   }
 
   return getBookingById({ requesterId, bookingId: booking.id });
@@ -1509,6 +1626,7 @@ export async function createBooking({
  * payment_status - no service was rendered on them and nothing is owed. */
 const UNRESOLVED_BOOKING_STATUSES: readonly Booking['status'][] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
 
@@ -1622,7 +1740,7 @@ export async function listConflictedBookingsForCustomer(
       'id, service_category, pet_id, scheduled_start, scheduled_end, branch_id, conflict_notice, slot_conflict_at'
     )
     .eq('customer_id', customerId)
-    .eq('status', 'Pending')
+    .in('status', NOT_STARTED_BOOKING_STATUSES)
     .not('slot_conflict_at', 'is', null)
     .order('slot_conflict_at', { ascending: false });
 
@@ -1708,12 +1826,16 @@ export async function getBookingById({
   const [withGroupExpiry] = await applyBookingGroupDownpaymentExpiry([
     withExpiry,
   ]);
-  const [withNoShow] = await applyNoShowTransition([withGroupExpiry]);
+  const [withNoShow] = await applyLateAndNoShowTransition([withGroupExpiry]);
   return withNoShow;
 }
 
 export interface ListBookingsFilters {
   branchId?: string;
+  /** One customer's bookings, for a staff caller (Customer Management's
+   * booking history). A customer caller is always scoped to their own rows,
+   * whatever is passed here. */
+  customerId?: string;
   /** YYYY-MM-DD, matched against scheduled_start's calendar date (UTC). */
   date?: string;
   /** Inclusive date-range bounds (UTC calendar dates) - either may be given
@@ -1766,8 +1888,14 @@ export async function listBookings({
 
   if (!staffRole) {
     query = query.eq('customer_id', requesterId);
-  } else if (filters.branchId) {
-    query = query.eq('branch_id', filters.branchId);
+  } else {
+    if (filters.branchId) {
+      query = query.eq('branch_id', filters.branchId);
+    }
+
+    if (filters.customerId) {
+      query = query.eq('customer_id', filters.customerId);
+    }
   }
 
   if (filters.serviceCategory) {
@@ -1826,7 +1954,7 @@ export async function listBookings({
 
   const withExpiry = await applyDownpaymentExpiry((data ?? []) as Booking[]);
   const withGroupExpiry = await applyBookingGroupDownpaymentExpiry(withExpiry);
-  const withNoShow = await applyNoShowTransition(withGroupExpiry);
+  const withNoShow = await applyLateAndNoShowTransition(withGroupExpiry);
 
   // A row flipped to No-show / Cancelled by a lazy transition above may no
   // longer match an explicit status filter the caller asked for (e.g.
@@ -1841,7 +1969,8 @@ export async function listBookings({
  * Down-payment slot gate (advisor addendum A4): an unpaid,
  * down-payment-required Online booking auto-cancels once its
  * `downpayment_due_at` passes. Lazy, read-time - same rationale and bulk-
- * update shape as applyNoShowTransition (no cron infra exists in this app).
+ * update shape as applyLateAndNoShowTransition (no cron infra exists in
+ * this app).
  * Runs BEFORE the no-show pass so an expired-and-never-paid booking reads
  * as Cancelled ("down payment not received"), not No-show. The slot itself
  * was never held while the booking was unpaid, so this only tidies the
@@ -1852,7 +1981,7 @@ async function applyDownpaymentExpiry(bookings: Booking[]): Promise<Booking[]> {
   const expiredIds = bookings
     .filter(
       (booking) =>
-        booking.status === 'Pending' &&
+        isNotStartedStatus(booking.status) &&
         booking.downpayment_required &&
         booking.payment_status === 'Pending' &&
         booking.downpayment_due_at !== null &&
@@ -1928,7 +2057,8 @@ async function applyBookingGroupDownpaymentExpiry(
       bookings
         .filter(
           (booking) =>
-            booking.booking_group_id != null && booking.status === 'Pending'
+            booking.booking_group_id != null &&
+            isNotStartedStatus(booking.status)
         )
         .map((booking) => booking.booking_group_id as string)
     ),
@@ -1969,7 +2099,7 @@ async function applyBookingGroupDownpaymentExpiry(
       updated_at: now.toISOString(),
     })
     .in('booking_group_id', expiredGroupIds)
-    .eq('status', 'Pending')
+    .in('status', NOT_STARTED_BOOKING_STATUSES)
     .select(BOOKING_SELECT);
 
   if (error) throwWithStatus(400, error.message);
@@ -1982,36 +2112,117 @@ async function applyBookingGroupDownpaymentExpiry(
 }
 
 /**
- * No-show is a lazy, read-time transition - no cron/scheduled-job infra
- * exists in this app. Any Pending booking whose scheduled_start has already
- * passed is flipped to No-show the moment it's next read through
- * getBookingById/listBookings, matching "the label did not change from
- * pending to in-progress" as the definition of a no-show. A single bulk
- * update covers every stale row in the result set, not one query per row.
+ * Late and No-show are lazy, read-time transitions - no cron/scheduled-job
+ * infra exists in this app. A Pending booking whose scheduled_start has
+ * passed is flipped to 'Late' the moment it's next read through
+ * getBookingById/listBookings (custom change, 20261015266): the customer may
+ * still turn up, so it stays startable/cancellable and keeps its slot. Once
+ * the branch's no-show threshold has also passed - no_show_after_minutes
+ * after the start (default 30), or the branch's closing time that day when
+ * no_show_at_closing is on - it flips to 'No-show' instead, matching "the
+ * label never changed to In Progress" as the definition of a no-show.
+ *
+ * Each branch's effective policy (and, only for "End of operating hours",
+ * its operating hours) is resolved once per call, and every stale row goes
+ * out in at most one bulk update per target status, not one query per row.
  */
-async function applyNoShowTransition(bookings: Booking[]): Promise<Booking[]> {
+async function applyLateAndNoShowTransition(
+  bookings: Booking[]
+): Promise<Booking[]> {
   const now = new Date();
-  const staleIds = bookings
-    .filter(
-      (booking) =>
-        booking.status === 'Pending' &&
-        new Date(booking.scheduled_start).getTime() < now.getTime()
-    )
-    .map((booking) => booking.id);
-
-  if (staleIds.length === 0) return bookings;
-
-  const { data, error } = await supabase
-    .from('bookings')
-    .update({ status: 'No-show', updated_at: now.toISOString() })
-    .in('id', staleIds)
-    .select(BOOKING_SELECT);
-
-  if (error) throwWithStatus(400, error.message);
-
-  const updatedById = new Map(
-    ((data ?? []) as Booking[]).map((row) => [row.id, row])
+  const candidates = bookings.filter(
+    (booking) =>
+      isNotStartedStatus(booking.status) &&
+      new Date(booking.scheduled_start).getTime() < now.getTime()
   );
+
+  if (candidates.length === 0) return bookings;
+
+  const branchIds = [
+    ...new Set(candidates.map((booking) => booking.branch_id)),
+  ];
+  const policyByBranchId = new Map(
+    await Promise.all(
+      branchIds.map(
+        async (branchId) =>
+          [branchId, await resolveEffectivePolicy(branchId)] as const
+      )
+    )
+  );
+
+  const closingBranchIds = branchIds.filter(
+    (branchId) => policyByBranchId.get(branchId)?.no_show_at_closing
+  );
+  const branchHoursById = new Map<
+    string,
+    Parameters<typeof closingInstantOn>[1]
+  >();
+
+  if (closingBranchIds.length > 0) {
+    const { data: branchRows, error: branchError } = await supabase
+      .from('branches')
+      .select('id, operating_hours, timezone')
+      .in('id', closingBranchIds);
+
+    if (branchError) throwWithStatus(400, branchError.message);
+
+    for (const row of (branchRows ?? []) as Array<
+      { id: string } & Parameters<typeof closingInstantOn>[1]
+    >) {
+      branchHoursById.set(row.id, row);
+    }
+  }
+
+  const noShowAt = (booking: Booking): number => {
+    const start = new Date(booking.scheduled_start);
+    const policy = policyByBranchId.get(booking.branch_id);
+    const afterMinutesAt =
+      start.getTime() + (policy?.no_show_after_minutes ?? 30) * 60 * 1000;
+
+    if (!policy?.no_show_at_closing) return afterMinutesAt;
+
+    const branch = branchHoursById.get(booking.branch_id);
+    const closing = branch ? closingInstantOn(start, branch) : null;
+    // A closed day (or a start after closing) has no meaningful "end of
+    // operating hours" - fall back to the minutes threshold.
+    return closing && closing.getTime() > start.getTime()
+      ? closing.getTime()
+      : afterMinutesAt;
+  };
+
+  const noShowIds: string[] = [];
+  const lateIds: string[] = [];
+
+  for (const booking of candidates) {
+    if (now.getTime() >= noShowAt(booking)) {
+      noShowIds.push(booking.id);
+    } else if (booking.status === 'Pending') {
+      lateIds.push(booking.id);
+    }
+  }
+
+  const updatedById = new Map<string, Booking>();
+
+  for (const [status, ids] of [
+    ['No-show', noShowIds],
+    ['Late', lateIds],
+  ] as const) {
+    if (ids.length === 0) continue;
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .update({ status, updated_at: now.toISOString() })
+      .in('id', ids)
+      // Only rows still not started - a concurrent Start must win.
+      .in('status', NOT_STARTED_BOOKING_STATUSES)
+      .select(BOOKING_SELECT);
+
+    if (error) throwWithStatus(400, error.message);
+
+    for (const row of (data ?? []) as Booking[]) {
+      updatedById.set(row.id, row);
+    }
+  }
 
   return bookings.map((booking) => updatedById.get(booking.id) ?? booking);
 }
@@ -2072,8 +2283,17 @@ export async function startBooking({
 }: AdvanceStatusParams): Promise<Booking> {
   const booking = await getRawBookingById(bookingId);
 
-  if (booking.status !== 'Pending') {
+  if (!isNotStartedStatus(booking.status)) {
     throwWithStatus(409, `A ${booking.status} booking cannot be started`);
+  }
+
+  // Book before assessment: said first, since it is the actual next step -
+  // there is no bill to pay until the pet has been assessed.
+  if (booking.awaiting_assessment) {
+    throwWithStatus(
+      409,
+      "This pet hasn't been assessed yet. Record its weight and coat type first - that sets the final price and sends the bill to the cashier."
+    );
   }
 
   if (
@@ -2406,7 +2626,7 @@ export async function recomputeBookingGroupPaymentStatus(
       // here and re-email the customer a stale "bookings confirmed".
       if (
         updated.payment_status !== 'Pending' &&
-        updated.status === 'Pending' &&
+        isNotStartedStatus(updated.status) &&
         updated.booking_source === 'Online'
       ) {
         newlyConfirmed.push(updated);
@@ -2613,7 +2833,7 @@ export async function applyFirstBookingPaymentSideEffects({
 
   if (
     updated.downpayment_required &&
-    (updated.status === 'Pending' || updated.status === 'In Progress')
+    (isNotStartedStatus(updated.status) || updated.status === 'In Progress')
   ) {
     const stillHoldsSlot = await confirmCapacityAfterInsert(updated);
 
@@ -2640,7 +2860,10 @@ export async function applyFirstBookingPaymentSideEffects({
 
   // Best-effort: the first payment "confirms" a still-Pending Online booking
   // - fire the alerts createBooking held back while it was Unconfirmed.
-  if (updated.status === 'Pending' && updated.booking_source === 'Online') {
+  if (
+    isNotStartedStatus(updated.status) &&
+    updated.booking_source === 'Online'
+  ) {
     try {
       await sendBookingConfirmedNotification(updated, {
         skipEmail: suppressConfirmationEmail,

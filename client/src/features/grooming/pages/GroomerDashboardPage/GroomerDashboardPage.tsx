@@ -18,6 +18,8 @@ import {
   type QueueStatusOption,
 } from '../../../../shared/components/QueueFilterBar/QueueFilterBar';
 import {
+  DATE_RANGE_PRESET_OPTIONS,
+  PAST_DATE_RANGE_PRESET_OPTIONS,
   dateRangePresetLabel,
   resolveDateRangePreset,
   type DateRangePreset,
@@ -28,6 +30,7 @@ import {
   type SortOption,
 } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
+import { todayDateKey } from '../../../../shared/utils/isFutureDate';
 import {
   listGroomingQueue,
   transitionGroomingStatus,
@@ -55,29 +58,62 @@ const ALLOWED_VIEWER_ROLES = new Set([
 // two meaningful values to filter by here. The old separate "Unconfirmed
 // (awaiting payment)" option is gone along with the server's now-merged
 // two-function split.
-const GROOMING_STATUSES: BookingStatus[] = ['Pending', 'In Progress'];
+const GROOMING_STATUSES: BookingStatus[] = ['Pending', 'Late', 'In Progress'];
 type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
   { value: 'All', label: 'All statuses' },
   ...GROOMING_STATUSES.map((status) => ({ value: status, label: status })),
 ];
 
-/** Queue: what still needs grooming. History: the Completed services, for
- * looking back at what was done. Same page, filters and cards - only which
- * bookings the server returns differs. */
+/** Queue: what still needs grooming. Past bookings ('history', the value
+ * the server's ?view= takes): every finished booking - Completed, No-show
+ * and Cancelled - for looking back. Same page, filters and cards - only
+ * which bookings the server returns differs. */
 type QueueView = 'queue' | 'history';
 const VIEW_OPTIONS: ViewSwitcherOption<QueueView>[] = [
   { value: 'queue', label: 'Queue', icon: ListChecks },
-  { value: 'history', label: 'History', icon: History },
+  { value: 'history', label: 'Past bookings', icon: History },
 ];
 
-// History only ever holds Completed bookings - nothing to filter by.
+/** Each view's Date choices and starting pick: the queue looks ahead from
+ * today; Past bookings only looks back (and the server caps it at now). */
+const VIEW_DATE_PRESETS: Record<
+  QueueView,
+  {
+    options: Array<{ value: DateRangePreset; label: string }>;
+    initial: DateRangePreset;
+  }
+> = {
+  queue: { options: DATE_RANGE_PRESET_OPTIONS, initial: 'today' },
+  history: { options: PAST_DATE_RANGE_PRESET_OPTIONS, initial: 'last_7_days' },
+};
+
+const PAST_STATUSES: BookingStatus[] = ['Completed', 'No-show', 'Cancelled'];
 const HISTORY_STATUS_OPTIONS: QueueStatusOption[] = [
-  { value: 'All', label: 'Completed' },
+  { value: 'All', label: 'All statuses' },
+  ...PAST_STATUSES.map((status) => ({ value: status, label: status })),
 ];
 
-function completedAtMs(session: GroomingSession): number {
-  return new Date(session.booking?.completed_at ?? 0).getTime();
+/** When a past booking was over: completed_at, or for a No-show/Cancelled
+ * one (never completed) its scheduled start. */
+function finishedAtMs(session: GroomingSession): number {
+  return new Date(
+    session.booking?.completed_at ?? session.booking?.scheduled_start ?? 0
+  ).getTime();
+}
+
+/** A groom that was started but not completed always comes first in the
+ * queue, whichever sort is picked - the longest-running at the very top.
+ * The server always includes these, whatever the date filter. */
+function inProgressFirst(a: GroomingSession, b: GroomingSession): number {
+  const aStarted = a.booking?.status === 'In Progress';
+  const bStarted = b.booking?.status === 'In Progress';
+  if (aStarted !== bStarted) return aStarted ? -1 : 1;
+  if (!aStarted) return 0;
+  return (
+    new Date(a.booking?.started_at ?? 0).getTime() -
+    new Date(b.booking?.started_at ?? 0).getTime()
+  );
 }
 
 type SortKey = 'queue' | 'pet-name';
@@ -95,6 +131,7 @@ const REFRESH_INTERVAL_MS = 15_000;
 interface EnrichedSession {
   session: GroomingSession;
   petName: string;
+  petPhotoUrl: string | null;
   ownerName: string;
   breed: string | null;
   weightClass: string;
@@ -285,6 +322,9 @@ export function GroomerDashboardPage() {
     setLoadError(null);
     setActionError(null);
     setStatusFilter('All');
+    // Each view has its own Date choices - "Tomorrow" means nothing for
+    // Past bookings, "Last 7 days" nothing for the queue.
+    setDateRangePreset(VIEW_DATE_PRESETS[next].initial);
     setView(next);
   }
 
@@ -292,8 +332,8 @@ export function GroomerDashboardPage() {
     return [...sessions]
       .sort((a, b) =>
         view === 'history'
-          ? completedAtMs(b) - completedAtMs(a)
-          : queueSortPosition(a) - queueSortPosition(b)
+          ? finishedAtMs(b) - finishedAtMs(a)
+          : inProgressFirst(a, b) || queueSortPosition(a) - queueSortPosition(b)
       )
       .map((session) => {
         const booking = session.booking;
@@ -306,6 +346,7 @@ export function GroomerDashboardPage() {
         return {
           session,
           petName: pet?.name ?? 'Unknown pet',
+          petPhotoUrl: pet?.photo_url ?? null,
           ownerName: owner?.full_name ?? 'Unknown owner',
           // pets.breed (free text) was replaced by breed_id (Issue #71) -
           // resolving it to a display name here is out of this epic's scope
@@ -341,9 +382,12 @@ export function GroomerDashboardPage() {
     comparators: {
       queue: (a, b) =>
         view === 'history'
-          ? completedAtMs(b.session) - completedAtMs(a.session)
-          : queueSortPosition(a.session) - queueSortPosition(b.session),
-      'pet-name': (a, b) => a.petName.localeCompare(b.petName),
+          ? finishedAtMs(b.session) - finishedAtMs(a.session)
+          : inProgressFirst(a.session, b.session) ||
+            queueSortPosition(a.session) - queueSortPosition(b.session),
+      'pet-name': (a, b) =>
+        (view === 'history' ? 0 : inProgressFirst(a.session, b.session)) ||
+        a.petName.localeCompare(b.petName),
     },
     initialSortKey: 'queue',
   });
@@ -351,11 +395,12 @@ export function GroomerDashboardPage() {
   const filterChips = useMemo(() => {
     const chips: { id: string; label: string; onClear: () => void }[] = [];
 
-    if (dateRangePreset !== 'today') {
+    const initialPreset = VIEW_DATE_PRESETS[view].initial;
+    if (dateRangePreset !== initialPreset) {
       chips.push({
         id: 'date',
         label: `Date: ${dateRangePresetLabel(dateRangePreset)}`,
-        onClear: () => setDateRangePreset('today'),
+        onClear: () => setDateRangePreset(initialPreset),
       });
     }
     if (statusFilter !== 'All') {
@@ -383,7 +428,15 @@ export function GroomerDashboardPage() {
     }
 
     return chips;
-  }, [dateRangePreset, statusFilter, search, sortKey, setSearch, setSortKey]);
+  }, [
+    view,
+    dateRangePreset,
+    statusFilter,
+    search,
+    sortKey,
+    setSearch,
+    setSortKey,
+  ]);
 
   const hasSessions = visibleSessions.length > 0;
 
@@ -449,7 +502,7 @@ export function GroomerDashboardPage() {
       <div className={styles.content}>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>
-            {view === 'history' ? 'Grooming History' : 'Grooming Queue'}
+            {view === 'history' ? 'Past Bookings' : 'Grooming Queue'}
           </h1>
           <ViewSwitcher
             options={VIEW_OPTIONS}
@@ -469,6 +522,8 @@ export function GroomerDashboardPage() {
           statusOptions={
             view === 'history' ? HISTORY_STATUS_OPTIONS : STATUS_OPTIONS
           }
+          presetOptions={VIEW_DATE_PRESETS[view].options}
+          customDateMax={view === 'history' ? todayDateKey() : undefined}
         >
           <SearchSortBar
             searchValue={search}
@@ -497,7 +552,7 @@ export function GroomerDashboardPage() {
         ) : !hasSessions ? (
           <p className={styles.copy}>
             {view === 'history'
-              ? 'No completed grooming services match these filters.'
+              ? 'No past grooming bookings match these filters.'
               : 'No grooming appointments match these filters.'}
           </p>
         ) : (
@@ -507,6 +562,7 @@ export function GroomerDashboardPage() {
                 key={item.session.id}
                 session={item.session}
                 petName={item.petName}
+                petPhotoUrl={item.petPhotoUrl}
                 ownerName={item.ownerName}
                 breed={item.breed}
                 weightClass={item.weightClass}

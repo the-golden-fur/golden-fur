@@ -1,0 +1,162 @@
+/* Never part of the screen layout - this sheet only exists for the printer. */
+.sheet {
+  display: none;
+}
+
+@media print {
+  /* While a sheet is mounted it is the only thing printed: the app (#root)
+     and any open modal are siblings of it under <body>. Scoped with :has()
+     so every other page's own printing (e.g. the Daily Sales Report) is
+     untouched when no sheet is mounted. */
+  :global(body):has(> .sheet) > *:not(.sheet) {
+    display: none !important;
+  }
+
+  /* A narrow column, so it reads the same on a receipt printer's roll as it
+     does centred on a full page. */
+  .sheet {
+    display: block;
+    width: 100%;
+    max-width: 72mm;
+    margin: 0 auto;
+    color: #000;
+    background: #fff;
+    font-size: 10pt;
+    line-height: 1.4;
+    padding: 6mm 0 0;
+  }
+
+  .letterhead {
+    border-bottom: 1pt solid #000;
+    padding-bottom: 3mm;
+    text-align: center;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2mm;
+    margin: 0;
+    font-size: 15pt;
+    font-weight: 700;
+  }
+
+  .logo {
+    width: 11mm;
+    height: auto;
+  }
+
+  .branchName {
+    margin: 1.5mm 0 0;
+    font-size: 11pt;
+    font-weight: 700;
+  }
+
+  .branchLine {
+    margin: 0.5mm 0 0;
+    font-size: 9pt;
+  }
+
+  .title {
+    margin: 5mm 0 4mm;
+    font-size: 11pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .details {
+    display: grid;
+    gap: 1mm;
+    margin: 0;
+  }
+
+  .details div {
+    display: flex;
+    justify-content: space-between;
+    gap: 4mm;
+  }
+
+  .details dt {
+    flex-shrink: 0;
+  }
+
+  .details dd {
+    margin: 0;
+    font-weight: 700;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .item {
+    border-top: 0.5pt dashed #000;
+    margin-top: 3mm;
+    padding-top: 3mm;
+  }
+
+  /* The itemized bill - one line per charge, amounts in their own column. */
+  .bill {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 0.5pt dashed #000;
+    margin-top: 3mm;
+    font-size: 9pt;
+  }
+
+  .bill td {
+    padding: 1mm 0 0;
+    vertical-align: top;
+  }
+
+  .bill tr:first-child td {
+    padding-top: 3mm;
+  }
+
+  .billAmount {
+    padding-left: 3mm;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .total {
+    display: flex;
+    justify-content: space-between;
+    gap: 4mm;
+    border-top: 1pt solid #000;
+    border-bottom: 1pt solid #000;
+    margin: 3mm 0 0;
+    padding: 2mm 0;
+    font-size: 13pt;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .thanks {
+    margin: 5mm 0 0;
+    font-size: 9pt;
+    text-align: center;
+  }
+
+  .barcode {
+    display: grid;
+    justify-items: center;
+    gap: 1mm;
+    margin: 5mm 0 0;
+    break-inside: avoid;
+  }
+
+  .barcodeBars {
+    display: block;
+    width: 100%;
+    height: 14mm;
+    fill: #000;
+  }
+
+  .barcodeText {
+    font-size: 9pt;
+    letter-spacing: 0.12em;
+  }
+}

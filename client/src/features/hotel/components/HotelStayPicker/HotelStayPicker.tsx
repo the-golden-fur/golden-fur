@@ -10,6 +10,7 @@ import {
 } from '../../../customers/api/customer.api';
 import type { CustomerProfile, Pet } from '../../../customers/customer.types';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
 import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
 import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
@@ -55,6 +56,7 @@ const STATUS_OPTIONS: QueueStatusOption[] = [
 interface EnrichedStay {
   stay: HotelStayWithCage;
   petName: string;
+  petPhotoUrl: string | null;
   ownerName: string;
   ownerContact: string;
 }
@@ -188,6 +190,7 @@ export function HotelStayPicker({
         return {
           stay,
           petName: pet?.name ?? 'Unknown pet',
+          petPhotoUrl: pet?.photo_url ?? null,
           ownerName: owner?.full_name ?? 'Unknown owner',
           ownerContact: owner?.contact_number ?? owner?.account_email ?? '—',
         };
@@ -333,6 +336,11 @@ export function HotelStayPicker({
                 } ${!isCheckoutable ? styles.disabledCard : ''}`}
               >
                 <div className={styles.cardHeader}>
+                  <PetAvatar
+                    name={item.petName}
+                    photoUrl={item.petPhotoUrl}
+                    size="sm"
+                  />
                   <span className={styles.petName}>{item.petName}</span>
                   <span className={styles.cageBadge}>
                     {item.stay.cage_label}

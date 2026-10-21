@@ -3,6 +3,10 @@ import type {
   PetCoatType,
   PetWeightClass,
 } from '../../../customers/customer.types';
+import {
+  PET_COAT_TYPES,
+  PET_COAT_TYPE_LABEL,
+} from '../../../customers/customer.types';
 import type { WeightUnitPreference } from '../../../../shared/providers/ThemeProvider/themeContext';
 import {
   deriveWeightClass,
@@ -19,7 +23,7 @@ import styles from './AssessmentModal.module.css';
 // fields - kept local rather than centralized, matching that established
 // precedent (see PetDetailPanel.tsx/PetForm.tsx).
 const WEIGHT_CLASS_OPTIONS: PetWeightClass[] = ['S', 'M', 'L', 'XL'];
-const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
+const COAT_TYPE_OPTIONS: PetCoatType[] = PET_COAT_TYPES;
 
 // Display labels only - the option values (and what's saved) stay the
 // short codes the database stores.
@@ -29,10 +33,7 @@ const WEIGHT_CLASS_LABEL: Record<PetWeightClass, string> = {
   L: 'Large',
   XL: 'Extra large',
 };
-const COAT_TYPE_LABEL: Record<PetCoatType, string> = {
-  SC: 'Short coat',
-  LC: 'Long coat',
-};
+const COAT_TYPE_LABEL = PET_COAT_TYPE_LABEL;
 const ENTRY_UNITS: WeightUnitPreference[] = ['kg', 'lbs'];
 
 export interface AssessmentModalProps {
@@ -59,6 +60,11 @@ export interface AssessmentModalProps {
   error: string | null;
   onCancel: () => void;
   onConfirm: () => void;
+  /** Bookings Queue (book before assessment): false when saving only records
+   * the assessment - it does not complete the booking. The button reads
+   * Save and the copy says the booking gets its final price instead.
+   * Defaults to true (the Assessment Queue). */
+  completesBooking?: boolean;
 }
 
 /**
@@ -86,6 +92,7 @@ export function AssessmentModal({
   error,
   onCancel,
   onConfirm,
+  completesBooking = true,
 }: AssessmentModalProps) {
   const hasWeight = weightKg !== '' && weightKg > 0;
   const canonicalKg = hasWeight ? toCanonicalKg(weightKg, entryUnit) : null;
@@ -122,8 +129,10 @@ export function AssessmentModal({
         </h2>
         <p className={styles.modalBody}>
           Record {pet?.name ?? 'this pet'}&apos;s weight and coat type. The
-          weight class is worked out from the weight. Confirming saves the
-          assessment and completes this booking.
+          weight class is worked out from the weight.{' '}
+          {completesBooking
+            ? 'Confirming saves the assessment and completes this booking.'
+            : "Saving records the assessment and sets the booking's final price."}
         </p>
 
         <label className={styles.filterField}>
@@ -241,7 +250,7 @@ export function AssessmentModal({
             disabled={!hasWeight || !classSelectValue || !coatType || isSaving}
             onClick={onConfirm}
           >
-            {isSaving ? 'Saving...' : 'Confirm'}
+            {isSaving ? 'Saving...' : completesBooking ? 'Confirm' : 'Save'}
           </button>
         </div>
       </section>

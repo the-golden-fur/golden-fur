@@ -42,9 +42,19 @@ export const NOTIFICATION_EVENT_TYPES = [
    * or removes one - see vetChargeNotifications.service.ts. */
   'vet_charge_posted',
   /** Custom change (checkout countdown notifications, migration
-   * 20261008254): fires once, 15 minutes before a booked Hotel or Daycare
-   * pet's checkout time - see stayCheckout.job.ts. */
+   * 20261008254): fires once, a customer-chosen lead time (default 15
+   * minutes) before a booked Hotel or Daycare pet's checkout time - see
+   * stayCheckout.job.ts. */
   'checkout_reminder',
+  /** Custom change (checked-out notification, migration 20261020274): fires
+   * once when staff check a Hotel or Daycare pet out - see
+   * careLogNotifications.service.ts's sendStayCheckedOutNotification. */
+  'stay_checked_out',
+  /** Custom change (customer-reported vaccinations, migration
+   * 20261021278): fires when staff verify or reject a vaccination record
+   * the pet's owner added - see vaccinationRecord.service.ts's
+   * reviewVaccinationRecord. */
+  'vaccination_reviewed',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
@@ -69,9 +79,28 @@ export type ReminderOffsetMinutes =
   (typeof REMINDER_OFFSET_MINUTES_OPTIONS)[number];
 export const DEFAULT_REMINDER_OFFSET_MINUTES: ReminderOffsetMinutes = 1440;
 
+/** Custom change (checkout reminder lead time): presets for "how long before
+ * a checked-in pet's checkout time should the 'checkout_reminder' fire". 15
+ * is the pre-existing fixed lead, kept as the default so an unset preference
+ * changes nothing. No 2-day option - a Daycare stay never lasts that long and
+ * the reminder is only sent while the pet is checked in. */
+export const CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS = [
+  15, 60, 180, 1440,
+] as const;
+export const DEFAULT_CHECKOUT_REMINDER_OFFSET_MINUTES = 15;
+
+/** Which event types carry a reminder_offset_minutes, and the presets each
+ * accepts. */
+export const REMINDER_OFFSET_OPTIONS_BY_EVENT: Partial<
+  Record<NotificationEventType, readonly number[]>
+> = {
+  appointment_reminder: REMINDER_OFFSET_MINUTES_OPTIONS,
+  checkout_reminder: CHECKOUT_REMINDER_OFFSET_MINUTES_OPTIONS,
+};
+
 export type NotificationEventPreference = NotificationChannelPreference & {
-  /** Only ever set on the 'appointment_reminder' entry - see
-   * REMINDER_OFFSET_MINUTES_OPTIONS. */
+  /** Only ever set on the 'appointment_reminder' and 'checkout_reminder'
+   * entries - see REMINDER_OFFSET_OPTIONS_BY_EVENT. */
   reminder_offset_minutes?: number;
 };
 

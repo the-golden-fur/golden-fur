@@ -88,6 +88,40 @@ describe('AppointmentCard (#68, booking-status revision)', () => {
     expect(screen.getByText(/Puppy cut/)).toBeInTheDocument();
   });
 
+  // Book before assessment: listed so the groomer sees it coming, but it
+  // can't be started until front desk assesses the pet and the bill is paid.
+  it('a booking awaiting assessment is labelled, explains why, and cannot be started', () => {
+    render(
+      createElement(AppointmentCard, {
+        ...baseProps,
+        session: buildSession('Pending', {
+          booking: buildBooking({
+            status: 'Pending',
+            awaiting_assessment: true,
+          }),
+        }),
+        onAdvance: vi.fn(),
+      })
+    );
+
+    expect(screen.getByText('Awaiting assessment')).toBeInTheDocument();
+    expect(screen.getByText(/can't be started until then/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start/i })).toBeDisabled();
+  });
+
+  it('an ordinary booking carries no assessment label', () => {
+    render(
+      createElement(AppointmentCard, {
+        ...baseProps,
+        session: buildSession('Pending'),
+        onAdvance: vi.fn(),
+      })
+    );
+
+    expect(screen.queryByText('Awaiting assessment')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start/i })).toBeEnabled();
+  });
+
   it('AC-3: a Pending booking shows a "Start" button that calls onAdvance with In Progress', async () => {
     const onAdvance = vi.fn();
     render(

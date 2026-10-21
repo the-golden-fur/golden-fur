@@ -11,6 +11,14 @@ vi.mock('../../../../config/supabase/supabase.config.ts', () => ({
   },
 }));
 
+// Book before assessment (20261013264): covered by its own spec - mocked so
+// its queries stay out of these tests' sequential mock queues.
+vi.mock('../../../booking/services/assessmentReprice.service.ts', () => ({
+  repriceBookingsAwaitingAssessment: vi.fn(),
+}));
+
+import { repriceBookingsAwaitingAssessment } from '../../../booking/services/assessmentReprice.service.ts';
+
 interface QueryResult {
   data: unknown;
   error: unknown;
@@ -65,6 +73,7 @@ const NOT_STAFF: QueryResult = { data: null, error: null };
 const VALID_PET_PAYLOAD = {
   name: 'Buddy',
   pet_type: 'Dog',
+  gender: 'Male',
 };
 const VALID_STAFF_PET_PAYLOAD = {
   ...VALID_PET_PAYLOAD,
@@ -318,6 +327,78 @@ describe('pet CRUD (Issue #32)', () => {
       ).toBeTruthy();
     });
 
+    // Custom change (book before assessment, 20261013264).
+    describe('bookings made before the pet was assessed', () => {
+      beforeEach(() => {
+        vi.mocked(repriceBookingsAwaitingAssessment).mockReset();
+        vi.mocked(repriceBookingsAwaitingAssessment).mockResolvedValue({
+          repriced: [{ bookingId: 'booking-1', totalPrice: 425 }],
+          failed: [],
+        });
+      });
+
+      function queueStaffPatch() {
+        mockCaller('staff-1');
+        queueFromResults(
+          { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+          { data: { role: 'Front Desk' }, error: null },
+          {
+            data: { id: 'pet-1', weight_class: 'M', coat_type: 'SC' },
+            error: null,
+          }
+        );
+      }
+
+      it("Front Desk recording the weight and coat reprices the pet's waiting bookings and reports the result", async () => {
+        queueStaffPatch();
+
+        const res = await request(app)
+          .patch('/pets/pet-1')
+          .set('Authorization', 'Bearer token')
+          .send({ weight_class: 'M', coat_type: 'SC' });
+
+        expect(res.status).toBe(200);
+        expect(repriceBookingsAwaitingAssessment).toHaveBeenCalledWith('pet-1');
+        expect(res.body.assessment_reprice).toEqual({
+          repriced: [{ bookingId: 'booking-1', totalPrice: 425 }],
+          failed: [],
+        });
+      });
+
+      it('an edit that leaves the weight and coat alone reprices nothing', async () => {
+        queueStaffPatch();
+
+        const res = await request(app)
+          .patch('/pets/pet-1')
+          .set('Authorization', 'Bearer token')
+          .send({ name: 'New Name' });
+
+        expect(res.status).toBe(200);
+        expect(repriceBookingsAwaitingAssessment).not.toHaveBeenCalled();
+        expect(res.body).not.toHaveProperty('assessment_reprice');
+      });
+
+      it('still saves the assessment when the reprice itself blows up', async () => {
+        vi.mocked(repriceBookingsAwaitingAssessment).mockRejectedValue(
+          new Error('boom')
+        );
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        queueStaffPatch();
+
+        const res = await request(app)
+          .patch('/pets/pet-1')
+          .set('Authorization', 'Bearer token')
+          .send({ weight_class: 'M', coat_type: 'SC' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.pet).toMatchObject({ weight_class: 'M' });
+        expect(res.body.assessment_reprice).toEqual({
+          repriced: [],
+          failed: [],
+        });
+      });
+    });
+
     it('derives weight_class from a submitted weight_kg and stamps the assessment', async () => {
       mockCaller('staff-1');
       queueFromResults(
@@ -446,6 +527,119 @@ describe('pet CRUD (Issue #32)', () => {
         .set('Authorization', 'Bearer token');
 
       expect(res.status).toBe(403);
+    });
+
+    it('DELETE saves the delete reason the owner picked', async () => {
+      mockCaller('customer-1');
+      const inactivePet = {
+        id: 'pet-1',
+        customer_id: 'customer-1',
+        is_active: false,
+      };
+      queueFromResults(
+        { data: inactivePet, error: null },
+        { data: inactivePet, error: null },
+        { data: null, error: null }
+      );
+
+      const res = await request(app)
+        .delete('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ reason: 'other', reasonOther: '  Moving abroad  ' });
+
+      expect(res.status).toBe(204);
+      expect(recordedWrites[0]?.payload).toMatchObject({
+        archive_reason: 'other',
+        archive_reason_other: 'Moving abroad',
+      });
+    });
+
+    it('DELETE drops reasonOther when the reason is not "other"', async () => {
+      mockCaller('customer-1');
+      const inactivePet = {
+        id: 'pet-1',
+        customer_id: 'customer-1',
+        is_active: false,
+      };
+      queueFromResults(
+        { data: inactivePet, error: null },
+        { data: inactivePet, error: null },
+        { data: null, error: null }
+      );
+
+      const res = await request(app)
+        .delete('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ reason: 'rehomed', reasonOther: 'ignored' });
+
+      expect(res.status).toBe(204);
+      expect(recordedWrites[0]?.payload).toMatchObject({
+        archive_reason: 'rehomed',
+        archive_reason_other: null,
+      });
+    });
+
+    it('DELETE returns 400 for an unknown delete reason', async () => {
+      mockCaller('customer-1');
+
+      const res = await request(app)
+        .delete('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ reason: 'bored' });
+
+      expect(res.status).toBe(400);
+      expect(recordedWrites).toHaveLength(0);
+    });
+
+    it('vaccination review rejects an unknown decision with 400', async () => {
+      mockCaller('staff-1');
+
+      const res = await request(app)
+        .post('/pets/pet-1/vaccination-records/record-1/review')
+        .set('Authorization', 'Bearer token')
+        .send({ decision: 'approve' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('the pending vaccination queue is staff-only', async () => {
+      mockCaller('customer-1');
+      queueFromResults(NOT_STAFF);
+
+      const res = await request(app)
+        .get('/vaccination-records/pending')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('an owner adding a vaccination without the card photo gets 400', async () => {
+      mockCaller('customer-1');
+      queueFromResults(NOT_STAFF, {
+        data: { id: 'pet-1', customer_id: 'customer-1' },
+        error: null,
+      });
+
+      const res = await request(app)
+        .post('/pets/pet-1/vaccination-records')
+        .set('Authorization', 'Bearer token')
+        .field('vaccine_name', 'Rabies')
+        .field('date_administered', '2026-07-01');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/card/i);
+    });
+
+    it('DELETE returns 400 for "other" with blank text', async () => {
+      mockCaller('customer-1');
+
+      const res = await request(app)
+        .delete('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ reason: 'other', reasonOther: '   ' });
+
+      expect(res.status).toBe(400);
+      expect(recordedWrites).toHaveLength(0);
     });
   });
 });

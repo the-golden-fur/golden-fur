@@ -4,7 +4,7 @@ import { BANK_NAMES, PAYMENT_METHODS } from '../../billing.types.ts';
 /**
  * Shared by checkout and misc-sale: bank_name is required (and only valid)
  * when payment_method = 'Bank Transfer'; payment_reference is the free-text
- * field Card/Bank Transfer/Grabmart/Pickaroo record (Issue #83 dev notes -
+ * field Card/Bank Transfer record (Issue #83 dev notes -
  * one column, interpreted differently per method in the UI). cash_tendered
  * is required only for Cash, to compute change server-side.
  */

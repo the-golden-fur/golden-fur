@@ -29,15 +29,23 @@ export async function listTransactionHistory(
   // work out a booking's outstanding balance (for the customer/staff
   // "add a balance payment" action) without a second round trip.
   // scheduled_start + the pet's name label each booking group on the staff
-  // Transactions page's "Group by: Booking" view.
+  // Transactions page's "Group by: Booking" view. status lets both pages
+  // hide "Pay" on a cancelled booking (the server refuses it - see
+  // transactionPayment.service.ts).
   const bookingColumns =
-    'pet_id, service_category, payment_status, total_price, discount_amount, promo_amount, scheduled_start, pets(name)';
+    'pet_id, service_category, status, payment_status, total_price, discount_amount, promo_amount, scheduled_start, pets(name)';
   const needsBookingJoin = Boolean(filters.petId || filters.serviceCategory);
   const bookingsSelect = needsBookingJoin
     ? `bookings!inner(${bookingColumns})`
     : `bookings(${bookingColumns})`;
 
-  let query = supabase.from('transactions').select(`*, ${bookingsSelect}`);
+  // Line items let a printed receipt itemize the bill (e.g. a Daycare
+  // checkout's overdue hours and night not picked up).
+  let query = supabase
+    .from('transactions')
+    .select(
+      `*, ${bookingsSelect}, transaction_line_items(description, quantity, unit_price, line_total)`
+    );
 
   if (filters.branchId) {
     query = query.eq('branch_id', filters.branchId);

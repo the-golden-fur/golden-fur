@@ -108,6 +108,12 @@
   color: var(--color-cage-status-maintenance-text);
 }
 
+/* Front-desk cage override: closed to customers for a while. */
+.closedBadge {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
 .sectionTitle {
   margin: 0;
   color: var(--color-text-primary);
@@ -207,6 +213,9 @@
 }
 
 .occupantName {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--color-text-primary);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
@@ -341,4 +350,11 @@
     grid-template-columns: 1fr;
     gap: 0;
   }
+}
+
+/* Check-out confirmation / result: the line above a Daycare bill. */
+.previewNote {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
 }

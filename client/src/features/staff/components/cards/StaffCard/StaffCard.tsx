@@ -10,6 +10,9 @@ interface StaffCardProps {
   branchName?: string;
   /** Bump to force the badge to re-check status after an external change. */
   refreshKey?: number;
+  /** When set, the whole card becomes clickable (the name is the real
+   * button, stretched over the card) - e.g. to open a details view. */
+  onSelect?: () => void;
 }
 
 function getInitials(displayName: string) {
@@ -27,9 +30,12 @@ export function StaffCard({
   accessToken = null,
   branchName,
   refreshKey,
+  onSelect,
 }: StaffCardProps) {
   return (
-    <article className={styles.card}>
+    <article
+      className={onSelect ? `${styles.card} ${styles.clickable}` : styles.card}
+    >
       <div className={styles.header}>
         {profile.profile_photo_url ? (
           <img
@@ -43,7 +49,19 @@ export function StaffCard({
           </span>
         )}
         <div className={styles.identity}>
-          <h3 className={styles.name}>{profile.display_name}</h3>
+          <h3 className={styles.name}>
+            {onSelect ? (
+              <button
+                type="button"
+                className={styles.nameButton}
+                onClick={onSelect}
+              >
+                {profile.display_name}
+              </button>
+            ) : (
+              profile.display_name
+            )}
+          </h3>
           <span className={styles.roleBadge}>{profile.role}</span>
         </div>
       </div>

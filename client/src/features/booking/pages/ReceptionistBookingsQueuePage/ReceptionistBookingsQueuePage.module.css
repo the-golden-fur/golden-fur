@@ -39,6 +39,15 @@
   font-size: var(--text-sm);
 }
 
+.successBanner {
+  margin: 0;
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
 .errorBanner {
   margin: 0;
   background: var(--color-error-bg);
@@ -348,6 +357,11 @@
   color: var(--color-booking-pending-text);
 }
 
+.chipLate {
+  background: var(--color-booking-late-bg);
+  color: var(--color-booking-late-text);
+}
+
 .chipInProgress {
   background: var(--color-booking-in-progress-bg);
   color: var(--color-booking-in-progress-text);
@@ -378,4 +392,10 @@
   .dayCellBlank {
     min-height: 4rem;
   }
+}
+
+.petLine {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }

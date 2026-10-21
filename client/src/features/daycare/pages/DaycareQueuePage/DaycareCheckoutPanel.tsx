@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { checkOutDaycareSession } from '../../api/daycare.api';
 import type { DaycareCheckoutResult } from '../../daycare.types';
+import { DaycareBillBreakdown } from '../../components/DaycareBillBreakdown/DaycareBillBreakdown';
 import styles from './DaycareCheckoutPanel.module.css';
 
 interface DaycareCheckoutPanelProps {
@@ -26,6 +27,11 @@ interface DaycareCheckoutPanelProps {
  * booked pet picked up past its booked end time gets an extra line for the
  * overdue hours, and one that wasn't picked up before closing gets an extra
  * line for the night(s) at the Hotel nightly rate.
+ *
+ * Total is the whole session's cost, most of which a booked pet already
+ * paid at booking - so a booked session also shows what checkout added to
+ * the bill and, as the headline figure, what the booking's Transactions
+ * still say is owed (amount_due), the amount the cashier will collect.
  *
  * Daycare Queue redesign: this used to render as a tab panel inside
  * DaycareQueuePage, reachable either via its own session picker or a known
@@ -63,8 +69,6 @@ export function DaycareCheckoutPanel({
   }
 
   if (checkedOut) {
-    const breakdown = checkedOut.charge_breakdown;
-
     return (
       <>
         <p className={styles.successBanner} role="status">
@@ -72,53 +76,13 @@ export function DaycareCheckoutPanel({
             ? 'Session checked out. The bill has been sent to the cashier.'
             : 'Session checked out.'}
         </p>
-        <dl className={styles.breakdown}>
-          {breakdown ? (
-            <>
-              <div className={styles.breakdownRow}>
-                <dt>First hour</dt>
-                <dd>₱{breakdown.first_hour_fee}</dd>
-              </div>
-              {breakdown.succeeding_hours > 0 ? (
-                <div className={styles.breakdownRow}>
-                  <dt>
-                    {breakdown.succeeding_hours} succeeding hour
-                    {breakdown.succeeding_hours > 1 ? 's' : ''} × ₱
-                    {breakdown.succeeding_hour_fee}
-                  </dt>
-                  <dd>
-                    ₱
-                    {breakdown.succeeding_hours * breakdown.succeeding_hour_fee}
-                  </dd>
-                </div>
-              ) : null}
-              {breakdown.overdue_hours > 0 ? (
-                <div className={styles.breakdownRow}>
-                  <dt>
-                    Overdue checkout - {breakdown.overdue_hours} hour
-                    {breakdown.overdue_hours > 1 ? 's' : ''} × ₱
-                    {breakdown.overdue_hour_fee}
-                  </dt>
-                  <dd>₱{breakdown.overdue_charge}</dd>
-                </div>
-              ) : null}
-              {breakdown.nights > 0 && breakdown.nightly_rate !== null ? (
-                <div className={styles.breakdownRow}>
-                  <dt>
-                    Not picked up before closing - {breakdown.nights} night
-                    {breakdown.nights > 1 ? 's' : ''} × ₱
-                    {breakdown.nightly_rate} (Hotel rate)
-                  </dt>
-                  <dd>₱{breakdown.overnight_charge}</dd>
-                </div>
-              ) : null}
-            </>
-          ) : null}
-          <div className={styles.breakdownTotal}>
-            <dt>Total</dt>
-            <dd>₱{checkedOut.computed_charge}</dd>
-          </div>
-        </dl>
+        <DaycareBillBreakdown
+          breakdown={checkedOut.charge_breakdown}
+          total={checkedOut.computed_charge ?? 0}
+          bookedCharge={checkedOut.booked_charge}
+          addedAtCheckout={checkedOut.added_at_checkout}
+          amountDue={checkedOut.amount_due}
+        />
       </>
     );
   }

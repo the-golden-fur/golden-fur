@@ -21,6 +21,7 @@ export const BOOKING_MARK_PAID_ROLES: readonly string[] = [
   'Supervisor',
   'Receptionist',
   'Cashier',
+  'Front Desk',
 ];
 
 /** Mirrors the server's BOOKING_STATUS_OVERRIDE_ROLES - gates the queue's
@@ -59,14 +60,29 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
 ];
 
 /**
+ * The Assessment Queue is archived for now: the booking flow offers no
+ * Assessment category, and staff book an unassessed pet like a customer
+ * does (Online, estimate price, assessed on arrival through the Bookings
+ * Queue's Assess popup). The queue's sidebar tiles and dashboard widget
+ * are hidden too (staffDashboard.config.ts, StaffDashboardPage.tsx); the
+ * page still opens at /staff/assessment/queue to finish bookings made
+ * before. To restore everything: set this and the server's
+ * ASSESSMENT_BOOKINGS_PAUSED (server booking.types.ts) to false.
+ */
+export const ASSESSMENT_BOOKINGS_PAUSED = true;
+
+/**
  * Unified booking lifecycle (booking-status revision): no manual "staff
  * confirms a booking" step ever existed - status was always set
  * automatically - so 'Confirmed' was retired rather than relabeled.
  * Pending (booked, appointment hasn't started) -> In Progress (a Start
  * action, or physical check-in for Hotel/Daycare) -> Completed (a Complete
- * action or checkout). No-show is a lazy, read-time server transition: any
- * Pending booking whose scheduled_start has passed is flipped to No-show
- * the next time it's read. Cancelled is unchanged.
+ * action or checkout). Late and No-show are lazy, read-time server
+ * transitions: a Pending booking whose scheduled_start has passed is flipped
+ * to Late the next time it's read (it can still be started, checked in or
+ * cancelled), then to No-show once the branch's no-show threshold
+ * (Policy Configuration > "Mark as no-show after") has also passed.
+ * Cancelled is unchanged.
  *
  * 'Paid' was retired as a status value (staff-queue-overhaul): payment is
  * now tracked exclusively via the independent `payment_status` field
@@ -74,6 +90,7 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
  */
 export type BookingStatus =
   | 'Pending'
+  | 'Late'
   | 'In Progress'
   | 'Completed'
   | 'Cancelled'
@@ -81,6 +98,7 @@ export type BookingStatus =
 
 export const BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
   'Cancelled',
@@ -91,6 +109,7 @@ export const BOOKING_STATUSES: readonly BookingStatus[] = [
  * ACTIVE_BOOKING_STATUSES. */
 export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
 ];
@@ -102,8 +121,21 @@ export const FINISHED_BOOKING_STATUSES: readonly BookingStatus[] = [
 
 export const CANCELLABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
+
+/** Mirrors the server's NOT_STARTED_BOOKING_STATUSES - booked but not
+ * started yet. A 'Late' booking can still be started/checked in exactly
+ * like a 'Pending' one. */
+export const NOT_STARTED_BOOKING_STATUSES: readonly BookingStatus[] = [
+  'Pending',
+  'Late',
+];
+
+export function isNotStartedStatus(status: string): boolean {
+  return (NOT_STARTED_BOOKING_STATUSES as readonly string[]).includes(status);
+}
 
 /**
  * Mirrors the server's PaymentStatus - the same vocabulary as a
@@ -163,6 +195,7 @@ export const DOWNPAYMENT_EXPIRED_CANCELLATION_REASON =
 export type BookingConfirmationState =
   | 'Unconfirmed'
   | 'Confirmed'
+  | 'Late'
   | 'In service'
   | 'Completed'
   | 'Expired'
@@ -173,6 +206,7 @@ export const BOOKING_CONFIRMATION_STATES: readonly BookingConfirmationState[] =
   [
     'Unconfirmed',
     'Confirmed',
+    'Late',
     'In service',
     'Completed',
     'Expired',
@@ -197,6 +231,7 @@ export const RESCHEDULABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
  * Cancelled/No-show booking has nothing left to collect. */
 export const PAYABLE_BOOKING_STATUSES: readonly BookingStatus[] = [
   'Pending',
+  'Late',
   'In Progress',
   'Completed',
 ];
@@ -208,8 +243,6 @@ export const PAYMENT_METHODS = [
   'Maya',
   'Card',
   'Bank Transfer',
-  'Grabmart',
-  'Pickaroo',
 ] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
@@ -397,6 +430,11 @@ export interface Booking {
    * upfront charge. total_price is only an estimate until checkout posts
    * the real bill for the time the pet actually stayed. */
   pay_at_checkout?: boolean;
+  /** The booking was made for a pet staff have not assessed yet: its price
+   * is an estimate and nothing has been charged. Cleared, with the booking
+   * repriced and its bill posted, once staff record the pet's weight class
+   * and coat type. */
+  awaiting_assessment?: boolean;
   payment_method: PaymentMethod | null;
   payment_confirmed: boolean;
   /** Selected at booking creation (staff-only, Cash-only for the discount)
@@ -459,6 +497,11 @@ export interface BookingGroup {
   /** Pay at checkout: every booking in the group is billed at its own
    * checkout - there is no shared upfront charge. */
   pay_at_checkout?: boolean;
+  /** The booking was made for a pet staff have not assessed yet: its price
+   * is an estimate and nothing has been charged. Cleared, with the booking
+   * repriced and its bill posted, once staff record the pet's weight class
+   * and coat type. */
+  awaiting_assessment?: boolean;
   payment_status: PaymentStatus;
   paid_at: string | null;
   created_at: string;
@@ -547,6 +590,7 @@ export interface BookingDetailsPet {
   name: string;
   weight_class: string | null;
   coat_type: string | null;
+  photo_url?: string | null;
 }
 
 export interface BookingDetailsOwner {
@@ -636,6 +680,9 @@ export interface PolicyConfiguration {
   /** Percent (0-100) of what the customer paid that is returned as account
    * credit on a qualifying cancellation. Default 100 (full). */
   cancellation_credit_conversion_rate: number;
+  /** Minutes after a booking is made during which a booking made inside the
+   * notice window can still be cancelled for credit. 0 = off. Default 60. */
+  cancellation_grace_minutes: number;
   /** Per-transaction downpayment config, applied against a booking's whole
    * total_price at creation time - see createBooking server-side.
    * Supersedes the old per-catalog-item Service/Package.
@@ -677,6 +724,13 @@ export interface PolicyConfiguration {
    * permanently removed. NOT NULL, default 30. Customers aren't
    * branch-scoped, so only the system-default row's value is ever read. */
   customer_deactivation_auto_delete_days: number;
+  /** Custom change (Late booking status): minutes after scheduled_start a
+   * booking stays 'Late' (still startable) before it becomes 'No-show'.
+   * Default 30. Ignored when no_show_at_closing is true. */
+  no_show_after_minutes: number;
+  /** When true, a Late booking becomes No-show at the branch's closing time
+   * on the booking's day instead. Default false. */
+  no_show_at_closing: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -698,6 +752,7 @@ export type EffectivePolicy = Pick<
   | 'credit_expiry_days'
   | 'credit_expiry_fixed_date'
   | 'cancellation_credit_conversion_rate'
+  | 'cancellation_grace_minutes'
   | 'downpayment_enabled'
   | 'downpayment_type'
   | 'downpayment_amount'
@@ -710,6 +765,8 @@ export type EffectivePolicy = Pick<
   | 'care_log_daily_report_enabled'
   | 'credit_review_mode'
   | 'customer_deactivation_auto_delete_days'
+  | 'no_show_after_minutes'
+  | 'no_show_at_closing'
 >;
 
 export interface UpdatePolicyPayload {
@@ -729,6 +786,7 @@ export interface UpdatePolicyPayload {
   credit_expiry_days?: number;
   credit_expiry_fixed_date?: string | null;
   cancellation_credit_conversion_rate?: number;
+  cancellation_grace_minutes?: number;
   downpayment_enabled?: boolean;
   downpayment_type?: DownpaymentType | null;
   downpayment_amount?: number | null;
@@ -741,6 +799,8 @@ export interface UpdatePolicyPayload {
   care_log_daily_report_enabled?: boolean;
   credit_review_mode?: CreditReviewMode;
   customer_deactivation_auto_delete_days?: number;
+  no_show_after_minutes?: number;
+  no_show_at_closing?: boolean;
 }
 
 export interface StaffPreferenceInput {
@@ -917,6 +977,9 @@ export interface OperatingWindow {
 
 export interface ListBookingsFilters {
   branchId?: string;
+  /** Staff only: one customer's bookings. The server ignores it for a
+   * customer session, which only ever gets its own. */
+  customerId?: string;
   /** YYYY-MM-DD */
   date?: string;
   /** Inclusive date-range bounds (YYYY-MM-DD) - ignored when `date` is also

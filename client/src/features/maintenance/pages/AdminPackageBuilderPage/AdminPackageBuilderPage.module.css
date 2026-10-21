@@ -311,3 +311,62 @@
   background: var(--color-success-bg);
   color: var(--color-success-text);
 }
+
+/* Package extras: the "add a service that is not in the list" row, and the
+   names already added as removable chips. */
+.extrasAddRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.extrasAddRow .input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.extrasList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extraChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  padding: var(--space-0-5) var(--space-1) var(--space-0-5) var(--space-2);
+}
+
+.extraRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.extraRemove:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.extraRemove:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 1px;
+}

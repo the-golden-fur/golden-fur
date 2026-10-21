@@ -3,12 +3,21 @@ import {
   checkOutDaycareSession,
   computeDaycareCharge,
   computeDaycareChargeBreakdown,
+  previewDaycareCheckout,
 } from './daycareBilling.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { sendStayCheckedOutNotification } from '../../hotel/services/careLogNotifications.service.ts';
 import { completeBooking } from '../../booking/services/booking.service.ts';
 import { postDaycareOverdueCharge } from './daycareOverdueCharge.service.ts';
 import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
 import { resolveEffectivePolicy } from '../../booking/services/staffPicker.service.ts';
+import { loadRemainingBalance } from '../../billing/services/transactionPayment.service.ts';
+
+// The checked-out notification does its own Supabase lookups - mocked so
+// they don't consume this spec's sequential supabase.from results.
+vi.mock('../../hotel/services/careLogNotifications.service.ts', () => ({
+  sendStayCheckedOutNotification: vi.fn(),
+}));
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -30,6 +39,12 @@ vi.mock('./daycareOverdueCharge.service.ts', () => ({
 // policy field - both mocked so these tests queue no extra Supabase reads.
 vi.mock('../../billing/services/payAtCheckoutCharge.service.ts', () => ({
   postPayAtCheckoutCharge: vi.fn().mockResolvedValue({ id: 'txn-bill' }),
+}));
+
+// What checkout reports as still owed is read straight off Transactions -
+// covered by transactionPayment.service's own tests.
+vi.mock('../../billing/services/transactionPayment.service.ts', () => ({
+  loadRemainingBalance: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('../../booking/services/staffPicker.service.ts', () => ({
@@ -269,6 +284,33 @@ describe('daycareBilling.service (#65)', () => {
 
         expect(await computeDaycareCharge(start, end, 'branch-1')).toBe(
           150 + 2 * 700
+        );
+      });
+
+      // Hotel long-stay rate (20261013260): an unplanned night is never a
+      // long stay, so the Hotel service's cheaper long-stay price must not
+      // lower this charge - it stays the regular nightly rate.
+      it("stays on the Hotel service's regular price when it also has a long-stay price", async () => {
+        queueFromResults(branchWithHours, {
+          data: [
+            {
+              base_price: 850,
+              long_stay_nightly_price: 750,
+              min_nights_for_free_package: 5,
+              service_branch_availability: [
+                {
+                  branch_id: 'branch-1',
+                  price_override: null,
+                  long_stay_price_override: 700,
+                },
+              ],
+            },
+          ],
+          error: null,
+        });
+
+        expect(await computeDaycareCharge(start, end, 'branch-1')).toBe(
+          150 + 2 * 850
         );
       });
 
@@ -516,6 +558,9 @@ describe('daycareBilling.service (#65)', () => {
       ).not.toBeNull();
       // Walk-ins have no booking_id, so there's nothing to sync.
       expect(completeBooking).not.toHaveBeenCalled();
+      // ...and no Transactions to read a balance from.
+      expect(result.amount_due).toBeNull();
+      expect(loadRemainingBalance).not.toHaveBeenCalled();
     });
 
     it("Custom change (Daycare fee configuration): resolves the fee schedule from the session's own service_id", async () => {
@@ -597,12 +642,23 @@ describe('daycareBilling.service (#65)', () => {
 
       expect(result.status).toBe('Completed');
       expect(completeBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
+      expect(sendStayCheckedOutNotification).toHaveBeenCalledTimes(1);
+      expect(sendStayCheckedOutNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stayType: 'Daycare',
+          branchId: 'branch-1',
+          bookingId: 'booking-1',
+        })
+      );
     });
 
     it('stores the overdue fee on its own for a booked session picked up late', async () => {
       vi.useFakeTimers();
       // Checked in 08:00, booked until 10:00, picked up 11:30.
       vi.setSystemTime(new Date('2026-07-19T11:30:00.000Z'));
+      // The booked hours were already paid; only the fee is left on
+      // Transactions.
+      vi.mocked(loadRemainingBalance).mockResolvedValueOnce(100);
 
       queueFromResults(
         {
@@ -645,8 +701,230 @@ describe('daycareBilling.service (#65)', () => {
         overdueFee: 100,
         requesterId: undefined,
       });
+      // The screen reports what was just added and what Transactions now
+      // says is owed - not the whole session's ₱250.
+      expect(result.added_at_checkout).toBe(100);
+      expect(loadRemainingBalance).toHaveBeenCalledWith('booking-1', null);
+      expect(result.amount_due).toBe(100);
 
       vi.useRealTimers();
+    });
+
+    describe('a booked pet checked in earlier than its booked time', () => {
+      // Checked in 08:00 and picked up 10:00 = 2 Daycare hours (₱150).
+      function queueCheckout(bookedItemPrice: number) {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-19T10:00:00.000Z'));
+
+        queueFromResults(
+          {
+            data: {
+              id: 'session-1',
+              booking_id: 'booking-1',
+              branch_id: 'branch-1',
+              status: 'Active',
+              check_in_at: '2026-07-19T08:00:00.000Z',
+            },
+            error: null,
+          },
+          noOutstandingTasksResult(),
+          { data: { scheduled_end: '2026-07-19T10:00:00.000Z' }, error: null },
+          BRANCH_NO_HOURS,
+          {
+            data: {
+              id: 'session-1',
+              booking_id: 'booking-1',
+              status: 'Completed',
+            },
+            error: null,
+          },
+          { data: null, error: null }, // cage release
+          {
+            // What the booking was charged for its Daycare hours.
+            data: [
+              {
+                id: 'item-1',
+                service_id: null,
+                price_at_booking: bookedItemPrice,
+              },
+            ],
+            error: null,
+          }
+        );
+      }
+
+      it('posts the hours beyond those charged at booking, so the bill adds up to the whole stay', async () => {
+        // Booked (and charged) for 1 hour, ₱100.
+        queueCheckout(100);
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        expect(postDaycareOverdueCharge).toHaveBeenCalledWith({
+          bookingId: 'booking-1',
+          overdueHours: 0,
+          overdueFee: 0,
+          additionalHours: { charge: 50 },
+          requesterId: undefined,
+        });
+
+        vi.useRealTimers();
+      });
+
+      it('posts nothing when the pet stayed exactly the hours it was charged for', async () => {
+        queueCheckout(150);
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        expect(postDaycareOverdueCharge).not.toHaveBeenCalled();
+
+        vi.useRealTimers();
+      });
+
+      it('never posts a negative amount for a pet picked up early', async () => {
+        // Charged for 4 hours (₱250), stayed 2.
+        queueCheckout(250);
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        expect(postDaycareOverdueCharge).not.toHaveBeenCalled();
+
+        vi.useRealTimers();
+      });
+    });
+
+    describe('a booked pet that was not picked up before closing', () => {
+      // Checked in Sunday 16:00 Manila (08:00 UTC); the branch closes 18:00
+      // Manila (10:00 UTC); picked up the next morning.
+      const OVERNIGHT_SESSION: QueryResult = {
+        data: {
+          id: 'session-1',
+          booking_id: 'booking-1',
+          branch_id: 'branch-1',
+          status: 'Active',
+          check_in_at: '2026-07-19T08:00:00.000Z',
+        },
+        error: null,
+      };
+      const BRANCH_CLOSES_AT_SIX: QueryResult = {
+        data: {
+          operating_hours: {
+            sunday: { open: '08:00', close: '18:00' },
+            monday: { open: '08:00', close: '18:00' },
+          },
+          timezone: 'Asia/Manila',
+        },
+        error: null,
+      };
+      const HOTEL_RATE_850: QueryResult = {
+        data: [{ base_price: 850 }],
+        error: null,
+      };
+      const CHECKED_OUT: QueryResult = {
+        data: { id: 'session-1', booking_id: 'booking-1', status: 'Completed' },
+        error: null,
+      };
+
+      it('posts the night to the bill together with the overdue fee, so the cashier can collect both', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-20T01:00:00.000Z'));
+
+        queueFromResults(
+          OVERNIGHT_SESSION,
+          noOutstandingTasksResult(),
+          // Booked until 09:00 UTC - an hour before closing.
+          { data: { scheduled_end: '2026-07-19T09:00:00.000Z' }, error: null },
+          BRANCH_CLOSES_AT_SIX,
+          HOTEL_RATE_850,
+          CHECKED_OUT
+        );
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        // 1 booked hour (₱100, already charged at booking) + 1 overdue hour
+        // up to closing (₱50) + 1 night (₱850).
+        const update = recordedWrites.find(
+          (write) => write.method === 'update'
+        );
+        expect(update?.payload).toMatchObject({ computed_charge: 1000 });
+        expect(postDaycareOverdueCharge).toHaveBeenCalledWith({
+          bookingId: 'booking-1',
+          overdueHours: 1,
+          overdueFee: 50,
+          overnight: { nights: 1, nightlyRate: 850, charge: 850 },
+          requesterId: undefined,
+        });
+
+        vi.useRealTimers();
+      });
+
+      it('previews the same bill before checkout, without writing anything', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-20T01:00:00.000Z'));
+        // ₱200 still pending from booking; the extras land on top.
+        vi.mocked(loadRemainingBalance).mockResolvedValueOnce(200);
+
+        queueFromResults(
+          OVERNIGHT_SESSION,
+          // Booked until 09:00 UTC - an hour before closing.
+          { data: { scheduled_end: '2026-07-19T09:00:00.000Z' }, error: null },
+          BRANCH_CLOSES_AT_SIX,
+          HOTEL_RATE_850,
+          // The booking's Daycare item - the 1 booked hour, ₱100.
+          { data: [{ service_id: null, price_at_booking: 100 }], error: null }
+        );
+
+        const preview = await previewDaycareCheckout('session-1');
+
+        expect(preview.charge_breakdown).toMatchObject({
+          hourly_charge: 100,
+          overdue_hours: 1,
+          overdue_hour_fee: 50,
+          overdue_charge: 50,
+          nights: 1,
+          nightly_rate: 850,
+          overnight_charge: 850,
+          total: 1000,
+        });
+        expect(preview.computed_charge).toBe(1000);
+        expect(preview.booked_charge).toBe(100);
+        // ₱50 overdue + ₱850 night - what checkout would post.
+        expect(preview.added_at_checkout).toBe(900);
+        expect(preview.amount_due).toBe(1100);
+        expect(preview.billed_at_checkout).toBe(false);
+        expect(preview.as_of).toBe('2026-07-20T01:00:00.000Z');
+        expect(recordedWrites).toHaveLength(0);
+        expect(postDaycareOverdueCharge).not.toHaveBeenCalled();
+        expect(completeBooking).not.toHaveBeenCalled();
+
+        vi.useRealTimers();
+      });
+
+      it('posts the night even when there was no overdue hour before closing', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-20T01:00:00.000Z'));
+
+        queueFromResults(
+          OVERNIGHT_SESSION,
+          noOutstandingTasksResult(),
+          // Booked right up to closing time - nothing overdue before it.
+          { data: { scheduled_end: '2026-07-19T10:00:00.000Z' }, error: null },
+          BRANCH_CLOSES_AT_SIX,
+          HOTEL_RATE_850,
+          CHECKED_OUT
+        );
+
+        await checkOutDaycareSession({ sessionId: 'session-1' });
+
+        expect(postDaycareOverdueCharge).toHaveBeenCalledWith({
+          bookingId: 'booking-1',
+          overdueHours: 0,
+          overdueFee: 0,
+          overnight: { nights: 1, nightlyRate: 850, charge: 850 },
+          requesterId: undefined,
+        });
+
+        vi.useRealTimers();
+      });
     });
 
     it('says so plainly when the pet was checked out but the overdue fee could not be added to the bill', async () => {
@@ -914,6 +1192,46 @@ describe('daycareBilling.service (#65)', () => {
 
       expect(result.status).toBe('Completed');
       expect(completeBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
+    });
+
+    it('previews a walk-in as just the session total, with nothing to collect against', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-07-19T09:30:00.000Z'));
+
+      queueFromResults(
+        {
+          data: {
+            id: 'session-1',
+            booking_id: null,
+            branch_id: 'branch-1',
+            status: 'Active',
+            check_in_at: '2026-07-19T08:00:00.000Z',
+          },
+          error: null,
+        },
+        BRANCH_NO_HOURS
+      );
+
+      const preview = await previewDaycareCheckout('session-1');
+
+      expect(preview.computed_charge).toBe(150); // 1h30m
+      expect(preview.booked_charge).toBeNull();
+      expect(preview.added_at_checkout).toBeNull();
+      expect(preview.amount_due).toBeNull();
+      expect(loadRemainingBalance).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('refuses to preview an already-Completed session', async () => {
+      queueFromResults({
+        data: { id: 'session-1', status: 'Completed' },
+        error: null,
+      });
+
+      await expect(previewDaycareCheckout('session-1')).rejects.toMatchObject({
+        statusCode: 409,
+      });
     });
 
     it('refuses to check out an already-Completed session', async () => {

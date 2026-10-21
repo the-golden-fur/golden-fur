@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { listStaff } from '../../../staff/api/staff.api';
@@ -6,10 +6,28 @@ import { listBranches } from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
 import {
   checkOutHotelStay,
+  closeCageTemporarily,
   getCageGrid,
   getCageOccupants,
+  getHotelCheckoutPreview,
+  reopenCage,
 } from '../../../hotel/api/hotel.api';
-import { checkOutDaycareSession } from '../../../daycare/api/daycare.api';
+import { CageCloseDialog } from '../../../hotel/components/CageStatusGrid/CageCloseDialog';
+import {
+  OVERRIDE_ROLES,
+  formatClosedUntil,
+  isClosedToCustomers,
+} from '../../../hotel/components/CageStatusGrid/cageClosure';
+import { HotelBillBreakdown } from '../../../hotel/components/HotelBillBreakdown/HotelBillBreakdown';
+import {
+  checkOutDaycareSession,
+  getDaycareCheckoutPreview,
+} from '../../../daycare/api/daycare.api';
+import { DaycareBillBreakdown } from '../../../daycare/components/DaycareBillBreakdown/DaycareBillBreakdown';
+import type {
+  DaycareCheckoutPreview,
+  DaycareCheckoutResult,
+} from '../../../daycare/daycare.types';
 import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import type {
@@ -17,6 +35,8 @@ import type {
   CageOccupant,
   CageSize,
   CageStatus,
+  CheckoutResult,
+  HotelCheckoutPreview,
 } from '../../../hotel/hotel.types';
 import { CAGE_OCCUPANT_PAYMENT_LABEL } from '../../../hotel/hotel.types';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
@@ -31,6 +51,7 @@ import {
   groupCagesBySize,
   type CageSortKey,
 } from './cageSort';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import styles from './CageOccupancyReport.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
@@ -42,6 +63,7 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Supervisor',
   'Superadmin',
   'Receptionist',
+  'Front Desk',
 ]);
 
 const SIZE_ORDER = CAGE_SIZE_ORDER;
@@ -146,9 +168,37 @@ export function CageOccupancyReport() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
+  // The bill "if checked out now", shown in the confirm dialog - Daycare's
+  // or Hotel's, by the occupant's service (null while loading or when it
+  // could not be worked out - checkout still works without it), and the
+  // checked-out stay's bill afterwards.
+  const [checkoutPreview, setCheckoutPreview] =
+    useState<DaycareCheckoutPreview | null>(null);
+  const [hotelPreview, setHotelPreview] = useState<HotelCheckoutPreview | null>(
+    null
+  );
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  // Bumped per preview request, so only the latest one's reply is kept.
+  const previewRequestRef = useRef(0);
+  const [daycareCheckout, setDaycareCheckout] = useState<{
+    petName: string;
+    cageLabel: string;
+    result: DaycareCheckoutResult;
+  } | null>(null);
+  const [hotelCheckout, setHotelCheckout] = useState<{
+    petName: string;
+    cageLabel: string;
+    result: CheckoutResult;
+  } | null>(null);
   // Bumped after a check-out so the summary, the cage list and the
   // occupants all reload - the freed cage then reads Available everywhere.
   const [refreshKey, setRefreshKey] = useState(0);
+  // Front-desk cage override: the cage the close dialog is open for, any
+  // reopen error, and when the cage list was last fetched (closures are
+  // judged against that, keeping render pure).
+  const [closingCage, setClosingCage] = useState<Cage | null>(null);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+  const [cagesLoadedAt, setCagesLoadedAt] = useState(0);
   const [statusFilter, setStatusFilter] = useState<CageStatus | 'All'>('All');
   const [sizeFilter, setSizeFilter] = useState<CageSize | 'All'>('All');
 
@@ -232,6 +282,7 @@ export function CageOccupancyReport() {
 
       setCagesError(null);
       setCages(SIZE_ORDER.flatMap((size) => result.data![size]));
+      setCagesLoadedAt(Date.now());
     });
 
     void getCageOccupants(accessToken, cageBranch).then((result) => {
@@ -253,6 +304,43 @@ export function CageOccupancyReport() {
     refreshKey,
   ]);
 
+  const previewStayId = checkoutTarget?.occupant.stay_id ?? null;
+
+  /** Opens the check-out confirmation for an occupied cage. The pet's bill
+   * "if checked out now" (Daycare session or Hotel stay) is fetched
+   * alongside - a reply for a dialog that has since been closed or reopened
+   * for another pet is dropped. */
+  function openCheckout(target: { cage: Cage; occupant: CageOccupant }) {
+    setCheckoutError(null);
+    setCheckoutMessage(null);
+    setCheckoutTarget(target);
+    setCheckoutPreview(null);
+    setHotelPreview(null);
+
+    const requestId = ++previewRequestRef.current;
+    if (!accessToken) {
+      setIsPreviewLoading(false);
+      return;
+    }
+
+    setIsPreviewLoading(true);
+    const { stay_id: stayId } = target.occupant;
+
+    if (target.occupant.service === 'Daycare') {
+      void getDaycareCheckoutPreview(stayId, accessToken).then((result) => {
+        if (requestId !== previewRequestRef.current) return;
+        setIsPreviewLoading(false);
+        setCheckoutPreview(result.data);
+      });
+    } else {
+      void getHotelCheckoutPreview(stayId, accessToken).then((result) => {
+        if (requestId !== previewRequestRef.current) return;
+        setIsPreviewLoading(false);
+        setHotelPreview(result.data);
+      });
+    }
+  }
+
   /** Checks the pet out through its own service's check-out (Daycare
    * session / Hotel stay) - the server releases the cage back to Available
    * as part of that, so nothing here sets a cage status directly. */
@@ -268,18 +356,27 @@ export function CageOccupancyReport() {
     let amountNote = '';
     let error: string | null;
 
+    let daycareResult: DaycareCheckoutResult | null = null;
+    let hotelResult: CheckoutResult | null = null;
+
     if (occupant.service === 'Daycare') {
       const result = await checkOutDaycareSession(
         occupant.stay_id,
         accessToken
       );
       error = result.data ? null : (result.error ?? 'Could not check out.');
-      if (result.data?.computed_charge != null) {
+      daycareResult = result.data;
+      // A booked session reports what Transactions still says is owed - the
+      // session's own computed_charge was mostly paid at booking.
+      if (result.data?.amount_due != null) {
+        amountNote = ` To collect at the cashier: PHP ${Number(result.data.amount_due).toFixed(2)}.`;
+      } else if (result.data?.computed_charge != null) {
         amountNote = ` Daycare charge: PHP ${Number(result.data.computed_charge).toFixed(2)}.`;
       }
     } else {
       const result = await checkOutHotelStay(occupant.stay_id, accessToken);
       error = result.data ? null : (result.error ?? 'Could not check out.');
+      hotelResult = result.data;
       if (result.data) {
         amountNote = ` Remaining balance: PHP ${result.data.remainingBalance.toFixed(2)}.`;
       }
@@ -293,10 +390,56 @@ export function CageOccupancyReport() {
     }
 
     setCheckoutTarget(null);
-    setCheckoutMessage(
-      `${petName} was checked out and ${cage.cage_label} is available again.${amountNote}`
-    );
+    if (daycareResult?.charge_breakdown) {
+      // The whole bill, line by line, in its own popup - a one-line banner
+      // can't carry the overdue hours and nights.
+      setDaycareCheckout({
+        petName,
+        cageLabel: cage.cage_label,
+        result: daycareResult,
+      });
+    } else if (hotelResult?.bill) {
+      setHotelCheckout({
+        petName,
+        cageLabel: cage.cage_label,
+        result: hotelResult,
+      });
+    } else {
+      setCheckoutMessage(
+        `${petName} was checked out and ${cage.cage_label} is available again.${amountNote}`
+      );
+    }
     setRefreshKey((key) => key + 1);
+  }
+
+  /** Front-desk cage override: close the dialog's cage to customers. Returns
+   * an error message for the dialog to show, or null on success. */
+  async function closeCage(minutes: number): Promise<string | null> {
+    if (!accessToken || !closingCage) return null;
+
+    const result = await closeCageTemporarily(
+      closingCage.id,
+      minutes,
+      accessToken
+    );
+
+    if (!result.data) return result.error ?? 'Could not close the cage.';
+
+    setRefreshKey((key) => key + 1);
+    return null;
+  }
+
+  async function reopen(cage: Cage) {
+    if (!accessToken) return;
+
+    const result = await reopenCage(cage.id, accessToken);
+
+    if (result.data) {
+      setOverrideError(null);
+      setRefreshKey((key) => key + 1);
+    } else {
+      setOverrideError(result.error ?? `Could not reopen ${cage.cage_label}.`);
+    }
   }
 
   const cageComparators = useMemo(
@@ -358,6 +501,24 @@ export function CageOccupancyReport() {
   // any other), so the popup only offers it for the viewer's own branch.
   const canCheckOutDetailsCage =
     detailsCage !== null && detailsCage.branch_id === viewerBranchId;
+  // Same own-branch rule for the front-desk override (the server closes
+  // cages at the viewer's branch), and only an Available cage can be closed.
+  const canOverrideDetailsCage =
+    canCheckOutDetailsCage &&
+    viewerRole !== null &&
+    OVERRIDE_ROLES.includes(viewerRole) &&
+    detailsCage?.status === 'Available';
+  // Occupied with no checked-in pet: a check-in that claimed the cage and
+  // then failed. Reopen frees it (the server re-checks there is no stay).
+  const canReopenStaleCage =
+    canCheckOutDetailsCage &&
+    viewerRole !== null &&
+    OVERRIDE_ROLES.includes(viewerRole) &&
+    detailsCage?.status === 'Occupied';
+  const detailsClosedUntil =
+    detailsCage?.closed_until && isClosedToCustomers(detailsCage, cagesLoadedAt)
+      ? detailsCage.closed_until
+      : null;
 
   function renderCageCard(cage: Cage) {
     // Only an Occupied cage has someone in it - a stale occupant entry for a
@@ -383,9 +544,19 @@ export function CageOccupancyReport() {
         <span className={`${styles.badge} ${STATUS_TOKEN[cage.status]}`}>
           {cage.status}
         </span>
+        {cage.closed_until && isClosedToCustomers(cage, cagesLoadedAt) ? (
+          <span className={`${styles.badge} ${styles.closedBadge}`}>
+            Closed until {formatClosedUntil(cage.closed_until, cagesLoadedAt)}
+          </span>
+        ) : null}
         {occupant ? (
           <span className={styles.occupant}>
             <span className={styles.occupantName}>
+              <PetAvatar
+                name={occupant.pet_name ?? 'Unknown pet'}
+                photoUrl={occupant.pet_photo_url}
+                size="xs"
+              />
               {occupant.pet_name ?? 'Unknown pet'}
             </span>
             <span className={styles.cageSize}>{occupant.service}</span>
@@ -588,7 +759,50 @@ export function CageOccupancyReport() {
                 <dt>Suitable for</dt>
                 <dd>{detailsCage.pet_types.join(', ') || 'Not set'}</dd>
               </div>
+              {detailsClosedUntil ? (
+                <div className={styles.detailsRow}>
+                  <dt>Customers</dt>
+                  <dd>
+                    Closed until{' '}
+                    {formatClosedUntil(detailsClosedUntil, cagesLoadedAt)}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
+
+            {canOverrideDetailsCage ? (
+              <div className={styles.detailsActions}>
+                <button
+                  type="button"
+                  className={styles.checkoutButton}
+                  onClick={() => {
+                    setOverrideError(null);
+                    setClosingCage(detailsCage);
+                    // One dialog at a time - the close dialog takes over.
+                    setDetailsCageId(null);
+                  }}
+                >
+                  {detailsClosedUntil
+                    ? 'Change close time'
+                    : 'Close to customers'}
+                </button>
+                {detailsClosedUntil ? (
+                  <button
+                    type="button"
+                    className={styles.checkoutButton}
+                    onClick={() => void reopen(detailsCage)}
+                  >
+                    Reopen now
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {overrideError ? (
+              <p className={styles.errorBanner} role="alert">
+                {overrideError}
+              </p>
+            ) : null}
 
             {detailsOccupant ? (
               <>
@@ -661,9 +875,7 @@ export function CageOccupancyReport() {
                       type="button"
                       className={styles.checkoutButton}
                       onClick={() => {
-                        setCheckoutError(null);
-                        setCheckoutMessage(null);
-                        setCheckoutTarget({
+                        openCheckout({
                           cage: detailsCage,
                           occupant: detailsOccupant,
                         });
@@ -685,17 +897,37 @@ export function CageOccupancyReport() {
                 </div>
               </>
             ) : (
-              <p className={styles.copy}>
-                {detailsCage.status === 'Occupied'
-                  ? 'This cage is marked Occupied, but no checked-in pet was found for it.'
-                  : detailsCage.status === 'Under Maintenance'
-                    ? 'This cage is under maintenance and cannot be assigned.'
-                    : 'No pet is in this cage.'}
-              </p>
+              <>
+                <p className={styles.copy}>
+                  {detailsCage.status === 'Occupied'
+                    ? 'This cage is marked Occupied, but no checked-in pet was found for it.'
+                    : detailsCage.status === 'Under Maintenance'
+                      ? 'This cage is under maintenance and cannot be assigned.'
+                      : 'No pet is in this cage.'}
+                </p>
+                {canReopenStaleCage ? (
+                  <div className={styles.detailsActions}>
+                    <button
+                      type="button"
+                      className={styles.checkoutButton}
+                      onClick={() => void reopen(detailsCage)}
+                    >
+                      Reopen cage
+                    </button>
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         ) : null}
       </Modal>
+
+      <CageCloseDialog
+        key={closingCage?.id ?? 'closed'}
+        cage={closingCage}
+        onClose={() => setClosingCage(null)}
+        onConfirm={closeCage}
+      />
 
       <ConfirmDialog
         isOpen={checkoutTarget !== null}
@@ -714,6 +946,45 @@ export function CageOccupancyReport() {
               This ends the {checkoutTarget?.occupant.service} stay and sets{' '}
               {checkoutTarget?.cage.cage_label} back to Available.
             </p>
+            {previewStayId && isPreviewLoading ? (
+              <p className={styles.previewNote}>Working out the bill…</p>
+            ) : null}
+            {previewStayId && checkoutPreview ? (
+              <>
+                <p className={styles.previewNote}>
+                  If checked out now (as of{' '}
+                  {new Date(checkoutPreview.as_of).toLocaleTimeString(
+                    undefined,
+                    { timeStyle: 'short' }
+                  )}
+                  ):
+                </p>
+                <DaycareBillBreakdown
+                  breakdown={checkoutPreview.charge_breakdown}
+                  total={checkoutPreview.computed_charge}
+                  bookedCharge={checkoutPreview.booked_charge}
+                  addedAtCheckout={checkoutPreview.added_at_checkout}
+                  amountDue={checkoutPreview.amount_due}
+                />
+              </>
+            ) : null}
+            {previewStayId && hotelPreview ? (
+              <>
+                <p className={styles.previewNote}>
+                  If checked out now (as of{' '}
+                  {new Date(hotelPreview.as_of).toLocaleTimeString(undefined, {
+                    timeStyle: 'short',
+                  })}
+                  ):
+                </p>
+                <HotelBillBreakdown
+                  breakdown={hotelPreview.breakdown}
+                  downpaymentCollected={hotelPreview.downpayment_collected}
+                  addedAtCheckout={hotelPreview.added_at_checkout}
+                  amountDue={hotelPreview.amount_due}
+                />
+              </>
+            ) : null}
             {checkoutError ? (
               <p className={styles.errorBanner} role="alert">
                 {checkoutError}
@@ -722,6 +993,57 @@ export function CageOccupancyReport() {
           </>
         }
       />
+      <Modal
+        isOpen={daycareCheckout !== null}
+        title={
+          daycareCheckout ? `${daycareCheckout.petName} was checked out` : ''
+        }
+        onClose={() => setDaycareCheckout(null)}
+      >
+        {daycareCheckout ? (
+          <div className={styles.details}>
+            <p className={styles.previewNote}>
+              {daycareCheckout.cageLabel} is available again.
+              {daycareCheckout.result.billed_at_checkout
+                ? ' The bill has been sent to the cashier.'
+                : ''}
+            </p>
+            <DaycareBillBreakdown
+              breakdown={daycareCheckout.result.charge_breakdown}
+              total={daycareCheckout.result.computed_charge ?? 0}
+              bookedCharge={daycareCheckout.result.booked_charge}
+              addedAtCheckout={daycareCheckout.result.added_at_checkout}
+              amountDue={daycareCheckout.result.amount_due}
+            />
+          </div>
+        ) : null}
+      </Modal>
+      <Modal
+        isOpen={hotelCheckout !== null}
+        title={hotelCheckout ? `${hotelCheckout.petName} was checked out` : ''}
+        onClose={() => setHotelCheckout(null)}
+      >
+        {hotelCheckout?.result.bill ? (
+          <div className={styles.details}>
+            <p className={styles.previewNote}>
+              {hotelCheckout.cageLabel} is available again.
+              {hotelCheckout.result.payAtCheckout
+                ? ' The bill has been sent to the cashier.'
+                : ''}
+            </p>
+            <HotelBillBreakdown
+              breakdown={hotelCheckout.result.bill}
+              downpaymentCollected={hotelCheckout.result.downpaymentAmount}
+              addedAtCheckout={
+                hotelCheckout.result.payAtCheckout
+                  ? null
+                  : hotelCheckout.result.extensionFee
+              }
+              amountDue={hotelCheckout.result.remainingBalance}
+            />
+          </div>
+        ) : null}
+      </Modal>
     </main>
   );
 }

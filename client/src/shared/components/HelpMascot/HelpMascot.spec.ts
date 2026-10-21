@@ -627,3 +627,62 @@ describe('HelpMascot - FAQs', () => {
     expect(screen.getByText('How do I book a service?')).toBeInTheDocument();
   });
 });
+
+describe('HelpMascot - tutorial bubble', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  function bubbleLabels() {
+    return Array.from(
+      screen.getByRole('navigation', { name: 'Support links' }).children
+    ).map((bubble) => bubble.textContent);
+  }
+
+  it('keeps the five bubbles when no tutorial is wired (the landing pages)', () => {
+    renderMascot();
+
+    expect(bubbleLabels()).toEqual([
+      'FAQs',
+      'Create an account',
+      'Create a ticket',
+      'Change pet',
+      'Hide me',
+    ]);
+    expect(
+      screen.getByRole('navigation', { name: 'Support links' })
+    ).not.toHaveAttribute('data-items');
+  });
+
+  it('adds a sixth "Tutorial" bubble after the two links, which replays the tutorial', () => {
+    const onStartTutorial = vi.fn();
+    render(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(HelpMascot, {
+          links: [
+            { label: 'Contact support', href: '#' },
+            { label: 'My Bookings', href: '/portal/bookings' },
+          ],
+          onStartTutorial,
+        })
+      )
+    );
+
+    expect(bubbleLabels()).toEqual([
+      'FAQs',
+      'Contact support',
+      'My Bookings',
+      'Tutorial',
+      'Change pet',
+      'Hide me',
+    ]);
+    expect(
+      screen.getByRole('navigation', { name: 'Support links' })
+    ).toHaveAttribute('data-items', '6');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tutorial' }));
+    expect(onStartTutorial).toHaveBeenCalledTimes(1);
+  });
+});

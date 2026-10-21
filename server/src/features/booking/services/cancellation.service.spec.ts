@@ -630,6 +630,129 @@ describe('cancellation.service (#54/#91)', () => {
     expect(result.policy_violation).toBe(false);
   });
 
+  describe('cancellation_grace_minutes (last-minute bookings)', () => {
+    function minutesAgo(minutes: number): string {
+      return new Date(Date.now() - minutes * 60 * 1000).toISOString();
+    }
+
+    // Booked for 40 minutes from now - inside the 3-day notice window from
+    // the moment it was made, so notice can never be met.
+    const LAST_MINUTE_BOOKING = {
+      ...HOTEL_BOOKING,
+      scheduled_start: daysFromNow(40 / (24 * 60)),
+    };
+
+    it('a booking made inside the notice window and cancelled within the grace converts its payment to credit', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: ISSUED_TRANSACTION,
+        error: null,
+      } as never);
+      queueFromResults(
+        {
+          data: { ...LAST_MINUTE_BOOKING, created_at: minutesAgo(2) },
+          error: null,
+        },
+        { data: [policyRow({ cancellation_grace_minutes: 60 })], error: null },
+        { data: CANCELLED_ROW, error: null },
+        { data: LOG_ROW, error: null },
+        PAID_TXNS,
+        { data: null, error: null }
+      );
+
+      const result = await cancelBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {},
+      });
+
+      expect(result.notice_period_met).toBe(true);
+      expect(result.policy_violation).toBe(false);
+      expect(result.credit_issued).toBe(true);
+      expect(supabase.rpc).toHaveBeenCalledWith(
+        'issue_credit',
+        expect.objectContaining({ p_amount: 500 })
+      );
+      const logInsert = recordedWrites.find(
+        (write) =>
+          write.table === 'cancellation_logs' && write.method === 'insert'
+      );
+      expect(logInsert?.payload).toMatchObject({
+        notice_period_met: true,
+        policy_violation: false,
+      });
+    });
+
+    it('after the grace has passed the payment is forfeited as before', async () => {
+      queueFromResults(
+        {
+          data: { ...LAST_MINUTE_BOOKING, created_at: minutesAgo(90) },
+          error: null,
+        },
+        { data: [policyRow({ cancellation_grace_minutes: 60 })], error: null },
+        { data: CANCELLED_ROW, error: null },
+        { data: LOG_ROW, error: null }
+      );
+
+      const result = await cancelBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {},
+      });
+
+      expect(result.policy_violation).toBe(true);
+      expect(result.credit_issued).toBe(false);
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it('does not apply to a booking made outside the notice window and cancelled late', async () => {
+      // Made 10 days ahead, now 1 day out - it had every chance to meet
+      // notice, so a just-made grace doesn't apply (and it isn't just-made).
+      queueFromResults(
+        {
+          data: {
+            ...HOTEL_BOOKING,
+            scheduled_start: daysFromNow(1),
+            created_at: minutesAgo(9 * 24 * 60),
+          },
+          error: null,
+        },
+        { data: [policyRow({ cancellation_grace_minutes: 60 })], error: null },
+        { data: CANCELLED_ROW, error: null },
+        { data: LOG_ROW, error: null }
+      );
+
+      const result = await cancelBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {},
+      });
+
+      expect(result.credit_issued).toBe(false);
+      expect(supabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it('a grace of 0 turns it off', async () => {
+      queueFromResults(
+        {
+          data: { ...LAST_MINUTE_BOOKING, created_at: minutesAgo(1) },
+          error: null,
+        },
+        { data: [policyRow({ cancellation_grace_minutes: 0 })], error: null },
+        { data: CANCELLED_ROW, error: null },
+        { data: LOG_ROW, error: null }
+      );
+
+      const result = await cancelBooking({
+        requesterId: CUSTOMER_ID,
+        bookingId: 'booking-1',
+        input: {},
+      });
+
+      expect(result.policy_violation).toBe(true);
+      expect(result.credit_issued).toBe(false);
+    });
+  });
+
   it('AC-6 (#54): a non-owning customer gets 403', async () => {
     queueFromResults({ data: HOTEL_BOOKING, error: null });
 

@@ -82,6 +82,10 @@ interface HelpMascotProps {
    * built-in "Change pet" and "Hide me". Radial positions are hardcoded in
    * CSS for exactly five items. */
   links: [HelpMascotLink, HelpMascotLink];
+  /** Customer portal only: adds a sixth "Tutorial" bubble after the two
+   * links that replays the customer tutorial. Left out (the landing pages),
+   * the menu keeps its five bubbles. */
+  onStartTutorial?: () => void;
 }
 
 const MASCOT_TIPS = [
@@ -166,7 +170,7 @@ const DEFAULT_FAQ_ITEMS: MascotFaq[] = [
  * in mascots.ts, not to this component - a different mascot brings its own
  * petting GIF, hand and sound instead of inheriting the dog's.
  */
-export function HelpMascot({ links }: HelpMascotProps) {
+export function HelpMascot({ links, onStartTutorial }: HelpMascotProps) {
   const [mascot, setMascot] = useState(readSavedMascot);
   const [isPetPickerOpen, setIsPetPickerOpen] = useState(false);
 
@@ -326,7 +330,7 @@ export function HelpMascot({ links }: HelpMascotProps) {
 
   if (isHidden) {
     return (
-      <aside className={styles.mascot} aria-label="Mascot">
+      <aside className={styles.mascot} aria-label="Mascot" data-tour="mascot">
         <button
           type="button"
           className={styles.showButton}
@@ -341,7 +345,11 @@ export function HelpMascot({ links }: HelpMascotProps) {
   }
 
   return (
-    <aside className={styles.mascot} aria-label="Quick help links">
+    <aside
+      className={styles.mascot}
+      aria-label="Quick help links"
+      data-tour="mascot"
+    >
       <div ref={bubbleRef} className={styles.bubble} aria-live="polite" />
 
       <button
@@ -427,7 +435,12 @@ export function HelpMascot({ links }: HelpMascotProps) {
         )}
       </span>
 
-      <nav className={styles.menu} aria-label="Support links">
+      <nav
+        className={styles.menu}
+        aria-label="Support links"
+        // Six bubbles switch the CSS to its six-position layout.
+        data-items={onStartTutorial ? '6' : undefined}
+      >
         <button
           type="button"
           className={styles.link}
@@ -460,6 +473,16 @@ export function HelpMascot({ links }: HelpMascotProps) {
             </a>
           );
         })}
+
+        {onStartTutorial ? (
+          <button
+            type="button"
+            className={styles.link}
+            onClick={onStartTutorial}
+          >
+            Tutorial
+          </button>
+        ) : null}
 
         <button
           type="button"

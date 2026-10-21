@@ -17,6 +17,16 @@ interface CageRow {
 /** The categories that claim a real cage at check-in (Hotel's own check-in,
  * and Daycare's via the shared resolveAndClaimCage) - the only ones a
  * booking-time cage preference means anything for. */
+/**
+ * Custom change (front-desk cage override, 20261019273): PostgREST `or`
+ * filter matching cages open to customers at `atIso` - never closed, or
+ * closed only until a time already past. Staff callers skip it; a front-desk
+ * closure only blocks customers.
+ */
+export function openToCustomersFilter(atIso: string): string {
+  return `closed_until.is.null,closed_until.lte."${atIso}"`;
+}
+
 const CAGE_PICKER_CATEGORIES: readonly ServiceCategory[] = ['Hotel', 'Daycare'];
 
 function throwIfPetNotFound<T>(pet: T | null): T {
@@ -75,7 +85,10 @@ export interface CagePickerOptionsResult {
 export async function getCagePickerOptions(
   branchId: string,
   serviceCategory: ServiceCategory,
-  petId: string
+  petId: string,
+  /** Custom change (front-desk cage override): true for a customer caller -
+   * hides cages a staff member has temporarily closed. */
+  excludeClosed = false
 ): Promise<CagePickerOptionsResult> {
   const enabled = await isCagePickerEnabled(serviceCategory);
 
@@ -92,15 +105,19 @@ export async function getCagePickerOptions(
   if (petError) throwWithStatus(400, petError.message);
   const petType = throwIfPetNotFound(pet).pet_type as string;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('cages')
     .select('id, cage_label, size, status, cage_pet_types!inner(pet_type)')
     .eq('branch_id', branchId)
     .is('archived_at', null)
     .eq('status', 'Available')
-    .eq('cage_pet_types.pet_type', petType)
-    .order('size')
-    .order('cage_label');
+    .eq('cage_pet_types.pet_type', petType);
+
+  if (excludeClosed) {
+    query = query.or(openToCustomersFilter(new Date().toISOString()));
+  }
+
+  const { data, error } = await query.order('size').order('cage_label');
 
   if (error) throwWithStatus(400, error.message);
 
@@ -135,12 +152,17 @@ export async function getCagePickerOptions(
  * match the pet's own weight_class or this degrades to null exactly like an
  * unavailable cage does, so a customer can't book a mismatched-size cage by
  * calling the API directly, bypassing CagePickerList's disabled tiles.
- * Receptionist/staff bookings pass no requiredSize and keep free choice. */
+ * Receptionist/staff bookings pass no requiredSize and keep free choice.
+ *
+ * excludeClosed (Custom change: front-desk cage override) - true for a
+ * customer's own booking: a cage staff have temporarily closed degrades to
+ * null too. */
 export async function verifyCagePreference(
   cageId: string,
   branchId: string,
   petType: string,
-  requiredSize?: string
+  requiredSize?: string,
+  excludeClosed = false
 ): Promise<string | null> {
   let query = supabase
     .from('cages')
@@ -153,6 +175,10 @@ export async function verifyCagePreference(
 
   if (requiredSize) {
     query = query.eq('size', requiredSize);
+  }
+
+  if (excludeClosed) {
+    query = query.or(openToCustomersFilter(new Date().toISOString()));
   }
 
   const { data, error } = await query.maybeSingle();
@@ -175,7 +201,9 @@ export async function verifyCagePreference(
  */
 export async function getCageAssignmentStatus(
   petId: string,
-  branchId: string
+  branchId: string,
+  /** Custom change (front-desk cage override): true for a customer caller. */
+  excludeClosed = false
 ): Promise<{
   matched: boolean;
   cage: { id: string; cage_label: string } | null;
@@ -189,12 +217,25 @@ export async function getCageAssignmentStatus(
   if (petError) throwWithStatus(400, petError.message);
   const { weight_class, pet_type } = throwIfPetNotFound(pet);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('cages')
     .select('id, cage_label, cage_pet_types!inner(pet_type)')
     .eq('branch_id', branchId)
-    .is('archived_at', null)
-    .eq('size', weight_class as string)
+    .is('archived_at', null);
+
+  // Book before assessment (20261013264): a pet staff have not assessed yet
+  // has no weight class, so there is no size to match - never send a null
+  // one to the cage_size enum. The question then becomes "is any cage for
+  // this pet type free at all".
+  if (weight_class) {
+    query = query.eq('size', weight_class as string);
+  }
+
+  if (excludeClosed) {
+    query = query.or(openToCustomersFilter(new Date().toISOString()));
+  }
+
+  const { data, error } = await query
     .eq('status', 'Available')
     .eq('cage_pet_types.pet_type', pet_type as string)
     .limit(1)
@@ -204,6 +245,11 @@ export async function getCageAssignmentStatus(
 
   return {
     matched: !!data,
-    cage: data ? { id: data.id, cage_label: data.cage_label } : null,
+    // Without a size, whichever cage came back is not one this pet is known
+    // to fit - say a cage exists, but don't name one.
+    cage:
+      data && weight_class
+        ? { id: data.id, cage_label: data.cage_label }
+        : null,
   };
 }

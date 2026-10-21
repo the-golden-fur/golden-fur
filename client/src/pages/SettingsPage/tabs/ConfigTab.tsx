@@ -17,6 +17,7 @@ import {
   BRANCHES_TILE,
   CONFIG_TILES,
   FAQS_TILE,
+  LANDING_PAGE_TILE,
   VET_SERVICES_TILE,
   WEIGHT_CLASSES_TILE,
   type ConfigTileConfig,
@@ -100,6 +101,7 @@ export function ConfigTab({ isSuperadmin, onSelectTile }: ConfigTabProps) {
             WEIGHT_CLASSES_TILE,
             BRANCHES_TILE,
             FAQS_TILE,
+            LANDING_PAGE_TILE,
             VET_SERVICES_TILE,
           ].map((tile) => ({
             ...tile,

@@ -12,7 +12,15 @@ import {
   updatePetValidator,
   updatePetValidatorStaff,
 } from './modules/validators/pet.validator.ts';
-import type { PetWeightClass } from './pet.types.ts';
+import {
+  PET_ARCHIVE_REASONS,
+  type PetArchiveReason,
+  type PetWeightClass,
+} from './pet.types.ts';
+import {
+  repriceBookingsAwaitingAssessment,
+  type AssessmentRepriceResult,
+} from '../../booking/services/assessmentReprice.service.ts';
 import { getPetWeightClassConfiguration } from '../../maintenance/services/petWeightClassConfiguration.service.ts';
 import { deriveWeightClass } from '../../maintenance/utils/deriveWeightClass.ts';
 import {
@@ -21,7 +29,43 @@ import {
   hardDeletePet,
   listArchivedPets,
   restorePet,
+  type PetArchiveReasonInput,
 } from './services/petArchive.service.ts';
+
+const ARCHIVE_REASON_OTHER_MAX_LENGTH = 200;
+
+/** Reads the optional { reason, reasonOther } body of DELETE /pets/:id.
+ * No reason at all is fine (undefined); a bad one is an error string. */
+function parseArchiveReason(
+  body: unknown
+): PetArchiveReasonInput | undefined | string {
+  const { reason, reasonOther } = (body ?? {}) as {
+    reason?: unknown;
+    reasonOther?: unknown;
+  };
+
+  if (reason === undefined || reason === null) return undefined;
+
+  if (!PET_ARCHIVE_REASONS.includes(reason as PetArchiveReason)) {
+    return 'Invalid delete reason';
+  }
+
+  if (reason !== 'other') {
+    return { code: reason as PetArchiveReason, other: null };
+  }
+
+  const other = typeof reasonOther === 'string' ? reasonOther.trim() : '';
+
+  if (!other) {
+    return 'Please tell us why you are deleting this pet';
+  }
+
+  if (other.length > ARCHIVE_REASON_OTHER_MAX_LENGTH) {
+    return `Delete reason must be ${ARCHIVE_REASON_OTHER_MAX_LENGTH} characters or fewer`;
+  }
+
+  return { code: 'other', other };
+}
 
 /** Postgres foreign_key_violation. pets.pet_type became a FK against the
  * admin-managed pet_types table (20260912191) instead of an enum-checked
@@ -387,6 +431,34 @@ export async function updatePetController(
       return sendPetWriteError(res, error);
     }
 
+    // Custom change (book before assessment, 20261013264): a staff save that
+    // sets or changes the pet's weight class / coat is the moment any booking
+    // made for it while unassessed gets its real price and its bill. Only
+    // then - an unrelated edit (name, photo) reprices nothing. The pet is
+    // already saved: a reprice problem is reported, never rolled back.
+    if (isStaff && (weightClassChanged || coatTypeChanged)) {
+      let assessmentReprice: AssessmentRepriceResult = {
+        repriced: [],
+        failed: [],
+      };
+
+      try {
+        assessmentReprice = await repriceBookingsAwaitingAssessment(
+          petId as string
+        );
+      } catch (repriceError) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `repriceBookingsAwaitingAssessment failed for pet ${petId}:`,
+          repriceError
+        );
+      }
+
+      return res
+        .status(200)
+        .json({ pet: data, assessment_reprice: assessmentReprice });
+    }
+
     return res.status(200).json({ pet: data });
   } catch {
     return res.status(500).json({ error: 'Internal server error' });
@@ -410,6 +482,12 @@ export async function archivePetController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  const reason = parseArchiveReason(req.body);
+
+  if (typeof reason === 'string') {
+    return res.status(400).json({ error: reason });
+  }
+
   try {
     const { data: pet, error: lookupError } = await resolvePet(petId as string);
 
@@ -427,7 +505,7 @@ export async function archivePetController(
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    await archivePet(petId as string);
+    await archivePet(petId as string, reason);
     return res.status(204).send();
   } catch (error) {
     return sendServiceError(res, error);

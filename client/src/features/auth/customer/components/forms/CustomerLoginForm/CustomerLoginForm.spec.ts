@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '../../../../../../shared/auth/providers/AuthProvider/AuthContext';
 import type { AuthContextValue } from '../../../../../../shared/auth/providers/AuthProvider/AuthContext';
@@ -17,6 +17,22 @@ vi.mock('../../../api/customerAuth.api', () => ({
 vi.mock('../../../../../../shared/api/mfa.api', () => ({
   getMfaStatus: vi.fn(),
 }));
+
+/** Stands in for the portal and shows the router state it was reached
+ * with - the tutorial only auto-starts on `justRegistered`. */
+function PortalProbe() {
+  const location = useLocation();
+  return createElement(
+    'div',
+    null,
+    'Customer portal',
+    createElement(
+      'span',
+      { 'data-testid': 'portal-state' },
+      JSON.stringify(location.state)
+    )
+  );
+}
 
 function renderForm(applySession = vi.fn()) {
   const authValue: AuthContextValue = {
@@ -49,7 +65,7 @@ function renderForm(applySession = vi.fn()) {
           }),
           createElement(Route, {
             path: '/portal',
-            element: createElement('div', null, 'Customer portal'),
+            element: createElement(PortalProbe),
           })
         )
       )
@@ -192,5 +208,31 @@ describe('CustomerLoginForm', () => {
     );
     expect(await screen.findByText('Deactivated notice')).toBeInTheDocument();
     expect(getMfaStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('a login lands on the portal without the justRegistered flag, so the tutorial does not start', async () => {
+    const applySession = vi.fn().mockResolvedValue(undefined);
+    loginMock.mockResolvedValue({
+      data: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 },
+      error: null,
+    });
+    getMfaStatusMock.mockResolvedValue({
+      data: { mfa_enrolled: false },
+      error: null,
+    });
+
+    renderForm(applySession);
+
+    await userEvent.type(
+      screen.getByLabelText(/email/i),
+      'customer@example.com'
+    );
+    await userEvent.type(screen.getByLabelText(/password/i), 'correct-pw');
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    expect(await screen.findByText('Customer portal')).toBeInTheDocument();
+    expect(screen.getByTestId('portal-state')).not.toHaveTextContent(
+      'justRegistered'
+    );
   });
 });

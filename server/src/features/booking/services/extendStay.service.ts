@@ -1,6 +1,7 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { recomputeBookingPaymentStatus, round2 } from './booking.service.ts';
 import { checkCapacity } from './capacity.service.ts';
+import { resolveLongStayTerms } from './longStayTerms.service.ts';
 import type { Booking, BookingItem } from '../booking.types.ts';
 import type { Transaction } from '../../billing/billing.types.ts';
 
@@ -16,6 +17,7 @@ function throwWithStatus(statusCode: number, message: string): never {
  * independent and shouldn't drift together by accident. */
 const EXTENDABLE_BOOKING_STATUSES: readonly Booking['status'][] = [
   'Pending',
+  'Late',
   'In Progress',
 ];
 
@@ -64,7 +66,9 @@ interface ExtendHotelStayParams {
  * booking_items row's price proportionally to the added nights (each item
  * keeps its own per-night rate - a booking can hold more than one Hotel
  * item, e.g. a bundled package, each independently priced per
- * duration_minutes_at_booking), then reconciles the charge onto
+ * duration_minutes_at_booking - except a service with a long-stay rate,
+ * whose added nights are its regular price, see resolveLongStayTerms), then
+ * reconciles the charge onto
  * `transactions`:
  *
  * - if the booking still has an open ('balance', Pending) transaction - the
@@ -151,8 +155,23 @@ export async function extendHotelStay({
       item.duration_minutes_at_booking
     );
 
+    // Hotel long-stay rate (20261013260): the cheaper nightly rate covers
+    // only the nights booked up front. Every ADDED night is the service's
+    // regular price, on top of what the item already costs - not the item's
+    // blended price per night, which a long-stay booking (or an earlier
+    // extension) would skew.
+    const longStay = await resolveLongStayTerms(
+      item.service_id,
+      booking.branch_id,
+      booking.pet_id
+    );
     const unitPrice = item.price_at_booking / oldQuantity;
-    const newItemPrice = round2(unitPrice * newQuantity);
+    const newItemPrice = longStay
+      ? round2(
+          item.price_at_booking +
+            longStay.regularRate * (newQuantity - oldQuantity)
+        )
+      : round2(unitPrice * newQuantity);
 
     itemUpdates.push({ id: item.id, price_at_booking: newItemPrice });
     addedAmount = round2(addedAmount + (newItemPrice - item.price_at_booking));

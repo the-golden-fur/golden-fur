@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDateRangePreset } from './dateRangePreset';
+import {
+  countByDatePreset,
+  countsFetchRange,
+  resolveDateRangePreset,
+} from './dateRangePreset';
 
 // A Wednesday, deliberately mid-week/mid-month so week/month boundaries are
 // unambiguous either direction.
@@ -25,6 +29,21 @@ describe('resolveDateRangePreset', () => {
     expect(resolveDateRangePreset('tomorrow', lastDayOfMonth)).toEqual({
       from: '2026-08-01',
       to: '2026-08-01',
+    });
+  });
+
+  it('the past presets only ever look back from today', () => {
+    expect(resolveDateRangePreset('yesterday', WEDNESDAY)).toEqual({
+      from: '2026-07-21',
+      to: '2026-07-21',
+    });
+    expect(resolveDateRangePreset('last_7_days', WEDNESDAY)).toEqual({
+      from: '2026-07-16',
+      to: '2026-07-22',
+    });
+    expect(resolveDateRangePreset('last_30_days', WEDNESDAY)).toEqual({
+      from: '2026-06-23',
+      to: '2026-07-22',
     });
   });
 
@@ -86,6 +105,50 @@ describe('resolveDateRangePreset', () => {
     expect(resolveDateRangePreset('custom', WEDNESDAY)).toEqual({
       from: null,
       to: null,
+    });
+  });
+});
+
+describe('countsFetchRange', () => {
+  it('spans the 1st of the month through month end mid-month', () => {
+    expect(countsFetchRange(new Date('2026-07-15T08:00:00.000Z'))).toEqual({
+      from: '2026-07-01',
+      to: '2026-07-31',
+    });
+  });
+
+  it('extends past month end when the rolling week crosses into next month', () => {
+    expect(countsFetchRange(new Date('2026-07-29T08:00:00.000Z'))).toEqual({
+      from: '2026-07-01',
+      to: '2026-08-04',
+    });
+  });
+});
+
+describe('countByDatePreset', () => {
+  const NOW = new Date('2026-07-15T08:00:00.000Z');
+
+  it('counts each booking into every preset whose range contains it', () => {
+    expect(
+      countByDatePreset(
+        [
+          '2026-07-15T10:00:00.000Z', // today
+          '2026-07-16T09:00:00.000Z', // tomorrow
+          '2026-07-20T09:00:00.000Z', // later this week
+          '2026-07-12T09:00:00.000Z', // earlier this month only
+          '2026-08-02T09:00:00.000Z', // outside every preset
+        ],
+        NOW
+      )
+    ).toEqual({ today: 1, tomorrow: 1, this_week: 3, this_month: 4 });
+  });
+
+  it('returns zeros for no bookings', () => {
+    expect(countByDatePreset([], NOW)).toEqual({
+      today: 0,
+      tomorrow: 0,
+      this_week: 0,
+      this_month: 0,
     });
   });
 });

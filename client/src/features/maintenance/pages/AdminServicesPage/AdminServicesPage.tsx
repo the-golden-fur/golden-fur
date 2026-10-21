@@ -8,6 +8,7 @@ import {
   createService,
   getPricingConfiguration,
   listBranches,
+  listPackages,
   listServices,
   setServiceBranchAvailability,
   setServiceBranchPrice,
@@ -18,6 +19,7 @@ import { PricingMatrixEditor } from '../../components/PricingMatrixEditor/Pricin
 import {
   draftsFromCells,
   pricingCellsChanges,
+  withoutExtraLongCoat,
   type CellDrafts,
 } from '../../components/PricingMatrixEditor/pricingCellDrafts';
 import { ToggleSwitch } from '../../../../shared/components/ToggleSwitch/ToggleSwitch';
@@ -98,7 +100,16 @@ interface ServiceFormState {
   capturesPetAssessment: boolean;
   minNightsForFreePackage: string;
   freePackageName: string;
+  /** Hotel-only, Superadmin-only: the per-night price once the long-stay
+   * night count is booked, as typed. '' = no long-stay rate. */
+  longStayPrice: string;
+  /** Superadmin-only: a branch's own long-stay price, keyed by branch id,
+   * as typed. '' (or no entry) = the branch uses longStayPrice. */
+  branchLongStayPrices: Record<string, string>;
   usePricingMatrix: boolean;
+  /** Superadmin-only (optional Extra Long Coat): whether the grid has an
+   * Extra Long Coat column at all. */
+  hasExtraLongCoat: boolean;
   firstHourFee: string;
   succeedingHourFee: string;
   daycareOvernightFee: string;
@@ -123,7 +134,10 @@ const EMPTY_FORM: ServiceFormState = {
   capturesPetAssessment: false,
   minNightsForFreePackage: '',
   freePackageName: '',
+  longStayPrice: '',
+  branchLongStayPrices: {},
   usePricingMatrix: false,
+  hasExtraLongCoat: false,
   firstHourFee: '',
   succeedingHourFee: '',
   daycareOvernightFee: '',
@@ -148,7 +162,17 @@ function formStateFromService(service: Service): ServiceFormState {
         ? ''
         : String(service.min_nights_for_free_package),
     freePackageName: service.free_package_name ?? '',
+    longStayPrice:
+      service.long_stay_nightly_price == null
+        ? ''
+        : String(service.long_stay_nightly_price),
+    branchLongStayPrices: Object.fromEntries(
+      (service.service_branch_availability ?? [])
+        .filter((row) => row.long_stay_price_override != null)
+        .map((row) => [row.branch_id, String(row.long_stay_price_override)])
+    ),
     usePricingMatrix: service.use_pricing_matrix,
+    hasExtraLongCoat: Boolean(service.has_extra_long_coat),
     firstHourFee:
       service.first_hour_fee === null ? '' : String(service.first_hour_fee),
     succeedingHourFee:
@@ -180,6 +204,8 @@ export function AdminServicesPage() {
 
   const [services, setServices] = useState<Service[]>([]);
   const [branches, setBranches] = useState<BranchSummary[]>([]);
+  // Names offered as a Hotel service's free long-stay package.
+  const [packageNames, setPackageNames] = useState<string[]>([]);
   const [pricingConfiguration, setPricingConfiguration] =
     useState<PricingConfiguration | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -242,6 +268,34 @@ export function AdminServicesPage() {
   // A branch's own price is a cross-branch pricing decision - Superadmin
   // only, here and on the server.
   const canSetBranchPrices = viewerRole === 'Superadmin';
+  // Hotel long-stay rate (20261013260): which package a long stay gives
+  // away, and what a long-stay night costs, are Superadmin-only - the server
+  // enforces the same (services.service.ts).
+  const canSetLongStayDeal = viewerRole === 'Superadmin';
+
+  useEffect(() => {
+    if (!accessToken || !isAllowedViewer) {
+      return;
+    }
+
+    let isMounted = true;
+
+    // Optional garnish, like branch names: a failed lookup leaves the picker
+    // with only the package already saved, it doesn't block the page.
+    void Promise.resolve(listPackages(accessToken)).then((result) => {
+      if (!isMounted) return;
+
+      const names = (result?.data ?? [])
+        .filter((pkg) => !pkg.archived_at)
+        .map((pkg) => pkg.name);
+
+      setPackageNames([...new Set(names)].sort((a, b) => a.localeCompare(b)));
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, isAllowedViewer]);
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -513,7 +567,8 @@ export function AdminServicesPage() {
    */
   async function applyBranchPrices(
     service: Service,
-    branchPrices: Record<string, string>
+    branchPrices: Record<string, string>,
+    branchLongStayPrices: Record<string, string>
   ): Promise<Service> {
     if (!accessToken || !canSetBranchPrices) {
       return service;
@@ -522,13 +577,28 @@ export function AdminServicesPage() {
     const rows = service.service_branch_availability ?? [];
     const changes = branches
       .map((branch) => {
+        const row = rows.find((entry) => entry.branch_id === branch.id);
         const typed = (branchPrices[branch.id] ?? '').trim();
         const next = typed === '' ? null : Number(typed);
-        const current =
-          rows.find((row) => row.branch_id === branch.id)?.price_override ??
-          null;
+        const current = row?.price_override ?? null;
 
-        return { branch, next, changed: next !== current };
+        // The Hotel long-stay price rides along on the same request, and is
+        // only sent when it changed - so it is never touched otherwise.
+        const typedLongStay = (branchLongStayPrices[branch.id] ?? '').trim();
+        const nextLongStay =
+          service.category !== 'Hotel' || typedLongStay === ''
+            ? null
+            : Number(typedLongStay);
+        const longStayChanged =
+          nextLongStay !== (row?.long_stay_price_override ?? null);
+
+        return {
+          branch,
+          next,
+          nextLongStay,
+          longStayChanged,
+          changed: next !== current || longStayChanged,
+        };
       })
       .filter((entry) => entry.changed);
 
@@ -537,10 +607,13 @@ export function AdminServicesPage() {
     }
 
     const results = await Promise.all(
-      changes.map(({ branch, next }) =>
+      changes.map(({ branch, next, nextLongStay, longStayChanged }) =>
         setServiceBranchPrice(service.id, accessToken, {
           branch_id: branch.id,
           price_override: next,
+          ...(longStayChanged
+            ? { long_stay_price_override: nextLongStay }
+            : {}),
         })
       )
     );
@@ -600,6 +673,16 @@ export function AdminServicesPage() {
       return;
     }
 
+    if (
+      form.category === 'Hotel' &&
+      [form.longStayPrice, ...Object.values(form.branchLongStayPrices)].some(
+        (typed) => typed.trim() !== '' && !(Number(typed) >= 0)
+      )
+    ) {
+      setFormError('A long-stay price cannot be negative.');
+      return;
+    }
+
     // Per-item weight x coat pricing: only a Superadmin's grid is ever sent,
     // and only for a Grooming service that varies by weight and coat.
     const savedService =
@@ -612,7 +695,11 @@ export function AdminServicesPage() {
       form.usePricingMatrix
         ? pricingCellsChanges(
             draftsFromCells(savedService?.service_pricing_tiers),
-            form.pricingCells
+            // No Extra Long Coat prices: any XLC cell typed before the
+            // switch went off isn't saved.
+            form.hasExtraLongCoat
+              ? form.pricingCells
+              : withoutExtraLongCoat(form.pricingCells)
           )
         : { cells: [], error: null };
 
@@ -656,6 +743,10 @@ export function AdminServicesPage() {
       form.category === 'Hotel' && form.freePackageName.trim() !== ''
         ? form.freePackageName.trim()
         : undefined;
+    const longStayPrice =
+      form.category === 'Hotel' && form.longStayPrice.trim() !== ''
+        ? Number(form.longStayPrice)
+        : undefined;
 
     setIsSubmitting(true);
     setFormError(null);
@@ -667,6 +758,7 @@ export function AdminServicesPage() {
         requires_assessed_pet: form.requiresAssessedPet,
         captures_pet_assessment: form.capturesPetAssessment,
         use_pricing_matrix: form.usePricingMatrix,
+        has_extra_long_coat: form.hasExtraLongCoat,
         icon: form.icon,
         image_url: form.imageUrl,
         ...(form.category !== 'Daycare' ? { base_price: basePrice } : {}),
@@ -676,8 +768,13 @@ export function AdminServicesPage() {
         ...(minNightsForFreePackage !== undefined
           ? { min_nights_for_free_package: minNightsForFreePackage }
           : {}),
-        ...(freePackageName !== undefined
+        // Superadmin-only - an Admin never sends either (the server would
+        // refuse the whole save).
+        ...(canSetLongStayDeal && freePackageName !== undefined
           ? { free_package_name: freePackageName }
+          : {}),
+        ...(canSetLongStayDeal && longStayPrice !== undefined
+          ? { long_stay_nightly_price: longStayPrice }
           : {}),
         ...(firstHourFee !== undefined ? { first_hour_fee: firstHourFee } : {}),
         ...(succeedingHourFee !== undefined
@@ -697,7 +794,8 @@ export function AdminServicesPage() {
       const priced = await applyPricingCells(
         await applyBranchPrices(
           await applyBranchSelection(result.data, form.branchIds),
-          form.branchPrices
+          form.branchPrices,
+          form.branchLongStayPrices
         ),
         pricingCells.cells
       );
@@ -720,8 +818,14 @@ export function AdminServicesPage() {
       requires_assessed_pet: form.requiresAssessedPet,
       captures_pet_assessment: form.capturesPetAssessment,
       min_nights_for_free_package: minNightsForFreePackage ?? null,
-      free_package_name: freePackageName ?? null,
+      ...(canSetLongStayDeal
+        ? {
+            free_package_name: freePackageName ?? null,
+            long_stay_nightly_price: longStayPrice ?? null,
+          }
+        : {}),
       use_pricing_matrix: form.usePricingMatrix,
+      has_extra_long_coat: form.hasExtraLongCoat,
       first_hour_fee: firstHourFee ?? null,
       succeeding_hour_fee: succeedingHourFee ?? null,
       daycare_overnight_fee: daycareOvernightFee ?? null,
@@ -741,7 +845,8 @@ export function AdminServicesPage() {
     const priced = await applyPricingCells(
       await applyBranchPrices(
         await applyBranchSelection(result.data, form.branchIds),
-        form.branchPrices
+        form.branchPrices,
+        form.branchLongStayPrices
       ),
       pricingCells.cells
     );
@@ -755,6 +860,14 @@ export function AdminServicesPage() {
     );
     closeForm();
   };
+
+  // The free-package picker: every live package by name, plus whatever is
+  // already saved on this service even if no package carries that name any
+  // more - so opening the form never silently drops it.
+  const freePackageOptions =
+    form.freePackageName === '' || packageNames.includes(form.freePackageName)
+      ? packageNames
+      : [form.freePackageName, ...packageNames];
 
   /** The branches charging their own price for a service, shown under its
    * base price - e.g. "Southwoods: PHP 500.00". Nothing when there are none. */
@@ -778,6 +891,18 @@ export function AdminServicesPage() {
         ) : null}
         {service.category === 'Grooming' && service.use_pricing_matrix ? (
           <span className={styles.categoryBadge}>Varies by weight/coat</span>
+        ) : null}
+        {service.category === 'Grooming' &&
+        service.use_pricing_matrix &&
+        service.has_extra_long_coat ? (
+          <span className={styles.categoryBadge}>Extra Long Coat prices</span>
+        ) : null}
+        {service.min_nights_for_free_package &&
+        service.long_stay_nightly_price != null ? (
+          <span className={styles.categoryBadge}>
+            {service.min_nights_for_free_package}+ nights: PHP{' '}
+            {Number(service.long_stay_nightly_price).toFixed(2)}/night
+          </span>
         ) : null}
         {service.min_nights_for_free_package && service.free_package_name ? (
           <span className={styles.categoryBadge}>
@@ -1008,6 +1133,9 @@ export function AdminServicesPage() {
           isOpen={isFormOpen}
           title={editingServiceId === null ? 'Create service' : 'Edit service'}
           onClose={requestCloseForm}
+          // A click outside the form does nothing - only the close button
+          // and Cancel close it.
+          closeOnBackdropClick={false}
         >
           {isFormOpen ? (
             <form className={styles.form} onSubmit={handleSubmit}>
@@ -1146,6 +1274,19 @@ export function AdminServicesPage() {
                       }))
                     }
                   />
+                  {form.usePricingMatrix ? (
+                    <ToggleSwitch
+                      label="Has Extra Long Coat prices (off = an extra long coat pet pays the Long Coat price)"
+                      checked={form.hasExtraLongCoat}
+                      disabled={!canSetBranchPrices}
+                      onChange={(checked) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          hasExtraLongCoat: checked,
+                        }))
+                      }
+                    />
+                  ) : null}
                   {!canSetBranchPrices ? (
                     <p className={styles.fieldHint}>
                       Only a Superadmin can change this.
@@ -1162,6 +1303,7 @@ export function AdminServicesPage() {
                   configuration={pricingConfiguration}
                   drafts={form.pricingCells}
                   readOnly={!canSetBranchPrices}
+                  showExtraLongCoat={form.hasExtraLongCoat}
                   onChange={(pricingCells) =>
                     setForm((prev) => ({ ...prev, pricingCells }))
                   }
@@ -1172,7 +1314,7 @@ export function AdminServicesPage() {
                 <>
                   <label className={styles.field}>
                     <span className={styles.fieldLabel}>
-                      Free package after this many nights (optional)
+                      Long stay starts at this many nights (optional)
                     </span>
                     <input
                       className={styles.input}
@@ -1190,24 +1332,96 @@ export function AdminServicesPage() {
                       }
                     />
                   </label>
+                  <p className={styles.fieldHint}>
+                    A booking of this many nights or more gets the long-stay
+                    price and the free package below, automatically. Nights
+                    added after booking are charged the regular price.
+                  </p>
                   <label className={styles.field}>
                     <span className={styles.fieldLabel}>
-                      Free package name (matched against this branch&apos;s
-                      packages at booking time)
+                      Free package for a long stay
                     </span>
-                    <input
+                    <select
                       className={styles.input}
-                      type="text"
-                      placeholder="e.g. Golden Package"
                       value={form.freePackageName}
+                      disabled={!canSetLongStayDeal}
                       onChange={(event) =>
                         setForm((prev) => ({
                           ...prev,
                           freePackageName: event.target.value,
                         }))
                       }
+                    >
+                      <option value="">No free package</option>
+                      {freePackageOptions.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Long-stay price per night (PHP)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="No long-stay price"
+                      value={form.longStayPrice}
+                      disabled={!canSetLongStayDeal}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          longStayPrice: event.target.value,
+                        }))
+                      }
                     />
                   </label>
+                  {canSetLongStayDeal ? (
+                    <fieldset className={styles.branchPrices}>
+                      <legend className={styles.fieldLabel}>
+                        Branch long-stay prices
+                      </legend>
+                      <p className={styles.fieldHint}>
+                        Leave a branch blank to charge the long-stay price above
+                        there.
+                      </p>
+                      {branches.map((branch) => (
+                        <label key={branch.id} className={styles.field}>
+                          <span className={styles.fieldLabel}>
+                            {branch.name} long-stay price (PHP)
+                          </span>
+                          <input
+                            className={styles.input}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            inputMode="decimal"
+                            placeholder="Same as long-stay price"
+                            value={form.branchLongStayPrices[branch.id] ?? ''}
+                            onChange={(event) =>
+                              setForm((prev) => ({
+                                ...prev,
+                                branchLongStayPrices: {
+                                  ...prev.branchLongStayPrices,
+                                  [branch.id]: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                      ))}
+                    </fieldset>
+                  ) : (
+                    <p className={styles.fieldHint}>
+                      Only a Superadmin can change the free package and the
+                      long-stay price.
+                    </p>
+                  )}
                 </>
               ) : null}
 

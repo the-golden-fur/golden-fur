@@ -16,8 +16,11 @@ interface QueryResult {
   error: unknown;
 }
 
+const orCalls: string[] = [];
+
 function queueFromResults(...results: QueryResult[]) {
   const queue = [...results];
+  orCalls.length = 0;
 
   vi.mocked(supabase.from).mockImplementation(() => {
     const result = queue.shift() ?? { data: null, error: null };
@@ -29,6 +32,10 @@ function queueFromResults(...results: QueryResult[]) {
     builder.in = builder.in ?? vi.fn(() => builder);
     builder.order = vi.fn(() => builder);
     builder.limit = vi.fn(() => builder);
+    builder.or = vi.fn((filter: string) => {
+      orCalls.push(filter);
+      return builder;
+    });
     builder.maybeSingle = vi.fn(() => Promise.resolve(result));
     builder.then = (resolve: (_result: QueryResult) => void) => resolve(result);
 
@@ -126,6 +133,27 @@ describe('cagePicker.service', () => {
       expect(result).toBe('cage-1');
     });
 
+    it('hides front-desk-closed cages only for a customer (excludeClosed)', async () => {
+      queueFromResults({ data: { id: 'cage-1' }, error: null });
+      await verifyCagePreference('cage-1', 'branch-1', 'Dog');
+      expect(orCalls).toEqual([]);
+
+      queueFromResults({ data: null, error: null });
+      const result = await verifyCagePreference(
+        'cage-1',
+        'branch-1',
+        'Dog',
+        undefined,
+        true
+      );
+
+      expect(result).toBeNull();
+      expect(orCalls).toHaveLength(1);
+      expect(orCalls[0]).toMatch(
+        /^closed_until\.is\.null,closed_until\.lte\."/
+      );
+    });
+
     it('returns null when the cage is no longer Available', async () => {
       queueFromResults({ data: null, error: null });
 
@@ -181,6 +209,59 @@ describe('cagePicker.service', () => {
       expect(result).toEqual({
         matched: true,
         cage: { id: 'cage-1', cage_label: 'A1' },
+      });
+    });
+
+    // Book before assessment (20261013264): a pet staff have not assessed
+    // yet has no weight class. Filtering cages by it sent the text "null" to
+    // the cage_size enum ("invalid input value for enum cage_size: null").
+    describe('a pet with no weight class yet', () => {
+      function captureCageFilters(cageResult: QueryResult) {
+        const eqCalls: unknown[][] = [];
+        const results = [
+          { data: { weight_class: null, pet_type: 'Dog' }, error: null },
+          cageResult,
+        ];
+
+        vi.mocked(supabase.from).mockImplementation(((table: string) => {
+          const result = results.shift() ?? { data: null, error: null };
+          const builder: Record<string, unknown> = {};
+          for (const method of ['select', 'is', 'limit']) {
+            builder[method] = vi.fn(() => builder);
+          }
+          builder.eq = vi.fn((...args: unknown[]) => {
+            if (table === 'cages') eqCalls.push(args);
+            return builder;
+          });
+          builder.maybeSingle = vi.fn(() => Promise.resolve(result));
+          return builder;
+        }) as never);
+
+        return eqCalls;
+      }
+
+      it('never filters by size, and says a cage exists without promising a specific one', async () => {
+        const eqCalls = captureCageFilters({
+          data: { id: 'cage-1', cage_label: 'A1' },
+          error: null,
+        });
+
+        const result = await getCageAssignmentStatus('pet-1', 'branch-1');
+
+        expect(eqCalls.map(([column]) => column)).not.toContain('size');
+        // Still limited to cages that take this pet type.
+        expect(eqCalls).toContainEqual(['cage_pet_types.pet_type', 'Dog']);
+        // Its size isn't known, so no particular cage can be named yet.
+        expect(result).toEqual({ matched: true, cage: null });
+      });
+
+      it('reports matched: false when the branch has no free cage for that pet type at all', async () => {
+        captureCageFilters({ data: null, error: null });
+
+        expect(await getCageAssignmentStatus('pet-1', 'branch-1')).toEqual({
+          matched: false,
+          cage: null,
+        });
       });
     });
 

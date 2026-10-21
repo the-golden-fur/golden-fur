@@ -21,10 +21,10 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
 
 /** Same vocabulary as M02 pets.weight_class / pets.coat_type. */
 export type WeightClass = 'S' | 'M' | 'L' | 'XL';
-export type CoatType = 'SC' | 'LC';
+export type CoatType = 'SC' | 'LC' | 'XLC';
 
 export const WEIGHT_CLASSES: WeightClass[] = ['S', 'M', 'L', 'XL'];
-export const COAT_TYPES: CoatType[] = ['SC', 'LC'];
+export const COAT_TYPES: CoatType[] = ['SC', 'LC', 'XLC'];
 
 /**
  * One cell of the Grooming size x coat matrix, as returned by the API.
@@ -85,6 +85,10 @@ export interface PricingConfiguration {
   size_xl_rule_value: number;
   coat_long_rule_type: PricingRuleType;
   coat_long_rule_value: number;
+  /** Extra Long Coat's own rule - used in place of the Long Coat rule for
+   * an XLC pet, never on top of it. */
+  coat_extra_long_rule_type: PricingRuleType;
+  coat_extra_long_rule_value: number;
   updated_by_staff_id: string | null;
   updated_at: string;
 }
@@ -100,6 +104,8 @@ export interface UpdatePricingConfigurationPayload {
   size_xl_rule_value?: number;
   coat_long_rule_type?: PricingRuleType;
   coat_long_rule_value?: number;
+  coat_extra_long_rule_type?: PricingRuleType;
+  coat_extra_long_rule_value?: number;
 }
 
 /** Epic B (#82): the shared, singleton package bundled-price calculation. */
@@ -163,6 +169,10 @@ export interface ServiceBranchAvailability {
   /** This branch's own price for the service, replacing base_price there.
    * null (or absent) = the branch charges base_price. Superadmin-set. */
   price_override?: number | null;
+  /** This branch's own Hotel long-stay nightly price, replacing the
+   * service's long_stay_nightly_price there. null (or absent) = the branch
+   * uses long_stay_nightly_price. Superadmin-set. */
+  long_stay_price_override?: number | null;
 }
 
 export interface Service {
@@ -193,10 +203,20 @@ export interface Service {
   /** Hotel-only: matched against a package's name at the booking's own
    * branch (packages are branch-scoped; this services row is not). */
   free_package_name: string | null;
+  /** Hotel-only: the per-night price once min_nights_for_free_package or
+   * more nights are booked - the long-stay rate, applied automatically.
+   * NULL = no long-stay rate. In the booking catalog this is already the
+   * booking branch's own long-stay price. Nights added after booking are
+   * always the regular price. Superadmin-set. */
+  long_stay_nightly_price?: number | null;
   /** Whether this service's price varies by the pet's weight_class/
    * coat_type (Grooming only). Ignored for a Cat pet regardless (flat
    * base_price always). */
   use_pricing_matrix: boolean;
+  /** Optional Extra Long Coat (20261014265), Superadmin-only: off = no XLC
+   * cells in service_pricing_tiers, and an XLC pet pays the Long Coat price
+   * for its size. Optional so older fixtures/responses read as off. */
+  has_extra_long_coat?: boolean;
   /** Daycare-only: flat charge for the first hour (or less) of a session
    * on this service. NULL falls back to the documented ₱100 default. */
   first_hour_fee: number | null;
@@ -234,6 +254,14 @@ export interface PackageBranchAvailability {
 export interface Package {
   id: string;
   name: string;
+  /** Named inclusions that are NOT individual services (e.g. "Free
+   * bandana") - names only, no price or duration, so they never affect
+   * bundled_price or the appointment length. In the order they were added. */
+  extras?: string[];
+  /** What this package costs for a Cat pet - ahead of the pet type's fixed
+   * price and the weight x coat grid. null/absent = cats are priced like any
+   * other pet type. */
+  cat_price?: number | null;
   bundled_price: number;
   /** Derived server-side from included services' duration_minutes - used to
    * estimate a package's contribution to a booking's total scheduled time
@@ -243,6 +271,9 @@ export interface Package {
    * type (pricing_tiers below) instead of the flat bundled_price above. A
    * pet type's fixed price still wins. Superadmin-only. */
   use_pricing_matrix: boolean;
+  /** Optional Extra Long Coat (20261014265) - same as
+   * Service.has_extra_long_coat, for pricing_tiers. */
+  has_extra_long_coat?: boolean;
   /** Custom change (per-item weight x coat pricing): the 8 S/M/L/XL x SC/LC
    * prices - bundled_price through the shared formula, with any cell a
    * Superadmin set for this package in its place. */
@@ -351,7 +382,9 @@ export interface CreateServicePayload {
   captures_pet_assessment?: boolean;
   min_nights_for_free_package?: number;
   free_package_name?: string;
+  long_stay_nightly_price?: number;
   use_pricing_matrix?: boolean;
+  has_extra_long_coat?: boolean;
   first_hour_fee?: number;
   succeeding_hour_fee?: number;
   daycare_overnight_fee?: number;
@@ -370,7 +403,9 @@ export interface UpdateServicePayload {
   captures_pet_assessment?: boolean;
   min_nights_for_free_package?: number | null;
   free_package_name?: string | null;
+  long_stay_nightly_price?: number | null;
   use_pricing_matrix?: boolean;
+  has_extra_long_coat?: boolean;
   first_hour_fee?: number | null;
   succeeding_hour_fee?: number | null;
   daycare_overnight_fee?: number | null;
@@ -383,10 +418,13 @@ export interface BranchAvailabilityPayload {
   is_available: boolean;
 }
 
-/** null clears the branch's own price, back to the service's base price. */
+/** null clears the branch's own price, back to the service's base price.
+ * long_stay_price_override is the same for the Hotel long-stay rate; left
+ * out, the server doesn't touch it. */
 export interface BranchPricePayload {
   branch_id: string;
   price_override: number | null;
+  long_stay_price_override?: number | null;
 }
 
 /** Epic B (#83): bundled_price is derived, not accepted as input. Custom
@@ -396,7 +434,10 @@ export interface CreatePackagePayload {
   branch_ids: string[];
   name: string;
   service_ids: string[];
+  extras?: string[];
+  cat_price?: number;
   use_pricing_matrix?: boolean;
+  has_extra_long_coat?: boolean;
   icon?: string | null;
   image_url?: string | null;
 }
@@ -407,7 +448,12 @@ export interface UpdatePackagePayload {
   name?: string;
   /** Full replacement of the included-services set when provided. */
   service_ids?: string[];
+  /** Full replacement of the extras list when provided ([] clears it). */
+  extras?: string[];
+  /** null clears it - cats go back to the pet type's own pricing. */
+  cat_price?: number | null;
   use_pricing_matrix?: boolean;
+  has_extra_long_coat?: boolean;
   icon?: string | null;
   image_url?: string | null;
 }

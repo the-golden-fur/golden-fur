@@ -295,8 +295,8 @@
     {
       "label": "supabase:seed:all:temp",
       "type": "npm",
-      "script": "seed:temp",
-      "detail": "Inserts temp demo data into the database in server/.env (the dev project unless changed). Re-running adds no duplicates.",
+      "script": "seed:temp:linked",
+      "detail": "Inserts temp demo data into the Supabase project linked by the CLI. Retrieves that project's service-role API key through the Supabase CLI; server/.env is not used for this task. Re-running adds no duplicates.",
       "presentation": {
         "group": "seed",
         "panel": "shared",
@@ -307,7 +307,7 @@
       "label": "supabase:reset:temp",
       "type": "npm",
       "script": "supabase:reset:temp",
-      "detail": "Re-seeds the temp demo data into the database in server/.env (no reset - nothing is wiped).",
+      "detail": "Re-seeds temp demo data into the project linked by the Supabase CLI (no reset - nothing is wiped). Retrieves that project's service-role API key through the Supabase CLI; server/.env is not used for this task.",
       "presentation": {
         "group": "supabase",
         "panel": "shared",

@@ -238,6 +238,9 @@ describe('HotelBookingPicker', () => {
     setupMocks([booking({ id: 'booking-2', status: 'Cancelled' })]);
 
     renderPicker();
+    fireEvent.change(await screen.findByDisplayValue('Awaiting check-in'), {
+      target: { value: 'All' },
+    });
 
     await screen.findByText('Mochi');
     expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0);
@@ -271,6 +274,9 @@ describe('HotelBookingPicker', () => {
       error: null,
     });
     renderPicker();
+    fireEvent.change(await screen.findByDisplayValue('Awaiting check-in'), {
+      target: { value: 'All' },
+    });
 
     expect(await screen.findByText('Already checked in')).toBeInTheDocument();
     expect(screen.getByText(/Go to checkout/)).toHaveAttribute(
@@ -307,6 +313,9 @@ describe('HotelBookingPicker', () => {
       error: null,
     });
     renderPicker();
+    fireEvent.change(await screen.findByDisplayValue('Awaiting check-in'), {
+      target: { value: 'All' },
+    });
 
     await screen.findByText('Mochi');
     expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
@@ -315,6 +324,52 @@ describe('HotelBookingPicker', () => {
     expect(
       screen.queryByRole('button', { name: 'Check in' })
     ).not.toBeInTheDocument();
+  });
+
+  it('a walk-in (In Progress, no stay yet) is listed by default and can be checked in', async () => {
+    setupMocks([booking({ status: 'In Progress' })]);
+
+    const { props } = renderPicker();
+
+    expect(await screen.findByText('Not checked in yet')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Check in' }));
+
+    expect(props.onCheckIn).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'booking-1' })
+    );
+    expect(listBookings).toHaveBeenLastCalledWith(
+      'token',
+      expect.objectContaining({ status: undefined })
+    );
+  });
+
+  it('an In Progress booking offers no Check in while the stays lookup has not loaded', async () => {
+    setupMocks([booking({ status: 'In Progress' })]);
+    vi.mocked(listHotelStays).mockResolvedValue({
+      data: null,
+      error: 'Could not load stays.',
+    });
+
+    renderPicker();
+    fireEvent.change(await screen.findByDisplayValue('Awaiting check-in'), {
+      target: { value: 'All' },
+    });
+
+    await screen.findByText('Mochi');
+    expect(
+      screen.queryByRole('button', { name: 'Check in' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('the default "Awaiting check-in" view hides bookings that cannot be checked in', async () => {
+    setupMocks([booking({ status: 'Cancelled' })]);
+
+    renderPicker();
+
+    expect(
+      await screen.findByText(/No Hotel bookings match these filters/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Mochi')).not.toBeInTheDocument();
   });
 
   it('search filters by pet, owner, or weight class', async () => {

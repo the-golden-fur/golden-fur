@@ -6,6 +6,10 @@
 
 .content {
   display: grid;
+  /* Pack rows at the top - .page's min-height: 100vh stretches .content, and
+     without this the leftover height is spread between the rows, opening
+     huge gaps when a filter leaves few results. */
+  align-content: start;
   gap: var(--space-4);
   max-width: 72rem;
   width: 100%;
@@ -177,9 +181,25 @@
   font-weight: var(--weight-bold);
 }
 
-.itemName {
+/* Table/List: the name itself is the way into the details modal. */
+.staffNameButton {
+  border: 0;
+  background: none;
   color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
   font-weight: var(--weight-semibold);
+  padding: 0;
+  text-align: left;
+}
+
+.staffNameButton:hover {
+  text-decoration: underline;
+}
+
+.staffNameButton:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
 }
 
 .roleBadge {

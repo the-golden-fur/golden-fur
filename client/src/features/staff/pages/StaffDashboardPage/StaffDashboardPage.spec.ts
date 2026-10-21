@@ -27,6 +27,7 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
 vi.mock('../../../reports/api/reports.api', () => ({
   getAnalyticsSummary: vi.fn(),
   getCageOccupancyReport: vi.fn(),
+  getGoals: vi.fn(),
   getTransactionHistory: vi.fn(),
 }));
 
@@ -195,6 +196,29 @@ describe('StaffDashboardPage', () => {
     });
     vi.mocked(reportsApi.getCageOccupancyReport).mockResolvedValue({
       data: [{ size: 'M', status: 'Available', cage_count: 3 }],
+      error: null,
+    });
+    const goalRow = (key: string, label: string) => ({
+      key,
+      label,
+      actual: 0,
+      previous: 0,
+      goal: 0,
+      goal_source: 'growth' as const,
+      growth_rate: 10,
+      target: null,
+    });
+    vi.mocked(reportsApi.getGoals).mockResolvedValue({
+      data: {
+        month: '2026-10',
+        branch_id: null,
+        appointments: goalRow('appointments', 'All appointments'),
+        services: [goalRow('service:Grooming', 'Grooming')],
+        revenue: goalRow('revenue', 'Revenue'),
+        revenue_services: [],
+        new_customers: goalRow('new_customers', 'New customers'),
+        packages: [],
+      },
       error: null,
     });
     vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
@@ -448,5 +472,63 @@ describe('StaffDashboardPage', () => {
     expect(
       screen.getByRole('heading', { name: 'Credit Review Queue' })
     ).toBeInTheDocument();
+  });
+  it('shows both the Receptionist-side and Cashier-side widgets, with one shared Credit Review Queue, for a Front Desk viewer', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Front Desk', display_name: 'Fran Desk' }),
+      error: null,
+    });
+    vi.mocked(staffApi.listUnavailabilityBlocks).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(bookingApi.listPendingCreditReviews).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(reportsApi.getCageOccupancyReport).mockResolvedValue({
+      data: [{ size: 'M', status: 'Available', cage_count: 3 }],
+      error: null,
+    });
+    vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+
+    renderDashboard('/staff/dashboard/front-desk');
+
+    expect(
+      await screen.findByRole('heading', { name: "Today's Bookings Queue" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /new walk-in customer/i })
+    ).toHaveAttribute('href', '/staff/admin/customers');
+    expect(screen.getByRole('link', { name: /^new booking/i })).toHaveAttribute(
+      'href',
+      '/staff/bookings/new'
+    );
+    // Archived for now (ASSESSMENT_BOOKINGS_PAUSED) - no widget.
+    expect(
+      screen.queryByRole('heading', { name: 'Assessment Queue' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Cage Occupancy' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Transactions' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'My Schedule' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /credit management/i })
+    ).toHaveAttribute('href', '/staff/credits');
+    expect(
+      screen.getAllByRole('heading', { name: 'Credit Review Queue' })
+    ).toHaveLength(1);
   });
 });

@@ -16,9 +16,9 @@ anything in this area.
 
 ## Process
 
-1. Load `rbac-totp-setup.md` for the current 8 staff roles (Superadmin,
+1. Load `rbac-totp-setup.md` for the current 9 staff roles (Superadmin,
    Admin, Supervisor, Receptionist, Groomer, Veterinarian, Cashier, Pet
-   Assistant) and how they gate routes/UI.
+   Assistant, Front Desk) and how they gate routes/UI.
 2. When reviewing a new protected route/page, confirm the role check
    exists at **all three layers**: the UI route guard, the server/API
    middleware, and — where the table holds customer/staff data — a

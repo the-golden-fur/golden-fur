@@ -5,18 +5,25 @@ import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.mi
 import { requireBranch } from '../auth/staff/middleware/requireBranch/requireBranch.middleware.ts';
 import {
   analyticsSummaryController,
+  bookingActivityReportController,
   branchComparisonController,
   cageOccupancyReportController,
   customerTransactionHistoryController,
   dailySalesReportController,
+  goalsController,
+  setGoalGrowthRateController,
+  setGoalTargetController,
   transactionHistoryController,
+  trendsController,
 } from './reports.controller.ts';
 import {
   ANALYTICS_READ_ROLES,
   BRANCH_COMPARISON_READ_ROLES,
   CAGE_OCCUPANCY_READ_ROLES,
+  GOALS_ROLES,
   REPORTS_READ_ROLES,
   TRANSACTION_HISTORY_READ_ROLES,
+  TRENDS_READ_ROLES,
 } from './reports.types.ts';
 
 /**
@@ -69,6 +76,11 @@ const analyticsRead = [
 
 router.get('/reports/dsr', reportsRead, dailySalesReportController);
 router.get(
+  '/reports/booking-activity',
+  reportsRead,
+  bookingActivityReportController
+);
+router.get(
   '/reports/cage-occupancy',
   cageOccupancyRead,
   cageOccupancyReportController
@@ -98,5 +110,33 @@ router.get(
   branchComparisonRead,
   branchComparisonController
 );
+
+// Custom change (Goals page): Superadmin-only, reading and configuring
+// alike. No requireBranch - the branch (or "all branches") is the caller's
+// own pick, not their assigned one.
+const goalsAccess = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...GOALS_ROLES]),
+];
+
+router.get('/reports/goals', goalsAccess, goalsController);
+router.put(
+  '/reports/goals/growth-rate',
+  goalsAccess,
+  setGoalGrowthRateController
+);
+router.put('/reports/goals/target', goalsAccess, setGoalTargetController);
+
+// Custom change (Trends page): Admin/Supervisor for their own branch,
+// Superadmin for any branch - requireBranch supplies the "own branch".
+const trendsRead = [
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...TRENDS_READ_ROLES]),
+  requireBranch,
+];
+
+router.get('/reports/trends', trendsRead, trendsController);
 
 export default router;

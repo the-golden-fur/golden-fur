@@ -6,6 +6,12 @@ import {
   getCurrentPrescriptionForPet,
 } from '../../api/hotel.api';
 import { CageStatusGrid } from '../../components/CageStatusGrid/CageStatusGrid';
+import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog/ConfirmDialog';
+import {
+  describeCageSizeMismatch,
+  getCageSizeFit,
+  isCageSizeMismatch,
+} from '../../../../shared/utils/cageSizeFit';
 import {
   CatalogComboBox,
   type CatalogComboBoxValue,
@@ -205,7 +211,11 @@ export function HotelCheckInPanel({
 }: HotelCheckInPanelProps) {
   const [suggestedCages, setSuggestedCages] = useState<Cage[]>([]);
   const [suggestedSize, setSuggestedSize] = useState<string | null>(null);
-  const [selectedCageId, setSelectedCageId] = useState<string | null>(null);
+  // The whole cage, not just its id - its size/label are what the
+  // wrong-size warning popup below compares against the pet's own size.
+  const [selectedCage, setSelectedCage] = useState<Cage | null>(null);
+  const selectedCageId = selectedCage?.id ?? null;
+  const [isSizeWarningOpen, setIsSizeWarningOpen] = useState(false);
 
   const [foodCatalog, setFoodCatalog] = useState<ProductCatalogItem[]>([]);
   const [medicationCatalog, setMedicationCatalog] = useState<
@@ -277,7 +287,7 @@ export function HotelCheckInPanel({
       if (result.data) {
         setSuggestedSize(result.data.suggestedSize);
         setSuggestedCages(result.data.availableCages);
-        setSelectedCageId(result.data.availableCages[0]?.id ?? null);
+        setSelectedCage(result.data.availableCages[0] ?? null);
       }
     });
 
@@ -538,6 +548,19 @@ export function HotelCheckInPanel({
     onCheckedIn(result.data.stay.id);
   }
 
+  // Staff may knowingly use a different-size cage (e.g. the pet's own size
+  // is full), so a mismatch asks for confirmation instead of blocking.
+  const selectedCageFit = getCageSizeFit(suggestedSize, selectedCage?.size);
+
+  function handleCheckInClick() {
+    if (isCageSizeMismatch(selectedCageFit)) {
+      setIsSizeWarningOpen(true);
+      return;
+    }
+
+    void submitCheckIn();
+  }
+
   return (
     <>
       {submitError ? (
@@ -555,11 +578,10 @@ export function HotelCheckInPanel({
         <CageStatusGrid
           accessToken={accessToken}
           viewerRole={role}
-          onSelectCage={
-            isEditing ? (cage) => setSelectedCageId(cage.id) : undefined
-          }
+          onSelectCage={isEditing ? (cage) => setSelectedCage(cage) : undefined}
           selectedCageId={selectedCageId}
           suggestedCageIds={suggestedCages.map((cage) => cage.id)}
+          petSize={suggestedSize}
         />
       </section>
 
@@ -906,10 +928,32 @@ export function HotelCheckInPanel({
         type="button"
         className={styles.primaryButton}
         disabled={!selectedCageId || isSubmitting}
-        onClick={() => void submitCheckIn()}
+        onClick={handleCheckInClick}
       >
         {isSubmitting ? 'Checking in...' : 'Check in'}
       </button>
+
+      <ConfirmDialog
+        isOpen={isSizeWarningOpen}
+        title="Cage size doesn't match"
+        body={
+          selectedCage && suggestedSize && isCageSizeMismatch(selectedCageFit)
+            ? describeCageSizeMismatch(
+                selectedCageFit,
+                suggestedSize,
+                selectedCage.cage_label,
+                selectedCage.size
+              )
+            : null
+        }
+        confirmLabel="Check in anyway"
+        cancelLabel="Choose another cage"
+        onConfirm={() => {
+          setIsSizeWarningOpen(false);
+          void submitCheckIn();
+        }}
+        onCancel={() => setIsSizeWarningOpen(false)}
+      />
     </>
   );
 }

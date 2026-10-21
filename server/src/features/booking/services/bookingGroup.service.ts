@@ -10,6 +10,7 @@ import {
   notifyStaffRoleAtBranch,
 } from '../../notifications/services/notification.service.ts';
 import {
+  ASSESSMENT_BOOKINGS_PAUSED,
   PAY_AT_CHECKOUT_CATEGORIES,
   sanitizeHotelPreferencesForStaffRole,
 } from '../booking.types.ts';
@@ -218,6 +219,18 @@ export async function createBookingGroup({
     ? await resolveEffectivePolicy(input.branch_id)
     : null;
 
+  // The Assessment Queue is archived for now - same refusal as
+  // createBooking (see ASSESSMENT_BOOKINGS_PAUSED).
+  if (
+    ASSESSMENT_BOOKINGS_PAUSED &&
+    input.bookings.some((sub) => sub.service_category === 'Assessment')
+  ) {
+    throwWithStatus(
+      409,
+      'Assessment bookings are paused. Book the service itself - the pet is assessed when it arrives.'
+    );
+  }
+
   // Pay at checkout (20261005244) - same rule as createBooking, applied to
   // the whole checkout since it shares one payment decision: every
   // sub-booking must be a Walk-in Hotel/Daycare booking, and the branch must
@@ -280,6 +293,7 @@ export async function createBookingGroup({
       claimedStaffWindows,
       claimedCageWindows,
       claimedPetWindows,
+      payAtCheckout,
     });
 
     resolvedSubBookings.push(resolved);
@@ -636,14 +650,16 @@ export async function createBookingGroup({
       relatedBookingId: booking.id,
     });
 
-    await notifyStaffRoleAtBranch({
-      role: 'Receptionist',
-      branchId: booking.branch_id,
-      eventType: 'booking_confirmed',
-      title: 'Free package unlocked for a Hotel booking',
-      message: `${message} (Booking ${booking.id})`,
-      relatedBookingId: booking.id,
-    });
+    for (const role of ['Receptionist', 'Front Desk']) {
+      await notifyStaffRoleAtBranch({
+        role,
+        branchId: booking.branch_id,
+        eventType: 'booking_confirmed',
+        title: 'Free package unlocked for a Hotel booking',
+        message: `${message} (Booking ${booking.id})`,
+        relatedBookingId: booking.id,
+      });
+    }
   }
 
   // Step 14: return the group row plus every member booking, re-fetched
@@ -667,6 +683,8 @@ interface ResolveSubBookingParams {
   claimedStaffWindows: Map<string, Array<{ start: number; end: number }>>;
   claimedCageWindows: Map<string, Array<{ start: number; end: number }>>;
   claimedPetWindows: Map<string, Array<{ start: number; end: number }>>;
+  /** Pay at checkout: no long-stay rate and no free package (20261013260). */
+  payAtCheckout: boolean;
 }
 
 /** One sub-booking's worth of createBooking's own pipeline (pet ownership ->
@@ -685,6 +703,7 @@ async function resolveSubBooking({
   claimedStaffWindows,
   claimedCageWindows,
   claimedPetWindows,
+  payAtCheckout,
 }: ResolveSubBookingParams): Promise<ResolvedSubBooking> {
   const { data: petRow, error: petError } = await supabase
     .from('pets')
@@ -715,11 +734,14 @@ async function resolveSubBooking({
     subInput.service_category,
     branchId,
     subInput.scheduled_start,
-    subInput.scheduled_end
+    subInput.scheduled_end,
+    true,
+    !payAtCheckout
   );
 
   const freePackageAward = await resolveFreePackageAward({
     pet_id: subInput.pet_id,
+    payment_scheme: payAtCheckout ? 'pay_at_checkout' : undefined,
     branch_id: branchId,
     service_category: subInput.service_category,
     items: subInput.items,
@@ -798,7 +820,8 @@ async function resolveSubBooking({
           subInput.cage_preference.cage_id!,
           branchId,
           pet.pet_type,
-          staffRole ? undefined : (pet.weight_class ?? undefined)
+          staffRole ? undefined : (pet.weight_class ?? undefined),
+          !staffRole
         )
       : null;
 
@@ -857,6 +880,7 @@ async function resolveSubBooking({
       scheduledStart: subInput.scheduled_start,
       scheduledEnd: subInput.scheduled_end,
       petWeightClass: pet.weight_class!,
+      excludeClosedCages: !staffRole,
     });
 
     if (!capacity.available) {

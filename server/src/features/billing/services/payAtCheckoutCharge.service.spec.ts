@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { postPayAtCheckoutCharge } from './payAtCheckoutCharge.service.ts';
+import {
+  postPayAtCheckoutCharge,
+  quotePayAtCheckoutCharge,
+} from './payAtCheckoutCharge.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
   recomputeBookingGroupPaymentStatus,
@@ -293,5 +296,56 @@ describe('postPayAtCheckoutCharge', () => {
         lineItem: LINE_ITEM,
       })
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('quotePayAtCheckoutCharge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    calls.length = 0;
+  });
+
+  it('is the actual total less the booking discount/promo and what is already posted, and writes nothing', async () => {
+    queueFromResults(
+      {
+        data: { ...BOOKING, discount_amount: 200, promo_amount: 100 },
+        error: null,
+      },
+      { data: [{ total_amount: 500 }], error: null }
+    );
+
+    const quote = await quotePayAtCheckoutCharge('booking-1', 3000);
+
+    expect(quote).toEqual({ bill: 2200, discounts: 300 });
+    expect(
+      calls.some((call) => call.method === 'update' || call.method === 'insert')
+    ).toBe(false);
+  });
+
+  it('is never negative', async () => {
+    queueFromResults(
+      { data: BOOKING, error: null },
+      { data: [{ total_amount: 5000 }], error: null }
+    );
+
+    expect((await quotePayAtCheckoutCharge('booking-1', 3000)).bill).toBe(0);
+  });
+
+  it('a grouped booking counts checked-out members and the group discount', async () => {
+    queueFromResults(
+      { data: { ...BOOKING, booking_group_id: 'group-1' }, error: null },
+      { data: { discount_amount: 100, promo_amount: 0 }, error: null },
+      { data: [{ total_price: 1000 }], error: null },
+      { data: [], error: null }
+    );
+
+    const quote = await quotePayAtCheckoutCharge('booking-1', 3000);
+
+    expect(quote.bill).toBe(3900);
+    expect(calls).toContainEqual({
+      table: 'transactions',
+      method: 'eq',
+      args: ['booking_group_id', 'group-1'],
+    });
   });
 });

@@ -13,6 +13,7 @@ const STAFF_ROLES = new Set([
   'Veterinarian',
   'Cashier',
   'Pet Assistant',
+  'Front Desk',
 ]);
 
 export async function requireMfa(

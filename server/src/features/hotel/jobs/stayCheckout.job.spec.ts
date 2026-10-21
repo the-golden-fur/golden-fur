@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { runStayCheckoutJob } from './stayCheckout.job.ts';
+import { formatReminderLead, runStayCheckoutJob } from './stayCheckout.job.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { createNotification } from '../../notifications/services/notification.service.ts';
 
@@ -79,6 +79,28 @@ const IN_10_MINUTES = '2026-10-04T08:10:00.000Z';
 // Checkout at 15:55 Manila - countdown already complete.
 const FIVE_MINUTES_AGO = '2026-10-04T07:55:00.000Z';
 
+/** No customer has picked a checkout reminder lead - the 15-minute default
+ * applies. */
+const NO_PREFERENCES: QueryResult = { data: [], error: null };
+
+function preferring(minutes: number): QueryResult {
+  return {
+    data: [
+      {
+        id: 'customer-1',
+        notification_preferences: {
+          checkout_reminder: {
+            email: true,
+            in_browser: true,
+            reminder_offset_minutes: minutes,
+          },
+        },
+      },
+    ],
+    error: null,
+  };
+}
+
 /** The claim, then the customer/branch/pet lookups behind the message. */
 const CLAIM_AND_LOOKUPS: QueryResult[] = [
   { data: { id: 'stay-1' }, error: null },
@@ -121,7 +143,7 @@ describe('stayCheckout.job', () => {
     expect(filterCalls).toContainEqual(['not', 'booking_id', 'is', null]);
   });
 
-  it('only looks at bookings whose checkout is at most 15 minutes away', async () => {
+  it('only looks at bookings whose checkout is at most the longest lead (1 day) away', async () => {
     queueFromResults(
       { data: [DAYCARE_STAY], error: null },
       { data: [], error: null }
@@ -131,7 +153,7 @@ describe('stayCheckout.job', () => {
     expect(filterCalls).toContainEqual([
       'lte',
       'scheduled_end',
-      '2026-10-04T08:15:00.000Z',
+      '2026-10-05T08:00:00.000Z',
     ]);
     expect(createNotification).not.toHaveBeenCalled();
   });
@@ -140,6 +162,7 @@ describe('stayCheckout.job', () => {
     queueFromResults(
       { data: [DAYCARE_STAY], error: null },
       { data: [booking(IN_10_MINUTES)], error: null },
+      NO_PREFERENCES,
       ...CLAIM_AND_LOOKUPS
     );
 
@@ -172,7 +195,8 @@ describe('stayCheckout.job', () => {
         ],
         error: null,
       },
-      { data: [booking(IN_10_MINUTES)], error: null }
+      { data: [booking(IN_10_MINUTES)], error: null },
+      NO_PREFERENCES
     );
 
     expect(await runStayCheckoutJob(NOW)).toBe(0);
@@ -192,6 +216,7 @@ describe('stayCheckout.job', () => {
         error: null,
       },
       { data: [booking(FIVE_MINUTES_AGO)], error: null },
+      NO_PREFERENCES,
       ...CLAIM_AND_LOOKUPS
     );
 
@@ -211,6 +236,7 @@ describe('stayCheckout.job', () => {
     queueFromResults(
       { data: [HOTEL_STAY], error: null },
       { data: [booking(FIVE_MINUTES_AGO)], error: null },
+      NO_PREFERENCES,
       ...CLAIM_AND_LOOKUPS
     );
 
@@ -224,6 +250,7 @@ describe('stayCheckout.job', () => {
     queueFromResults(
       { data: [DAYCARE_STAY], error: null },
       { data: [booking(IN_10_MINUTES, true)], error: null },
+      NO_PREFERENCES,
       ...CLAIM_AND_LOOKUPS
     );
 
@@ -235,10 +262,94 @@ describe('stayCheckout.job', () => {
     queueFromResults(
       { data: [DAYCARE_STAY], error: null },
       { data: [booking(FIVE_MINUTES_AGO)], error: null },
+      NO_PREFERENCES,
       { data: null, error: null } // claim UPDATE matched no row - already taken
     );
 
     expect(await runStayCheckoutJob(NOW)).toBe(0);
     expect(createNotification).not.toHaveBeenCalled();
+  });
+  describe("the customer's chosen reminder lead", () => {
+    // Checkout at 16:50 Manila.
+    const IN_50_MINUTES = '2026-10-04T08:50:00.000Z';
+    // Checkout at 17:01 Manila.
+    const IN_61_MINUTES = '2026-10-04T09:01:00.000Z';
+
+    it('fires an hour ahead for a customer who picked "1 hour before"', async () => {
+      queueFromResults(
+        { data: [DAYCARE_STAY], error: null },
+        { data: [booking(IN_50_MINUTES)], error: null },
+        preferring(60),
+        ...CLAIM_AND_LOOKUPS
+      );
+
+      expect(await runStayCheckoutJob(NOW)).toBe(1);
+      expect(sentNotification()).toEqual(
+        expect.objectContaining({
+          eventType: 'checkout_reminder',
+          title: 'Checkout in 1 hour',
+          message: expect.stringContaining('1 hour from now'),
+        })
+      );
+    });
+
+    it('waits until the lead time is reached', async () => {
+      queueFromResults(
+        { data: [DAYCARE_STAY], error: null },
+        { data: [booking(IN_61_MINUTES)], error: null },
+        preferring(60)
+      );
+
+      expect(await runStayCheckoutJob(NOW)).toBe(0);
+      expect(updateCalls).toEqual([]);
+    });
+
+    it('keeps the 15-minute default when the customer never picked one', async () => {
+      queueFromResults(
+        { data: [DAYCARE_STAY], error: null },
+        { data: [booking(IN_50_MINUTES)], error: null },
+        NO_PREFERENCES
+      );
+
+      expect(await runStayCheckoutJob(NOW)).toBe(0);
+    });
+
+    it('skips the reminder when its moment passed before the pet was checked in', async () => {
+      queueFromResults(
+        {
+          // Checked in at 14:00 Manila - well after "1 day before" a 21:00
+          // checkout.
+          data: [{ ...DAYCARE_STAY, check_in_at: '2026-10-04T06:00:00.000Z' }],
+          error: null,
+        },
+        { data: [booking('2026-10-04T13:00:00.000Z')], error: null },
+        preferring(1440)
+      );
+
+      expect(await runStayCheckoutJob(NOW)).toBe(0);
+      expect(createNotification).not.toHaveBeenCalled();
+    });
+
+    it('sends a 1-day reminder for a Hotel stay checked in days earlier', async () => {
+      queueFromResults(
+        {
+          data: [{ ...HOTEL_STAY, check_in_at: '2026-10-01T06:00:00.000Z' }],
+          error: null,
+        },
+        { data: [booking('2026-10-05T06:00:00.000Z')], error: null },
+        preferring(1440),
+        ...CLAIM_AND_LOOKUPS
+      );
+
+      expect(await runStayCheckoutJob(NOW)).toBe(1);
+      expect(sentNotification().title).toBe('Checkout in 1 day');
+    });
+  });
+
+  it('formats each reminder lead in words', () => {
+    expect(formatReminderLead(15)).toBe('15 minutes');
+    expect(formatReminderLead(60)).toBe('1 hour');
+    expect(formatReminderLead(180)).toBe('3 hours');
+    expect(formatReminderLead(1440)).toBe('1 day');
   });
 });

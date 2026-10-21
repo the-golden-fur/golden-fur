@@ -12,6 +12,7 @@ import type {
   CheckoutResult,
   CurrentPrescription,
   FoodCatalogItem,
+  HotelCheckoutPreview,
   HotelStay,
   HotelStayWithCage,
   MedicationCatalogItem,
@@ -170,6 +171,52 @@ export async function setCageMaintenanceStatus(
     headers: jsonHeaders(accessToken),
     body: JSON.stringify({ status }),
   });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cage: Cage }>(response);
+  return { data: result.data?.cage ?? null, error: result.error };
+}
+
+/** Custom change (front-desk cage override): close a cage to customers for
+ * `minutes` (5-1440). Calling it again on a closed cage replaces the end
+ * time. */
+export async function closeCageTemporarily(
+  cageId: string,
+  minutes: number,
+  accessToken: string
+): Promise<HotelApiResult<Cage>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cage/${cageId}/override`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify({ minutes }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ cage: Cage }>(response);
+  return { data: result.data?.cage ?? null, error: result.error };
+}
+
+/** Custom change (front-desk cage override): end a closure early. */
+export async function reopenCage(
+  cageId: string,
+  accessToken: string
+): Promise<HotelApiResult<Cage>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/cage/${cageId}/override`,
+    {
+      method: 'DELETE',
+      headers: jsonHeaders(accessToken),
+    }
+  );
 
   if (!response.ok) {
     return { data: null, error: await parseError(response) };
@@ -426,6 +473,25 @@ export async function checkOutHotelStay(
   }
 
   return parseBody<CheckoutResult>(response);
+}
+
+/** The bill this stay would get if it were checked out now - for the
+ * check-out confirmation. Writes nothing. */
+export async function getHotelCheckoutPreview(
+  stayId: string,
+  accessToken: string
+): Promise<HotelApiResult<HotelCheckoutPreview>> {
+  const response = await fetch(
+    `${API_BASE_URL}/hotel/stays/${stayId}/checkout-preview`,
+    { headers: jsonHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ preview: HotelCheckoutPreview }>(response);
+  return { data: result.data?.preview ?? null, error: result.error };
 }
 
 export interface ListActivityLogFilters {

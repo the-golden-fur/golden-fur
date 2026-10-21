@@ -26,11 +26,12 @@
     "supabase:pull": "supabase db pull",
     "supabase:status": "supabase migration list",
     "supabase:reset": "supabase db reset",
-    "supabase:reset:temp": "npm run seed:temp",
+    "supabase:reset:temp": "npm run seed:temp:linked",
     "supabase:reset:remote": "supabase db reset --linked",
     "supabase:repair": "supabase migration repair",
     "seed:all": "tsx supabase/seeds/m01-staff-auth/m01-staff-auth.seed.ts && tsx supabase/seeds/m02-customers-pets/m02-customers-pets.seed.ts && tsx supabase/seeds/m05-hotel/m05-hotel.seed.ts && tsx supabase/seeds/m07-veterinary/m07-veterinary.seed.ts && tsx supabase/seeds/m12-discounts/m12-discounts.seed.ts && tsx supabase/seeds/m13-maintenance/m13-maintenance.seed.ts && tsx supabase/seeds/custom-rewards/custom-rewards.seed.ts",
     "seed:temp": "tsx supabase/seeds/temp-demo/temp-demo.seed.ts",
+    "seed:temp:linked": "tsx supabase/seeds/temp-demo/temp-demo.seed.ts --supabase-linked",
     "test:seed": "vitest run supabase/seeds"
   },
   "devDependencies": {

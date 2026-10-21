@@ -20,6 +20,7 @@ export const REWARDS_READ_ROLES: readonly string[] = [
   'Veterinarian',
   'Cashier',
   'Pet Assistant',
+  'Front Desk',
 ];
 
 export const REWARDS_WRITE_ROLES: readonly string[] = ['Admin', 'Superadmin'];

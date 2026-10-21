@@ -31,6 +31,15 @@ export function draftsFromCells(
   return drafts;
 }
 
+/** Optional Extra Long Coat (20261014265): the drafts without any XLC cell -
+ * for an item with no Extra Long Coat prices, so an XLC price typed before
+ * the switch went off is never saved. */
+export function withoutExtraLongCoat(drafts: CellDrafts): CellDrafts {
+  return Object.fromEntries(
+    Object.entries(drafts).filter(([key]) => !key.endsWith(':XLC'))
+  ) as CellDrafts;
+}
+
 /**
  * What to send so the saved cells match the drafts: every changed or new
  * custom cell with its price, and null for each saved custom cell that was
@@ -64,7 +73,7 @@ export function pricingCellsChanges(
 
     const price = Number(draft);
     if (!Number.isFinite(price) || price < 0) {
-      const coat = coatType === 'SC' ? 'short' : 'long';
+      const coat = { SC: 'short', LC: 'long', XLC: 'extra long' }[coatType];
       return {
         cells: [],
         error: `Enter a valid price (0 or more) for ${weightClass}, ${coat} coat.`,

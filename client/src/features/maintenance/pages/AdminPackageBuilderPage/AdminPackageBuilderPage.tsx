@@ -24,6 +24,7 @@ import { PricingMatrixEditor } from '../../components/PricingMatrixEditor/Pricin
 import {
   draftsFromCells,
   pricingCellsChanges,
+  withoutExtraLongCoat,
   type CellDrafts,
 } from '../../components/PricingMatrixEditor/pricingCellDrafts';
 import { deriveBundledPrice } from '../../utils/deriveBundledPrice';
@@ -87,6 +88,9 @@ import { LoadingState } from '../../../../shared/components/LoadingState/Loading
 
 /** Same list as MAINTENANCE_WRITE_ROLES server-side. */
 const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
+
+/** Matches the server's own cap (createPackageValidator / the column CHECK). */
+const MAX_EXTRAS = 20;
 
 type ServiceSortKey = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
 
@@ -154,8 +158,17 @@ export function AdminPackageBuilderPage() {
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [formName, setFormName] = useState('');
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  // Package extras: named inclusions that are not individual services, plus
+  // the name currently being typed into the "add" box.
+  const [formExtras, setFormExtras] = useState<string[]>([]);
+  const [extraDraft, setExtraDraft] = useState('');
+  // Package cat price: one separate price for a cat, as typed. '' = none.
+  const [formCatPrice, setFormCatPrice] = useState('');
   const [discountPercentInput, setDiscountPercentInput] = useState('0');
   const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
+  // Superadmin-only (optional Extra Long Coat): whether the grid has an
+  // Extra Long Coat column at all.
+  const [formHasExtraLongCoat, setFormHasExtraLongCoat] = useState(false);
   // Per-item weight x coat pricing: this package's own cell prices, as typed.
   const [formPricingCells, setFormPricingCells] = useState<CellDrafts>({});
   const [formIcon, setFormIcon] = useState<string | null>(null);
@@ -473,12 +486,31 @@ export function AdminPackageBuilderPage() {
     setSelectedBranchIds([]);
     setFormName('');
     setSelectedServiceIds([]);
+    setFormExtras([]);
+    setExtraDraft('');
+    setFormCatPrice('');
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(false);
+    setFormHasExtraLongCoat(false);
     setFormPricingCells({});
     setFormIcon(null);
     setFormImageUrl(null);
+  }
+
+  /** Adds the typed name to the package's extras. A blank name, or one
+   * already listed (whatever its capitals), is simply not added - the server
+   * refuses both anyway. */
+  function addExtra() {
+    const name = extraDraft.trim();
+    const alreadyListed = formExtras.some(
+      (extra) => extra.toLowerCase() === name.toLowerCase()
+    );
+
+    if (name !== '' && !alreadyListed && formExtras.length < MAX_EXTRAS) {
+      setFormExtras((prev) => [...prev, name]);
+    }
+    setExtraDraft('');
   }
 
   const openCreateForm = () => {
@@ -501,9 +533,13 @@ export function AdminPackageBuilderPage() {
     setSelectedServiceIds(
       (pkg.package_services ?? []).map((link) => link.service_id)
     );
+    setFormExtras(pkg.extras ?? []);
+    setExtraDraft('');
+    setFormCatPrice(pkg.cat_price == null ? '' : String(pkg.cat_price));
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(pkg.use_pricing_matrix);
+    setFormHasExtraLongCoat(Boolean(pkg.has_extra_long_coat));
     setFormPricingCells(draftsFromCells(pkg.pricing_tiers));
     setFormIcon(pkg.icon);
     setFormImageUrl(pkg.image_url);
@@ -669,6 +705,14 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
+    // Package cat price: null = none set.
+    const catPrice = formCatPrice.trim() === '' ? null : Number(formCatPrice);
+
+    if (catPrice !== null && !(catPrice >= 0)) {
+      setFormError('The price for cats cannot be negative.');
+      return;
+    }
+
     // Per-item weight x coat pricing: only a Superadmin's grid is ever sent.
     const savedPackage =
       editingPackageId === null
@@ -678,7 +722,11 @@ export function AdminPackageBuilderPage() {
       isSuperadmin && formUsePricingMatrix
         ? pricingCellsChanges(
             draftsFromCells(savedPackage?.pricing_tiers),
-            formPricingCells
+            // No Extra Long Coat prices: any XLC cell typed before the
+            // switch went off isn't saved.
+            formHasExtraLongCoat
+              ? formPricingCells
+              : withoutExtraLongCoat(formPricingCells)
           )
         : { cells: [], error: null };
 
@@ -702,8 +750,11 @@ export function AdminPackageBuilderPage() {
       const result = await createPackage(accessToken, {
         name: formName.trim(),
         service_ids: selectedServiceIds,
+        ...(formExtras.length > 0 ? { extras: formExtras } : {}),
+        ...(catPrice !== null ? { cat_price: catPrice } : {}),
         branch_ids: selectedBranchIds,
         use_pricing_matrix: formUsePricingMatrix,
+        has_extra_long_coat: formHasExtraLongCoat,
         icon: formIcon,
         image_url: formImageUrl,
       });
@@ -730,10 +781,23 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
+    // Extras are only sent when they changed, so a save that never touched
+    // them leaves the list alone.
+    const savedExtras = savedPackage?.extras ?? [];
+    const extrasChanged =
+      savedExtras.length !== formExtras.length ||
+      savedExtras.some((extra, index) => extra !== formExtras[index]);
+
     const result = await updatePackage(editingPackageId, accessToken, {
       name: formName.trim(),
       service_ids: selectedServiceIds,
+      ...(extrasChanged ? { extras: formExtras } : {}),
+      // Same for the cat price: only sent when it changed (null clears it).
+      ...(catPrice !== (savedPackage?.cat_price ?? null)
+        ? { cat_price: catPrice }
+        : {}),
       use_pricing_matrix: formUsePricingMatrix,
+      has_extra_long_coat: formHasExtraLongCoat,
       icon: formIcon,
       image_url: formImageUrl,
     });
@@ -815,8 +879,21 @@ export function AdminPackageBuilderPage() {
         <span className={styles.packageMeta}>
           {(pkg.package_services ?? []).length} services
         </span>
+        {pkg.cat_price != null ? (
+          <span className={styles.packageMeta}>
+            Cats: PHP {Number(pkg.cat_price).toFixed(2)}
+          </span>
+        ) : null}
+        {(pkg.extras ?? []).length > 0 ? (
+          <span className={styles.packageMeta}>
+            + {(pkg.extras ?? []).join(', ')}
+          </span>
+        ) : null}
         {pkg.use_pricing_matrix ? (
           <span className={styles.branchBadge}>Varies by weight/coat</span>
+        ) : null}
+        {pkg.use_pricing_matrix && pkg.has_extra_long_coat ? (
+          <span className={styles.branchBadge}>Extra Long Coat prices</span>
         ) : null}
       </>
     );
@@ -1077,6 +1154,74 @@ export function AdminPackageBuilderPage() {
                       onChange={setSelectedServiceIds}
                     />
 
+                    <div className={styles.field}>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Add a service that is not in the list
+                        </span>
+                        <span className={styles.extrasAddRow}>
+                          <input
+                            className={styles.input}
+                            type="text"
+                            maxLength={80}
+                            placeholder="e.g. Free bandana"
+                            value={extraDraft}
+                            onChange={(event) =>
+                              setExtraDraft(event.target.value)
+                            }
+                            onKeyDown={(event) => {
+                              // Enter adds the name instead of submitting the
+                              // whole package form.
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                addExtra();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={addExtra}
+                            disabled={
+                              extraDraft.trim() === '' ||
+                              formExtras.length >= MAX_EXTRAS
+                            }
+                          >
+                            Add
+                          </button>
+                        </span>
+                      </label>
+                      <p className={styles.copy}>
+                        For anything included in this package that is not sold
+                        on its own. It is listed with the package, and does not
+                        change its price or time.
+                      </p>
+                      {formExtras.length > 0 ? (
+                        <ul
+                          className={styles.extrasList}
+                          aria-label="Added services"
+                        >
+                          {formExtras.map((extra) => (
+                            <li key={extra} className={styles.extraChip}>
+                              <span>{extra}</span>
+                              <button
+                                type="button"
+                                className={styles.extraRemove}
+                                aria-label={`Remove ${extra}`}
+                                onClick={() =>
+                                  setFormExtras((prev) =>
+                                    prev.filter((entry) => entry !== extra)
+                                  )
+                                }
+                              >
+                                &times;
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+
                     {selectedServiceIds.length > 0 ? (
                       <p className={styles.copy}>
                         Estimated total time:{' '}
@@ -1129,6 +1274,26 @@ export function AdminPackageBuilderPage() {
                   />
                 ) : null}
 
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    Price for cats (PHP, optional)
+                  </span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="Same as other pets"
+                    value={formCatPrice}
+                    onChange={(event) => setFormCatPrice(event.target.value)}
+                  />
+                </label>
+                <p className={styles.copy}>
+                  One price a cat pays for this package, whatever its weight or
+                  coat. Leave empty to price cats the usual way.
+                </p>
+
                 <ToggleSwitch
                   label="Price varies by weight class and coat"
                   checked={formUsePricingMatrix}
@@ -1142,12 +1307,22 @@ export function AdminPackageBuilderPage() {
                   {isSuperadmin ? null : ' Only a Superadmin can change this.'}
                 </p>
 
+                {formUsePricingMatrix ? (
+                  <ToggleSwitch
+                    label="Has Extra Long Coat prices (off = an extra long coat pet pays the Long Coat price)"
+                    checked={formHasExtraLongCoat}
+                    disabled={!isSuperadmin}
+                    onChange={setFormHasExtraLongCoat}
+                  />
+                ) : null}
+
                 {formUsePricingMatrix && pricingConfiguration ? (
                   <PricingMatrixEditor
                     basePrice={derivedBundledPrice}
                     configuration={pricingConfiguration}
                     drafts={formPricingCells}
                     readOnly={!isSuperadmin}
+                    showExtraLongCoat={formHasExtraLongCoat}
                     onChange={setFormPricingCells}
                   />
                 ) : null}

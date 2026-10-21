@@ -271,15 +271,6 @@ export function BranchesPage() {
         ),
       },
       {
-        id: 'type',
-        header: 'Branch type',
-        render: (branch) => (
-          <span className={styles.typeBadge}>
-            {branch.is_vet_branch ? 'Veterinary' : 'Grooming only'}
-          </span>
-        ),
-      },
-      {
         id: 'status',
         header: 'Status',
         render: (branch) => (

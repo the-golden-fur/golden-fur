@@ -14,6 +14,14 @@ const ASSESSMENT_OPTIONS = [
   { value: 'not-assessed', label: 'Not yet assessed' },
 ];
 
+/** "Unresolved" = the same booking the delete guard and the booking flow's
+ * Pet step block on: Pending/Late/In Progress, or Completed but unpaid
+ * (listPetBookingConflicts in the server's booking.service.ts). */
+const BOOKING_OPTIONS = [
+  { value: 'unresolved', label: 'Has an unresolved booking' },
+  { value: 'none', label: 'No unresolved booking' },
+];
+
 function distinctPetTypes(pets: Pet[]): string[] {
   return Array.from(new Set(pets.map((pet) => pet.pet_type))).sort((a, b) =>
     a.localeCompare(b)
@@ -59,7 +67,17 @@ export function buildPetFilterFields(pets: Pet[]): FilterField[] {
       'Any',
   };
 
-  return [petTypeField, weightClassField, assessmentField];
+  const bookingField: FilterField = {
+    id: 'booking',
+    label: 'Booking',
+    type: 'select',
+    defaultValue: 'unresolved',
+    options: BOOKING_OPTIONS,
+    formatValue: (value) =>
+      BOOKING_OPTIONS.find((option) => option.value === value)?.label ?? 'Any',
+  };
+
+  return [petTypeField, weightClassField, assessmentField, bookingField];
 }
 
 export type PetSortKey = 'name-asc' | 'name-desc';
@@ -93,8 +111,13 @@ export function matchesPetQuery(pet: Pet, query: string): boolean {
 }
 
 /** Every filter tile here is client-side only - `listCustomerPets` has no
- * query params today. */
-export function applyPetFilters(pets: Pet[], tiles: FilterTile[]): Pet[] {
+ * query params today. `unresolvedPetIds` (from GET /bookings/pet-conflicts)
+ * backs the Booking filter. */
+export function applyPetFilters(
+  pets: Pet[],
+  tiles: FilterTile[],
+  unresolvedPetIds: ReadonlySet<string> = new Set()
+): Pet[] {
   let result = pets;
 
   for (const tile of tiles) {
@@ -122,6 +145,17 @@ export function applyPetFilters(pets: Pet[], tiles: FilterTile[]): Pet[] {
       const wantAssessed = tile.value === 'assessed';
       result = result.filter((pet) =>
         wantAssessed ? pet.assessed_at !== null : pet.assessed_at === null
+      );
+    }
+
+    if (
+      tile.fieldId === 'booking' &&
+      typeof tile.value === 'string' &&
+      tile.value
+    ) {
+      const wantUnresolved = tile.value === 'unresolved';
+      result = result.filter(
+        (pet) => unresolvedPetIds.has(pet.id) === wantUnresolved
       );
     }
   }

@@ -147,3 +147,9 @@
   box-shadow: var(--shadow-sm);
   border-color: var(--color-accent-gold-primary);
 }
+
+.petTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}

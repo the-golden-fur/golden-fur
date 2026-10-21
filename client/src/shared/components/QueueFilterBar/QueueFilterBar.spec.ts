@@ -136,4 +136,38 @@ describe('QueueFilterBar', () => {
 
     expect(screen.getByText('Extra filter slot')).toBeInTheDocument();
   });
+
+  it('shows a count badge per preset only when presetCounts is given', () => {
+    const baseProps = {
+      dateRangePreset: 'tomorrow' as const,
+      onDateRangePresetChange: vi.fn(),
+      customDate: '',
+      onCustomDateChange: vi.fn(),
+      statusValue: 'All',
+      onStatusChange: vi.fn(),
+      statusOptions: [{ value: 'All', label: 'All statuses' }],
+    };
+
+    const { rerender } = render(createElement(QueueFilterBar, baseProps));
+    expect(
+      screen.queryByRole('list', { name: 'Bookings by date range' })
+    ).not.toBeInTheDocument();
+
+    rerender(
+      createElement(QueueFilterBar, {
+        ...baseProps,
+        presetCounts: { today: 3, tomorrow: 5, this_week: 12, this_month: 40 },
+      })
+    );
+
+    const items = screen
+      .getByRole('list', { name: 'Bookings by date range' })
+      .querySelectorAll('li');
+    expect(Array.from(items, (item) => item.textContent)).toEqual([
+      '3Today',
+      '5Tomorrow',
+      '12This week',
+      '40This month',
+    ]);
+  });
 });

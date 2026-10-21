@@ -112,10 +112,6 @@ export function SlotPicker({
       return;
     }
 
-    if (serviceCategory === 'Hotel' && !petWeightClass) {
-      return;
-    }
-
     let isMounted = true;
 
     // isLoading/error are reset from the fetch's own resolution below, not

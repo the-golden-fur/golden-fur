@@ -1,7 +1,15 @@
-import { useState } from 'react';
-import { checkOutHotelStay } from '../../api/hotel.api';
+import { useEffect, useState } from 'react';
+import {
+  checkOutHotelStay,
+  getHotelCheckoutPreview,
+} from '../../api/hotel.api';
+import { HotelBillBreakdown } from '../../components/HotelBillBreakdown/HotelBillBreakdown';
 import { HotelStayPicker } from '../../components/HotelStayPicker/HotelStayPicker';
-import type { CheckoutResult, HotelStayWithCage } from '../../hotel.types';
+import type {
+  CheckoutResult,
+  HotelCheckoutPreview,
+  HotelStayWithCage,
+} from '../../hotel.types';
 import styles from './HotelCheckoutPanel.module.css';
 
 interface HotelCheckoutPanelProps {
@@ -39,6 +47,56 @@ export function HotelCheckoutPanel({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CheckoutResult | null>(null);
+  // The bill "if checked out now" for the stay about to be confirmed - null
+  // while loading or when it could not be worked out (checkout still works
+  // without it). Keyed by stay id so a reply for a stay since swapped out
+  // is never shown against another.
+  const [preview, setPreview] = useState<{
+    stayId: string;
+    data: HotelCheckoutPreview | null;
+  } | null>(null);
+  const confirmStayId = selectedStay?.id ?? initialStayId;
+
+  useEffect(() => {
+    if (!confirmStayId || result) return;
+
+    let isCurrent = true;
+    void getHotelCheckoutPreview(confirmStayId, accessToken).then(
+      (previewResult) => {
+        if (isCurrent) {
+          setPreview({ stayId: confirmStayId, data: previewResult.data });
+        }
+      }
+    );
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [accessToken, confirmStayId, result]);
+
+  const isPreviewLoading =
+    confirmStayId !== null && preview?.stayId !== confirmStayId;
+  const currentPreview = isPreviewLoading ? null : (preview?.data ?? null);
+
+  const previewBlock = isPreviewLoading ? (
+    <p className={styles.copy}>Working out the bill…</p>
+  ) : currentPreview ? (
+    <>
+      <p className={styles.copy}>
+        If checked out now (as of{' '}
+        {new Date(currentPreview.as_of).toLocaleTimeString(undefined, {
+          timeStyle: 'short',
+        })}
+        ):
+      </p>
+      <HotelBillBreakdown
+        breakdown={currentPreview.breakdown}
+        downpaymentCollected={currentPreview.downpayment_collected}
+        addedAtCheckout={currentPreview.added_at_checkout}
+        amountDue={currentPreview.amount_due}
+      />
+    </>
+  ) : null;
 
   async function submitCheckout(stayId: string) {
     setIsSubmitting(true);
@@ -59,6 +117,27 @@ export function HotelCheckoutPanel({
   // Pay at checkout: nothing was collected up front and no extension fee
   // applies - the stay is billed for the nights actually stayed, and that
   // bill is now on the cashier's Transactions list.
+  // The itemized bill when the server sent one - the same breakdown the
+  // preview showed before confirming.
+  if (result?.bill) {
+    return (
+      <>
+        <p className={styles.successBanner} role="status">
+          Stay checked out. Cage released.
+          {result.payAtCheckout
+            ? ' The bill has been sent to the cashier.'
+            : ''}
+        </p>
+        <HotelBillBreakdown
+          breakdown={result.bill}
+          downpaymentCollected={result.downpaymentAmount}
+          addedAtCheckout={result.payAtCheckout ? null : result.extensionFee}
+          amountDue={result.remainingBalance}
+        />
+      </>
+    );
+  }
+
   if (result?.payAtCheckout) {
     const { nights } = result.payAtCheckout;
 
@@ -124,6 +203,8 @@ export function HotelCheckoutPanel({
 
         <p className={styles.copy}>Ready to check out this stay?</p>
 
+        {previewBlock}
+
         <button
           type="button"
           className={styles.primaryButton}
@@ -153,6 +234,8 @@ export function HotelCheckoutPanel({
             <dd>₱{selectedStay.downpayment_amount!.toFixed(2)}</dd>
           </div>
         </dl>
+
+        {previewBlock}
 
         {error ? (
           <p className={styles.errorBanner} role="alert">

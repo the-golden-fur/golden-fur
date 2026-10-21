@@ -32,7 +32,7 @@ describe('paymentMethod.service (#83)', () => {
       expect(result).toEqual({ paymentStatus: 'Fully Paid', changeAmount: 50 });
     });
 
-    it('Card/Bank Transfer/Grabmart/Pickaroo are confirmed immediately with no change', () => {
+    it('Card/Bank Transfer are confirmed immediately with no change', () => {
       const result = resolvePaymentConfirmation({
         paymentMethod: 'Card',
         amountDue: 450,

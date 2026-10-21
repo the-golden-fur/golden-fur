@@ -15,6 +15,13 @@ vi.mock('../../api/staff.api', () => ({
   listStaff: vi.fn(),
 }));
 
+vi.mock('../../../maintenance/api/maintenance.api', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  listBranchLetterheads: vi.fn(() =>
+    Promise.resolve({ data: [], error: null })
+  ),
+}));
+
 vi.mock('../../../customers/api/customer.api', () => ({
   getPet: vi.fn(),
   getPetHealthConditions: vi.fn(() =>
@@ -26,6 +33,9 @@ vi.mock('../../../customers/api/customer.api', () => ({
   listMedicalNotes: vi.fn(() => Promise.resolve({ data: [], error: null })),
   listPetPrescriptions: vi.fn(() => Promise.resolve({ data: [], error: null })),
   listPetConsultationResults: vi.fn(() =>
+    Promise.resolve({ data: [], error: null })
+  ),
+  listPetServiceHistory: vi.fn(() =>
     Promise.resolve({ data: [], error: null })
   ),
   listPetTypes: vi.fn(() => Promise.resolve({ data: [], error: null })),

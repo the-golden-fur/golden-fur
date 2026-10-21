@@ -4,6 +4,7 @@ import type { MedicalNoteCategory, PetMedicalNote } from '../pet.types.ts';
 
 export const MEDICAL_NOTE_MANAGER_ROLES: readonly string[] = [
   'Receptionist',
+  'Front Desk',
   'Veterinarian',
   'Admin',
   'Supervisor',

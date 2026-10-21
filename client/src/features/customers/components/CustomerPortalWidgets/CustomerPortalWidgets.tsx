@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { CalendarPlus, PawPrint, Receipt, Wallet } from 'lucide-react';
+import { CalendarPlus, Receipt, Wallet } from 'lucide-react';
+import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import { useCreditBalance } from '../../../credits/providers/useCreditBalance';
 import { listNotifications } from '../../../notifications/api/notifications.api';
@@ -199,7 +200,7 @@ function MyPetsWidget({
         <ul className={styles.petList}>
           {pets.slice(0, PET_CHIP_LIMIT).map((pet) => (
             <li key={pet.id} className={styles.petChip}>
-              <PawPrint size={14} aria-hidden="true" />
+              <PetAvatar name={pet.name} photoUrl={pet.photo_url} size="xs" />
               {pet.name}
             </li>
           ))}

@@ -23,6 +23,7 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../api/maintenance.api', () => ({
   listBranches: vi.fn(),
+  listPackages: vi.fn(),
   listServices: vi.fn(),
   createService: vi.fn(),
   setServicePricingCells: vi.fn(),
@@ -50,6 +51,8 @@ const PRICING_CONFIGURATION: PricingConfiguration = {
   size_xl_rule_value: 1.5,
   coat_long_rule_type: 'flat',
   coat_long_rule_value: 50,
+  coat_extra_long_rule_type: 'flat',
+  coat_extra_long_rule_value: 50,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -165,6 +168,14 @@ describe('AdminServicesPage', () => {
     });
     vi.mocked(maintenanceApi.getPricingConfiguration).mockResolvedValue({
       data: PRICING_CONFIGURATION,
+      error: null,
+    });
+    vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+      data: [
+        { id: 'package-1', name: 'Golden Package', archived_at: null },
+        { id: 'package-2', name: 'Silver Package', archived_at: null },
+        { id: 'package-3', name: 'Retired Package', archived_at: '2026-01-01' },
+      ] as never,
       error: null,
     });
   });
@@ -355,6 +366,24 @@ describe('AdminServicesPage', () => {
     // Every cell starts at the formula's price for the base price.
     const smallShort = screen.getByLabelText('Small (S), short coat price');
     expect(smallShort).toHaveValue(350);
+    // No Extra Long Coat column until a Superadmin switches it on.
+    expect(screen.getAllByText('Formula')).toHaveLength(8);
+    expect(
+      screen.queryByLabelText('Small (S), extra long coat price')
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('switch', { name: /Has Extra Long Coat prices/ })
+    );
+    expect(screen.getAllByText('Formula')).toHaveLength(12);
+    // An XLC price typed and then switched off again is never saved.
+    const smallExtraLong = screen.getByLabelText(
+      'Small (S), extra long coat price'
+    );
+    await user.clear(smallExtraLong);
+    await user.type(smallExtraLong, '999');
+    await user.click(
+      screen.getByRole('switch', { name: /Has Extra Long Coat prices/ })
+    );
     expect(screen.getAllByText('Formula')).toHaveLength(8);
 
     const largeLong = screen.getByLabelText('Large (L), long coat price');
@@ -367,7 +396,11 @@ describe('AdminServicesPage', () => {
     await waitFor(() => {
       expect(maintenanceApi.createService).toHaveBeenCalledWith(
         'token',
-        expect.objectContaining({ base_price: 350, use_pricing_matrix: true })
+        expect.objectContaining({
+          base_price: 350,
+          use_pricing_matrix: true,
+          has_extra_long_coat: false,
+        })
       );
     });
     // Only the changed cell is sent; the other 7 keep following the formula.
@@ -398,6 +431,9 @@ describe('AdminServicesPage', () => {
       screen.getByRole('switch', {
         name: /Price varies by weight class and coat/,
       })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('switch', { name: /Has Extra Long Coat prices/ })
     ).toBeDisabled();
     expect(
       screen.getByText('Only a Superadmin can change these prices.')
@@ -442,6 +478,7 @@ describe('AdminServicesPage', () => {
         requires_assessed_pet: true,
         captures_pet_assessment: false,
         use_pricing_matrix: false,
+        has_extra_long_coat: false,
         icon: null,
         image_url: null,
       });
@@ -862,6 +899,192 @@ describe('AdminServicesPage', () => {
     await user.click(within(popover).getByRole('option', { name: 'Inactive' }));
 
     expect(screen.getByText('Old Service')).toBeInTheDocument();
+  });
+
+  // Custom change (Hotel long-stay rate, 20261013260): booking 5+ nights is
+  // automatically cheaper per night and gets a free package - the Superadmin
+  // picks which package and sets the prices.
+  describe('Hotel long-stay deal', () => {
+    const HOTEL = buildService({
+      id: 'service-hotel',
+      category: 'Hotel',
+      name: 'Overnight Stay',
+      base_price: 850,
+      duration_minutes: 1440,
+      min_nights_for_free_package: 5,
+      free_package_name: 'Golden Package',
+      long_stay_nightly_price: 750,
+      service_pricing_tiers: [],
+      service_branch_availability: [
+        {
+          service_id: 'service-hotel',
+          branch_id: 'branch-makati',
+          is_available: true,
+          price_override: null,
+          long_stay_price_override: null,
+        },
+        {
+          service_id: 'service-hotel',
+          branch_id: 'branch-southwoods',
+          is_available: true,
+          price_override: 500,
+          long_stay_price_override: null,
+        },
+      ],
+    });
+
+    async function openConfigure(user: ReturnType<typeof userEvent.setup>) {
+      const row = (await screen.findByText('Overnight Stay')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Overnight Stay' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+
+      return screen.getByRole('dialog', { name: 'Edit service' });
+    }
+
+    beforeEach(() => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Superadmin')],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.listServices).mockResolvedValue({
+        data: [HOTEL],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updateService).mockResolvedValue({
+        data: HOTEL,
+        error: null,
+      });
+      vi.mocked(maintenanceApi.setServiceBranchPrice).mockImplementation(
+        (_serviceId, _token, payload) =>
+          Promise.resolve({
+            data: {
+              service_id: 'service-hotel',
+              branch_id: payload.branch_id,
+              is_available: true,
+              price_override: payload.price_override,
+              long_stay_price_override:
+                payload.long_stay_price_override ?? null,
+            },
+            error: null,
+          })
+      );
+    });
+
+    it('lets the Superadmin pick the free package from the live packages, not type a name', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      const picker = within(dialog).getByLabelText(
+        'Free package for a long stay'
+      );
+      expect(picker).toHaveValue('Golden Package');
+      await waitFor(() =>
+        expect(
+          within(picker)
+            .getAllByRole('option')
+            .map((option) => option.textContent)
+        ).toEqual(['No free package', 'Golden Package', 'Silver Package'])
+      );
+
+      await user.selectOptions(picker, 'Silver Package');
+      await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.updateService).toHaveBeenCalledWith(
+          'service-hotel',
+          'token',
+          expect.objectContaining({ free_package_name: 'Silver Package' })
+        )
+      );
+    });
+
+    it('saves the long-stay price, and a branch its own long-stay price without resending anything else', async () => {
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      const longStayPrice = within(dialog).getByLabelText(
+        'Long-stay price per night (PHP)'
+      );
+      expect(longStayPrice).toHaveValue(750);
+      await user.clear(longStayPrice);
+      await user.type(longStayPrice, '700');
+      await user.type(
+        within(dialog).getByLabelText('Southwoods long-stay price (PHP)'),
+        '450'
+      );
+      await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.updateService).toHaveBeenCalledWith(
+          'service-hotel',
+          'token',
+          expect.objectContaining({ long_stay_nightly_price: 700 })
+        )
+      );
+      await waitFor(() =>
+        expect(maintenanceApi.setServiceBranchPrice).toHaveBeenCalledWith(
+          'service-hotel',
+          'token',
+          {
+            branch_id: 'branch-southwoods',
+            // The regular Southwoods price is resent as it already was.
+            price_override: 500,
+            long_stay_price_override: 450,
+          }
+        )
+      );
+      expect(maintenanceApi.setServiceBranchPrice).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the long-stay price and free package on the service row', async () => {
+      renderPage();
+
+      const row = (await screen.findByText('Overnight Stay')).closest(
+        'tr'
+      ) as HTMLElement;
+      expect(
+        within(row).getByText('5+ nights: PHP 750.00/night')
+      ).toBeInTheDocument();
+      expect(
+        within(row).getByText('5+ nights: free Golden Package')
+      ).toBeInTheDocument();
+    });
+
+    it('an Admin sees both but cannot change them, and never sends them', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer('Admin')],
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      const dialog = await openConfigure(user);
+
+      expect(
+        within(dialog).getByLabelText('Free package for a long stay')
+      ).toBeDisabled();
+      expect(
+        within(dialog).getByLabelText('Long-stay price per night (PHP)')
+      ).toBeDisabled();
+      expect(
+        within(dialog).queryByLabelText('Southwoods long-stay price (PHP)')
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Save service' }));
+
+      await waitFor(() =>
+        expect(maintenanceApi.updateService).toHaveBeenCalled()
+      );
+      const payload = vi.mocked(maintenanceApi.updateService).mock.calls[0][2];
+      expect(payload).not.toHaveProperty('free_package_name');
+      expect(payload).not.toHaveProperty('long_stay_nightly_price');
+    });
   });
 
   // Custom change (per-branch service price): a Superadmin can give a branch

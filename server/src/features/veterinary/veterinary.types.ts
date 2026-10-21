@@ -12,6 +12,7 @@ export const VETERINARY_READ_ROLES: readonly string[] = [
   'Supervisor',
   'Superadmin',
   'Receptionist',
+  'Front Desk',
 ];
 
 export const VETERINARY_WRITE_ROLES: readonly string[] = ['Veterinarian'];

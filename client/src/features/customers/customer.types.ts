@@ -1,3 +1,5 @@
+import type { BookingStatus, ServiceCategory } from '../booking/booking.types';
+
 export type CommunicationChannel = 'Call' | 'Text' | 'Viber' | 'Messenger';
 
 export interface CustomerProfile {
@@ -34,7 +36,17 @@ export interface CustomerProfileUpdatePayload {
 export type PetType = string;
 export type PetGender = 'Male' | 'Female';
 export type PetWeightClass = 'S' | 'M' | 'L' | 'XL';
-export type PetCoatType = 'SC' | 'LC';
+export type PetCoatType = 'SC' | 'LC' | 'XLC';
+
+/** Every coat type staff can record, in display order - the one list the
+ * pet and assessment forms all offer. */
+export const PET_COAT_TYPES: PetCoatType[] = ['SC', 'LC', 'XLC'];
+
+export const PET_COAT_TYPE_LABEL: Record<PetCoatType, string> = {
+  SC: 'Short coat',
+  LC: 'Long coat',
+  XLC: 'Extra long coat',
+};
 
 export interface Breed {
   id: string;
@@ -78,8 +90,27 @@ export interface Pet {
   assessed_at: string | null;
   is_active: boolean;
   archived_at: string | null;
+  /** Why the pet was deleted (archived) - not displayed yet, reserved for a
+   * future Trends tab. archive_reason_other is only set for 'other'. */
+  archive_reason?: PetDeleteReason | null;
+  archive_reason_other?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Mirrors the pets.archive_reason check constraint
+ * (...275_custom_pet_archive_reason.sql). */
+export type PetDeleteReason =
+  | 'passed_away'
+  | 'rehomed'
+  | 'duplicate'
+  | 'no_longer_using_clinic'
+  | 'other';
+
+/** Body of DELETE /pets/:id - reasonOther is only sent for 'other'. */
+export interface PetDeletePayload {
+  reason: PetDeleteReason;
+  reasonOther: string | null;
 }
 
 /** Customer-facing create payload - weight_class/coat_type are staff-only,
@@ -88,7 +119,7 @@ export interface PetCreatePayload {
   name: string;
   pet_type: PetType;
   breed_id?: string;
-  gender?: PetGender;
+  gender: PetGender;
   date_of_birth?: string;
 }
 
@@ -116,6 +147,12 @@ export type MedicalNoteCategory =
   | 'Allergy'
   | 'Behavioral Flag';
 
+/** 'verified': entered by staff, or an owner's record staff confirmed.
+ * 'pending': added by the owner, awaiting review. 'rejected': staff turned
+ * it down (rejection_reason says why). Information only - nothing in
+ * booking reads it. */
+export type VaccinationRecordStatus = 'verified' | 'pending' | 'rejected';
+
 export interface PetVaccinationRecord {
   id: string;
   pet_id: string;
@@ -125,6 +162,29 @@ export interface PetVaccinationRecord {
   administered_by: string | null;
   notes: string | null;
   created_at: string;
+  status: VaccinationRecordStatus;
+  /** Set when the pet's owner added it themselves. */
+  reported_by_customer_id: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  /** Short-lived link to the vaccination card photo, if there is one. */
+  proof_url?: string | null;
+}
+
+/** A record in the staff Vaccination Review queue. */
+export interface PendingVaccinationRecord extends PetVaccinationRecord {
+  pet_name: string | null;
+  owner_name: string | null;
+}
+
+/** What the owner (or staff) fills in to add a vaccination. */
+export interface VaccinationRecordInput {
+  vaccine_name: string;
+  date_administered: string;
+  next_due_date: string;
+  notes: string;
+  /** The vaccination card - required from an owner. */
+  proof: File | null;
 }
 
 export interface PetMedicalNote {
@@ -161,6 +221,52 @@ export interface PetPrescriptionHistoryEntry {
     quantity?: number | null;
     quantity_unit?: string | null;
     refills?: number | null;
+  }>;
+}
+
+/** One past booking on a pet's Service History (Completed, Cancelled or
+ * No-show). Server: GET /pets/:id/service-history. */
+export interface PetServiceHistoryEntry {
+  booking_id: string;
+  /** completed_at when the service finished, else scheduled_start. */
+  date: string;
+  service_category: ServiceCategory;
+  status: Extract<BookingStatus, 'Completed' | 'Cancelled' | 'No-show'>;
+  items: string[];
+  branch_name: string | null;
+  /** Assigned groomer/vet; null for Hotel/Daycare/Assessment. */
+  staff_name: string | null;
+  total_price: number;
+  cancellation_reason: string | null;
+  /** Paid transactions for this booking (its own + a group checkout's),
+   * oldest first - each one a reprintable receipt. */
+  payments: PetServiceHistoryPayment[];
+}
+
+/** The slice of a transaction its printed receipt needs - same field names
+ * as reports' TransactionRecord, so receiptPropsFor reads it directly. */
+export interface PetServiceHistoryPayment {
+  id: string;
+  booking_id: string | null;
+  booking_group_id: string | null;
+  branch_id: string;
+  transaction_type: string;
+  payment_method: string;
+  payment_status: 'Partially Paid' | 'Fully Paid';
+  payment_choice: string | null;
+  total_amount: number;
+  misc_sale_description: string | null;
+  created_at: string;
+  customer_name: string | null;
+  bookings: {
+    service_category: string;
+    pets: { name: string } | null;
+  } | null;
+  transaction_line_items: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
   }>;
 }
 

@@ -12,12 +12,14 @@ same pattern instead of being hand-rolled per feature.
 **Use whenever** adding a new protected route/page, or touching
 login/session/MFA/OAuth code.
 
-## The 8 staff roles
+## The 9 staff roles
 
 Superadmin, Admin, Supervisor, Receptionist, Groomer, Veterinarian,
-Cashier, Pet Assistant — each with a role-scoped dashboard and permission
-tier. (Note: this is the current, authoritative role list — 8, not 6;
-disregard any older reference to "six roles.")
+Cashier, Pet Assistant, Front Desk — each with a role-scoped dashboard and
+permission tier. (Note: this is the current, authoritative role list — 9,
+not 6 or 8; disregard any older reference to "six roles" or "eight
+roles." Front Desk is a combined role: the union of Receptionist's and
+Cashier's access, added without changing either of those two roles.)
 
 ## Three-layer enforcement
 
@@ -43,8 +45,8 @@ examples of scoping that's easy to get wrong by guessing:
 
 - Money-handling actions like recording a transaction payment
   (`BOOKING_MARK_PAID_ROLES` server-side) are restricted to Superadmin,
-  Admin, Supervisor, Receptionist, Cashier specifically — not every staff
-  role.
+  Admin, Supervisor, Receptionist, Cashier, Front Desk specifically — not
+  every staff role.
 - The Hotel Queue (`/staff/hotel/queue`) and Daycare Queue
   (`/staff/daycare/queue`) are scoped to **Groomer and Pet Assistant
   only** — Receptionist has no access to either, despite being a

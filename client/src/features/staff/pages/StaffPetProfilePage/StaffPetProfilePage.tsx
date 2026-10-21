@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useParams } from 'react-router';
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router';
+import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getPet } from '../../../customers/api/customer.api';
 import { PetDetailPanel } from '../../../customers/components/panels/PetDetailPanel/PetDetailPanel';
 import type { Pet } from '../../../customers/customer.types';
 import { listStaff } from '../../api/staff.api';
+import type { CustomerPanelReturnState } from '../CustomerManagementPage/CustomerManagementPage';
 import styles from './StaffPetProfilePage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
@@ -20,6 +22,7 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Admin',
   'Supervisor',
   'Superadmin',
+  'Front Desk',
 ]);
 
 /**
@@ -33,6 +36,18 @@ const ALLOWED_VIEWER_ROLES = new Set([
 export function StaffPetProfilePage() {
   const { petId } = useParams<{ petId: string }>();
   const { user, accessToken } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Set when the pet was opened from a Customer Management panel.
+  const returnState = location.state as CustomerPanelReturnState | null;
+
+  function handleBack() {
+    if (returnState?.reopenCustomerPanel) {
+      void navigate('/staff/admin/customers', { state: returnState });
+    } else {
+      void navigate(-1);
+    }
+  }
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isRoleLoading, setIsRoleLoading] = useState(true);
@@ -135,7 +150,17 @@ export function StaffPetProfilePage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>{pet.name}</h1>
+      <header className={styles.header}>
+        <button
+          type="button"
+          className={styles.backButton}
+          onClick={handleBack}
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+          Back
+        </button>
+        <h1 className={styles.title}>{pet.name}</h1>
+      </header>
 
       <PetDetailPanel
         pet={pet}

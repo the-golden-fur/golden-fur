@@ -13,12 +13,18 @@ import type {
   PetTypeRow,
   PetWeightClass,
 } from '../../../customer.types';
+import { PET_COAT_TYPES } from '../../../customer.types';
+import { formatPetAge } from '../../../../../shared/utils/formatPetAge';
+import {
+  isFutureDate,
+  todayDateKey,
+} from '../../../../../shared/utils/isFutureDate';
 import { BreedSelect } from '../BreedSelect/BreedSelect';
 import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import styles from './PetForm.module.css';
 
 const GENDER_OPTIONS: PetGender[] = ['Male', 'Female'];
-const COAT_TYPE_OPTIONS: PetCoatType[] = ['SC', 'LC'];
+const COAT_TYPE_OPTIONS: PetCoatType[] = PET_COAT_TYPES;
 
 interface PetFormProps {
   /**
@@ -28,7 +34,9 @@ interface PetFormProps {
    */
   customerId: string;
   accessToken: string;
-  onCreated: (pet: Pet) => void;
+  /** `photoError` is set when the pet was created but its optional photo
+   * failed to upload - the caller decides how to tell the user. */
+  onCreated: (pet: Pet, photoError?: string) => void;
   /**
    * Client interview finding: a customer cannot set weight_class/coat_type
    * (they'd otherwise be able to manipulate Grooming price/Hotel cage size)
@@ -98,6 +106,18 @@ export function PetForm({
       return;
     }
 
+    if (!gender) {
+      setError('Please select a gender.');
+      return;
+    }
+
+    // The input's `max` greys out future days in the picker, but a typed-in
+    // date can still get past it.
+    if (dateOfBirth && isFutureDate(dateOfBirth)) {
+      setError('Date of birth cannot be in the future.');
+      return;
+    }
+
     setError(null);
     setIsSubmitting(true);
 
@@ -105,7 +125,7 @@ export function PetForm({
       name: name.trim(),
       pet_type: petType,
       breed_id: breedId,
-      ...(gender ? { gender } : {}),
+      gender,
       ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
       ...(isStaff && weightKg != null ? { weight_kg: weightKg } : {}),
       // Send an explicit class only when the server can't derive it (no
@@ -125,15 +145,19 @@ export function PetForm({
     }
 
     let pet = result.data;
+    let photoError: string | undefined;
 
     if (photoFile) {
       const photoResult = await uploadPetPhoto(pet.id, accessToken, photoFile);
 
       if (photoResult.data?.photo_url) {
         pet = { ...pet, photo_url: photoResult.data.photo_url };
+      } else {
+        // A photo-upload failure doesn't roll back pet creation - the pet
+        // profile page still lets a photo be added later - but it is
+        // reported rather than silently dropped.
+        photoError = photoResult.error ?? 'Photo upload failed.';
       }
-      // A photo-upload failure doesn't roll back pet creation - the pet
-      // profile page still lets a photo be added later.
     }
 
     setIsSubmitting(false);
@@ -148,7 +172,7 @@ export function PetForm({
     setWeightClassOverridden(false);
     setWeightFieldsKey((key) => key + 1);
     setCoatType('');
-    onCreated(pet);
+    onCreated(pet, photoError);
   };
 
   return (
@@ -208,9 +232,10 @@ export function PetForm({
         />
       </label>
       <label className={styles.field}>
-        <span className={styles.label}>Gender (optional)</span>
+        <span className={styles.label}>Gender</span>
         <select
           className={styles.input}
+          aria-required="true"
           value={gender}
           onChange={(event) => setGender(event.target.value as PetGender)}
         >
@@ -227,9 +252,13 @@ export function PetForm({
         <input
           className={styles.input}
           type="date"
+          max={todayDateKey()}
           value={dateOfBirth}
           onChange={(event) => setDateOfBirth(event.target.value)}
         />
+        {formatPetAge(dateOfBirth) ? (
+          <span className={styles.copy}>Age: {formatPetAge(dateOfBirth)}</span>
+        ) : null}
       </label>
       {isStaff ? (
         <>

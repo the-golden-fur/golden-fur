@@ -13,6 +13,7 @@ import {
 
 const SERVICE_ID = '33333333-3333-4333-a333-333333333333';
 const PACKAGE_ID = '44444444-4444-4444-a444-444444444444';
+const OTHER_PACKAGE_ID = '66666666-6666-4666-a666-666666666666';
 const STAFF_ID = '55555555-5555-4555-a555-555555555555';
 
 const BASE_BOOKING = {
@@ -69,6 +70,18 @@ describe('createBookingValidator', () => {
         items: [{ service_id: SERVICE_ID }, { service_id: SERVICE_ID }],
       }).success
     ).toBe(false);
+  });
+
+  it('rejects more than one package in one booking', () => {
+    const result = createBookingValidator.safeParse({
+      ...BASE_BOOKING,
+      items: [{ package_id: PACKAGE_ID }, { package_id: OTHER_PACKAGE_ID }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe(
+      'Only one package can be selected per booking'
+    );
   });
 
   it('accepts an optional discount_id, promo_ids, and coupon_ids', () => {
@@ -281,6 +294,23 @@ describe('createBookingGroupValidator', () => {
     ).toBe(true);
   });
 
+  it('rejects more than one package in a single sub-booking', () => {
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        bookings: [
+          {
+            ...BASE_GROUP.bookings[0],
+            items: [
+              { package_id: PACKAGE_ID },
+              { package_id: OTHER_PACKAGE_ID },
+            ],
+          },
+        ],
+      }).success
+    ).toBe(false);
+  });
+
   it('rejects duplicate promo_ids at the group level', () => {
     const promoId = '77777777-7777-4777-a777-777777777777';
     expect(
@@ -426,6 +456,36 @@ describe('updatePolicyValidator', () => {
         notice_enforcement_mode: 'Soft',
       }).success
     ).toBe(true);
+  });
+
+  it('accepts the Late -> No-show threshold presets and rejects anything else', () => {
+    for (const minutes of [15, 30, 60, 120]) {
+      expect(
+        updatePolicyValidator.safeParse({ no_show_after_minutes: minutes })
+          .success
+      ).toBe(true);
+    }
+    expect(
+      updatePolicyValidator.safeParse({ no_show_after_minutes: 45 }).success
+    ).toBe(false);
+    expect(
+      updatePolicyValidator.safeParse({ no_show_at_closing: true }).success
+    ).toBe(true);
+  });
+
+  it('accepts cancellation_grace_minutes from 0 to a day and rejects anything outside', () => {
+    for (const minutes of [0, 60, 1440]) {
+      expect(
+        updatePolicyValidator.safeParse({ cancellation_grace_minutes: minutes })
+          .success
+      ).toBe(true);
+    }
+    for (const minutes of [-1, 1441, 1.5]) {
+      expect(
+        updatePolicyValidator.safeParse({ cancellation_grace_minutes: minutes })
+          .success
+      ).toBe(false);
+    }
   });
 
   it('accepts booking_notice_period_days (the new-booking notice knob) and rejects a negative one', () => {
