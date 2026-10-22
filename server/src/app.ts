@@ -44,11 +44,17 @@ if (process.env.NODE_ENV !== 'test') {
   // extension is available; this covers projects where it isn't.
   startPromoExpiryScheduler();
 
-  // Issue #99: appointment_reminder poller (15-min interval, per-customer
+  // Time-sensitive notification pollers below (appointment reminder, care-log
+  // summary, checkout countdown) are the local-dev mechanism. In production
+  // the Render free instance sleeps and its timers stop, so Supabase pg_cron
+  // calls POST /jobs/tick every minute instead (features/jobs/). Each job's
+  // claim-then-send dedupe keeps the two from double-sending.
+
+  // Issue #99: appointment_reminder poller (1-min interval, per-customer
   // reminder offset).
   startAppointmentReminderScheduler();
 
-  // Per-hotel-stay care summary - hourly poll from 21:00 server time, one
+  // Per-hotel-stay care summary - hourly poll from 21:00 Manila time, one
   // email per stay per day instead of one-per-completed-task (Brevo quota).
   startCareLogDailyReportScheduler();
 

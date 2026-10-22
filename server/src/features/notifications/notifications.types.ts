@@ -139,12 +139,15 @@ export interface CreateNotificationParams {
    * 'message_received' events - see Notification.related_thread_id. */
   relatedThreadId?: string | null;
   /**
-   * Best-effort email leg - the caller builds the actual send call (each of
-   * the 8 event types needs different template params, so notification.
-   * service.ts stays decoupled from all six templates' specific shapes)
-   * and hands it here as a thunk. Omitted entirely for password_reset (no
-   * Brevo template exists for that event - see Sprint6-EpicA-Guide's Spec
-   * Tensions). Never blocks or rolls back the notification row - a
+   * Best-effort email leg (Brevo) - the caller builds the actual send call
+   * (each event type needs different template params, so notification.
+   * service.ts stays decoupled from every template's specific shape) and
+   * hands it here as a thunk; it only runs when the recipient's Email toggle
+   * for this event is on. Events without a dedicated template mirror the
+   * notification's title + message via notifications/modules/
+   * notificationEmail.util.ts. Omitted for account_created/password_reset,
+   * whose security emails are sent directly by their callers regardless of
+   * the toggle. Never blocks or rolls back the notification row - a
    * rejection is caught and logged, not rethrown.
    */
   sendEmail?: () => Promise<void>;
