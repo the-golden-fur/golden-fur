@@ -27,8 +27,10 @@ When adding a module folder, wire it in **two** places only:
 - `package.json` `seed:all` — append `&& tsx supabase/seeds/mNN-<slug>/mNN-<slug>.seed.ts` in module-number order. There are **no** standalone `seed:mNN` scripts.
 - `supabase/config.toml` `sql_paths` — add the folder's `*.sql` after `m01` (everything needs branches/staff); order among the rest doesn't matter functionally.
 
-The only seed VS Code task is `🌱 Seed: All Modules` (runs `seed:all`) — no
-per-module tasks.
+The seed VS Code tasks are `🌱 Seed: All Modules` (runs `seed:all` against
+`server/.env`) and `🌱 Seed: All Modules (Linked Project)` (runs
+`seed:all:linked` → `scripts/seed-linked.mjs`, which points `seed:all` at the
+`supabase link`ed project) — no per-module tasks.
 
 ## Coverage map — keep this current
 
