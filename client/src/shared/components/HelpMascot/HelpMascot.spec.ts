@@ -686,3 +686,94 @@ describe('HelpMascot - tutorial bubble', () => {
     expect(onStartTutorial).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('HelpMascot - phones', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.mocked(fetchPublicFaqs).mockResolvedValue({ data: [] } as never);
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }))
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function pawButton() {
+    return screen.getByRole('button', { name: /help/i });
+  }
+
+  it('never shows the mascot - only the paw button, whatever the desktop choice', () => {
+    window.localStorage.setItem('golden-fur.mascotHidden', 'false');
+    const { container } = renderMascot();
+
+    expect(pawButton()).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.queryByRole('button', { name: 'Pet the mascot' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByAltText('Dog mascot')).not.toBeInTheDocument();
+    expect(container.querySelector(`.${styles.bubble}`)).toBeNull();
+    expect(
+      screen.queryByRole('navigation', { name: 'Support links' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('the paw opens just the help links - no Change pet or Hide me', () => {
+    renderMascot();
+
+    fireEvent.click(pawButton());
+
+    const list = screen.getByRole('navigation', { name: 'Support links' });
+    expect(Array.from(list.children).map((item) => item.textContent)).toEqual([
+      'FAQs',
+      'Create an account',
+      'Create a ticket',
+    ]);
+    expect(pawButton()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByAltText('Dog mascot')).not.toBeInTheDocument();
+  });
+
+  it('choosing FAQs closes the list and opens the FAQ popup', () => {
+    renderMascot();
+
+    fireEvent.click(pawButton());
+    fireEvent.click(screen.getByRole('button', { name: 'FAQs' }));
+
+    expect(
+      screen.queryByRole('navigation', { name: 'Support links' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: 'Frequently asked questions' })
+    ).toBeInTheDocument();
+  });
+
+  it('closes on Escape or a tap outside', () => {
+    renderMascot();
+
+    fireEvent.click(pawButton());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(
+      screen.queryByRole('navigation', { name: 'Support links' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(pawButton());
+    fireEvent.pointerDown(document.body);
+    expect(
+      screen.queryByRole('navigation', { name: 'Support links' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('leaves the saved desktop show/hide choice alone', () => {
+    renderMascot();
+
+    fireEvent.click(pawButton());
+
+    expect(window.localStorage.getItem('golden-fur.mascotHidden')).toBeNull();
+  });
+});

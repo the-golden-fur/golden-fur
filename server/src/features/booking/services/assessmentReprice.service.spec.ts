@@ -195,6 +195,7 @@ describe('repriceBookingsAwaitingAssessment (book before assessment)', () => {
         recipientCustomerId: 'cust-1',
         relatedBookingId: 'booking-1',
         message: expect.stringContaining('PHP 425.00'),
+        sendEmail: expect.any(Function),
       })
     );
   });

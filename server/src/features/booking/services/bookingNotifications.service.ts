@@ -7,6 +7,10 @@ import { sendBookingConfirmedEmail } from '../../../shared/email/bookingConfirme
 import { sendBookingGroupConfirmedEmail } from '../../../shared/email/bookingGroupConfirmedEmail.ts';
 import { sendBookingRescheduledEmail } from '../../../shared/email/bookingRescheduledEmail.ts';
 import { sendBookingCancelledEmail } from '../../../shared/email/bookingCancelledEmail.ts';
+import {
+  customerNotificationEmail,
+  staffNotificationEmail,
+} from '../../notifications/modules/notificationEmail.util.ts';
 import type { Booking } from '../booking.types.ts';
 
 function formatDate(iso: string): string {
@@ -265,12 +269,20 @@ export async function sendStaffAssignedNotification(
     const customerName = customer?.full_name ?? 'A customer';
     const petPossessive = pet?.name ? `${pet.name}'s` : 'their';
 
+    const title = 'You were selected as preferred staff';
+    const message = `${customerName} selected you as their preferred staff for ${petPossessive} ${booking.service_category} booking on ${scheduledDate} at ${scheduledTime}.`;
+
     await createNotification({
       recipientStaffId: booking.assigned_staff_id,
       eventType: 'staff_assigned',
-      title: 'You were selected as preferred staff',
-      message: `${customerName} selected you as their preferred staff for ${petPossessive} ${booking.service_category} booking on ${scheduledDate} at ${scheduledTime}.`,
+      title,
+      message,
       relatedBookingId: booking.id,
+      sendEmail: staffNotificationEmail(
+        booking.assigned_staff_id,
+        title,
+        message
+      ),
     });
   } catch (error) {
     console.error('Failed to send staff_assigned notification:', error);
@@ -281,21 +293,24 @@ export async function sendStaffAssignedNotification(
  * Slot-conflict notification (20260911188): fires when another customer's
  * downpayment claimed this still-unpaid pencil booking's date/time/staff/
  * cage slot first - see flagSlotConflictsForOthers in booking.service.ts,
- * the only caller. No email leg (matches sendStaffAssignedNotification's
- * shape) - this is meant to be seen immediately via the dashboard popup
- * (CustomerPortalPage) and the bell, not waited on in an inbox.
+ * the only caller. Meant to be seen immediately via the dashboard popup
+ * (CustomerPortalPage) and the bell, and emailed too when the customer's
+ * Email toggle for it is on - they may not be in the app when it happens.
  */
 export async function sendSlotConflictNotification(
   booking: Booking,
   notice: string
 ): Promise<void> {
   try {
+    const title = 'Your booking slot is no longer available';
+
     await createNotification({
       recipientCustomerId: booking.customer_id,
       eventType: 'booking_slot_conflict',
-      title: 'Your booking slot is no longer available',
+      title,
       message: notice,
       relatedBookingId: booking.id,
+      sendEmail: customerNotificationEmail(booking.customer_id, title, notice),
     });
   } catch (error) {
     console.error('Failed to send booking_slot_conflict notification:', error);

@@ -1,6 +1,7 @@
 import { supabase } from '../../../../config/supabase/supabase.config.ts';
 import { getStaffRoleOrNull } from '../../../../shared/auth/api/supabaseAuth.api.ts';
 import { createNotification } from '../../../notifications/services/notification.service.ts';
+import { customerNotificationEmail } from '../../../notifications/modules/notificationEmail.util.ts';
 import type {
   PendingVaccinationRecord,
   PetVaccinationRecord,
@@ -438,11 +439,8 @@ async function sendVaccinationReviewedNotification(
     if (!recipientCustomerId) return;
 
     const petName = pet?.name ?? 'your pet';
-
-    await createNotification({
-      recipientCustomerId,
-      eventType: 'vaccination_reviewed',
-      ...(record.status === 'verified'
+    const { title, message } =
+      record.status === 'verified'
         ? {
             title: `${petName}'s ${record.vaccine_name} vaccination was verified`,
             message: `The clinic checked the vaccination card you added for ${petName} and verified the record.`,
@@ -450,7 +448,14 @@ async function sendVaccinationReviewedNotification(
         : {
             title: `${petName}'s ${record.vaccine_name} vaccination needs another look`,
             message: `The clinic couldn't verify the record you added for ${petName}: ${record.rejection_reason}. You can fix it from ${petName}'s profile and it will be checked again.`,
-          }),
+          };
+
+    await createNotification({
+      recipientCustomerId,
+      eventType: 'vaccination_reviewed',
+      title,
+      message,
+      sendEmail: customerNotificationEmail(recipientCustomerId, title, message),
     });
   } catch (error) {
     console.error('Failed to send vaccination_reviewed notification:', error);

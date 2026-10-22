@@ -9,6 +9,7 @@ import {
   createNotification,
   notifyStaffRoleAtBranch,
 } from '../../notifications/services/notification.service.ts';
+import { customerNotificationEmail } from '../../notifications/modules/notificationEmail.util.ts';
 import {
   ASSESSMENT_BOOKINGS_PAUSED,
   PAY_AT_CHECKOUT_CATEGORIES,
@@ -648,6 +649,11 @@ export async function createBookingGroup({
       title: 'Free package unlocked!',
       message,
       relatedBookingId: booking.id,
+      sendEmail: customerNotificationEmail(
+        booking.customer_id,
+        'Free package unlocked!',
+        message
+      ),
     });
 
     for (const role of ['Receptionist', 'Front Desk']) {

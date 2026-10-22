@@ -395,6 +395,9 @@ describe('vaccinationRecord.service', () => {
           recipientCustomerId: 'customer-1',
           eventType: 'vaccination_reviewed',
           title: expect.stringContaining('verified'),
+          // Emailed too (via Brevo) when the owner's Email toggle is on -
+          // createNotification decides whether to call it.
+          sendEmail: expect.any(Function),
         })
       );
     });

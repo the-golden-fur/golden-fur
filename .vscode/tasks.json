@@ -326,6 +326,17 @@
         "panel": "shared",
         "reveal": "always"
       }
+    },
+    {
+      "label": "🌱 Seed: All Modules (Linked Project)",
+      "type": "npm",
+      "script": "seed:all:linked",
+      "detail": "Runs seed:all against the `supabase link`ed project instead of server/.env. Idempotent - only adds missing rows.",
+      "presentation": {
+        "group": "seed",
+        "panel": "shared",
+        "reveal": "always"
+      }
     }
   ],
   "inputs": [

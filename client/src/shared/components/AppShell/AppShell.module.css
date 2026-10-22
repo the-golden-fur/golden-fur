@@ -32,10 +32,17 @@
   overflow: auto;
 }
 
-@media (max-width: 640px) {
-  .body {
-    position: relative;
-  }
+/* Phone navigation drawer open: the page behind it doesn't scroll. */
+.mainLocked {
+  overflow: hidden;
+}
+
+/* Dims the page behind the phone navigation drawer; a tap closes it. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: rgba(0, 0, 0, 0.45);
 }
 
 @media print {

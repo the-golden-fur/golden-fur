@@ -21,6 +21,7 @@ import publicRoutes from '../features/public/public.routes.ts';
 import recordsArchiveRoutes from '../features/recordsArchive/recordsArchive.routes.ts';
 import faqRoutes from '../features/faq/faq.routes.ts';
 import landingRoutes from '../features/landing/landing.routes.ts';
+import jobsRoutes from '../features/jobs/jobs.routes.ts';
 
 const router = Router();
 
@@ -46,5 +47,6 @@ router.use(publicRoutes);
 router.use(recordsArchiveRoutes);
 router.use(faqRoutes);
 router.use(landingRoutes);
+router.use(jobsRoutes);
 
 export default router;

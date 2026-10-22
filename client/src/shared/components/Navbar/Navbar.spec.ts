@@ -11,7 +11,8 @@ function renderNavbar(
   role: 'staff' | 'customer',
   signOut = vi.fn(),
   identity: { primary: string; secondary?: string } | null = null,
-  initialPath?: string
+  initialPath?: string,
+  phoneProps: Record<string, unknown> = {}
 ) {
   const authValue: AuthContextValue = {
     session: null,
@@ -30,7 +31,14 @@ function renderNavbar(
       createElement(
         AuthContext.Provider,
         { value: authValue },
-        createElement(Navbar, { role, brandLabel: 'Golden Fur', identity })
+        createElement(Navbar, {
+          role,
+          brandLabel: 'Golden Fur',
+          identity,
+          notificationBell: createElement('span', null, 'Bell'),
+          composeButton: createElement('span', null, 'Compose'),
+          ...phoneProps,
+        })
       )
     )
   );
@@ -119,5 +127,69 @@ describe('Navbar', () => {
 
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(window.sessionStorage.getItem('staffMfaPending')).toBeNull();
+  });
+
+  it('has no hamburger on desktop - the full row is shown', () => {
+    renderNavbar('staff', vi.fn(), { primary: 'jdoe', secondary: 'Admin' });
+
+    expect(
+      screen.queryByRole('button', { name: /navigation/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Menu' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument();
+  });
+
+  describe('custom change (responsive navigation): phone layout', () => {
+    it('is just hamburger, brand, compose and bell - account items live in the drawer', () => {
+      renderNavbar('customer', vi.fn(), { primary: 'Jane Doe' }, undefined, {
+        isPhone: true,
+        onToggleMobileNav: vi.fn(),
+      });
+
+      const hamburger = screen.getByRole('button', {
+        name: 'Open navigation',
+      });
+      expect(hamburger).toHaveAttribute('aria-expanded', 'false');
+      expect(hamburger).toHaveAttribute('aria-controls', 'mobile-nav-drawer');
+      expect(screen.getByText('Compose')).toBeInTheDocument();
+      expect(screen.getByText('Bell')).toBeInTheDocument();
+      expect(screen.queryByText('Jane Doe')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: 'Home' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /sign out/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('toggles the drawer and reflects its state', async () => {
+      const onToggleMobileNav = vi.fn();
+      renderNavbar('staff', vi.fn(), null, undefined, {
+        isPhone: true,
+        isMobileNavOpen: true,
+        onToggleMobileNav,
+      });
+
+      const hamburger = screen.getByRole('button', {
+        name: 'Close navigation',
+      });
+      expect(hamburger).toHaveAttribute('aria-expanded', 'true');
+
+      await userEvent.click(hamburger);
+      expect(onToggleMobileNav).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the hamburger on the Settings route so a phone user can navigate out', () => {
+      renderNavbar('staff', vi.fn(), null, '/staff/settings', {
+        isPhone: true,
+        onToggleMobileNav: vi.fn(),
+      });
+
+      expect(
+        screen.getByRole('button', { name: 'Open navigation' })
+      ).toBeInTheDocument();
+    });
   });
 });

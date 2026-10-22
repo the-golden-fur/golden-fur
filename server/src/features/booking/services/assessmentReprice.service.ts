@@ -3,6 +3,7 @@ import {
   createNotification,
   notifyStaffRoleAtBranch,
 } from '../../notifications/services/notification.service.ts';
+import { customerNotificationEmail } from '../../notifications/modules/notificationEmail.util.ts';
 import {
   isPetAssessed,
   recomputeBookingPaymentStatus,
@@ -216,12 +217,20 @@ export async function repriceBookingsAwaitingAssessment(
 
       result.repriced.push({ bookingId: booking.id, totalPrice });
 
+      const title = 'Your booking price is final';
+      const message = `Your pet has been assessed. The final price for your ${booking.service_category} booking is ${formatPeso(totalPrice)}, payable at the counter.`;
+
       await createNotification({
         recipientCustomerId: booking.customer_id,
         eventType: 'booking_confirmed',
-        title: 'Your booking price is final',
-        message: `Your pet has been assessed. The final price for your ${booking.service_category} booking is ${formatPeso(totalPrice)}, payable at the counter.`,
+        title,
+        message,
         relatedBookingId: booking.id,
+        sendEmail: customerNotificationEmail(
+          booking.customer_id,
+          title,
+          message
+        ),
       });
 
       await alertIfCageSizeFull(booking, pet);

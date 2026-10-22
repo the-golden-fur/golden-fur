@@ -5,13 +5,18 @@ import {
   DEFAULT_REMINDER_OFFSET_MINUTES,
   type NotificationPreferences,
 } from '../notifications.types.ts';
+import { isReminderSendable } from '../modules/reminderTiming.util.ts';
 
 /**
  * Issue #99, reworked for configurable reminder timing (Settings >
  * Preferences: "Set when does reminder appear"): used to run once/day at a
  * fixed 8am and check bookings scheduled "tomorrow" - that can't honor a
  * per-customer offset (15 min / 1h / 3h / 1 day / 2 days before), so this
- * now polls every 15 minutes (the finest preset) instead. Mirrors
+ * now polls every minute instead (a 15-minute poll could deliver a
+ * "15 minutes before" reminder at the appointment itself). In production the
+ * minute tick comes from Supabase pg_cron via POST /api/jobs/tick, since the
+ * Render server sleeps when idle; this in-process poller is the local-dev
+ * fallback. Mirrors
  * maintenance/jobs/promoExpiry.job.ts's exact in-process setTimeout
  * scheduler shape (no external job-runner package).
  *
@@ -23,7 +28,7 @@ import {
  * on every subsequent poll for the rest of the lookahead window.
  */
 
-const POLL_INTERVAL_MS = 15 * 60 * 1000;
+const POLL_INTERVAL_MS = 60 * 1000;
 // Widest offset preset is 2 days (2880 min) - the lookahead window has to
 // reach at least that far ahead so a booking's fire time is ever inside the
 // query's range in the first place.
@@ -101,7 +106,9 @@ export async function runAppointmentReminderJob(
     const fireAtMs =
       new Date(booking.scheduled_start).getTime() - offsetMinutes * 60_000;
 
-    if (now.getTime() < fireAtMs) continue;
+    // Not due yet, or too far past its moment to still be a useful heads-up
+    // (the server was asleep) - see reminderTiming.util.ts.
+    if (!isReminderSendable(now.getTime(), fireAtMs, offsetMinutes)) continue;
 
     const { data: claimed } = await supabase
       .from('bookings')

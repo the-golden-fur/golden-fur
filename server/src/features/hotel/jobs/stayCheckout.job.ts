@@ -14,6 +14,7 @@ import {
   DEFAULT_CHECKOUT_REMINDER_OFFSET_MINUTES,
   type NotificationPreferences,
 } from '../../notifications/notifications.types.ts';
+import { isReminderSendable } from '../../notifications/modules/reminderTiming.util.ts';
 
 /**
  * Custom change (checkout countdown notifications, grown out of the Daycare
@@ -41,9 +42,9 @@ import {
  * claim-then-send dedupe: stays.checkout_reminder_notified_at and
  * stays.overdue_notified_at are each claimed via a conditional UPDATE before
  * sending, so each notice goes out at most once per stay however many polls
- * pass. A reminder whose window was missed entirely (e.g. the server was
- * down) is skipped rather than sent late - the countdown-complete notice
- * covers it. A walk-in (no booking) has no checkout time and is never
+ * pass. A reminder more than a few minutes past its moment (e.g. the server
+ * was asleep - see reminderTiming.util.ts) is skipped rather than sent late -
+ * the countdown-complete notice covers it. A walk-in (no booking) has no checkout time and is never
  * picked up here.
  */
 
@@ -183,7 +184,9 @@ export async function runStayCheckoutJob(
       if (stay.checkout_reminder_notified_at !== null) continue;
 
       const remindAt = checkoutAt - leadMinutes * 60 * 1000;
-      if (now.getTime() < remindAt) continue;
+      // Not due yet, or so overdue (the server was asleep) that "checkout in
+      // 15 minutes" would be a lie - the time-is-up notice covers it.
+      if (!isReminderSendable(now.getTime(), remindAt, leadMinutes)) continue;
       // The reminder moment came before the pet was even checked in.
       if (stay.check_in_at && new Date(stay.check_in_at).getTime() > remindAt) {
         continue;

@@ -760,3 +760,43 @@
   font-size: 0.88rem;
   line-height: 1.5;
 }
+
+/* Phones (HelpMascot's PHONE_MEDIA_QUERY branch): no mascot, just the paw
+   button, which opens this plain list of the help links above it. */
+.phoneLinks {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 11rem;
+  max-width: min(16rem, calc(100vw - 32px));
+  padding: 8px;
+  border: 1px solid rgba(201, 151, 26, 0.42);
+  border-radius: var(--radius-lg);
+  background: rgba(var(--color-landing-glass-bg-rgb), 0.98);
+  box-shadow: 0 10px 24px rgba(68, 44, 16, 0.18);
+}
+
+.phoneLink {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.phoneLink:hover,
+.phoneLink:focus-visible {
+  background: rgba(201, 151, 26, 0.12);
+  color: var(--color-text-primary);
+  outline: none;
+}
