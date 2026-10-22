@@ -184,6 +184,19 @@ describe('stayCheckout.job', () => {
     expect(sentNotification().message).toContain('₱50 per hour');
   });
 
+  it('skips a 15-minute reminder that is more than 5 minutes overdue (server was asleep)', async () => {
+    // Checkout at 16:08 Manila - the reminder was due at 15:53, 7 minutes ago.
+    queueFromResults(
+      { data: [DAYCARE_STAY], error: null },
+      { data: [booking('2026-10-04T08:08:00.000Z')], error: null },
+      NO_PREFERENCES
+    );
+
+    expect(await runStayCheckoutJob(NOW)).toBe(0);
+    expect(updateCalls).toEqual([]);
+    expect(createNotification).not.toHaveBeenCalled();
+  });
+
   it('does not repeat the reminder once it has been sent', async () => {
     queueFromResults(
       {

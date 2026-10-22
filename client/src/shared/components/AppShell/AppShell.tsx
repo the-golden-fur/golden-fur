@@ -1,6 +1,14 @@
-import { useCallback, useState, type ReactNode } from 'react';
-import { Outlet } from 'react-router';
-import { Navbar } from '../Navbar/Navbar';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Outlet, useLocation } from 'react-router';
+import { MOBILE_NAV_DRAWER_ID, Navbar } from '../Navbar/Navbar';
+import {
+  DrawerAccountFooter,
+  DrawerAccountHeader,
+} from '../Navbar/NavbarAccount';
+import {
+  PHONE_MEDIA_QUERY,
+  useMediaQuery,
+} from '../../hooks/useMediaQuery/useMediaQuery';
 import { Sidebar, type SidebarSection } from '../Sidebar/Sidebar';
 import { HelpMascot } from '../HelpMascot/HelpMascot';
 import { SidebarCollapseProvider } from '../../providers/SidebarCollapseProvider/SidebarCollapseProvider';
@@ -53,6 +61,14 @@ function readStoredCollapsed(storageKey: string): boolean {
  * once by StaffAuthGuard/CustomerAuthGuard, replacing their previous bare
  * `<Navbar/><Outlet/>`. Collapsed state is per-role so a staff member and a
  * customer session in the same browser don't share one preference.
+ *
+ * Custom change (responsive navigation): at phone widths (PHONE_MEDIA_QUERY)
+ * the Sidebar rail is replaced by a slide-in drawer opened from the Navbar's
+ * hamburger. The drawer carries the account items too (identity, credits,
+ * Home, Settings, Sign out), so a phone has one menu instead of two. It
+ * closes on navigation, Escape, or a tap on the backdrop, and the page
+ * behind it doesn't scroll while it's open. The desktop collapse preference
+ * is neither used nor changed on phones.
  */
 export function AppShell({
   role,
@@ -86,6 +102,37 @@ export function AppShell({
 
   const toggleCollapse = () => setCollapsedPersist(!collapsed);
 
+  const isPhone = useMediaQuery(PHONE_MEDIA_QUERY);
+  const { pathname } = useLocation();
+  // The path the drawer was opened on, not a plain boolean: any navigation
+  // (a drawer link, the brand, a notification) changes the path, which
+  // closes the drawer without an effect. Widening past the phone breakpoint
+  // drops it for the rail the same way.
+  const [mobileNavOpenedOn, setMobileNavOpenedOn] = useState<string | null>(
+    null
+  );
+  const isDrawerOpen = isPhone && mobileNavOpenedOn === pathname;
+
+  const closeMobileNav = useCallback(() => setMobileNavOpenedOn(null), []);
+  const toggleMobileNav = () =>
+    setMobileNavOpenedOn(isDrawerOpen ? null : pathname);
+
+  useEffect(() => {
+    if (!isDrawerOpen) return undefined;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      closeMobileNav();
+      // Back to the button that opened it.
+      document
+        .querySelector<HTMLElement>(`[aria-controls="${MOBILE_NAV_DRAWER_ID}"]`)
+        ?.focus();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isDrawerOpen, closeMobileNav]);
+
   return (
     <SidebarCollapseProvider
       collapsed={collapsed}
@@ -108,6 +155,9 @@ export function AppShell({
               notificationBell={notificationBell}
               composeButton={composeButton}
               creditIndicator={creditIndicator}
+              isPhone={isPhone}
+              isMobileNavOpen={isDrawerOpen}
+              onToggleMobileNav={toggleMobileNav}
             />
           </div>
           <div className={styles.body}>
@@ -115,14 +165,49 @@ export function AppShell({
               className={styles.sidebarWrapper}
               data-testid="app-shell-sidebar"
             >
-              <Sidebar
-                sections={sidebarSections}
-                collapsed={collapsed}
-                onToggleCollapse={toggleCollapse}
-                role={role}
-              />
+              {isPhone ? (
+                <>
+                  <Sidebar
+                    variant="drawer"
+                    id={MOBILE_NAV_DRAWER_ID}
+                    open={isDrawerOpen}
+                    sections={sidebarSections}
+                    collapsed={false}
+                    onToggleCollapse={closeMobileNav}
+                    role={role}
+                    header={
+                      <DrawerAccountHeader
+                        identity={identity}
+                        creditIndicator={creditIndicator}
+                      />
+                    }
+                    footer={<DrawerAccountFooter role={role} />}
+                  />
+                  {isDrawerOpen ? (
+                    <div
+                      className={styles.backdrop}
+                      data-testid="mobile-nav-backdrop"
+                      aria-hidden="true"
+                      onClick={closeMobileNav}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <Sidebar
+                  sections={sidebarSections}
+                  collapsed={collapsed}
+                  onToggleCollapse={toggleCollapse}
+                  role={role}
+                />
+              )}
             </div>
-            <main className={styles.main}>
+            <main
+              className={
+                isDrawerOpen
+                  ? `${styles.main} ${styles.mainLocked}`
+                  : styles.main
+              }
+            >
               {children}
               <Outlet />
             </main>

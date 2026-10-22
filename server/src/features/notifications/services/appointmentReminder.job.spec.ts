@@ -123,9 +123,10 @@ describe('appointmentReminder.job (configurable offset)', () => {
   });
 
   it("honors a customer's own reminder_offset_minutes, firing earlier than the default would", async () => {
-    // 30 min out - with the default (1440 min) this would NOT be due yet,
-    // but this customer set a 60-min offset, so it fires now.
-    const soonBooking = { ...BOOKING, scheduled_start: hoursFromNow(0.5) };
+    // 50 min out - with the default (1440 min) this would NOT be due yet,
+    // but this customer set a 60-min offset, so it fires now (10 min past
+    // its moment, inside the 20-min tolerance a 1-hour lead gets).
+    const soonBooking = { ...BOOKING, scheduled_start: hoursFromNow(50 / 60) };
     queueFromResults(
       { data: [soonBooking], error: null },
       {
@@ -148,6 +149,28 @@ describe('appointmentReminder.job (configurable offset)', () => {
 
     expect(count).toBe(1);
     expect(createNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a 15-minute reminder that is more than 5 minutes overdue (server was asleep)', async () => {
+    // 8 min out with a 15-min offset - the reminder was due 7 minutes ago.
+    const lateBooking = { ...BOOKING, scheduled_start: hoursFromNow(8 / 60) };
+    queueFromResults(
+      { data: [lateBooking], error: null },
+      {
+        data: [
+          {
+            id: 'customer-1',
+            notification_preferences: {
+              appointment_reminder: { reminder_offset_minutes: 15 },
+            },
+          },
+        ],
+        error: null,
+      }
+    );
+
+    expect(await runAppointmentReminderJob(NOW)).toBe(0);
+    expect(createNotification).not.toHaveBeenCalled();
   });
 
   it('does not double-send when a concurrent run already claimed the booking', async () => {

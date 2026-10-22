@@ -2,6 +2,7 @@ import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { resolveEffectivePolicy } from '../../booking/services/staffPicker.service.ts';
 import { isEmailNotificationEnabled } from './notification.service.ts';
 import { sendCareLogDailyReportEmail } from '../../../shared/email/careLogDailyReportEmail.ts';
+import { manilaDayKey } from '../../credits/modules/creditExpiry.util.ts';
 
 /**
  * Nightly care summary: ONE email per active hotel stay per day, bucketing
@@ -22,9 +23,11 @@ import { sendCareLogDailyReportEmail } from '../../../shared/email/careLogDailyR
 
 const POLL_INTERVAL_MS = 60 * 60 * 1000;
 
-/** From 21:00 server time onward - late enough that most of the day's tasks
+/** From 21:00 Manila time onward - late enough that most of the day's tasks
  * are done, early enough that the customer still gets it the same evening.
- * The hourly poll keeps retrying through the rest of the evening. */
+ * The hourly poll keeps retrying through the rest of the evening. Measured
+ * in Asia/Manila, never the server's own clock - the production server
+ * (Render) runs in UTC, where 21:00 is 05:00 the next morning in Manila. */
 const RUN_HOUR = 21;
 
 interface ActiveHotelStayRow {
@@ -38,18 +41,22 @@ interface CareLogEntryRow {
   status: string;
 }
 
-function localDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+/** The hour (0-23) an instant falls on in Asia/Manila. */
+function manilaHour(date: Date): number {
+  return Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Manila',
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).format(date)
+  );
 }
 
 /** Exported so the batch can be tested without the scheduler's real clock. */
 export async function runCareLogDailyReportJob(
   now: Date = new Date()
 ): Promise<number> {
-  const reportDate = localDateString(now);
+  const reportDate = manilaDayKey(now);
 
   const { data: stayRows, error: staysError } = await supabase
     .from('stays')
@@ -184,10 +191,10 @@ async function sendStayDailyReport(
   return true;
 }
 
-/** Whether the batch should run at `now` - only from RUN_HOUR (21:00) local
+/** Whether the batch should run at `now` - only from RUN_HOUR (21:00) Manila
  * time onward. Before then a run would summarise a day that isn't over. */
 export function shouldRunAt(now: Date = new Date()): boolean {
-  return now.getHours() >= RUN_HOUR;
+  return manilaHour(now) >= RUN_HOUR;
 }
 
 /**

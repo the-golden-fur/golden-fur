@@ -355,20 +355,69 @@
   text-transform: uppercase;
 }
 
-@media (max-width: 640px) {
-  .sidebar,
-  .sidebarCollapsed {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    z-index: var(--z-sticky);
-  }
+/* Phone navigation drawer (variant="drawer", AppShell at <= 768px): an
+   off-canvas panel the Navbar hamburger slides in over AppShell's backdrop.
+   Replaces the old 640px rule that turned the desktop rail itself into an
+   overlay, driven by the desktop collapse preference. */
+.drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: calc(var(--z-overlay) + 1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(85vw, 20rem);
+  background: linear-gradient(
+    160deg,
+    var(--color-portal-nav-bg-start),
+    var(--color-portal-nav-bg-end)
+  );
+  border-right: 1px solid var(--color-portal-nav-border);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-3) var(--space-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition:
+    transform 240ms cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0s linear 240ms;
+}
 
-  .sidebarCollapsed {
-    width: 0;
-    padding-left: 0;
-    padding-right: 0;
-    border-right: none;
+.drawerOpen {
+  transform: translateX(0);
+  visibility: visible;
+  transition:
+    transform 240ms cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer,
+  .drawerOpen {
+    transition: none;
   }
+}
+
+.drawerHeader,
+.drawerFooter {
+  padding: 0 var(--space-1);
+}
+
+.drawerHeader {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-portal-nav-border);
+}
+
+.drawerFooter {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-portal-nav-border);
+}
+
+/* Comfortable touch targets. */
+.drawer .link {
+  min-height: 44px;
 }

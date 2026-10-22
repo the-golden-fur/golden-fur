@@ -103,7 +103,7 @@ function mockSupabase(opts: {
   }) as never);
 }
 
-const NOW = new Date('2026-09-08T21:30:00');
+const NOW = new Date('2026-09-08T21:30:00+08:00');
 const TODAY = '2026-09-08';
 
 describe('careLogDailyReport.job', () => {
@@ -210,10 +210,16 @@ describe('careLogDailyReport.job', () => {
     expect(sendCareLogDailyReportEmail).not.toHaveBeenCalled();
   });
 
-  it('only runs from 21:00 server time onward', () => {
-    expect(shouldRunAt(new Date('2026-09-08T20:59:00'))).toBe(false);
-    expect(shouldRunAt(new Date('2026-09-08T21:00:00'))).toBe(true);
-    expect(shouldRunAt(new Date('2026-09-08T23:30:00'))).toBe(true);
-    expect(shouldRunAt(new Date('2026-09-09T02:00:00'))).toBe(false);
+  it('only runs from 21:00 Manila time onward', () => {
+    expect(shouldRunAt(new Date('2026-09-08T20:59:00+08:00'))).toBe(false);
+    expect(shouldRunAt(new Date('2026-09-08T21:00:00+08:00'))).toBe(true);
+    expect(shouldRunAt(new Date('2026-09-08T23:30:00+08:00'))).toBe(true);
+    expect(shouldRunAt(new Date('2026-09-09T02:00:00+08:00'))).toBe(false);
+  });
+
+  it('reads the hour in Manila, not the server clock (Render runs in UTC)', () => {
+    // 13:00 UTC is 21:00 in Manila; 21:00 UTC is 05:00 the next morning.
+    expect(shouldRunAt(new Date('2026-09-08T13:00:00Z'))).toBe(true);
+    expect(shouldRunAt(new Date('2026-09-08T21:00:00Z'))).toBe(false);
   });
 });

@@ -37,9 +37,10 @@ export interface SendEmailParams {
 /**
  * Golden Fur's transactional-email provider is Brevo (brevo.com) - the
  * successor to Resend (see the "Change Resend to Brevo" architectural change).
- * This is the one send path shared by every caller: account_created (+ resend),
- * booking confirmed/rescheduled/cancelled, payment confirmed, appointment
- * reminders, and the hotel care-log emails.
+ * This is the one send path shared by every caller - every notification
+ * event with an Email toggle in Settings > Preferences (via
+ * createNotification's sendEmail thunk), plus the account/security emails
+ * (account created, password reset, MFA codes).
  *
  * BREVO_FROM_EMAIL is a "Display Name <address@domain.com>" header string
  * (matching the old RESEND_FROM_EMAIL convention); the address must be a

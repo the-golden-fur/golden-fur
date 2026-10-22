@@ -49,6 +49,13 @@ services:
         sync: false
       - key: BREVO_FROM_EMAIL
         sync: false
+      # Shared secret Supabase pg_cron sends to POST /jobs/tick every minute
+      # (the reminder jobs - the free instance's own timers stop while it
+      # sleeps). Must equal the Vault secret 'jobs_tick_secret'; see
+      # supabase/migrations/20261022279_custom_jobs_tick_cron.sql.
+      # Generate with: openssl rand -hex 32
+      - key: JOBS_TICK_SECRET
+        sync: false
       # Optional. Bare number or JSON branch map. Defaults to 15 if unset.
       - key: DAYCARE_SESSION_CAPACITY
         sync: false
