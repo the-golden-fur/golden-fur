@@ -1,46 +1,21 @@
-import { useState, type MouseEvent, type ReactNode } from 'react';
-import { Home, Settings } from 'lucide-react';
+import { type MouseEvent, type ReactNode } from 'react';
+import { Menu, X } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
 import { useUnsavedChangesContext } from '../../providers/UnsavedChangesProvider/UnsavedChangesContext';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
+import {
+  AccountLinks,
+  IdentityChip,
+  SignOutButton,
+  type NavbarIdentity,
+} from './NavbarAccount';
+import { HOME_PATH_BY_ROLE, SETTINGS_PATH_BY_ROLE } from './useSignOut';
 import styles from './Navbar.module.css';
 
-export interface NavbarIdentity {
-  /** Staff: username. Customer: full name (customers have no username/role). */
-  primary: string;
-  /** Staff role label - omitted for customers. */
-  secondary?: string;
-  /** Settings > Profile's chosen avatar (upload or preset) - null/undefined
-   * falls back to an initials badge below. */
-  photoUrl?: string | null;
-}
+export type { NavbarIdentity } from './NavbarAccount';
 
-/** First letter of up to the first two words - "Makati Superadmin 1" -> "MS",
- * "Jamie" -> "J". Used only when there's no photoUrl to show instead. */
-function identityInitials(primary: string): string {
-  return primary
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0])
-    .join('')
-    .toUpperCase();
-}
-
-function IdentityAvatar({ identity }: { identity: NavbarIdentity }) {
-  if (identity.photoUrl) {
-    return (
-      <img className={styles.identityAvatar} src={identity.photoUrl} alt="" />
-    );
-  }
-
-  return (
-    <span className={styles.identityAvatarFallback} aria-hidden="true">
-      {identityInitials(identity.primary)}
-    </span>
-  );
-}
+/** The phone drawer's id - the hamburger's aria-controls target. */
+export const MOBILE_NAV_DRAWER_ID = 'mobile-nav-drawer';
 
 interface NavbarProps {
   role: ThemeRole;
@@ -57,29 +32,20 @@ interface NavbarProps {
   /** CreditBalanceIndicator - customer-only (CustomerAuthGuard passes it,
    * StaffAuthGuard doesn't), so it's absent for staff. */
   creditIndicator?: ReactNode;
+  /** Phone layout (AppShell's PHONE_MEDIA_QUERY): a hamburger opens the
+   * navigation drawer, and the identity/credits/Home/Settings/Sign out move
+   * into that drawer - only compose and the bell stay in the bar. */
+  isPhone?: boolean;
+  isMobileNavOpen?: boolean;
+  onToggleMobileNav?: () => void;
 }
-
-const HOME_PATH_BY_ROLE: Record<ThemeRole, string> = {
-  staff: '/staff',
-  customer: '/portal',
-};
-
-const SETTINGS_PATH_BY_ROLE: Record<ThemeRole, string> = {
-  staff: '/staff/settings',
-  customer: '/portal/settings',
-};
-
-const LOGIN_PATH_BY_ROLE: Record<ThemeRole, string> = {
-  staff: '/staff/login',
-  customer: '/login',
-};
 
 /**
  * Persistent top bar for the authenticated staff/customer areas - rendered
  * once by AppShell (StaffAuthGuard/CustomerAuthGuard) rather than duplicated
- * per page. Navigation itself lives in the Sidebar now. The identity chip is
- * a plain (non-interactive) display of who's signed in - Settings gets its
- * own explicit icon button instead of being an undiscoverable side effect of
+ * per page. Navigation itself lives in the Sidebar. The identity chip is a
+ * plain (non-interactive) display of who's signed in - Settings gets its own
+ * explicit icon button instead of being an undiscoverable side effect of
  * clicking the username. Sign out stays a dedicated button (not folded into
  * Settings) since it's an account-wide action, not a setting.
  *
@@ -88,6 +54,11 @@ const LOGIN_PATH_BY_ROLE: Record<ThemeRole, string> = {
  * any more, so this is now the only dedicated way back to it (the brand
  * link at the far left already went to the same place, but wasn't visually
  * an affordance for "go home").
+ *
+ * Custom change (responsive navigation): on phones the bar is just
+ * hamburger + brand + compose + bell; everything else is in the drawer
+ * AppShell slides in from the hamburger (one menu, not the old separate
+ * "Menu" dropdown plus a separately-sliding sidebar).
  */
 export function Navbar({
   role,
@@ -96,32 +67,13 @@ export function Navbar({
   notificationBell,
   composeButton,
   creditIndicator,
+  isPhone = false,
+  isMobileNavOpen = false,
+  onToggleMobileNav,
 }: NavbarProps) {
-  const { signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const unsavedChanges = useUnsavedChangesContext();
-  const [isSigningOut, setIsSigningOut] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  const handleSignOut = async () => {
-    setIsSigningOut(true);
-    await signOut();
-    window.sessionStorage.removeItem('staffMfaPending');
-    window.sessionStorage.removeItem('customerMfaPending');
-    navigate(LOGIN_PATH_BY_ROLE[role], { replace: true });
-  };
-
-  // Both guarded the same way: run immediately if nothing's dirty (or
-  // there's no provider), otherwise prompt Save/Discard/Cancel first - see
-  // AppShell's UnsavedChangesProvider.
-  const handleSignOutClick = () => {
-    if (unsavedChanges) {
-      unsavedChanges.guardIfDirty(() => void handleSignOut());
-    } else {
-      void handleSignOut();
-    }
-  };
 
   const handleBrandClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (!unsavedChanges) {
@@ -141,27 +93,61 @@ export function Navbar({
     SETTINGS_PATH_BY_ROLE[role]
   );
 
+  const hamburger =
+    isPhone && onToggleMobileNav ? (
+      <button
+        type="button"
+        className={styles.hamburger}
+        aria-label={isMobileNavOpen ? 'Close navigation' : 'Open navigation'}
+        aria-expanded={isMobileNavOpen}
+        aria-controls={MOBILE_NAV_DRAWER_ID}
+        onClick={onToggleMobileNav}
+      >
+        {isMobileNavOpen ? (
+          <X size={22} aria-hidden="true" />
+        ) : (
+          <Menu size={22} aria-hidden="true" />
+        )}
+      </button>
+    ) : null;
+
+  const brand = (
+    <Link
+      to={HOME_PATH_BY_ROLE[role]}
+      className={styles.brand}
+      onClick={isSettingsRoute ? handleBrandClick : undefined}
+    >
+      {brandLabel}
+    </Link>
+  );
+
   if (isSettingsRoute) {
     return (
       <nav className={styles.navbar} aria-label="Primary">
-        <Link
-          to={HOME_PATH_BY_ROLE[role]}
-          className={styles.brand}
-          onClick={handleBrandClick}
-        >
-          {brandLabel}
-        </Link>
+        <div className={styles.start}>
+          {hamburger}
+          {brand}
+        </div>
 
         <div className={styles.links}>
           <span className={styles.settingsLabel}>Settings</span>
-          <button
-            type="button"
-            className={styles.signOutButton}
-            disabled={isSigningOut}
-            onClick={handleSignOutClick}
-          >
-            {isSigningOut ? 'Signing out...' : 'Sign out'}
-          </button>
+          {isPhone ? null : <SignOutButton role={role} />}
+        </div>
+      </nav>
+    );
+  }
+
+  if (isPhone) {
+    return (
+      <nav className={styles.navbar} aria-label="Primary">
+        <div className={styles.start}>
+          {hamburger}
+          {brand}
+        </div>
+
+        <div className={styles.links}>
+          {composeButton}
+          {notificationBell}
         </div>
       </nav>
     );
@@ -169,68 +155,15 @@ export function Navbar({
 
   return (
     <nav className={styles.navbar} aria-label="Primary">
-      <Link to={HOME_PATH_BY_ROLE[role]} className={styles.brand}>
-        {brandLabel}
-      </Link>
+      {brand}
 
-      <button
-        type="button"
-        className={styles.menuToggle}
-        aria-expanded={isMenuOpen}
-        aria-controls="primary-nav-links"
-        onClick={() => setIsMenuOpen((open) => !open)}
-      >
-        Menu
-      </button>
-
-      <div
-        id="primary-nav-links"
-        className={isMenuOpen ? styles.linksOpen : styles.links}
-      >
-        {identity ? (
-          <div className={styles.identity}>
-            <IdentityAvatar identity={identity} />
-            <span className={styles.identityText}>
-              <span className={styles.identityPrimary}>{identity.primary}</span>
-              {identity.secondary ? (
-                <span className={styles.identitySecondary}>
-                  {identity.secondary}
-                </span>
-              ) : null}
-            </span>
-          </div>
-        ) : null}
+      <div className={styles.links}>
+        {identity ? <IdentityChip identity={identity} /> : null}
         {creditIndicator}
         {composeButton}
         {notificationBell}
-        <Link
-          to={HOME_PATH_BY_ROLE[role]}
-          className={styles.iconLink}
-          data-tour="nav:home"
-          aria-label="Home"
-          onClick={() => setIsMenuOpen(false)}
-        >
-          <Home size={18} aria-hidden="true" />
-          <span className={styles.iconLabel}>Home</span>
-        </Link>
-        <Link
-          to={SETTINGS_PATH_BY_ROLE[role]}
-          className={styles.iconLink}
-          data-tour="nav:settings"
-          aria-label="Settings"
-          onClick={() => setIsMenuOpen(false)}
-        >
-          <Settings size={18} aria-hidden="true" />
-          <span className={styles.iconLabel}>Settings</span>
-        </Link>
-        <button
-          type="button"
-          className={styles.signOutButton}
-          disabled={isSigningOut}
-          onClick={() => void handleSignOut()}
-        >
-          {isSigningOut ? 'Signing out...' : 'Sign out'}
-        </button>
+        <AccountLinks role={role} />
+        <SignOutButton role={role} />
       </div>
     </nav>
   );

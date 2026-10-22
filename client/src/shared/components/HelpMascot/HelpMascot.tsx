@@ -8,6 +8,10 @@ import {
 import { PawPrint } from 'lucide-react';
 import { Link } from 'react-router';
 import { fetchPublicFaqs } from '../../../features/faq/api/faq.api';
+import {
+  PHONE_MEDIA_QUERY,
+  useMediaQuery,
+} from '../../hooks/useMediaQuery/useMediaQuery';
 import styles from './HelpMascot.module.css';
 import {
   MASCOTS,
@@ -166,6 +170,12 @@ const DEFAULT_FAQ_ITEMS: MascotFaq[] = [
  * button in the corner to bring it back. The choice is remembered on that
  * device.
  *
+ * Custom change (responsive): phones never show the mascot itself - only
+ * the small paw button, which opens a plain list of the help links (FAQs,
+ * the page links, Tutorial). "Change pet" and "Hide me" are left out there:
+ * there's no mascot to change or hide. The desktop choice saved above is
+ * untouched.
+ *
  * All of that artwork and the sound belong to the mascot's own definition
  * in mascots.ts, not to this component - a different mascot brings its own
  * petting GIF, hand and sound instead of inheriting the dog's.
@@ -208,6 +218,9 @@ export function HelpMascot({ links, onStartTutorial }: HelpMascotProps) {
   }, [isFaqOpen]);
   const [isHandVisible, setIsHandVisible] = useState(false);
   const [isHidden, setIsHidden] = useState(readMascotHidden);
+  const isPhone = useMediaQuery(PHONE_MEDIA_QUERY);
+  const [isPhoneMenuOpen, setIsPhoneMenuOpen] = useState(false);
+  const phoneWidgetRef = useRef<HTMLElement>(null);
 
   function setMascotHidden(nextIsHidden: boolean) {
     setIsHidden(nextIsHidden);
@@ -269,18 +282,33 @@ export function HelpMascot({ links, onStartTutorial }: HelpMascotProps) {
 
   // Escape closes whichever popup (FAQs or the pet picker) is open.
   useEffect(() => {
-    if (!isFaqOpen && !isPetPickerOpen) return;
+    if (!isFaqOpen && !isPetPickerOpen && !isPhoneMenuOpen) return;
 
     function handleKeydown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setIsFaqOpen(false);
         setIsPetPickerOpen(false);
+        setIsPhoneMenuOpen(false);
       }
     }
 
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
-  }, [isFaqOpen, isPetPickerOpen]);
+  }, [isFaqOpen, isPetPickerOpen, isPhoneMenuOpen]);
+
+  // The phone links list closes on a tap anywhere outside it.
+  useEffect(() => {
+    if (!isPhoneMenuOpen) return;
+
+    function handlePointerDown(event: globalThis.PointerEvent) {
+      if (!phoneWidgetRef.current?.contains(event.target as Node)) {
+        setIsPhoneMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isPhoneMenuOpen]);
 
   useEffect(() => {
     const bubble = bubbleRef.current;
@@ -327,6 +355,150 @@ export function HelpMascot({ links, onStartTutorial }: HelpMascotProps) {
     // Re-run when the mascot is shown again: the tip bubble only exists
     // while it is visible, and hiding it stops the tips altogether.
   }, [isHidden]);
+
+  const faqModal = isFaqOpen ? (
+    <div
+      className={styles.faqBackdrop}
+      role="presentation"
+      onClick={() => setIsFaqOpen(false)}
+    >
+      <section
+        className={styles.faqModal}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-mascot-faq-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className={styles.faqHeader}>
+          <h2 id="help-mascot-faq-title" className={styles.faqTitle}>
+            Frequently asked questions
+          </h2>
+          <button
+            type="button"
+            className={styles.faqCloseButton}
+            aria-label="Close FAQs"
+            onClick={() => setIsFaqOpen(false)}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className={styles.faqList}>
+          {faqItems.map((item) => (
+            <details key={item.id ?? item.question} className={styles.faqItem}>
+              <summary className={styles.faqQuestion}>{item.question}</summary>
+              <p className={styles.faqAnswer}>{item.answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+    </div>
+  ) : null;
+
+  /** FAQs, the caller's page links, and (customers) Tutorial - shared by the
+   * desktop hover bubbles and the phone links list. `onPicked` lets the
+   * phone list close itself when one is chosen. */
+  function renderHelpLinks(className: string, onPicked?: () => void) {
+    return (
+      <>
+        <button
+          type="button"
+          className={className}
+          onClick={() => {
+            onPicked?.();
+            setIsFaqOpen(true);
+          }}
+        >
+          FAQs
+        </button>
+
+        {links.map((link) => {
+          if ('onClick' in link) {
+            return (
+              <button
+                key={link.label}
+                type="button"
+                className={className}
+                onClick={() => {
+                  onPicked?.();
+                  link.onClick();
+                }}
+              >
+                {link.label}
+              </button>
+            );
+          }
+
+          return link.href.startsWith('/') ? (
+            <Link
+              key={link.label}
+              to={link.href}
+              className={className}
+              onClick={onPicked}
+            >
+              {link.label}
+            </Link>
+          ) : (
+            <a
+              key={link.label}
+              href={link.href}
+              className={className}
+              onClick={onPicked}
+            >
+              {link.label}
+            </a>
+          );
+        })}
+
+        {onStartTutorial ? (
+          <button
+            type="button"
+            className={className}
+            onClick={() => {
+              onPicked?.();
+              onStartTutorial();
+            }}
+          >
+            Tutorial
+          </button>
+        ) : null}
+      </>
+    );
+  }
+
+  if (isPhone) {
+    return (
+      <aside
+        ref={phoneWidgetRef}
+        className={styles.mascot}
+        aria-label="Quick help links"
+        data-tour="mascot"
+      >
+        {isPhoneMenuOpen ? (
+          <nav
+            id="help-mascot-phone-links"
+            className={styles.phoneLinks}
+            aria-label="Support links"
+          >
+            {renderHelpLinks(styles.phoneLink, () => setIsPhoneMenuOpen(false))}
+          </nav>
+        ) : null}
+
+        <button
+          type="button"
+          className={styles.showButton}
+          aria-label={isPhoneMenuOpen ? 'Close help links' : 'Help'}
+          aria-expanded={isPhoneMenuOpen}
+          aria-controls="help-mascot-phone-links"
+          onClick={() => setIsPhoneMenuOpen((open) => !open)}
+        >
+          <PawPrint size={18} aria-hidden="true" />
+        </button>
+
+        {faqModal}
+      </aside>
+    );
+  }
 
   if (isHidden) {
     return (
@@ -441,48 +613,7 @@ export function HelpMascot({ links, onStartTutorial }: HelpMascotProps) {
         // Six bubbles switch the CSS to its six-position layout.
         data-items={onStartTutorial ? '6' : undefined}
       >
-        <button
-          type="button"
-          className={styles.link}
-          onClick={() => setIsFaqOpen(true)}
-        >
-          FAQs
-        </button>
-
-        {links.map((link) => {
-          if ('onClick' in link) {
-            return (
-              <button
-                key={link.label}
-                type="button"
-                className={styles.link}
-                onClick={link.onClick}
-              >
-                {link.label}
-              </button>
-            );
-          }
-
-          return link.href.startsWith('/') ? (
-            <Link key={link.label} to={link.href} className={styles.link}>
-              {link.label}
-            </Link>
-          ) : (
-            <a key={link.label} href={link.href} className={styles.link}>
-              {link.label}
-            </a>
-          );
-        })}
-
-        {onStartTutorial ? (
-          <button
-            type="button"
-            className={styles.link}
-            onClick={onStartTutorial}
-          >
-            Tutorial
-          </button>
-        ) : null}
+        {renderHelpLinks(styles.link)}
 
         <button
           type="button"
@@ -501,49 +632,7 @@ export function HelpMascot({ links, onStartTutorial }: HelpMascotProps) {
         </button>
       </nav>
 
-      {isFaqOpen ? (
-        <div
-          className={styles.faqBackdrop}
-          role="presentation"
-          onClick={() => setIsFaqOpen(false)}
-        >
-          <section
-            className={styles.faqModal}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="help-mascot-faq-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={styles.faqHeader}>
-              <h2 id="help-mascot-faq-title" className={styles.faqTitle}>
-                Frequently asked questions
-              </h2>
-              <button
-                type="button"
-                className={styles.faqCloseButton}
-                aria-label="Close FAQs"
-                onClick={() => setIsFaqOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className={styles.faqList}>
-              {faqItems.map((item) => (
-                <details
-                  key={item.id ?? item.question}
-                  className={styles.faqItem}
-                >
-                  <summary className={styles.faqQuestion}>
-                    {item.question}
-                  </summary>
-                  <p className={styles.faqAnswer}>{item.answer}</p>
-                </details>
-              ))}
-            </div>
-          </section>
-        </div>
-      ) : null}
+      {faqModal}
 
       {isPetPickerOpen ? (
         <div

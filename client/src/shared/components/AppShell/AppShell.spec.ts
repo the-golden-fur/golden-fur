@@ -186,4 +186,97 @@ describe('AppShell', () => {
       screen.getByRole('button', { name: 'Expand sidebar' })
     ).toBeInTheDocument();
   });
+
+  describe('custom change (responsive navigation): phone drawer', () => {
+    beforeEach(() => {
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn(() => ({
+          matches: true,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }))
+      );
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    function drawer() {
+      return document.getElementById('mobile-nav-drawer') as HTMLElement;
+    }
+
+    async function openDrawer() {
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Open navigation' })
+      );
+    }
+
+    it('replaces the sidebar rail with a closed drawer and a hamburger', () => {
+      renderShell();
+
+      expect(
+        screen.queryByRole('button', { name: 'Collapse sidebar' })
+      ).not.toBeInTheDocument();
+      expect(drawer()).toHaveAttribute('inert');
+      expect(
+        screen.getByRole('button', { name: 'Open navigation' })
+      ).toBeInTheDocument();
+    });
+
+    it('opens from the hamburger, with the account items inside', async () => {
+      renderShell();
+
+      await openDrawer();
+
+      expect(drawer()).not.toHaveAttribute('inert');
+      expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+      const menu = screen.getByRole('dialog', { name: 'Navigation menu' });
+      expect(menu).toHaveTextContent('jdoe');
+      expect(menu).toHaveTextContent('Sign out');
+    });
+
+    it('closes on a backdrop tap', async () => {
+      renderShell();
+      await openDrawer();
+
+      await userEvent.click(screen.getByTestId('mobile-nav-backdrop'));
+
+      expect(drawer()).toHaveAttribute('inert');
+      expect(
+        screen.queryByTestId('mobile-nav-backdrop')
+      ).not.toBeInTheDocument();
+    });
+
+    it('closes on Escape and returns focus to the hamburger', async () => {
+      renderShell();
+      await openDrawer();
+
+      await userEvent.keyboard('{Escape}');
+
+      expect(drawer()).toHaveAttribute('inert');
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Open navigation' })
+      );
+    });
+
+    it('closes when the route changes', async () => {
+      renderShell();
+      await openDrawer();
+
+      await userEvent.click(screen.getByRole('link', { name: 'Open probe' }));
+
+      expect(await screen.findByText('Probe content')).toBeInTheDocument();
+      expect(drawer()).toHaveAttribute('inert');
+    });
+
+    it('leaves the desktop collapse preference untouched', async () => {
+      renderShell();
+      await openDrawer();
+      await userEvent.keyboard('{Escape}');
+
+      expect(window.localStorage.getItem('sidebar-collapsed-staff')).toBeNull();
+    });
+  });
 });

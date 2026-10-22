@@ -220,6 +220,12 @@
     flex-direction: column;
   }
 
+  /* Stacked (phones, narrow tablets): the form comes first so it's on
+     screen without scrolling; the Golden Fur title and features go below. */
+  .right {
+    order: -1;
+  }
+
   .left {
     padding: var(--space-4) var(--space-3);
   }

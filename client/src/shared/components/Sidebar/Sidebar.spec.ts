@@ -490,4 +490,80 @@ describe('Sidebar', () => {
       JSON.stringify(['Veterinarian', 'Management'])
     );
   });
+
+  describe('drawer variant (phone navigation)', () => {
+    const SECTIONS: SidebarSection[] = [
+      {
+        label: 'Bookings',
+        items: [
+          { title: 'Queue', to: '/staff/queue' },
+          { title: 'Calendar', to: '/staff/calendar' },
+        ],
+      },
+      {
+        label: 'Management',
+        items: [{ title: 'Staff Management', to: '/staff/admin/staff' }],
+      },
+    ];
+
+    function renderDrawer(open: boolean) {
+      return render(
+        createElement(
+          MemoryRouter,
+          { initialEntries: ['/staff/queue'] },
+          createElement(Sidebar, {
+            sections: SECTIONS,
+            collapsed: true,
+            onToggleCollapse: vi.fn(),
+            variant: 'drawer',
+            id: 'mobile-nav-drawer',
+            open,
+            header: createElement('p', null, 'Header slot'),
+            footer: createElement('p', null, 'Footer slot'),
+          })
+        )
+      );
+    }
+
+    it('shows every link expanded, with the header and footer slots, ignoring the desktop collapsed flag', () => {
+      renderDrawer(true);
+
+      const drawer = screen.getByRole('dialog', { name: 'Navigation menu' });
+      expect(drawer).toHaveAttribute('id', 'mobile-nav-drawer');
+      expect(screen.getByRole('link', { name: 'Queue' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Staff Management' })
+      ).toBeInTheDocument();
+      expect(screen.getByText('Header slot')).toBeInTheDocument();
+      expect(screen.getByText('Footer slot')).toBeInTheDocument();
+    });
+
+    it('has no collapse toggle, resize handle or drag handles (no touch drag)', () => {
+      const { container } = renderDrawer(true);
+
+      expect(
+        screen.queryByRole('button', { name: /(collapse|expand) sidebar/i })
+      ).not.toBeInTheDocument();
+      expect(
+        container.querySelector('[aria-label="Resize sidebar"]')
+      ).toBeNull();
+      expect(container.querySelector('[draggable="true"]')).toBeNull();
+    });
+
+    it('is inert and hidden while closed, so off-screen links cannot be reached', () => {
+      const { container } = renderDrawer(false);
+
+      const drawer = container.querySelector('#mobile-nav-drawer');
+      expect(drawer).toHaveAttribute('inert');
+      expect(drawer).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('moves focus into the menu when it opens', () => {
+      renderDrawer(true);
+
+      expect(
+        screen.getByRole('dialog', { name: 'Navigation menu' })
+      ).toContainElement(document.activeElement as HTMLElement);
+    });
+  });
 });

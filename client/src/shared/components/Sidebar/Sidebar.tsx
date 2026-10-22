@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type DragEvent,
+  type ReactNode,
 } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -60,6 +61,21 @@ interface SidebarProps {
    * AppShell already uses for the whole-sidebar collapsed flag. Defaults to
    * 'staff' so existing callers/tests that don't pass it keep working. */
   role?: ThemeRole;
+  /** 'rail' (default): the desktop sidebar - collapsible, resizable,
+   * drag-reorderable. 'drawer': AppShell's phone navigation - an off-canvas
+   * panel the Navbar hamburger slides in, always fully expanded, with no
+   * collapse toggle, resize handle or drag-to-reorder (native HTML5 drag
+   * doesn't work by touch). */
+  variant?: 'rail' | 'drawer';
+  /** Drawer only: whether it's slid in. Closed, it's inert (off-screen links
+   * can't be tabbed to or read out). */
+  open?: boolean;
+  /** Drawer only: element id, the hamburger's aria-controls target. */
+  id?: string;
+  /** Drawer only: rendered above / below the nav links - AppShell puts the
+   * account items there (identity + credits; Home, Settings, Sign out). */
+  header?: ReactNode;
+  footer?: ReactNode;
 }
 
 type CategorySortKey = 'custom' | 'alphabetical' | 'recent';
@@ -313,6 +329,8 @@ interface SidebarCategoryProps {
   role: ThemeRole;
   recentMap: Record<string, number>;
   categoryDrag?: CategoryDragProps;
+  /** false in the phone drawer - no drag-to-reorder by touch. */
+  reorderable?: boolean;
 }
 
 /**
@@ -336,6 +354,7 @@ function SidebarCategory({
   role,
   recentMap,
   categoryDrag,
+  reorderable = true,
 }: SidebarCategoryProps) {
   const isCategory = section.label !== null;
   const scopeKey = section.label ?? '';
@@ -395,7 +414,7 @@ function SidebarCategory({
   // unmounted every item's grip handle - and reflowed every item's row -
   // the instant a category collapsed, which is what was actually causing
   // the reported "twitching" (not the collapse animation itself).
-  const isDraggable = sortKey === 'custom' && !sidebarCollapsed;
+  const isDraggable = reorderable && sortKey === 'custom' && !sidebarCollapsed;
 
   function handleDragStart(event: DragEvent<HTMLLIElement>, to: string) {
     setDraggedTo(to);
@@ -626,10 +645,30 @@ function SidebarCategory({
  */
 export function Sidebar({
   sections,
-  collapsed,
+  collapsed: collapsedProp,
   onToggleCollapse,
   role = 'staff',
+  variant = 'rail',
+  open = false,
+  id,
+  header,
+  footer,
 }: SidebarProps) {
+  const isDrawer = variant === 'drawer';
+  // The drawer is always fully expanded - the desktop collapse preference
+  // doesn't apply to it (and isn't changed by it).
+  const collapsed = !isDrawer && collapsedProp;
+  const drawerRef = useRef<HTMLElement>(null);
+
+  // Opening the drawer moves focus into it, so keyboard and screen-reader
+  // users land on the menu they just opened.
+  useEffect(() => {
+    if (!isDrawer || !open) return;
+    drawerRef.current
+      ?.querySelector<HTMLElement>('a[href], button:not([disabled])')
+      ?.focus();
+  }, [isDrawer, open]);
+
   const {
     width: sidebarWidth,
     isDragging: isResizingSidebar,
@@ -684,7 +723,10 @@ export function Sidebar({
   }, [labeledSections, categoryOrder, categorySortKey, recentMap]);
 
   const isCategoryDraggable =
-    hasMultipleCategories && categorySortKey === 'custom' && !collapsed;
+    !isDrawer &&
+    hasMultipleCategories &&
+    categorySortKey === 'custom' &&
+    !collapsed;
 
   function handleCategoryDragStart(
     event: DragEvent<HTMLDivElement>,
@@ -770,6 +812,78 @@ export function Sidebar({
     })
   );
 
+  const nav = (
+    <nav className={styles.nav}>
+      {unlabeledSections.map((section, index) => (
+        <SidebarCategory
+          key={`section-${index}`}
+          section={section}
+          sidebarCollapsed={collapsed}
+          role={role}
+          recentMap={recentMap}
+          reorderable={!isDrawer}
+        />
+      ))}
+
+      {hasMultipleCategories && !collapsed ? (
+        <div className={styles.categorySortRow}>
+          <span className={styles.categorySortLabel}>Categories</span>
+          <MoreOptionsMenu
+            label="Sort categories"
+            items={categorySortMenuItems}
+            menuAlign="right"
+          />
+        </div>
+      ) : null}
+
+      {orderedLabeledSections.map((section) => (
+        <SidebarCategory
+          key={section.label}
+          section={section}
+          sidebarCollapsed={collapsed}
+          role={role}
+          recentMap={recentMap}
+          reorderable={!isDrawer}
+          categoryDrag={{
+            draggable: isCategoryDraggable,
+            isDragging: draggedLabel === section.label,
+            isDropTarget: dropTargetLabel === section.label,
+            sectionRef: (element) => {
+              if (element) categoryRefs.current.set(section.label, element);
+              else categoryRefs.current.delete(section.label);
+            },
+            onDragStart: (event) =>
+              handleCategoryDragStart(event, section.label),
+            onDragEnter: () => handleCategoryDragEnter(section.label),
+            onDrop: (event) => handleCategoryDrop(event, section.label),
+            onDragEnd: handleCategoryDragEnd,
+          }}
+        />
+      ))}
+    </nav>
+  );
+
+  if (isDrawer) {
+    return (
+      <aside
+        ref={drawerRef}
+        id={id}
+        className={
+          open ? `${styles.drawer} ${styles.drawerOpen}` : styles.drawer
+        }
+        role="dialog"
+        aria-modal={open}
+        aria-label="Navigation menu"
+        aria-hidden={!open}
+        inert={!open}
+      >
+        {header ? <div className={styles.drawerHeader}>{header}</div> : null}
+        {nav}
+        {footer ? <div className={styles.drawerFooter}>{footer}</div> : null}
+      </aside>
+    );
+  }
+
   return (
     <aside
       className={
@@ -796,52 +910,7 @@ export function Sidebar({
         )}
       </button>
 
-      <nav className={styles.nav}>
-        {unlabeledSections.map((section, index) => (
-          <SidebarCategory
-            key={`section-${index}`}
-            section={section}
-            sidebarCollapsed={collapsed}
-            role={role}
-            recentMap={recentMap}
-          />
-        ))}
-
-        {hasMultipleCategories && !collapsed ? (
-          <div className={styles.categorySortRow}>
-            <span className={styles.categorySortLabel}>Categories</span>
-            <MoreOptionsMenu
-              label="Sort categories"
-              items={categorySortMenuItems}
-              menuAlign="right"
-            />
-          </div>
-        ) : null}
-
-        {orderedLabeledSections.map((section) => (
-          <SidebarCategory
-            key={section.label}
-            section={section}
-            sidebarCollapsed={collapsed}
-            role={role}
-            recentMap={recentMap}
-            categoryDrag={{
-              draggable: isCategoryDraggable,
-              isDragging: draggedLabel === section.label,
-              isDropTarget: dropTargetLabel === section.label,
-              sectionRef: (element) => {
-                if (element) categoryRefs.current.set(section.label, element);
-                else categoryRefs.current.delete(section.label);
-              },
-              onDragStart: (event) =>
-                handleCategoryDragStart(event, section.label),
-              onDragEnter: () => handleCategoryDragEnter(section.label),
-              onDrop: (event) => handleCategoryDrop(event, section.label),
-              onDragEnd: handleCategoryDragEnd,
-            }}
-          />
-        ))}
-      </nav>
+      {nav}
 
       {!collapsed ? (
         <div
