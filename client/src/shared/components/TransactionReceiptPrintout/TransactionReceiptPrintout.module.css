@@ -26,6 +26,12 @@
     padding: 6mm 0 0;
   }
 
+  /* Several sheets at once (the Daily Sales Report prints one per
+     transaction) - each receipt starts on its own page. */
+  .sheet + .sheet {
+    break-before: page;
+  }
+
   .letterhead {
     border-bottom: 1pt solid #000;
     padding-bottom: 3mm;

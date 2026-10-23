@@ -59,6 +59,9 @@ const DATE_FIELD: FilterField = {
   id: 'date',
   label: 'Date',
   type: 'date-range',
+  // Transactions are records of what already happened, so the presets look
+  // back (Yesterday, Last 7 days, Last 30 days) instead of ahead.
+  pastOnly: true,
   // Starts unrestricted - adding the tile must not silently hide older rows;
   // the user picks a range (or a preset) in the tile's popover.
   defaultValue: { preset: 'all', from: null, to: null },
