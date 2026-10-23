@@ -451,7 +451,11 @@ export function PetDetailPanel({
             <h2 className={styles.sectionTitle} id="service-history-title">
               Service History
             </h2>
-            <ServiceHistoryList petId={pet.id} accessToken={accessToken} />
+            <ServiceHistoryList
+              petId={pet.id}
+              petName={pet.name}
+              accessToken={accessToken}
+            />
           </section>
         </section>
 

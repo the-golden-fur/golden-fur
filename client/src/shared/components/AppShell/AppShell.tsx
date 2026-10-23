@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Outlet, useLocation } from 'react-router';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 import { MOBILE_NAV_DRAWER_ID, Navbar } from '../Navbar/Navbar';
 import {
   DrawerAccountFooter,
@@ -41,7 +41,9 @@ interface AppShellProps {
    * wired to the HelpMascot's "Contact support" link. */
   onContactSupport?: () => void;
   /** Customer-only: replays the customer tutorial, wired to the
-   * HelpMascot's "Tutorial" bubble. */
+   * HelpMascot's "Tutorial" bubble. The shell first takes the customer to
+   * the home page and opens the sidebar, since the tour points at its
+   * links. */
   onStartTutorial?: () => void;
   /** Rendered above the routed page content, below the navbar - e.g. the
    * staff-only UnavailabilityBlockBadge. */
@@ -104,6 +106,7 @@ export function AppShell({
 
   const isPhone = useMediaQuery(PHONE_MEDIA_QUERY);
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   // The path the drawer was opened on, not a plain boolean: any navigation
   // (a drawer link, the brand, a notification) changes the path, which
   // closes the drawer without an effect. Widening past the phone breakpoint
@@ -116,6 +119,18 @@ export function AppShell({
   const closeMobileNav = useCallback(() => setMobileNavOpenedOn(null), []);
   const toggleMobileNav = () =>
     setMobileNavOpenedOn(isDrawerOpen ? null : pathname);
+
+  // The tutorial always runs from the customer home page with the sidebar
+  // open - the rail expanded on desktop, the drawer opened on a phone
+  // (keyed to /portal, so the navigation below doesn't close it again).
+  const startTutorial = onStartTutorial
+    ? () => {
+        if (pathname !== '/portal') navigate('/portal');
+        if (isPhone) setMobileNavOpenedOn('/portal');
+        else setCollapsedPersist(false);
+        onStartTutorial();
+      }
+    : undefined;
 
   useEffect(() => {
     if (!isDrawerOpen) return undefined;
@@ -221,7 +236,7 @@ export function AppShell({
                   : { label: 'Contact support', href: '#' },
                 { label: 'My Bookings', href: '/portal/bookings' },
               ]}
-              onStartTutorial={onStartTutorial}
+              onStartTutorial={startTutorial}
             />
           ) : null}
         </div>

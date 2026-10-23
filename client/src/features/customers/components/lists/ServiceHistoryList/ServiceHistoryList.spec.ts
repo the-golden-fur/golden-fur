@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { listPetServiceHistory } from '../../../api/customer.api';
@@ -185,6 +185,60 @@ describe('ServiceHistoryList', () => {
     expect(within(slip).getByText('Maria Santos')).toBeInTheDocument();
     expect(within(slip).getByText('Buddy')).toBeInTheDocument();
     expect(within(slip).getByText('Main Branch')).toBeInTheDocument();
+  });
+
+  it('prints the whole history as one report, with what the completed services came to', async () => {
+    vi.mocked(listPetServiceHistory).mockResolvedValue({
+      data: [
+        entry(),
+        entry({
+          booking_id: 'booking-2',
+          service_category: 'Hotel',
+          status: 'Cancelled',
+          items: [],
+          staff_name: null,
+          total_price: 2400,
+          cancellation_reason: 'Owner changed plans',
+        }),
+      ],
+      error: null,
+    });
+
+    render(
+      createElement(ServiceHistoryList, {
+        petId: 'pet-1',
+        petName: 'Buddy',
+        accessToken: 'token',
+      })
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Print history' })
+    );
+
+    expect(window.print).toHaveBeenCalledTimes(1);
+    const report = screen.getByRole('document', {
+      name: 'Service history report',
+    });
+    expect(within(report).getByText('Buddy')).toBeInTheDocument();
+    expect(within(report).getByText('2 (1 completed)')).toBeInTheDocument();
+    const rows = within(report).getAllByRole('row');
+    // Header, the two bookings, the total.
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toHaveTextContent('Full Groom, Nail Trim');
+    expect(rows[1]).toHaveTextContent('Main Branch · Ana Groomer');
+    expect(rows[2]).toHaveTextContent('Not charged');
+    expect(rows[2]).toHaveTextContent('Reason: Owner changed plans');
+    // Only the completed booking counts towards the total.
+    expect(rows[3]).toHaveTextContent('₱850.00');
+
+    // Taken down again once the print dialog closes.
+    act(() => {
+      window.dispatchEvent(new Event('afterprint'));
+    });
+    expect(
+      screen.queryByRole('document', { name: 'Service history report' })
+    ).not.toBeInTheDocument();
   });
 
   it('renders an empty state when the pet has no past bookings', async () => {

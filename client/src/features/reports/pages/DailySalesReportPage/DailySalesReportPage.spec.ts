@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -15,7 +16,7 @@ import * as staffApi from '../../../staff/api/staff.api';
 import type { StaffProfile } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../../maintenance/api/maintenance.api';
 import * as reportsApi from '../../api/reports.api';
-import type { DailySalesReport } from '../../reports.types';
+import type { DailySalesReport, TransactionRecord } from '../../reports.types';
 import { currentReportDay, shiftReportDay } from '../../utils/reportDay';
 import { DailySalesReportPage } from './DailySalesReportPage';
 
@@ -24,9 +25,11 @@ vi.mock('../../../staff/api/staff.api', () => ({
 }));
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
+  listBranchLetterheads: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 vi.mock('../../api/reports.api', () => ({
   getDailySalesReport: vi.fn(),
+  getTransactionHistory: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 
 const BRANCHES = [
@@ -74,6 +77,28 @@ function buildReport(
     misc_sales_total: 0,
     ...overrides,
   } as DailySalesReport;
+}
+
+function buildTransaction(
+  overrides: Partial<TransactionRecord> = {}
+): TransactionRecord {
+  return {
+    id: 'txn-1',
+    booking_id: 'booking-1',
+    booking_group_id: null,
+    customer_id: 'cust-1',
+    customer_name: 'Ada Lovelace',
+    branch_id: 'branch-makati',
+    transaction_type: 'booking_payment',
+    payment_method: 'GCash',
+    payment_status: 'Fully Paid',
+    payment_choice: 'full',
+    total_amount: 500,
+    misc_sale_description: null,
+    created_at: '2026-09-14T02:00:00.000Z',
+    bookings: { pet_id: 'pet-1', service_category: 'Grooming' },
+    ...overrides,
+  };
 }
 
 function renderPage() {
@@ -418,5 +443,96 @@ describe('DailySalesReportPage', () => {
     expect(within(summary).getByText('Total sales')).toBeInTheDocument();
     expect(within(summary).queryByText(/Yesterday/)).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  describe('Print', () => {
+    function mockAdminReport() {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildStaff({ role: 'Admin' })],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
+        data: BRANCHES,
+        error: null,
+      });
+      vi.mocked(reportsApi.getDailySalesReport).mockResolvedValue({
+        data: buildReport(),
+        error: null,
+      });
+    }
+
+    it('prints one receipt per settled transaction of the day, oldest first, and skips unpaid ones', async () => {
+      window.print = vi.fn();
+      mockAdminReport();
+      vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+        data: [
+          buildTransaction({
+            id: 'txn-late',
+            customer_name: 'Zoe Late',
+            created_at: '2026-09-14T08:00:00.000Z',
+          }),
+          buildTransaction({
+            id: 'txn-unpaid',
+            customer_name: 'Unpaid Person',
+            payment_status: 'Pending',
+          }),
+          buildTransaction({
+            id: 'txn-misc',
+            transaction_type: 'miscellaneous_sale',
+            misc_sale_description: 'Leash',
+            customer_name: 'Ada Early',
+            booking_id: null,
+            bookings: null,
+            payment_choice: null,
+            created_at: '2026-09-14T01:00:00.000Z',
+          }),
+        ],
+        error: null,
+      });
+
+      renderPage();
+      await screen.findByText('Grooming');
+
+      // Fetched for the report's own day and branch.
+      expect(reportsApi.getTransactionHistory).toHaveBeenCalledWith(
+        {
+          branchId: 'branch-makati',
+          dateFrom: currentReportDay(),
+          dateTo: currentReportDay(),
+        },
+        'token'
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'Print' }));
+
+      expect(window.print).toHaveBeenCalledTimes(1);
+      const receipts = screen.getAllByRole('document', { name: 'Receipt' });
+      expect(receipts).toHaveLength(2);
+      expect(receipts[0]).toHaveTextContent('Ada Early');
+      expect(receipts[0]).toHaveTextContent('Leash');
+      expect(receipts[1]).toHaveTextContent('Zoe Late');
+      expect(screen.queryByText('Unpaid Person')).not.toBeInTheDocument();
+
+      // Taken down again once the print dialog closes.
+      act(() => {
+        window.dispatchEvent(new Event('afterprint'));
+      });
+      expect(
+        screen.queryByRole('document', { name: 'Receipt' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('is disabled when the day has no settled transactions', async () => {
+      mockAdminReport();
+      vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+        data: [buildTransaction({ payment_status: 'Pending' })],
+        error: null,
+      });
+
+      renderPage();
+      await screen.findByText('Grooming');
+
+      expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
+    });
   });
 });
