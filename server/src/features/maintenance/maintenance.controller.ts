@@ -61,10 +61,6 @@ import {
   updatePetWeightClassConfiguration,
 } from './services/petWeightClassConfiguration.service.ts';
 import {
-  listPromoCapConfigurations,
-  upsertPromoCapConfiguration,
-} from './services/promoCap.service.ts';
-import {
   archiveServiceType,
   createServiceType,
   hardDeleteServiceType,
@@ -91,7 +87,6 @@ import {
   updatePromoValidator,
   updateServiceTypeValidator,
   updateServiceValidator,
-  upsertPromoCapConfigurationValidator,
   createPetTypeValidator,
   updatePetTypeValidator,
   upsertPetTypePriceOverrideValidator,
@@ -898,52 +893,6 @@ export async function updatePackagePricingConfigurationController(
     const configuration = await updatePackagePricingConfiguration({
       requesterId,
       updates: parsed.data,
-    });
-
-    return res.status(200).json({ configuration });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Promo cap configuration (Epic B #84)
-// ---------------------------------------------------------------------------
-
-export async function listPromoCapConfigurationsController(
-  _req: AuthenticatedRequest,
-  res: Response
-) {
-  try {
-    const configurations = await listPromoCapConfigurations();
-    return res.status(200).json({ configurations });
-  } catch (error) {
-    return sendServiceError(res, error);
-  }
-}
-
-export async function upsertPromoCapConfigurationController(
-  req: AuthenticatedRequest,
-  res: Response
-) {
-  const requesterId = req.user?.sub;
-
-  if (!requesterId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const parsed = upsertPromoCapConfigurationValidator.safeParse(req.body);
-
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
-  }
-
-  try {
-    const configuration = await upsertPromoCapConfiguration({
-      requesterId,
-      input: parsed.data,
     });
 
     return res.status(200).json({ configuration });

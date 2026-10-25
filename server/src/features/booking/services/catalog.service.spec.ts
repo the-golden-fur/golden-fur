@@ -3,7 +3,6 @@ import { getBookingCatalog } from './catalog.service.ts';
 import { listServices } from '../../maintenance/services/services.service.ts';
 import { listPackages } from '../../maintenance/services/packages.service.ts';
 import { listPromos } from '../../maintenance/services/promos.service.ts';
-import { listPromoCapConfigurations } from '../../maintenance/services/promoCap.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 
 vi.mock('../../maintenance/services/services.service.ts', () => ({
@@ -15,18 +14,9 @@ vi.mock('../../maintenance/services/packages.service.ts', () => ({
 vi.mock('../../maintenance/services/promos.service.ts', () => ({
   listPromos: vi.fn(),
 }));
-vi.mock('../../maintenance/services/promoCap.service.ts', () => ({
-  listPromoCapConfigurations: vi.fn(),
-}));
 vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
   getFixedPrice: vi.fn(),
 }));
-
-const DEFAULT_CAP_ROW = {
-  branch_id: null,
-  cap_type: 'percentage',
-  cap_value: 20,
-};
 
 describe('catalog.service (#55/#58 supporting infra)', () => {
   it('returns the active-by-default services/packages/promos for a branch, scoped to the requested category', async () => {
@@ -35,9 +25,6 @@ describe('catalog.service (#55/#58 supporting infra)', () => {
     ]);
     vi.mocked(listPackages).mockResolvedValue([{ id: 'package-1' } as never]);
     vi.mocked(listPromos).mockResolvedValue([{ id: 'promo-1' } as never]);
-    vi.mocked(listPromoCapConfigurations).mockResolvedValue([
-      DEFAULT_CAP_ROW as never,
-    ]);
 
     const result = await getBookingCatalog({
       branchId: 'branch-1',
@@ -51,6 +38,7 @@ describe('catalog.service (#55/#58 supporting infra)', () => {
     expect(listPackages).toHaveBeenCalledWith({ branchId: 'branch-1' });
     expect(listPromos).toHaveBeenCalledWith({});
     expect(getFixedPrice).not.toHaveBeenCalled();
+    // No promoCap - each promo carries its own cap (min_spend) now.
     expect(result).toEqual({
       services: [
         { id: 'service-1', base_price: 300, long_stay_nightly_price: null },
@@ -58,7 +46,6 @@ describe('catalog.service (#55/#58 supporting infra)', () => {
       packages: [{ id: 'package-1' }],
       promos: [{ id: 'promo-1' }],
       fixedPrice: null,
-      promoCap: DEFAULT_CAP_ROW,
     });
   });
 
@@ -66,9 +53,6 @@ describe('catalog.service (#55/#58 supporting infra)', () => {
     vi.mocked(listServices).mockResolvedValue([]);
     vi.mocked(listPackages).mockResolvedValue([]);
     vi.mocked(listPromos).mockResolvedValue([]);
-    vi.mocked(listPromoCapConfigurations).mockResolvedValue([
-      DEFAULT_CAP_ROW as never,
-    ]);
 
     await getBookingCatalog({ branchId: 'branch-1' });
 
@@ -82,9 +66,6 @@ describe('catalog.service (#55/#58 supporting infra)', () => {
     vi.mocked(listServices).mockResolvedValue([]);
     vi.mocked(listPackages).mockResolvedValue([]);
     vi.mocked(listPromos).mockResolvedValue([]);
-    vi.mocked(listPromoCapConfigurations).mockResolvedValue([
-      DEFAULT_CAP_ROW as never,
-    ]);
     vi.mocked(getFixedPrice).mockResolvedValue(800);
 
     const result = await getBookingCatalog({
@@ -110,9 +91,6 @@ describe('catalog.service (#55/#58 supporting infra)', () => {
     ]);
     vi.mocked(listPackages).mockResolvedValue([]);
     vi.mocked(listPromos).mockResolvedValue([]);
-    vi.mocked(listPromoCapConfigurations).mockResolvedValue([
-      DEFAULT_CAP_ROW as never,
-    ]);
 
     const southwoods = await getBookingCatalog({
       branchId: 'branch-southwoods',
@@ -150,9 +128,6 @@ describe('catalog.service (#55/#58 supporting infra)', () => {
     ]);
     vi.mocked(listPackages).mockResolvedValue([]);
     vi.mocked(listPromos).mockResolvedValue([]);
-    vi.mocked(listPromoCapConfigurations).mockResolvedValue([
-      DEFAULT_CAP_ROW as never,
-    ]);
 
     const southwoods = await getBookingCatalog({
       branchId: 'branch-southwoods',

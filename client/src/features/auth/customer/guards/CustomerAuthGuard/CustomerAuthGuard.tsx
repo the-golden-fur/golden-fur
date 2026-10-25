@@ -7,7 +7,9 @@ import { hasProfile } from '../../../../../shared/api/preferences.api';
 import { getSessionAal } from '../../../../../shared/auth/api/auth.api';
 import { getStoredDeviceToken } from '../../../../../shared/auth/api/trustedDevice.api';
 import { getCustomerProfile } from '../../../../customers/api/customer.api';
-import { CUSTOMER_SIDEBAR_SECTIONS } from '../../../../customers/config/customerPortal.config';
+import { customerSidebarSections } from '../../../../customers/config/customerPortal.config';
+import { tourSectionsFor } from '../../../../customers/tour/tourSections';
+import { useFeatureFlag } from '../../../../../shared/providers/FeatureFlagsProvider/FeatureFlagsContext';
 import { NotificationBell } from '../../../../notifications/components/NotificationBell/NotificationBell';
 import { ComposeEntryPoint } from '../../../../messaging/components/ComposeEntryPoint/ComposeEntryPoint';
 import { CreditBalanceProvider } from '../../../../credits/providers/CreditBalanceProvider';
@@ -28,6 +30,7 @@ function CustomerAppShell(props: ComponentProps<typeof AppShell>) {
 
 export function CustomerAuthGuard() {
   const { user, session, accessToken, isLoading, signOut } = useAuth();
+  const spinWheelOn = useFeatureFlag('spin_wheel');
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -178,55 +181,62 @@ export function CustomerAuthGuard() {
   // pop-up. The pop-up renders as AppShell children so it sits inside the
   // routed shell and can open over any portal page.
   //
+  // The coupon spin wheel is an experimental feature (Settings >
+  // Experimental): while it's off, the provider, chip, pop-up, "My Rewards"
+  // nav entry and its tour step are all left out together - the chip and
+  // pop-up read useSpinCredits, which throws outside its provider.
+  //
   // TourProvider: the customer tutorial (spotlight tour). The data-tour
   // spans mark the navbar slots it points at - see tourSections.ts.
+  const shell = (
+    <TourProvider sections={tourSectionsFor(spinWheelOn)}>
+      <CustomerAppShell
+        role="customer"
+        brandLabel="Golden Fur"
+        identity={fullName ? { primary: fullName, photoUrl } : null}
+        sidebarSections={customerSidebarSections(spinWheelOn)}
+        creditIndicator={
+          <>
+            {spinWheelOn ? <SpinCreditsIndicator /> : null}
+            <span data-tour="credits">
+              <CreditBalanceIndicator />
+            </span>
+          </>
+        }
+        notificationBell={
+          accessToken ? (
+            <span data-tour="notifications">
+              <NotificationBell
+                accessToken={accessToken}
+                notificationsHref="/portal/notifications"
+              />
+            </span>
+          ) : null
+        }
+        composeButton={
+          accessToken ? (
+            <span data-tour="messages">
+              <ComposeEntryPoint
+                accessToken={accessToken}
+                viewerRole={null}
+                isOpen={isComposeOpen}
+                onOpenChange={setIsComposeOpen}
+              />
+            </span>
+          ) : null
+        }
+        onContactSupport={
+          accessToken ? () => setIsComposeOpen(true) : undefined
+        }
+      >
+        {spinWheelOn ? <SpinWheelPopup /> : null}
+      </CustomerAppShell>
+    </TourProvider>
+  );
+
   return (
     <CreditBalanceProvider>
-      <SpinCreditsProvider>
-        <TourProvider>
-          <CustomerAppShell
-            role="customer"
-            brandLabel="Golden Fur"
-            identity={fullName ? { primary: fullName, photoUrl } : null}
-            sidebarSections={CUSTOMER_SIDEBAR_SECTIONS}
-            creditIndicator={
-              <>
-                <SpinCreditsIndicator />
-                <span data-tour="credits">
-                  <CreditBalanceIndicator />
-                </span>
-              </>
-            }
-            notificationBell={
-              accessToken ? (
-                <span data-tour="notifications">
-                  <NotificationBell
-                    accessToken={accessToken}
-                    notificationsHref="/portal/notifications"
-                  />
-                </span>
-              ) : null
-            }
-            composeButton={
-              accessToken ? (
-                <span data-tour="messages">
-                  <ComposeEntryPoint
-                    accessToken={accessToken}
-                    viewerRole={null}
-                    isOpen={isComposeOpen}
-                    onOpenChange={setIsComposeOpen}
-                  />
-                </span>
-              ) : null
-            }
-            onContactSupport={
-              accessToken ? () => setIsComposeOpen(true) : undefined
-            }
-          >
-            <SpinWheelPopup />
-          </CustomerAppShell>
-        </TourProvider>
-      </SpinCreditsProvider>
+      {spinWheelOn ? <SpinCreditsProvider>{shell}</SpinCreditsProvider> : shell}
     </CreditBalanceProvider>
   );
 }

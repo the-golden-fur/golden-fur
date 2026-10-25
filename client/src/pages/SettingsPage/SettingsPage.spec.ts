@@ -108,6 +108,13 @@ vi.mock('./configTiles.config', () => ({
     icon: Wrench,
     Component: () => createElement('p', null, 'Embedded Mascot FAQs Page'),
   },
+  LANDING_PAGE_TILE: {
+    title: 'Landing Page',
+    description: 'Landing page config.',
+    to: '/staff/admin/maintenance/landing-page',
+    icon: Wrench,
+    Component: () => createElement('p', null, 'Embedded Landing Page'),
+  },
   VET_SERVICES_TILE: {
     title: 'Veterinary Services',
     description: 'Vet procedure list config.',
@@ -387,6 +394,32 @@ describe('SettingsPage', () => {
 
     expect(
       await screen.findByRole('tab', { name: 'Config' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows the Experimental tab only for a Superadmin, not an Admin', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: true },
+      error: null,
+    });
+
+    const { unmount } = renderPage('staff');
+
+    await screen.findByRole('tab', { name: 'Config' });
+    expect(
+      screen.queryByRole('tab', { name: 'Experimental' })
+    ).not.toBeInTheDocument();
+    unmount();
+
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Superadmin', mfa_enrolled: true },
+      error: null,
+    });
+
+    renderPage('staff');
+
+    expect(
+      await screen.findByRole('tab', { name: 'Experimental' })
     ).toBeInTheDocument();
   });
 

@@ -3,7 +3,6 @@ import {
   evaluateDiscounts,
   evaluateMiscSaleDiscounts,
   evaluateMiscSalePromos,
-  evaluatePromos,
   listMiscSaleOptions,
 } from './discountPromoEvaluation.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -18,11 +17,8 @@ interface QueryResult {
   error: unknown;
 }
 
-/** Same queueing mock shape as promoCap.service.spec.ts - each call to
- * supabase.from() consumes the next queued result, regardless of which
- * table/chain produced it (call order is deterministic per evaluatePromos
- * run: promos select, then the branch-scoped cap lookup, then optionally
- * the default cap lookup). */
+/** Each call to supabase.from() consumes the next queued result, regardless
+ * of which table/chain produced it (call order is deterministic per run). */
 const builders: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
 
 function queueFromResults(...results: QueryResult[]) {
@@ -89,125 +85,6 @@ function buildPromoRow(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
-
-describe('evaluatePromos', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('a percentage/flat cap trims the last promo that would cross it, applying largest-value-first', async () => {
-    queueFromResults(
-      {
-        data: [
-          buildPromoRow({ id: 'promo-a', name: 'Promo A', value: 30 }),
-          buildPromoRow({ id: 'promo-b', name: 'Promo B', value: 20 }),
-        ],
-        error: null,
-      }, // promos
-      {
-        data: { cap_type: 'percentage', cap_value: 40 },
-        error: null,
-      } // branch-scoped cap row
-    );
-
-    const applied = await evaluatePromos(buildBooking(), 1000);
-
-    expect(applied).toHaveLength(2);
-    expect(applied[0]).toMatchObject({
-      promoId: 'promo-a',
-      line: { unit_price: -300 },
-    });
-    // Promo B (200 uncapped) is trimmed to the 100 remaining headroom.
-    expect(applied[1]).toMatchObject({
-      promoId: 'promo-b',
-      line: { unit_price: -100 },
-    });
-  });
-
-  it('a count cap applies only the N largest-value promos in full and drops the rest entirely', async () => {
-    queueFromResults(
-      {
-        data: [
-          buildPromoRow({ id: 'promo-a', name: 'Promo A', value: 30 }),
-          buildPromoRow({ id: 'promo-b', name: 'Promo B', value: 20 }),
-          buildPromoRow({ id: 'promo-c', name: 'Promo C', value: 10 }),
-        ],
-        error: null,
-      }, // promos
-      {
-        data: { cap_type: 'count', cap_value: 2 },
-        error: null,
-      } // branch-scoped cap row
-    );
-
-    const applied = await evaluatePromos(buildBooking(), 1000);
-
-    expect(applied.map((entry) => entry.promoId)).toEqual([
-      'promo-a',
-      'promo-b',
-    ]);
-    // Full amounts, not trimmed - a count cap has no notion of a partial promo.
-    expect(applied[0].line.unit_price).toBe(-300);
-    expect(applied[1].line.unit_price).toBe(-200);
-  });
-
-  it('never loads spin-wheel or archived promos as auto-apply candidates (session 114)', async () => {
-    queueFromResults({ data: [], error: null });
-
-    const applied = await evaluatePromos(buildBooking(), 1000);
-
-    expect(applied).toEqual([]);
-    expect(builders[0].neq).toHaveBeenCalledWith('promo_type', 'spin_wheel');
-    expect(builders[0].is).toHaveBeenCalledWith('archived_at', null);
-  });
-
-  it('drops a spin-wheel promo even if one slips past the query filter', async () => {
-    queueFromResults({
-      data: [buildPromoRow({ id: 'spin', promo_type: 'spin_wheel' })],
-      error: null,
-    });
-
-    const applied = await evaluatePromos(buildBooking(), 1000);
-
-    expect(applied).toEqual([]);
-  });
-
-  it('a count cap of 0 drops every otherwise-matching promo', async () => {
-    queueFromResults(
-      {
-        data: [buildPromoRow({ id: 'promo-a', value: 30 })],
-        error: null,
-      },
-      {
-        data: { cap_type: 'count', cap_value: 0 },
-        error: null,
-      }
-    );
-
-    const applied = await evaluatePromos(buildBooking(), 1000);
-
-    expect(applied).toEqual([]);
-  });
-
-  it('falls back to the system-wide default cap when no branch-specific row exists', async () => {
-    queueFromResults(
-      {
-        data: [buildPromoRow({ id: 'promo-a', value: 30 })],
-        error: null,
-      }, // promos
-      { data: null, error: null }, // no branch-scoped row
-      {
-        data: { cap_type: 'count', cap_value: 1 },
-        error: null,
-      } // default row
-    );
-
-    const applied = await evaluatePromos(buildBooking(), 1000);
-
-    expect(applied).toHaveLength(1);
-    expect(applied[0].promoId).toBe('promo-a');
-  });
-});
 
 function buildDiscountRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -452,17 +329,14 @@ describe('evaluateMiscSalePromos', () => {
     expect(supabase.from).not.toHaveBeenCalled();
   });
 
-  it('applies only the picked all_services promo, under the branch cap', async () => {
-    queueFromResults(
-      {
-        data: [
-          buildPromoRow({ id: 'promo-a', value: 15 }),
-          buildPromoRow({ id: 'promo-b', value: 5 }),
-        ],
-        error: null,
-      },
-      { data: { cap_type: 'count', cap_value: 5 }, error: null }
-    );
+  it('applies only the picked all_services promo, in full - no branch cap lookup', async () => {
+    queueFromResults({
+      data: [
+        buildPromoRow({ id: 'promo-a', value: 15 }),
+        buildPromoRow({ id: 'promo-b', value: 5 }),
+      ],
+      error: null,
+    });
 
     const applied = await evaluateMiscSalePromos({
       branchId: 'branch-makati',
@@ -475,27 +349,44 @@ describe('evaluateMiscSalePromos', () => {
       promoId: 'promo-a',
       line: { unit_price: -150 },
     });
+    // Only the promos query - promo_cap_configuration is no longer read.
+    expect(supabase.from).toHaveBeenCalledTimes(1);
   });
 
-  it('still enforces the promo cap across several picks', async () => {
-    queueFromResults(
-      {
-        data: [
-          buildPromoRow({ id: 'promo-a', value: 15 }),
-          buildPromoRow({ id: 'promo-b', value: 5 }),
-        ],
-        error: null,
-      },
-      { data: { cap_type: 'count', cap_value: 1 }, error: null }
-    );
+  it('rejects a picked promo below its promo cap (minimum order)', async () => {
+    queueFromResults({
+      data: [buildPromoRow({ id: 'promo-a', value: 15, min_spend: 1500 })],
+      error: null,
+    });
+
+    await expect(
+      evaluateMiscSalePromos({
+        branchId: 'branch-makati',
+        promoIds: ['promo-a'],
+        subtotal: 1000,
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringContaining('minimum order of PHP 1500.00'),
+    });
+  });
+
+  it('never lets several picked promos take off more than the subtotal', async () => {
+    queueFromResults({
+      data: [
+        buildPromoRow({ id: 'flat-a', discount_type: 'Flat', value: 700 }),
+        buildPromoRow({ id: 'flat-b', discount_type: 'Flat', value: 700 }),
+      ],
+      error: null,
+    });
 
     const applied = await evaluateMiscSalePromos({
       branchId: 'branch-makati',
-      promoIds: ['promo-a', 'promo-b'],
+      promoIds: ['flat-a', 'flat-b'],
       subtotal: 1000,
     });
 
-    expect(applied.map((promo) => promo.promoId)).toEqual(['promo-a']);
+    expect(applied.map((promo) => promo.line.unit_price)).toEqual([-700, -300]);
   });
 
   it("rejects a picked 'specific' scoped promo, since a misc sale has no service/package items", async () => {

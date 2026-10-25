@@ -8,9 +8,15 @@ import {
   updatePromo,
 } from './promos.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import { isFeatureEnabled } from '../../featureFlags/services/featureFlags.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
+}));
+// The coupon spin wheel is an experimental feature - on for these specs
+// unless a test switches it off.
+vi.mock('../../featureFlags/services/featureFlags.service.ts', () => ({
+  isFeatureEnabled: vi.fn().mockResolvedValue(true),
 }));
 
 interface QueryResult {
@@ -342,6 +348,25 @@ describe('promos.service', () => {
       expect(deleteCalled).toBe(true);
     });
 
+    it('saves a promo cap (minimum order) on a Percentage promo', async () => {
+      queueFromResults(
+        { data: DATE_PROMO, error: null }, // existing
+        { data: null, error: null }, // update
+        { data: { ...DATE_PROMO, min_spend: 1000 }, error: null }
+      );
+
+      await updatePromo({
+        requesterId: 'admin-1',
+        promoId: 'promo-1',
+        updates: { min_spend: 1000 },
+      });
+
+      const updateCall = builders
+        .flatMap((builder) => builder.update.mock.calls)
+        .at(0)?.[0];
+      expect(updateCall).toMatchObject({ min_spend: 1000 });
+    });
+
     it('returns 404 for an unknown promo', async () => {
       queueFromResults({ data: null, error: null });
 
@@ -420,6 +445,47 @@ describe('promos.service', () => {
       });
 
       expect(result.map((promo) => promo.id)).toEqual(['promo-1', 'spin-1']);
+    });
+
+    it('listPromos drops spin-wheel promos while the feature is switched off', async () => {
+      vi.mocked(isFeatureEnabled).mockResolvedValueOnce(false);
+      queueFromResults({ data: [DATE_PROMO, SPIN_PROMO], error: null });
+
+      const result = await listPromos({
+        includeInactive: true,
+        includeSpinWheel: true,
+      });
+
+      expect(result.map((promo) => promo.id)).toEqual(['promo-1']);
+    });
+
+    it('refuses to create or edit a spin-wheel promo while the feature is switched off', async () => {
+      vi.mocked(isFeatureEnabled).mockResolvedValue(false);
+
+      await expect(
+        createPromo({
+          requesterId: 'admin-1',
+          input: {
+            name: 'Loyalty Spin',
+            promo_type: 'spin_wheel',
+            spin_wheel: {
+              reward_pool_id: POOL_ID,
+              booking_milestone_interval: 5,
+            },
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      queueFromResults({ data: SPIN_PROMO, error: null }); // existing
+      await expect(
+        updatePromo({
+          requesterId: 'admin-1',
+          promoId: 'spin-1',
+          updates: { name: 'Renamed' },
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      vi.mocked(isFeatureEnabled).mockResolvedValue(true);
     });
 
     it('normalizes a single-element settings array into an object', async () => {

@@ -22,7 +22,6 @@ import type {
   PricingConfiguration,
   Promo,
   PromoBranchAvailability,
-  PromoCapConfiguration,
   Service,
   ServiceBranchAvailability,
   ServiceType,
@@ -37,7 +36,6 @@ import type {
   UpdateServicePayload,
   UpdateServiceTypePayload,
   UpsertPetTypePriceOverridePayload,
-  UpsertPromoCapConfigurationPayload,
 } from '../maintenance.types';
 
 interface MaintenanceApiResult<T> {
@@ -833,48 +831,6 @@ export async function updatePackagePricingConfiguration(
   const result = await parseBody<{
     configuration: PackagePricingConfiguration;
   }>(response);
-  return { data: result.data?.configuration ?? null, error: result.error };
-}
-
-/** Epic B (#84): one row per branch plus one system-wide default (NULL branch_id). */
-export async function listPromoCapConfigurations(
-  accessToken: string
-): Promise<MaintenanceApiResult<PromoCapConfiguration[]>> {
-  const response = await fetch(
-    `${API_BASE_URL}/maintenance/promo-cap-configurations`,
-    { headers: authHeaders(accessToken) }
-  );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ configurations: PromoCapConfiguration[] }>(
-    response
-  );
-  return { data: result.data?.configurations ?? null, error: result.error };
-}
-
-export async function upsertPromoCapConfiguration(
-  accessToken: string,
-  payload: UpsertPromoCapConfigurationPayload
-): Promise<MaintenanceApiResult<PromoCapConfiguration>> {
-  const response = await fetch(
-    `${API_BASE_URL}/maintenance/promo-cap-configurations`,
-    {
-      method: 'PUT',
-      headers: jsonHeaders(accessToken),
-      body: JSON.stringify(payload),
-    }
-  );
-
-  if (!response.ok) {
-    return { data: null, error: await parseError(response) };
-  }
-
-  const result = await parseBody<{ configuration: PromoCapConfiguration }>(
-    response
-  );
   return { data: result.data?.configuration ?? null, error: result.error };
 }
 

@@ -19,14 +19,11 @@ import {
   getCouponsByIds,
   markCouponsRedeemed,
 } from '../../rewards/services/customerCoupons.service.ts';
+import { isFeatureEnabled } from '../../featureFlags/services/featureFlags.service.ts';
 import {
   isDiscountPromo,
   isPromoCurrentlyEligible,
 } from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
-import {
-  applyPromoCap,
-  type PromoCapRow,
-} from '../../../shared/services/promoCap/promoCap.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 import {
   createNotification,
@@ -603,40 +600,6 @@ export async function resolveFreePackageAward(
   return { packageId: pkg.id, packageName: pkg.name, nights };
 }
 
-/**
- * Mirrors billing/discountPromoEvaluation.service.ts's identical
- * getEffectivePromoCap helper - duplicated rather than imported so the
- * booking feature doesn't depend on billing (billing already depends on
- * booking, not the other way around). Returns the raw cap row rather than a
- * pre-computed amount (custom change, promos/coupons multiselect: the
- * actual capping math now lives in the shared applyPromoCap, which needs
- * the cap_type too - a plain amount can't represent a 'count' cap).
- */
-async function getPromoCapRow(branchId: string): Promise<PromoCapRow> {
-  const { data: branchRow, error: branchError } = await supabase
-    .from('promo_cap_configuration')
-    .select('cap_type, cap_value')
-    .eq('branch_id', branchId)
-    .maybeSingle();
-
-  if (branchError) throwWithStatus(400, branchError.message);
-
-  const capRow: PromoCapRow | null =
-    branchRow ??
-    (
-      await supabase
-        .from('promo_cap_configuration')
-        .select('cap_type, cap_value')
-        .is('branch_id', null)
-        .maybeSingle()
-    ).data;
-
-  if (!capRow)
-    throwWithStatus(500, 'No default promo cap configuration row exists');
-
-  return capRow;
-}
-
 /** The share of a booking's price the customer always pays, whatever
  * discount, promos and coupons are selected - together they may take off at
  * most the rest. Mirrored client-side in minPayableShare.ts. */
@@ -788,6 +751,12 @@ export async function resolveDiscountAndPromos(
   const promoIds = input.promo_ids ?? [];
   const couponIds = input.coupon_ids ?? [];
 
+  // Reward coupons come from the coupon spin wheel - paused (not deleted)
+  // while that experimental feature is switched off in Settings.
+  if (couponIds.length > 0 && !(await isFeatureEnabled('spin_wheel'))) {
+    throwWithStatus(400, 'Reward coupons are currently unavailable.');
+  }
+
   if (promoIds.length === 0 && couponIds.length === 0) {
     assertMinimumPayable(totalPrice, discountAmount, 0);
 
@@ -799,13 +768,7 @@ export async function resolveDiscountAndPromos(
     };
   }
 
-  interface PromoCapCandidate {
-    promoId: string | null;
-    couponId: string | null;
-    amount: number;
-  }
-
-  const candidates: PromoCapCandidate[] = [];
+  const promoSelections: PromoSelectionResolution[] = [];
 
   for (const promoId of promoIds) {
     const promo = await getPromoById(promoId);
@@ -850,13 +813,25 @@ export async function resolveDiscountAndPromos(
       );
     }
 
-    const amount = round2(
-      promo.discount_type === 'Percentage'
-        ? (totalPrice * Number(promo.value)) / 100
-        : Math.min(Number(promo.value), totalPrice)
-    );
+    // The promo's own cap (min_spend): the order must reach it before the
+    // promo can be used. Replaces the per-branch promo_cap_configuration,
+    // which is no longer read - once usable, a promo applies in full.
+    if (promo.min_spend != null && totalPrice < Number(promo.min_spend)) {
+      throwWithStatus(
+        400,
+        `Promo "${promo.name}" needs a minimum order of PHP ${Number(promo.min_spend).toFixed(2)}`
+      );
+    }
 
-    candidates.push({ promoId: promo.id, couponId: null, amount });
+    promoSelections.push({
+      promoId: promo.id,
+      couponId: null,
+      appliedAmount: round2(
+        promo.discount_type === 'Percentage'
+          ? (totalPrice * Number(promo.value)) / 100
+          : Math.min(Number(promo.value), totalPrice)
+      ),
+    });
   }
 
   // getCouponsByIds already verifies ownership (customerId), unredeemed and
@@ -864,33 +839,19 @@ export async function resolveDiscountAndPromos(
   // checks above.
   const coupons = await getCouponsByIds(customerId, couponIds);
   for (const coupon of coupons) {
-    const amount = round2(
-      coupon.discount_type === 'Percentage'
-        ? (totalPrice * Number(coupon.value)) / 100
-        : Math.min(Number(coupon.value), totalPrice)
-    );
-
-    candidates.push({ promoId: null, couponId: coupon.id, amount });
+    promoSelections.push({
+      promoId: null,
+      couponId: coupon.id,
+      appliedAmount: round2(
+        coupon.discount_type === 'Percentage'
+          ? (totalPrice * Number(coupon.value)) / 100
+          : Math.min(Number(coupon.value), totalPrice)
+      ),
+    });
   }
 
-  const capRow = await getPromoCapRow(input.branch_id);
-  const capped = applyPromoCap(
-    candidates.map((candidate) => ({
-      key: candidate,
-      amount: candidate.amount,
-    })),
-    capRow,
-    totalPrice
-  );
-
-  const promoSelections: PromoSelectionResolution[] = capped.map(
-    ({ key, amount }) => ({
-      promoId: key.promoId,
-      couponId: key.couponId,
-      appliedAmount: amount,
-    })
-  );
-
+  // No cap trims the selection - assertMinimumPayable below still holds it
+  // to MIN_PAYABLE_SHARE.
   const promoAmount = round2(
     promoSelections.reduce((sum, selection) => sum + selection.appliedAmount, 0)
   );

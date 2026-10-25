@@ -559,6 +559,14 @@ describe('CustomerBookingFlowPage', () => {
     });
   });
 
+  it('never loads reward coupons while the coupon spin wheel is switched off (Settings > Experimental)', async () => {
+    // No FeatureFlagsProvider here - every experimental feature reads as off.
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    expect(rewardsApi.getMyCoupons).not.toHaveBeenCalled();
+  });
+
   it('Custom change (duplicate-booking prevention): a pet with an unresolved booking (any category) stays on the Pet step and never advances', async () => {
     vi.mocked(bookingApi.getPetBookingConflicts).mockResolvedValue({
       data: [
@@ -2714,8 +2722,6 @@ describe('CustomerBookingFlowPage', () => {
           promo('promo-big', 'Big Flat', 200),
           promo('promo-small', 'Small Flat', 30),
         ],
-        // Loose enough that the cap itself doesn't trim the big promo.
-        promoCap: { cap_type: 'flat', cap_value: 1000 },
       },
       error: null,
     } as never);
@@ -2736,7 +2742,7 @@ describe('CustomerBookingFlowPage', () => {
 
     // Promos & Coupons are picked on Review itself - the picker and the
     // Confirm button share the last step, with no step of their own.
-    const bigPromo = await screen.findByRole('checkbox', { name: /Big Flat/ });
+    const bigPromo = await screen.findByRole('radio', { name: /Big Flat/ });
     expect(screen.getByText('Confirm booking')).toBeEnabled();
     expect(
       bookingForm().getByText('Estimated total').parentElement
@@ -2751,11 +2757,9 @@ describe('CustomerBookingFlowPage', () => {
 
     // Picking another promo replaces the first - no stacking - and the
     // total updates on the same screen.
-    await user.click(screen.getByRole('checkbox', { name: /Small Flat/ }));
-    expect(
-      screen.getByRole('checkbox', { name: /Big Flat/ })
-    ).not.toBeChecked();
-    expect(screen.getByRole('checkbox', { name: /Small Flat/ })).toBeChecked();
+    await user.click(screen.getByRole('radio', { name: /Small Flat/ }));
+    expect(screen.getByRole('radio', { name: /Big Flat/ })).not.toBeChecked();
+    expect(screen.getByRole('radio', { name: /Small Flat/ })).toBeChecked();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(
       bookingForm().getByText('Estimated total').parentElement
@@ -2780,6 +2784,82 @@ describe('CustomerBookingFlowPage', () => {
     const sent = JSON.stringify(vi.mocked(bookingApi.createBooking).mock.calls);
     expect(sent).toContain('promo-small');
     expect(sent).not.toContain('promo-big');
+  });
+
+  it('applies a promo in full once its cap (minimum order) is met, and locks one below it - percentage promos included', async () => {
+    const promo = (
+      id: string,
+      name: string,
+      value: number,
+      minSpend: number | null,
+      discountType: 'Flat' | 'Percentage' = 'Flat'
+    ) => ({
+      id,
+      name,
+      promo_type: 'date_range',
+      start_date: null,
+      end_date: null,
+      days_of_week: null,
+      condition_note: null,
+      discount_type: discountType,
+      value,
+      min_spend: minSpend,
+      scope_type: 'all_services',
+      is_active: true,
+      promo_scope: [],
+      promo_branch_availability: [
+        { promo_id: id, branch_id: BRANCH.id, is_available: true },
+      ],
+    });
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, HOTEL_SERVICE],
+        packages: [],
+        promos: [
+          // Cap (minimum order) PHP 300 - the PHP 300 booking meets it.
+          promo('promo-flat', 'Flat Hundred', 100, 300),
+          // A Percentage promo carries a cap too - PHP 1,000 isn't met.
+          promo('promo-locked', 'Big Spender', 10, 1000, 'Percentage'),
+        ],
+      },
+      error: null,
+    } as never);
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToServicesStep(user);
+    await user.click(screen.getByText('Grooming'));
+
+    await waitFor(() => expect(screen.getByText('Bath')).toBeInTheDocument());
+    await user.click(screen.getByText('Bath')); // base_price 300
+    await advanceThroughAvailability(user, { staff: true });
+
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+
+    const locked = await screen.findByRole('radio', { name: /Big Spender/ });
+    expect(locked).toBeDisabled();
+    expect(
+      screen.getByText(
+        /Order ₱700\.00 more to use \(min\.\s+order ₱1,000\.00\)/
+      )
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Flat Hundred/ }));
+    expect(
+      bookingForm().getByText('Estimated total').parentElement
+    ).toHaveTextContent('PHP 200.00');
+
+    // "No promo" clears the pick again.
+    await user.click(screen.getByRole('radio', { name: 'No promo' }));
+    expect(
+      screen.getByRole('radio', { name: /Flat Hundred/ })
+    ).not.toBeChecked();
+    expect(
+      bookingForm().getByText('Estimated total').parentElement
+    ).toHaveTextContent('PHP 300.00');
   });
 
   it('does not restore (or show a banner for) a draft older than 24 hours', async () => {

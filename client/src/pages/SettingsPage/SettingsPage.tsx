@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  FlaskConical,
   Maximize2,
   Shield,
   SlidersHorizontal,
@@ -31,6 +32,7 @@ import { AccountTab } from './tabs/AccountTab';
 import { SecurityTab } from './tabs/SecurityTab';
 import { ConfigTab } from './tabs/ConfigTab';
 import { DangerTab } from './tabs/DangerTab';
+import { ExperimentalTab } from './tabs/ExperimentalTab';
 import {
   BRANCHES_TILE,
   CONFIG_TILES,
@@ -52,6 +54,7 @@ type SettingsTab =
   | 'account'
   | 'security'
   | 'config'
+  | 'experimental'
   | 'danger';
 
 type SidebarSortMode = 'custom' | 'alphabetical' | 'recent';
@@ -62,6 +65,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   account: 'Account',
   security: 'Security',
   config: 'Config',
+  experimental: 'Experimental',
   danger: 'Danger',
 };
 
@@ -71,6 +75,7 @@ const TAB_ICONS: Record<SettingsTab, LucideIcon> = {
   account: UserCog,
   security: Shield,
   config: Wrench,
+  experimental: FlaskConical,
   danger: TriangleAlert,
 };
 
@@ -320,10 +325,21 @@ export function SettingsPage({ role }: SettingsPageProps) {
     if (role === 'customer') {
       return ['profile', 'preferences', 'account', 'security', 'danger'];
     }
+    // Experimental (archived / trial feature switches) is Superadmin-only.
+    if (isSuperadmin) {
+      return [
+        'profile',
+        'preferences',
+        'account',
+        'security',
+        'config',
+        'experimental',
+      ];
+    }
     return isAdmin
       ? ['profile', 'preferences', 'account', 'security', 'config']
       : ['profile', 'preferences', 'account', 'security'];
-  }, [role, isAdmin]);
+  }, [role, isAdmin, isSuperadmin]);
 
   // Falls back to HIDDEN_CONFIG_TILES (e.g. Policies) so a tile that isn't
   // listed in the sidebar/ConfigTab grid can still be navigated to directly
@@ -736,6 +752,9 @@ export function SettingsPage({ role }: SettingsPageProps) {
             />
           ) : null}
           {activeTab === 'danger' && role === 'customer' ? <DangerTab /> : null}
+          {activeTab === 'experimental' && isSuperadmin ? (
+            <ExperimentalTab accessToken={accessToken} />
+          ) : null}
           {activeTab === 'config' && isAdmin ? (
             activeConfigTile ? (
               <activeConfigTile.Component

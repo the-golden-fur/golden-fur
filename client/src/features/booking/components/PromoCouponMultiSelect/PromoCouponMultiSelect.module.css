@@ -1,65 +1,188 @@
 .wrapper {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-}
-
-.fieldset {
-  border: 1px solid var(--border-color, #d9d9d9);
-  border-radius: 8px;
-  padding: 0.75rem;
-}
-
-.legend {
-  font-size: 0.9rem;
-  font-weight: 600;
-  padding: 0 0.25rem;
-}
-
-.filterBar {
-  display: flex;
   gap: 0.75rem;
-  flex-wrap: wrap;
 }
 
-.option {
+.header {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
-  font-size: 0.9rem;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
-.optionText {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.kindTag {
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  background: var(--muted-bg-color, #f0f0f0);
-  color: var(--muted-text-color, #666);
-}
-
-.expiry {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--muted-text-color, #666);
+.title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
 }
 
 .copy {
-  color: var(--muted-text-color, #666);
+  margin: 0;
   font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.empty {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* One bordered group with hairline dividers - rows, not separate cards. */
+.list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  border-top: 1px solid var(--color-border);
+  /* Inset outline so the selected row's gold edge isn't clipped by the
+     group's rounded corners. */
+  box-shadow: inset 0 0 0 2px transparent;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.row:first-child {
+  border-top: none;
+}
+
+.row:hover:not(.rowLocked) {
+  background: var(--color-bg-secondary);
+}
+
+.rowSelected {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-gold-highlight) 12%,
+    var(--color-surface)
+  );
+  box-shadow: inset 0 0 0 2px var(--color-accent-gold-primary);
+}
+
+.rowSelected:hover {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-gold-highlight) 16%,
+    var(--color-surface)
+  );
+}
+
+.rowLocked {
+  cursor: not-allowed;
+}
+
+.rowLocked .name,
+.rowLocked .amount {
+  color: var(--color-text-muted);
+}
+
+.radio {
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  accent-color: var(--color-accent-gold-primary);
+}
+
+.radio:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.details {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.kindTag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-accent-gold-link);
+}
+
+.lockNote {
+  color: var(--color-text-secondary);
+}
+
+.amount {
+  flex-shrink: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.noneRow .name {
+  font-weight: 500;
+  color: var(--color-text-secondary);
 }
 
 .total {
-  font-weight: 700;
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+}
+
+.total strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+/* Narrow phones: the saving drops under the name instead of squeezing it. */
+@media (max-width: 420px) {
+  .row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .radio {
+    margin-top: 0.15rem;
+  }
+
+  .amount {
+    flex-basis: 100%;
+    padding-left: 1.85rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    transition: none;
+  }
 }

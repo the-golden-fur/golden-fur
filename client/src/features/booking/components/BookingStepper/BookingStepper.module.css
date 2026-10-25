@@ -47,8 +47,30 @@
   color: var(--color-text-primary);
 }
 
+/* A completed step gets a soft green fill - the success token mixed low over
+   the surface, so it reads as "done" without competing with the gold
+   current step. */
 .stepButton.done {
+  border-color: color-mix(
+    in srgb,
+    var(--color-success-text) 35%,
+    var(--color-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--color-success-text) 12%,
+    var(--color-surface)
+  );
   color: var(--color-text-primary);
+}
+
+.stepButton.done .stepNumber {
+  background: color-mix(
+    in srgb,
+    var(--color-success-text) 22%,
+    var(--color-surface)
+  );
+  color: var(--color-success-text);
 }
 
 .stepNumber {

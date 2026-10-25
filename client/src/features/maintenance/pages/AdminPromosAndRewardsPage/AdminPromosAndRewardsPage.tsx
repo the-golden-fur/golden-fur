@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AdminPromoConfigPage } from '../AdminPromoConfigPage/AdminPromoConfigPage';
 import { AdminRewardsPage } from '../../../rewards/pages/AdminRewardsPage/AdminRewardsPage';
 import { AdminRewardPoolsPage } from '../../../rewards/pages/AdminRewardPoolsPage/AdminRewardPoolsPage';
+import { useFeatureFlag } from '../../../../shared/providers/FeatureFlagsProvider/FeatureFlagsContext';
 import styles from './AdminPromosAndRewardsPage.module.css';
 
 type Section = 'promos' | 'rewards' | 'reward-pools';
@@ -35,32 +36,42 @@ const SECTION_LABELS: Record<Section, string> = {
  * on the same risk.
  */
 export function AdminPromosAndRewardsPage() {
-  const [activeSection, setActiveSection] = useState<Section>('promos');
+  const [pickedSection, setActiveSection] = useState<Section>('promos');
+  // Rewards and Reward Pools belong to the coupon spin wheel, an
+  // experimental feature (Settings > Experimental). While it's off only
+  // Promos is left, so there's no tab bar to show.
+  const spinWheelOn = useFeatureFlag('spin_wheel');
+  const sections = spinWheelOn ? SECTIONS : (['promos'] as Section[]);
+  const activeSection = sections.includes(pickedSection)
+    ? pickedSection
+    : 'promos';
 
   return (
     <main className={styles.page}>
-      <div
-        className={styles.tabList}
-        role="tablist"
-        aria-label="Promos and Rewards sections"
-      >
-        {SECTIONS.map((section) => (
-          <button
-            key={section}
-            type="button"
-            role="tab"
-            aria-selected={activeSection === section}
-            className={
-              activeSection === section
-                ? `${styles.tab} ${styles.tabActive}`
-                : styles.tab
-            }
-            onClick={() => setActiveSection(section)}
-          >
-            {SECTION_LABELS[section]}
-          </button>
-        ))}
-      </div>
+      {sections.length > 1 ? (
+        <div
+          className={styles.tabList}
+          role="tablist"
+          aria-label="Promos and Rewards sections"
+        >
+          {sections.map((section) => (
+            <button
+              key={section}
+              type="button"
+              role="tab"
+              aria-selected={activeSection === section}
+              className={
+                activeSection === section
+                  ? `${styles.tab} ${styles.tabActive}`
+                  : styles.tab
+              }
+              onClick={() => setActiveSection(section)}
+            >
+              {SECTION_LABELS[section]}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {activeSection === 'promos' ? <AdminPromoConfigPage /> : null}
       {activeSection === 'rewards' ? <AdminRewardsPage /> : null}
