@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { seedTempTransactions } from './temp-demo.transactions.ts';
 import { seedTempClinical } from './temp-demo.clinical.ts';
+import { seedTempRoleDemo } from './temp-demo.roles.ts';
 
 config({ path: 'server/.env' });
 
@@ -160,6 +161,7 @@ export async function seedTempDemo(supabase: SupabaseClient) {
 
   await seedTempTransactions(supabase);
   await seedTempClinical(supabase);
+  await seedTempRoleDemo(supabase);
 }
 
 export function resolveSeedUrl(
@@ -234,6 +236,8 @@ function getLinkedServiceRoleKey(projectRef: string): string {
 
 async function main() {
   const useLinkedProject = process.argv.includes('--supabase-linked');
+  // Only the Groomer/Front Desk rows (temp-demo.roles.ts).
+  const rolesOnly = process.argv.includes('--roles-only');
   let linkedProjectRef: string | undefined;
 
   if (useLinkedProject) {
@@ -274,6 +278,12 @@ async function main() {
   const supabase = createClient(url, serviceKey, {
     auth: { persistSession: false },
   });
+
+  if (rolesOnly) {
+    await seedTempRoleDemo(supabase);
+    console.info('Temp Groomer/Front Desk demo data seeded.');
+    return;
+  }
 
   await seedTempDemo(supabase);
   console.info('Temp demo data seeded.');
