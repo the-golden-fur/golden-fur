@@ -119,18 +119,6 @@ export interface PetWeightClassConfiguration {
   updated_at: string;
 }
 
-export type CapType = 'percentage' | 'flat';
-
-/** Epic B (#84): per-branch (NULL = both branches) promo cap. */
-export interface PromoCapConfiguration {
-  id: string;
-  branch_id: string | null;
-  cap_type: CapType;
-  cap_value: number;
-  updated_by_staff_id: string | null;
-  updated_at: string;
-}
-
 export interface ServiceBranchAvailability {
   service_id: string;
   branch_id: string;
@@ -448,6 +436,10 @@ export interface Promo {
    * promo has no discount of its own; its pool's rewards do. */
   discount_type: DiscountValueType | null;
   value: number | null;
+  /** The promo cap: the minimum booking subtotal needed to use this promo,
+   * any discount type. null = no cap. Replaces the per-branch
+   * promo_cap_configuration. */
+  min_spend: number | null;
   scope_type: PromoScopeType | null;
   /**
    * Deliberately NOT derived from promo_branch_availability - unlike

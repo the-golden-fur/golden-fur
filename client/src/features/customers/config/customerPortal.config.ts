@@ -45,3 +45,16 @@ export const CUSTOMER_SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
 ];
+
+/** "My Rewards" is part of the coupon spin wheel, an experimental feature
+ * (Settings > Experimental) - left out of the nav while it's switched off. */
+export function customerSidebarSections(
+  spinWheelOn: boolean
+): SidebarSection[] {
+  if (spinWheelOn) return CUSTOMER_SIDEBAR_SECTIONS;
+
+  return CUSTOMER_SIDEBAR_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => item.to !== '/portal/rewards'),
+  }));
+}

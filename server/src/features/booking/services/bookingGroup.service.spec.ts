@@ -330,7 +330,6 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       { data: PET, error: null }, // sub1 pet ownership
       { data: [], error: null }, // sub1 Daycare pre-insert capacity check
       { data: PET_B, error: null }, // sub2 pet ownership
-      { data: { cap_type: 'flat', cap_value: 1000 }, error: null }, // promo cap
       { data: groupRow({}), error: null }, // booking_groups insert
       { data: null, error: null }, // booking_promo_selections insert
       {

@@ -32,7 +32,6 @@ const SPIN_LOGIN_TRIGGERS = [
   'weekly_login_streak',
   'monthly_login_streak',
 ] as const;
-const CAP_TYPES = ['percentage', 'flat', 'count'] as const;
 const PRICING_RULE_TYPES = ['multiplier', 'flat', 'percentage'] as const;
 
 /** Custom change (Architectural-Change-History): the curated Lucide icon
@@ -337,29 +336,6 @@ export const updatePackagePricingConfigurationValidator = z
     bundle_discount_percentage: z.number().min(0).max(1),
   })
   .strict();
-
-/**
- * Epic B (#84): branch_id null/omitted targets the system-wide default cap,
- * matching promo_cap_configuration's NULL-branch convention.
- */
-export const upsertPromoCapConfigurationValidator = z
-  .object({
-    branch_id: z.uuid().nullable().optional(),
-    cap_type: z.enum(CAP_TYPES),
-    cap_value: z.number().nonnegative(),
-  })
-  .strict()
-  .superRefine((input, ctx) => {
-    // A 'count' cap limits how many promos may combine - a fractional promo
-    // makes no sense, unlike a percentage/flat monetary cap_value.
-    if (input.cap_type === 'count' && !Number.isInteger(input.cap_value)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['cap_value'],
-        message: 'A count cap_value must be a whole number of promos',
-      });
-    }
-  });
 
 export const branchAvailabilityValidator = z
   .object({
@@ -725,8 +701,8 @@ function validatePromoShape(
 }
 
 /**
- * Epic B (#84): is_exclusive is dropped - combinability is now governed
- * globally by promo_cap_configuration, not declared per promo.
+ * Epic B (#84): is_exclusive is dropped - a booking carries one promo at
+ * most, and each promo's own cap is its min_spend (minimum order).
  */
 /** Custom change: branch_ids replaces the old branch_scope enum
  * ('makati'/'southwoods'/'both') - mirrors createPackageValidator/
@@ -747,6 +723,7 @@ export const createPromoValidator = z
     // superRefine below rather than here so the error names the field.
     discount_type: z.enum(DISCOUNT_TYPES).optional(),
     value: z.number().nonnegative().optional(),
+    min_spend: z.number().nonnegative().nullable().optional(),
     scope_type: z.enum(PROMO_SCOPE_TYPES).optional(),
     scope: z.array(promoScopeItemValidator).optional(),
     branch_ids: z.array(z.uuid()).optional(),
@@ -761,6 +738,7 @@ export const createPromoValidator = z
       for (const field of [
         'discount_type',
         'value',
+        'min_spend',
         'scope_type',
         'scope',
         'branch_ids',
@@ -856,6 +834,7 @@ export const updatePromoValidator = z
     condition_note: z.string().trim().min(1).nullable().optional(),
     discount_type: z.enum(DISCOUNT_TYPES).optional(),
     value: z.number().nonnegative().optional(),
+    min_spend: z.number().nonnegative().nullable().optional(),
     scope_type: z.enum(PROMO_SCOPE_TYPES).optional(),
     scope: z.array(promoScopeItemValidator).optional(),
     is_active: z.boolean().optional(),
@@ -972,9 +951,6 @@ export type UpdatePackagePricingConfigurationInput = z.infer<
 >;
 export type UpdatePetWeightClassConfigurationInput = z.infer<
   typeof updatePetWeightClassConfigurationValidator
->;
-export type UpsertPromoCapConfigurationInput = z.infer<
-  typeof upsertPromoCapConfigurationValidator
 >;
 export type CreatePetTypeInput = z.infer<typeof createPetTypeValidator>;
 export type UpdatePetTypeInput = z.infer<typeof updatePetTypeValidator>;

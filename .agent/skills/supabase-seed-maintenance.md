@@ -52,7 +52,9 @@ The seed VS Code tasks are `🌱 Seed: All Modules` (runs `seed:all` against
 `service_types` + `service_type_branch_availability` (`20260809113`,
 `20260818133`), `policy_configurations` defaults, `promo_cap_configuration`
 default row, `pricing_configuration`, `landing_content` + `landing_sections` +
-`landing_reviews` (the editable landing page, `20261017272`).
+`landing_reviews` (the editable landing page, `20261017272`),
+`feature_flags` (Settings > Experimental switches, `20261025281` - one row
+per flag, `spin_wheel` off by default).
 
 **App-only — do NOT seed** (state machines + triggers must stay honest):
 `bookings`, `booking_items`, `transactions`, `transaction_line_items`,

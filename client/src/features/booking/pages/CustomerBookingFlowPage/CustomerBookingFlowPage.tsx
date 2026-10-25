@@ -96,12 +96,13 @@ import type { Discount } from '../../../discounts/discounts.types';
 import { getMyCoupons } from '../../../rewards/api/rewards.api';
 import type { CustomerCoupon } from '../../../rewards/rewards.types';
 import { isPromoCurrentlyEligible } from '../../../../shared/utils/promoEligibility';
-import { applyPromoCap } from '../../utils/applyPromoCap';
 import {
   REDUCTION_LIMIT_MESSAGE,
   exceedsReductionLimit,
 } from '../../utils/minPayableShare';
 import { PromoCouponMultiSelect } from '../../components/PromoCouponMultiSelect/PromoCouponMultiSelect';
+import { promoMinSpendShortfall } from '../../utils/promoMinSpend';
+import { useFeatureFlag } from '../../../../shared/providers/FeatureFlagsProvider/FeatureFlagsContext';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import {
   getDayOneMinTime,
@@ -875,13 +876,20 @@ export function CustomerBookingFlowPage() {
   const [promos, setPromos] = useState<Promo[]>([]);
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [myCoupons, setMyCoupons] = useState<CustomerCoupon[]>([]);
-  const [promoCap, setPromoCap] = useState<{
-    cap_type: 'percentage' | 'flat' | 'count';
-    cap_value: number;
-  }>({ cap_type: 'percentage', cap_value: 20 });
   // Multiselect (session 86): replaces the old singular selectedPromoId.
-  const [selectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
-  const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
+  // What was picked; selectedPromoIds (derived below, once the subtotal is
+  // known) drops a promo whose cap (minimum order) is no longer met.
+  const [rawSelectedPromoIds, setSelectedPromoIds] = useState<string[]>([]);
+  const [rawSelectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
+  // Reward coupons come from the coupon spin wheel, an experimental feature
+  // (Settings > Experimental): while it's off none count - a coupon picked
+  // earlier (e.g. in a restored draft) is never sent, and comes back as
+  // picked if the feature is turned on again.
+  const spinWheelOn = useFeatureFlag('spin_wheel');
+  const selectedCouponIds = useMemo(
+    () => (spinWheelOn ? rawSelectedCouponIds : []),
+    [spinWheelOn, rawSelectedCouponIds]
+  );
   const [selectedDiscountId, setSelectedDiscountId] = useState('');
   // Payment scheme: only sent when the branch requires a down payment (see
   // showPaymentChoice). Decides the size of the booking's initial charge.
@@ -1197,7 +1205,6 @@ export function CustomerBookingFlowPage() {
       setPackages(result.data.packages);
       setPromos(result.data.promos);
       setPetTypeFixedPrice(result.data.fixedPrice);
-      if (result.data.promoCap) setPromoCap(result.data.promoCap);
     });
 
     return () => {
@@ -1254,8 +1261,10 @@ export function CustomerBookingFlowPage() {
   // customer being
   // booked FOR (effectiveCustomerId), not the logged-in staff member, same
   // resolution every other customer-scoped fetch on this page already uses.
+  // Skipped entirely while the coupon spin wheel is switched off (Settings >
+  // Experimental) - the server 404s the call then anyway.
   useEffect(() => {
-    if (!accessToken || !effectiveCustomerId) return;
+    if (!accessToken || !effectiveCustomerId || !spinWheelOn) return;
 
     let isMounted = true;
 
@@ -1267,7 +1276,7 @@ export function CustomerBookingFlowPage() {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, effectiveCustomerId]);
+  }, [accessToken, effectiveCustomerId, spinWheelOn]);
 
   // ---- Draft autosave/restore ----
 
@@ -1372,8 +1381,8 @@ export function CustomerBookingFlowPage() {
         selectedSlot,
         hotelNights,
         daycareHours,
-        selectedPromoIds,
-        selectedCouponIds,
+        selectedPromoIds: rawSelectedPromoIds,
+        selectedCouponIds: rawSelectedCouponIds,
         selectedDiscountId,
         paymentChoice,
         specialInstructions,
@@ -1403,8 +1412,8 @@ export function CustomerBookingFlowPage() {
     selectedSlot,
     hotelNights,
     daycareHours,
-    selectedPromoIds,
-    selectedCouponIds,
+    rawSelectedPromoIds,
+    rawSelectedCouponIds,
     selectedDiscountId,
     paymentChoice,
     specialInstructions,
@@ -2066,19 +2075,37 @@ export function CustomerBookingFlowPage() {
   // rewards - unscoped (apply like scope_type='all_services'), shown
   // alongside applicablePromos in the new Promos & Coupons multiselect step.
   const applicableCoupons = useMemo(() => {
+    // None while the coupon spin wheel is switched off - including coupons
+    // fetched before it was switched off in this session.
+    if (!spinWheelOn) return [];
+
     const now = new Date();
     return myCoupons.filter(
       (coupon) =>
         !coupon.is_redeemed &&
         (!coupon.expires_at || new Date(coupon.expires_at) > now)
     );
-  }, [myCoupons]);
+  }, [myCoupons, spinWheelOn]);
 
-  // Multiselect (session 86): every SELECTED promo/coupon's raw amount, run
-  // through the same cap-application math the server applies authoritatively
-  // at submit (resolveDiscountAndPromos) - this is a preview only.
-  const promoCouponCandidates = useMemo(() => {
-    const promoCandidates = selectedPromoIds
+  // A picked promo stops counting if the subtotal later drops below its cap
+  // (minimum order - e.g. a service removed after going back a step) - derived
+  // here rather than cleared in an effect, so it's never sent to the server
+  // to be refused at submit.
+  const selectedPromoIds = useMemo(
+    () =>
+      rawSelectedPromoIds.filter((id) => {
+        const promo = applicablePromos.find((candidate) => candidate.id === id);
+        return !promo || promoMinSpendShortfall(promo, groupSubtotal) === 0;
+      }),
+    [rawSelectedPromoIds, applicablePromos, groupSubtotal]
+  );
+
+  // Every SELECTED promo/coupon's amount, the same math the server applies
+  // authoritatively at submit (resolveDiscountAndPromos) - in full, since a
+  // promo's own cap is its minimum order (already applied to
+  // selectedPromoIds above) rather than a trim. A preview only.
+  const promoSelections = useMemo(() => {
+    const promoAmounts = selectedPromoIds
       .map((id) => applicablePromos.find((promo) => promo.id === id))
       .filter((promo): promo is Promo => Boolean(promo))
       .map((promo) => ({
@@ -2089,7 +2116,7 @@ export function CustomerBookingFlowPage() {
             : Math.min(Number(promo.value ?? 0), groupSubtotal),
       }));
 
-    const couponCandidates = selectedCouponIds
+    const couponAmounts = selectedCouponIds
       .map((id) => applicableCoupons.find((coupon) => coupon.id === id))
       .filter((coupon): coupon is CustomerCoupon => Boolean(coupon))
       .map((coupon) => ({
@@ -2100,7 +2127,7 @@ export function CustomerBookingFlowPage() {
             : Math.min(coupon.value, groupSubtotal),
       }));
 
-    return [...promoCandidates, ...couponCandidates];
+    return [...promoAmounts, ...couponAmounts];
   }, [
     selectedPromoIds,
     selectedCouponIds,
@@ -2109,17 +2136,7 @@ export function CustomerBookingFlowPage() {
     groupSubtotal,
   ]);
 
-  const cappedPromoSelections = useMemo(
-    () =>
-      applyPromoCap<{ kind: 'promo' | 'coupon'; id: string }>(
-        promoCouponCandidates,
-        promoCap,
-        groupSubtotal
-      ),
-    [promoCouponCandidates, promoCap, groupSubtotal]
-  );
-
-  const promoDiscount = cappedPromoSelections.reduce(
+  const promoDiscount = promoSelections.reduce(
     (sum, selection) => sum + selection.amount,
     0
   );
@@ -4913,7 +4930,7 @@ export function CustomerBookingFlowPage() {
                   <span>-PHP {discountAmount.toFixed(2)}</span>
                 </div>
               ) : null}
-              {cappedPromoSelections.map((selection) => {
+              {promoSelections.map((selection) => {
                 const label =
                   selection.key.kind === 'promo'
                     ? (applicablePromos.find((p) => p.id === selection.key.id)
@@ -5000,45 +5017,64 @@ export function CustomerBookingFlowPage() {
             ) : null}
 
             {showPaymentChoice ? (
-              <fieldset className={styles.field}>
-                <legend className={styles.fieldLabel}>Payment scheme</legend>
-                {downpaymentRequired ? (
-                  <label className={styles.radioOption}>
-                    <input
-                      type="radio"
-                      name="paymentChoice"
-                      checked={effectivePaymentChoice === 'downpayment'}
-                      onChange={() => setPaymentChoice('downpayment')}
-                    />
-                    Downpayment - PHP {(downpaymentAmount ?? 0).toFixed(2)} now,
-                    PHP{' '}
-                    {Math.max(
-                      0,
-                      estimatedTotal - (downpaymentAmount ?? 0)
-                    ).toFixed(2)}{' '}
-                    remaining balance
-                  </label>
-                ) : null}
-                <label className={styles.radioOption}>
-                  <input
-                    type="radio"
-                    name="paymentChoice"
-                    checked={effectivePaymentChoice === 'full'}
-                    onChange={() => setPaymentChoice('full')}
-                  />
-                  Full payment - PHP {estimatedTotal.toFixed(2)}
-                </label>
-                {payAtCheckoutAvailable ? (
-                  <label className={styles.radioOption}>
-                    <input
-                      type="radio"
-                      name="paymentChoice"
-                      checked={payingAtCheckout}
-                      onChange={() => setPaymentChoice('pay_at_checkout')}
-                    />
-                    Pay at checkout - nothing now, billed for the actual stay
-                  </label>
-                ) : null}
+              <fieldset className={styles.choiceGroup}>
+                <legend className={styles.choiceLegend}>Payment scheme</legend>
+                <div className={styles.choiceList}>
+                  {[
+                    ...(downpaymentRequired
+                      ? [
+                          {
+                            value: 'downpayment' as const,
+                            title: 'Downpayment',
+                            // Amounts stay inside the sentence - a bare
+                            // "PHP 100.00" would echo the pricing box above.
+                            hint: `PHP ${(downpaymentAmount ?? 0).toFixed(2)} first, then PHP ${Math.max(
+                              0,
+                              estimatedTotal - (downpaymentAmount ?? 0)
+                            ).toFixed(2)} remaining balance.`,
+                          },
+                        ]
+                      : []),
+                    {
+                      value: 'full' as const,
+                      title: 'Full payment',
+                      hint: `PHP ${estimatedTotal.toFixed(2)} in one payment.`,
+                    },
+                    ...(payAtCheckoutAvailable
+                      ? [
+                          {
+                            value: 'pay_at_checkout' as const,
+                            title: 'Pay at checkout',
+                            hint: 'Nothing now - billed for the actual stay.',
+                          },
+                        ]
+                      : []),
+                  ].map((option) => {
+                    const checked = effectivePaymentChoice === option.value;
+                    return (
+                      <label
+                        key={option.value}
+                        className={`${styles.choiceRow} ${checked ? styles.choiceRowSelected : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentChoice"
+                          className={styles.choiceRadio}
+                          checked={checked}
+                          onChange={() => setPaymentChoice(option.value)}
+                        />
+                        <span className={styles.choiceText}>
+                          <span className={styles.choiceTitle}>
+                            {option.title}
+                          </span>
+                          <span className={styles.choiceHint}>
+                            {option.hint}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
               </fieldset>
             ) : null}
 
@@ -5075,23 +5111,21 @@ export function CustomerBookingFlowPage() {
             {/* Promos & Coupons are picked right here, next to the totals
                 they change - they used to be a step of their own just
                 before this one. */}
-            <div className={styles.field}>
-              <span className={styles.fieldLabel}>Promos &amp; Coupons</span>
-              <p className={styles.copy}>
-                Choose one promo or coupon - only one can be used per booking.
-              </p>
-              <PromoCouponMultiSelect
-                promos={applicablePromos}
-                coupons={applicableCoupons}
-                selectedPromoIds={selectedPromoIds}
-                selectedCouponIds={selectedCouponIds}
-                onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
-                onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
-                cap={promoCap}
-                cappedTotal={promoDiscount}
-                groupSubtotal={groupSubtotal}
-              />
-            </div>
+            <PromoCouponMultiSelect
+              promos={applicablePromos}
+              coupons={applicableCoupons}
+              selectedPromoIds={selectedPromoIds}
+              selectedCouponIds={selectedCouponIds}
+              onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
+              onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
+              onClear={() => {
+                setSelectedPromoIds([]);
+                setSelectedCouponIds([]);
+              }}
+              cappedTotal={promoDiscount}
+              groupSubtotal={groupSubtotal}
+              couponsEnabled={spinWheelOn}
+            />
 
             {reductionOverLimit ? (
               <p className={styles.errorBanner} role="alert">

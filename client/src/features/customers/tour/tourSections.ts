@@ -128,3 +128,22 @@ export const TOUR_SECTIONS: TourSection[] = [
     ],
   },
 ];
+
+/** The "My Rewards" step points at a nav item that's hidden while the coupon
+ * spin wheel (an experimental feature) is switched off - left out then, and
+ * its section is titled for what's left. */
+export function tourSectionsFor(spinWheelOn: boolean): TourSection[] {
+  if (spinWheelOn) return TOUR_SECTIONS;
+
+  return TOUR_SECTIONS.map((section) =>
+    section.id === 'payments'
+      ? {
+          ...section,
+          title: 'Payments',
+          steps: section.steps.filter(
+            (step) => step.target !== 'nav:/portal/rewards'
+          ),
+        }
+      : section
+  );
+}

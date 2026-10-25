@@ -2,25 +2,23 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { LayoutGrid, List as ListIcon, Table as TableIcon } from 'lucide-react';
 import { Link, Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { useFeatureFlag } from '../../../../shared/providers/FeatureFlagsProvider/FeatureFlagsContext';
 import { listStaff } from '../../../staff/api/staff.api';
 import {
   archivePromo,
   createPromo,
   listBranches,
   listPackages,
-  listPromoCapConfigurations,
   listPromos,
   listServices,
   setPromoBranchAvailability,
   updatePromo,
-  upsertPromoCapConfiguration,
 } from '../../api/maintenance.api';
 import {
   ServiceMultiSelect,
   type ServiceMultiSelectOption,
 } from '../../components/ServiceMultiSelect/ServiceMultiSelect';
 import { PromoCard } from '../../components/PromoCard/PromoCard';
-import { PromoCapCard } from '../../components/PromoCapCard/PromoCapCard';
 import { DataList } from '../../../../shared/components/DataList/DataList';
 import {
   DataTable,
@@ -45,8 +43,6 @@ import {
   type ViewSwitcherOption,
 } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
 import { BranchMultiSelect } from '../../components/BranchMultiSelect/BranchMultiSelect';
-import { PromoCapBrowser } from '../../components/PromoCapBrowser/PromoCapBrowser';
-import type { CapRow } from '../../components/PromoCapBrowser/promoCapBrowserFields';
 import { DayOfWeekPicker } from '../../components/DayOfWeekPicker/DayOfWeekPicker';
 import { SpinWheelPromoFields } from '../../components/SpinWheelPromoFields/SpinWheelPromoFields';
 import { listRewardPools } from '../../../rewards/api/rewards.api';
@@ -69,11 +65,9 @@ import {
 } from './promoBrowserFields';
 import type {
   BranchSummary,
-  CapType,
   DiscountValueType,
   Package,
   Promo,
-  PromoCapConfiguration,
   PromoScopeInput,
   PromoScopeType,
   PromoType,
@@ -148,6 +142,9 @@ function scopeToCompositeIds(promo: Promo): string[] {
 
 export function AdminPromoConfigPage() {
   const { user, accessToken } = useAuth();
+  // The coupon spin wheel promo type is an experimental feature (Settings >
+  // Experimental) - hidden, and its promos left out, while it's off.
+  const spinWheelOn = useFeatureFlag('spin_wheel');
 
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [viewerBranchId, setViewerBranchId] = useState<string | null>(null);
@@ -183,6 +180,8 @@ export function AdminPromoConfigPage() {
   const [formDiscountType, setFormDiscountType] =
     useState<DiscountValueType>('Percentage');
   const [formValue, setFormValue] = useState('');
+  // The promo cap (minimum order) - '' means no cap.
+  const [formMinSpend, setFormMinSpend] = useState('');
   const [formStartDate, setFormStartDate] = useState('');
   const [formEndDate, setFormEndDate] = useState('');
   const [formScopeType, setFormScopeType] =
@@ -198,18 +197,7 @@ export function AdminPromoConfigPage() {
     useState<SpinWheelFormState>(emptySpinWheelForm);
   const [rewardPools, setRewardPools] = useState<RewardPool[]>([]);
 
-  const [capBranches, setCapBranches] = useState<BranchSummary[]>([]);
-  const [capConfigurations, setCapConfigurations] = useState<
-    PromoCapConfiguration[]
-  >([]);
-  const [capLoadError, setCapLoadError] = useState<string | null>(null);
-  const [savingCapScopeKey, setSavingCapScopeKey] = useState<string | null>(
-    null
-  );
-  const [capMessage, setCapMessage] = useState<string | null>(null);
-  const [configuringCapBranchId, setConfiguringCapBranchId] = useState<
-    string | null
-  >(null);
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
 
   // Viewer role via the requester's own row in GET /staff, same as the other
   // admin pages.
@@ -252,13 +240,17 @@ export function AdminPromoConfigPage() {
     void Promise.all([
       listPromos(accessToken, {
         includeInactive: true,
-        includeSpinWheel: true,
+        // Spin-wheel promos (and their reward pools) only while the coupon
+        // spin wheel is switched on in Settings > Experimental.
+        includeSpinWheel: spinWheelOn,
       }),
       // Active only - a promo should not offer a deactivated service/package
       // as a new scope target.
       listServices(accessToken),
       listPackages(accessToken),
-      listRewardPools(accessToken),
+      spinWheelOn
+        ? listRewardPools(accessToken)
+        : Promise.resolve({ data: [] as RewardPool[], error: null }),
     ]).then(([promosResult, servicesResult, packagesResult, poolsResult]) => {
       if (!isMounted) {
         return;
@@ -280,7 +272,7 @@ export function AdminPromoConfigPage() {
     return () => {
       isMounted = false;
     };
-  }, [accessToken, isAllowedViewer]);
+  }, [accessToken, isAllowedViewer, spinWheelOn]);
 
   useEffect(() => {
     if (!accessToken || !isAllowedViewer) {
@@ -289,22 +281,13 @@ export function AdminPromoConfigPage() {
 
     let isMounted = true;
 
-    void Promise.all([
-      listBranches(),
-      listPromoCapConfigurations(accessToken),
-    ]).then(([branchesResult, capResult]) => {
+    // Branches feed the Branch filter and each promo's "Available at" picker.
+    void listBranches().then((branchesResult) => {
       if (!isMounted) {
         return;
       }
 
-      if (capResult.error || !capResult.data) {
-        setCapLoadError(capResult.error ?? 'Could not load the promo cap.');
-        return;
-      }
-
-      setCapLoadError(null);
-      setCapBranches(branchesResult.data ?? []);
-      setCapConfigurations(capResult.data);
+      setBranches(branchesResult.data ?? []);
     });
 
     return () => {
@@ -312,56 +295,9 @@ export function AdminPromoConfigPage() {
     };
   }, [accessToken, isAllowedViewer]);
 
-  const handleSaveCap = async (
-    branchId: string,
-    input: { cap_type: CapType; cap_value: number }
-  ) => {
-    if (!accessToken) {
-      return;
-    }
-
-    setSavingCapScopeKey(branchId);
-
-    const result = await upsertPromoCapConfiguration(accessToken, {
-      branch_id: branchId,
-      ...input,
-    });
-
-    setSavingCapScopeKey(null);
-
-    if (result.error || !result.data) {
-      setCapMessage(result.error ?? 'Could not update the promo cap.');
-      return;
-    }
-
-    const saved = result.data;
-    setCapConfigurations((prev) => {
-      const exists = prev.some(
-        (config) => config.branch_id === saved.branch_id
-      );
-      return exists
-        ? prev.map((config) =>
-            config.branch_id === saved.branch_id ? saved : config
-          )
-        : [...prev, saved];
-    });
-    setCapMessage('Promo cap updated.');
-    setConfiguringCapBranchId(null);
-  };
-
-  const capRows: CapRow[] = capBranches.map((branch) => ({
-    branchId: branch.id,
-    branchName: branch.name,
-    config: capConfigurations.find((config) => config.branch_id === branch.id),
-  }));
-
-  const configuringCapRow = capRows.find(
-    (row) => row.branchId === configuringCapBranchId
-  );
-
   const promoFilterFields = useMemo(
-    () => buildPromoFilterFields(capBranches),
-    [capBranches]
+    () => buildPromoFilterFields(branches),
+    [branches]
   );
 
   const filteredPromos = useMemo(() => {
@@ -455,6 +391,7 @@ export function AdminPromoConfigPage() {
     setFormName('');
     setFormDiscountType('Percentage');
     setFormValue('');
+    setFormMinSpend('');
     setFormStartDate('');
     setFormEndDate('');
     setFormScopeType('all_services');
@@ -475,6 +412,7 @@ export function AdminPromoConfigPage() {
     setFormName(promo.name);
     setFormDiscountType(promo.discount_type ?? 'Percentage');
     setFormValue(promo.value != null ? String(promo.value) : '');
+    setFormMinSpend(promo.min_spend != null ? String(promo.min_spend) : '');
     setFormStartDate(promo.start_date ?? '');
     setFormEndDate(promo.end_date ?? '');
     setFormScopeType(promo.scope_type ?? 'all_services');
@@ -510,7 +448,7 @@ export function AdminPromoConfigPage() {
     }
 
     const rows = promo.promo_branch_availability ?? [];
-    const changedBranches = capBranches.filter((branch) => {
+    const changedBranches = branches.filter((branch) => {
       const current =
         rows.find((row) => row.branch_id === branch.id)?.is_available ?? false;
       const next = selectedBranchIds.includes(branch.id);
@@ -756,6 +694,15 @@ export function AdminPromoConfigPage() {
       return;
     }
 
+    // The promo cap (minimum order) - '' sends null, which clears any
+    // stored one.
+    const minSpend = formMinSpend !== '' ? Number(formMinSpend) : null;
+
+    if (minSpend !== null && minSpend < 0) {
+      setFormError('The promo cap cannot be negative.');
+      return;
+    }
+
     if (formPromoType === 'date_range') {
       if (formStartDate === '' || formEndDate === '') {
         setFormError('A promo needs both a start and end date.');
@@ -797,6 +744,7 @@ export function AdminPromoConfigPage() {
           : { start_date: formStartDate, end_date: formEndDate }),
         discount_type: formDiscountType,
         value,
+        min_spend: minSpend,
         scope_type: formScopeType,
         ...(formScopeType === 'specific' ? { scope } : {}),
         branch_ids: formBranchIds,
@@ -831,6 +779,7 @@ export function AdminPromoConfigPage() {
       condition_note: null,
       discount_type: formDiscountType,
       value,
+      min_spend: minSpend,
       scope_type: formScopeType,
       scope,
     });
@@ -979,17 +928,22 @@ export function AdminPromoConfigPage() {
                   />{' '}
                   Weekly recurring - active on chosen days of the week
                 </label>
-                <br />
-                <label>
-                  <input
-                    type="radio"
-                    name="promo-type"
-                    checked={formPromoType === 'spin_wheel'}
-                    onChange={() => setFormPromoType('spin_wheel')}
-                  />{' '}
-                  Coupon spin wheel - pops up a prize wheel for customers who
-                  meet your trigger conditions
-                </label>
+                {/* Experimental (Settings > Experimental). */}
+                {spinWheelOn ? (
+                  <>
+                    <br />
+                    <label>
+                      <input
+                        type="radio"
+                        name="promo-type"
+                        checked={formPromoType === 'spin_wheel'}
+                        onChange={() => setFormPromoType('spin_wheel')}
+                      />{' '}
+                      Coupon spin wheel - pops up a prize wheel for customers
+                      who meet your trigger conditions
+                    </label>
+                  </>
+                ) : null}
               </fieldset>
 
               <div className={styles.formActions}>
@@ -1072,6 +1026,30 @@ export function AdminPromoConfigPage() {
                       onChange={(event) => setFormValue(event.target.value)}
                       required
                     />
+                  </label>
+
+                  {/* The promo cap lives on each promo now (it replaced the
+                      per-branch Promo Cap Configuration): the minimum order
+                      a customer needs before this promo can be used. */}
+                  <label className={styles.field}>
+                    <span className={styles.fieldLabel}>
+                      Promo cap - minimum order (PHP, optional)
+                    </span>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="No cap"
+                      aria-describedby="promo-cap-hint"
+                      value={formMinSpend}
+                      onChange={(event) => setFormMinSpend(event.target.value)}
+                    />
+                    <span id="promo-cap-hint" className={styles.copy}>
+                      Customers can use this promo once their order reaches this
+                      amount.
+                    </span>
                   </label>
                 </>
               ) : (
@@ -1169,7 +1147,7 @@ export function AdminPromoConfigPage() {
 
                   <BranchMultiSelect
                     label="Available at"
-                    branches={capBranches}
+                    branches={branches}
                     selectedBranchIds={formBranchIds}
                     lockedBranchId={lockedBranchId}
                     onChange={setFormBranchIds}
@@ -1231,53 +1209,7 @@ export function AdminPromoConfigPage() {
             ))}
           </div>
         )}
-
-        <section aria-labelledby="promo-cap-heading">
-          <h2 className={styles.sectionTitle} id="promo-cap-heading">
-            Promo Cap Configuration
-          </h2>
-          <p className={styles.copy}>
-            Maximum total discount value (or number of promos) that all
-            combined, customer-activated promos may contribute to one
-            transaction. Each branch has its own cap, viewed and saved
-            independently.
-          </p>
-
-          {capMessage ? (
-            <p className={styles.successBanner} role="status">
-              {capMessage}
-            </p>
-          ) : null}
-
-          {capLoadError ? (
-            <p className={styles.errorBanner} role="alert">
-              {capLoadError}
-            </p>
-          ) : (
-            <PromoCapBrowser
-              rows={capRows}
-              onConfigure={setConfiguringCapBranchId}
-            />
-          )}
-        </section>
       </div>
-
-      <Modal
-        isOpen={configuringCapRow !== undefined}
-        title={`Promo Cap - ${configuringCapRow?.branchName ?? ''}`}
-        onClose={() => setConfiguringCapBranchId(null)}
-      >
-        {configuringCapRow ? (
-          <PromoCapCard
-            key={`${configuringCapRow.branchId}-${configuringCapRow.config?.id ?? 'unsaved'}`}
-            config={configuringCapRow.config}
-            onSave={(input) =>
-              void handleSaveCap(configuringCapRow.branchId, input)
-            }
-            isSaving={savingCapScopeKey === configuringCapRow.branchId}
-          />
-        ) : null}
-      </Modal>
 
       {dialogs}
     </main>

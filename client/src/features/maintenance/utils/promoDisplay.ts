@@ -12,9 +12,15 @@ export function formatPromoValue(promo: Promo): string {
   if (promo.promo_type === 'spin_wheel') return spinWheelValueLabel(promo);
 
   const value = Number(promo.value ?? 0);
-  return promo.discount_type === 'Percentage'
-    ? `${value}% off`
-    : `PHP ${value.toFixed(2)} off`;
+  const amount =
+    promo.discount_type === 'Percentage'
+      ? `${value}% off`
+      : `PHP ${value.toFixed(2)} off`;
+
+  // The promo cap - the minimum order needed to use it.
+  return promo.min_spend != null
+    ? `${amount} · Min. order PHP ${Number(promo.min_spend).toFixed(2)}`
+    : amount;
 }
 
 export function promoWindowText(promo: Promo): string {

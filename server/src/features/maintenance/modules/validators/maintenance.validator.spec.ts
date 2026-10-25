@@ -14,7 +14,6 @@ import {
   updatePromoValidator,
   updateServiceTypeValidator,
   updateServiceValidator,
-  upsertPromoCapConfigurationValidator,
 } from './maintenance.validator.ts';
 
 const BRANCH_ID = '11111111-1111-4111-a111-111111111111';
@@ -514,6 +513,57 @@ describe('createPromoValidator', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts a promo cap (minimum order) on a Flat promo', () => {
+    const result = createPromoValidator.safeParse({
+      ...base,
+      discount_type: 'Flat',
+      value: 500,
+      min_spend: 1000,
+      start_date: '2026-08-01',
+      end_date: '2026-08-31',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a promo cap (minimum order) on a Percentage promo too', () => {
+    const result = createPromoValidator.safeParse({
+      ...base,
+      min_spend: 1000,
+      start_date: '2026-08-01',
+      end_date: '2026-08-31',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a promo cap on a spin wheel promo', () => {
+    const result = createPromoValidator.safeParse({
+      name: 'Loyalty Spin',
+      promo_type: 'spin_wheel',
+      min_spend: 500,
+      spin_wheel: {
+        reward_pool_id: '22222222-2222-4222-a222-222222222222',
+        booking_milestone_interval: 5,
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a negative minimum spend', () => {
+    const result = createPromoValidator.safeParse({
+      ...base,
+      discount_type: 'Flat',
+      value: 500,
+      min_spend: -1,
+      start_date: '2026-08-01',
+      end_date: '2026-08-31',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('still requires discount fields and a branch for a non-spin promo', () => {
     const result = createPromoValidator.safeParse({
       name: 'No discount',
@@ -812,64 +862,6 @@ describe('updatePackagePricingConfigurationValidator (Epic B #82)', () => {
     expect(
       updatePackagePricingConfigurationValidator.safeParse({
         bundle_discount_percentage: -0.1,
-      }).success
-    ).toBe(false);
-  });
-});
-
-describe('upsertPromoCapConfigurationValidator (Epic B #84)', () => {
-  it('accepts a branch-scoped percentage cap', () => {
-    expect(
-      upsertPromoCapConfigurationValidator.safeParse({
-        branch_id: BRANCH_ID,
-        cap_type: 'percentage',
-        cap_value: 20,
-      }).success
-    ).toBe(true);
-  });
-
-  it('accepts a null branch_id for the system-wide default cap', () => {
-    expect(
-      upsertPromoCapConfigurationValidator.safeParse({
-        branch_id: null,
-        cap_type: 'flat',
-        cap_value: 100,
-      }).success
-    ).toBe(true);
-  });
-
-  it('rejects a negative cap_value', () => {
-    expect(
-      upsertPromoCapConfigurationValidator.safeParse({
-        cap_type: 'percentage',
-        cap_value: -5,
-      }).success
-    ).toBe(false);
-  });
-
-  it('rejects an unrecognized cap_type', () => {
-    expect(
-      upsertPromoCapConfigurationValidator.safeParse({
-        cap_type: 'exclusive',
-        cap_value: 10,
-      }).success
-    ).toBe(false);
-  });
-
-  it('accepts a whole-number count cap', () => {
-    expect(
-      upsertPromoCapConfigurationValidator.safeParse({
-        cap_type: 'count',
-        cap_value: 2,
-      }).success
-    ).toBe(true);
-  });
-
-  it('rejects a fractional count cap', () => {
-    expect(
-      upsertPromoCapConfigurationValidator.safeParse({
-        cap_type: 'count',
-        cap_value: 2.5,
       }).success
     ).toBe(false);
   });

@@ -26,8 +26,16 @@ import {
   updateSpinWheelRewardController,
 } from './rewards.controller.ts';
 import { REWARDS_READ_ROLES, REWARDS_WRITE_ROLES } from './rewards.types.ts';
+import { requireFeature } from '../featureFlags/middleware/requireFeature.middleware.ts';
 
 const router = Router();
+
+// Experimental (Settings > Experimental): every /rewards endpoint - staff
+// catalog/pools and the customer spin/coupon calls alike - is 404 while the
+// coupon spin wheel is switched off. Path-scoped, not a bare router.use():
+// this router is mounted at the app root (app.routes.ts), so an unscoped
+// middleware would run on every request in the app.
+router.use('/rewards', requireFeature('spin_wheel'));
 
 const staffRead = [
   jwtMiddleware,

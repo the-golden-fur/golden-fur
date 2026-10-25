@@ -37,8 +37,8 @@ export interface BookingForBilling {
   /** Locked in at booking creation (staff-only, Cash-only discount; any-
    * payment-method promo) - see resolveDiscountAndPromo in
    * booking.service.ts. null/0 when nothing was selected at booking time,
-   * in which case checkout falls back to auto-evaluating scope matches
-   * itself (evaluateDiscounts/evaluatePromos). */
+   * in which case checkout falls back to auto-evaluating discounts
+   * (evaluateDiscounts) - promos are never auto-applied. */
   selected_discount_id: string | null;
   selected_discount_name: string | null;
   discount_amount: number;
@@ -50,8 +50,8 @@ export interface BookingForBilling {
    * resolveDiscountAndPromos - replaces selected_promo_id/
    * selected_promo_name as the source of truth for a booking created after
    * this change (a pre-migration booking has an empty array here and falls
-   * back to its own selected_promo_id/selected_promo_name, or to
-   * evaluatePromos, exactly as before). */
+   * back to its own selected_promo_id/selected_promo_name, or to no promo
+   * at all). */
   promo_selections: Array<{
     promo_id: string | null;
     customer_coupon_id: string | null;

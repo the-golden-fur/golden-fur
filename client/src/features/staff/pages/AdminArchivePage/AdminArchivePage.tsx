@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
+import { useFeatureFlag } from '../../../../shared/providers/FeatureFlagsProvider/FeatureFlagsContext';
 import {
   hardDeleteProduct,
   listArchivedProducts,
@@ -149,9 +150,18 @@ export function AdminArchivePage() {
   const isAllowedViewer =
     viewerRole !== null && ALLOWED_VIEWER_ROLES.has(viewerRole);
 
+  // Spin Wheel Rewards and Reward Pools belong to the coupon spin wheel, an
+  // experimental feature (Settings > Experimental) - hidden while it's off.
+  const spinWheelOn = useFeatureFlag('spin_wheel');
+  const tabs = spinWheelOn
+    ? TABS
+    : TABS.filter(
+        (tab) => tab.key !== 'spin-wheel-rewards' && tab.key !== 'reward-pools'
+      );
+
   const activeTab: ArchiveTab =
     (searchParams.get('tab') as ArchiveTab | null) &&
-    TABS.some((tab) => tab.key === searchParams.get('tab'))
+    tabs.some((tab) => tab.key === searchParams.get('tab'))
       ? (searchParams.get('tab') as ArchiveTab)
       : 'products';
 
@@ -174,7 +184,7 @@ export function AdminArchivePage() {
         </p>
 
         <div className={styles.tabs} role="tablist">
-          {TABS.map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab.key}
               type="button"

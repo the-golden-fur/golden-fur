@@ -16,12 +16,8 @@ import type { StaffProfile, StaffRole } from '../../../staff/staff.types';
 import * as maintenanceApi from '../../api/maintenance.api';
 import * as rewardsApi from '../../../rewards/api/rewards.api';
 import type { RewardPool } from '../../../rewards/rewards.types';
-import type {
-  Package,
-  Promo,
-  PromoCapConfiguration,
-  Service,
-} from '../../maintenance.types';
+import type { Package, Promo, Service } from '../../maintenance.types';
+import { FeatureFlagsContext } from '../../../../shared/providers/FeatureFlagsProvider/FeatureFlagsContext';
 import { AdminPromoConfigPage } from './AdminPromoConfigPage';
 
 vi.mock('../../../staff/api/staff.api', () => ({
@@ -36,8 +32,6 @@ vi.mock('../../api/maintenance.api', () => ({
   updatePromo: vi.fn(),
   setPromoBranchAvailability: vi.fn(),
   listBranches: vi.fn(),
-  listPromoCapConfigurations: vi.fn(),
-  upsertPromoCapConfiguration: vi.fn(),
 }));
 
 vi.mock('../../../rewards/api/rewards.api', () => ({
@@ -65,25 +59,6 @@ const REWARD_POOLS: RewardPool[] = [
 const BRANCHES = [
   { id: 'branch-makati', name: 'Makati', is_vet_branch: true },
   { id: 'branch-southwoods', name: 'Southwoods', is_vet_branch: false },
-];
-
-const CAP_CONFIGURATIONS: PromoCapConfiguration[] = [
-  {
-    id: 'cap-default',
-    branch_id: null,
-    cap_type: 'percentage',
-    cap_value: 20,
-    updated_by_staff_id: null,
-    updated_at: '2026-07-26T00:00:00.000Z',
-  },
-  {
-    id: 'cap-makati',
-    branch_id: 'branch-makati',
-    cap_type: 'flat',
-    cap_value: 150,
-    updated_by_staff_id: null,
-    updated_at: '2026-07-26T00:00:00.000Z',
-  },
 ];
 
 function buildService(overrides: Partial<Service> = {}): Service {
@@ -175,7 +150,9 @@ function buildViewer(role: StaffRole): StaffProfile {
   };
 }
 
-function renderPage() {
+/** spinWheelOn: the coupon spin wheel experimental feature (Settings >
+ * Experimental) - off by default, as in the real app. */
+function renderPage({ spinWheelOn = false }: { spinWheelOn?: boolean } = {}) {
   const authValue: AuthContextValue = {
     session: null,
     user: { id: 'admin-1', email: 'admin@example.com' },
@@ -191,19 +168,30 @@ function renderPage() {
       MemoryRouter,
       { initialEntries: ['/staff/admin/maintenance/promos'] },
       createElement(
-        AuthContext.Provider,
-        { value: authValue },
+        FeatureFlagsContext.Provider,
+        {
+          value: {
+            flags: { spin_wheel: spinWheelOn },
+            isLoaded: true,
+            refreshFeatureFlags: async () => {},
+            setFlags: () => {},
+          },
+        },
         createElement(
-          Routes,
-          null,
-          createElement(Route, {
-            path: '/staff/admin/maintenance/promos',
-            element: createElement(AdminPromoConfigPage),
-          }),
-          createElement(Route, {
-            path: '/staff/settings',
-            element: createElement('div', null, 'Staff profile page'),
-          })
+          AuthContext.Provider,
+          { value: authValue },
+          createElement(
+            Routes,
+            null,
+            createElement(Route, {
+              path: '/staff/admin/maintenance/promos',
+              element: createElement(AdminPromoConfigPage),
+            }),
+            createElement(Route, {
+              path: '/staff/settings',
+              element: createElement('div', null, 'Staff profile page'),
+            })
+          )
         )
       )
     )
@@ -215,13 +203,6 @@ function renderPage() {
  * list's controls come first in the DOM. */
 function promoControl(name: string) {
   return screen.getAllByRole('button', { name })[0];
-}
-
-/** Promo Cap Configuration's own section, for scoping its controls. */
-function capSection() {
-  return within(
-    screen.getByRole('region', { name: 'Promo Cap Configuration' })
-  );
 }
 
 describe('AdminPromoConfigPage', () => {
@@ -245,10 +226,6 @@ describe('AdminPromoConfigPage', () => {
     });
     vi.mocked(maintenanceApi.listBranches).mockResolvedValue({
       data: BRANCHES,
-      error: null,
-    });
-    vi.mocked(maintenanceApi.listPromoCapConfigurations).mockResolvedValue({
-      data: CAP_CONFIGURATIONS,
       error: null,
     });
     vi.mocked(rewardsApi.listRewardPools).mockResolvedValue({
@@ -280,149 +257,12 @@ describe('AdminPromoConfigPage', () => {
     // "Active" also appears in the default "Status: Active" filter pill now
     // - at least one match (the card's own badge) is the right bar.
     expect(screen.getAllByText('Active').length).toBeGreaterThanOrEqual(1);
-    // The only table left is Promo Cap Configuration's own (default view).
-    expect(screen.getAllByRole('table')).toHaveLength(1);
+    // No table at all in Gallery (the per-branch cap table is gone too).
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    // The per-branch Promo Cap Configuration section is gone.
     expect(
-      within(screen.getByRole('table')).queryByText('Summer Sale')
+      screen.queryByText('Promo Cap Configuration')
     ).not.toBeInTheDocument();
-  });
-
-  it('the promo cap configuration is embedded on this page (no longer a separate subpage) and lists only real branches, not a "both branches" default card', async () => {
-    renderPage();
-
-    expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
-    expect(
-      screen.queryByText('Both branches (system-wide default)')
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText('Makati', { selector: 'span' })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Southwoods', { selector: 'span' })
-    ).toBeInTheDocument();
-    // Makati's saved cap summarizes inline on the row itself.
-    expect(screen.getByText('Flat - 150 PHP')).toBeInTheDocument();
-    expect(screen.getByText('No cap saved yet')).toBeInTheDocument();
-  });
-
-  it('Custom change (promo cap actions menu): "..." > Configure opens a modal to edit one branch\'s cap, saving it independently of any other branch', async () => {
-    vi.mocked(maintenanceApi.upsertPromoCapConfiguration).mockResolvedValue({
-      data: { ...CAP_CONFIGURATIONS[1], cap_value: 300 },
-      error: null,
-    });
-
-    renderPage();
-    const user = userEvent.setup();
-
-    const row = (
-      await screen.findByText('Makati', { selector: 'span' })
-    ).closest('tr') as HTMLElement;
-    await user.click(
-      within(row).getByRole('button', { name: 'Actions for Makati' })
-    );
-    await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
-
-    const dialog = screen.getByRole('dialog', { name: 'Promo Cap - Makati' });
-    const valueInput = within(dialog).getByLabelText('Cap value (PHP)');
-    await user.clear(valueInput);
-    await user.type(valueInput, '300');
-    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(maintenanceApi.upsertPromoCapConfiguration).toHaveBeenCalledWith(
-        'token',
-        { branch_id: 'branch-makati', cap_type: 'flat', cap_value: 300 }
-      );
-    });
-
-    expect(await screen.findByText('Promo cap updated.')).toBeInTheDocument();
-    // Saving closes the modal.
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('a Cap type filter tile narrows the branch list to a specific cap type', async () => {
-    renderPage();
-    const user = userEvent.setup();
-
-    expect(
-      await screen.findByText('Makati', { selector: 'span' })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Southwoods', { selector: 'span' })
-    ).toBeInTheDocument();
-
-    const caps = capSection();
-    await user.click(caps.getByRole('button', { name: 'Filter' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Cap type' }));
-    // Cap type defaults to Percentage; pick Flat (Makati's saved cap).
-    await user.click(
-      caps.getByRole('button', { name: /Cap type: Percentage/ })
-    );
-    const popover = screen.getByRole('dialog', {
-      name: 'Edit Cap type filter',
-    });
-    await user.click(within(popover).getByRole('option', { name: 'Flat' }));
-
-    expect(
-      screen.getByText('Makati', { selector: 'span' })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('Southwoods', { selector: 'span' })
-    ).not.toBeInTheDocument();
-  });
-
-  it('Promo Cap Configuration has search, Filter, Sort, and Table / List / Board views', async () => {
-    renderPage();
-    const user = userEvent.setup();
-
-    await screen.findByText('Makati', { selector: 'span' });
-    const caps = capSection();
-
-    expect(caps.getByPlaceholderText('Search branches...')).toBeInTheDocument();
-    expect(caps.getByRole('button', { name: 'Filter' })).toBeInTheDocument();
-    expect(caps.getByRole('button', { name: 'Sort' })).toBeInTheDocument();
-    for (const view of ['Table', 'List', 'Board']) {
-      expect(caps.getByRole('button', { name: view })).toBeInTheDocument();
-    }
-
-    // Search narrows by branch name.
-    await user.type(caps.getByPlaceholderText('Search branches...'), 'south');
-    expect(
-      screen.queryByText('Makati', { selector: 'span' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText('Southwoods', { selector: 'span' })
-    ).toBeInTheDocument();
-  });
-
-  it('Promo Cap Configuration: List rows have a visible "..." and right-click; Board groups by cap type', async () => {
-    renderPage();
-    const user = userEvent.setup();
-
-    await screen.findByText('Makati', { selector: 'span' });
-    const caps = capSection();
-
-    await caps.getByRole('button', { name: 'List' }).click();
-    // List: persistent "..." button...
-    expect(
-      await caps.findByRole('button', { name: 'Actions for Makati' })
-    ).toBeInTheDocument();
-    // ...and right-click opens the same menu.
-    fireEvent.contextMenu(caps.getByText('Makati', { selector: 'span' }));
-    expect(
-      screen.getByRole('menuitem', { name: 'Configure' })
-    ).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-
-    await user.click(caps.getByRole('button', { name: 'Board' }));
-    // Board: no persistent "..." - grouped by cap type instead.
-    expect(
-      caps.queryByRole('button', { name: 'Actions for Makati' })
-    ).not.toBeInTheDocument();
-    expect(caps.getByRole('heading', { name: /Flat/ })).toBeInTheDocument();
-    expect(
-      caps.getByRole('heading', { name: /No cap saved/ })
-    ).toBeInTheDocument();
   });
 
   it('a Branch filter tile narrows the list without navigating', async () => {
@@ -567,12 +407,88 @@ describe('AdminPromoConfigPage', () => {
         end_date: '2026-09-30',
         discount_type: 'Percentage',
         value: 10,
+        // No promo cap (minimum order) entered.
+        min_spend: null,
         scope_type: 'all_services',
         branch_ids: ['branch-makati', 'branch-southwoods'],
       });
     });
 
     expect(await screen.findByText('Promo created.')).toBeInTheDocument();
+  });
+
+  it('sets a per-promo cap (minimum order) on a Flat promo', async () => {
+    vi.mocked(maintenanceApi.createPromo).mockResolvedValue({
+      data: buildPromo({ id: 'promo-new', name: 'Big Treat' }),
+      error: null,
+    });
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'New promo' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    await user.selectOptions(screen.getByLabelText('Discount type'), 'Flat');
+    await user.type(screen.getByLabelText('Name'), 'Big Treat');
+    await user.type(screen.getByLabelText(/Discount value/), '500');
+    await user.type(screen.getByLabelText(/Promo cap/), '1000');
+    await user.type(screen.getByLabelText('Start date'), '2026-09-01');
+    await user.type(screen.getByLabelText('End date'), '2026-09-30');
+    await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
+    await user.click(screen.getByRole('button', { name: 'Save promo' }));
+
+    await waitFor(() => {
+      expect(maintenanceApi.createPromo).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({
+          discount_type: 'Flat',
+          value: 500,
+          min_spend: 1000,
+        })
+      );
+    });
+  });
+
+  it('sets a per-promo cap (minimum order) on a Percentage promo too', async () => {
+    vi.mocked(maintenanceApi.createPromo).mockResolvedValue({
+      data: buildPromo({ id: 'promo-new', name: 'Ten Off' }),
+      error: null,
+    });
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
+      error: null,
+    });
+
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'New promo' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    // Percentage is the default type - the cap field shows for it too.
+    await user.type(screen.getByLabelText('Name'), 'Ten Off');
+    await user.type(screen.getByLabelText(/Discount value/), '10');
+    await user.type(screen.getByLabelText(/Promo cap/), '500');
+    await user.type(screen.getByLabelText('Start date'), '2026-09-01');
+    await user.type(screen.getByLabelText('End date'), '2026-09-30');
+    await user.click(screen.getByRole('checkbox', { name: 'Makati' }));
+    await user.click(screen.getByRole('button', { name: 'Save promo' }));
+
+    await waitFor(() => {
+      expect(maintenanceApi.createPromo).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({
+          discount_type: 'Percentage',
+          value: 10,
+          min_spend: 500,
+        })
+      );
+    });
   });
 
   it('AC-2: scope_type "all_services" hides the multi-select entirely', async () => {
@@ -626,19 +542,20 @@ describe('AdminPromoConfigPage', () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText('Summer Sale')).toBeInTheDocument();
-    // Default = Table: the promo appears in a table (Promo Cap Configuration
-    // has its own table too, so there are two).
-    expect(screen.getAllByRole('table')).toHaveLength(2);
-    const promoTable = screen.getAllByRole('table')[0];
+    // Default = Table: the promo appears in the page's only table (the
+    // per-branch Promo Cap Configuration table is gone - the cap lives on
+    // each promo now).
+    expect(screen.getAllByRole('table')).toHaveLength(1);
+    const promoTable = screen.getByRole('table');
     expect(within(promoTable).getByText('Summer Sale')).toBeInTheDocument();
     expect(within(promoTable).getByText('15% off')).toBeInTheDocument();
 
     await user.click(promoControl('List'));
-    expect(screen.getAllByRole('table')).toHaveLength(1);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText('Summer Sale').closest('ul')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Gallery' }));
-    expect(screen.getAllByRole('table')).toHaveLength(1);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText('Summer Sale')).toBeInTheDocument();
   });
 
@@ -735,7 +652,7 @@ describe('AdminPromoConfigPage', () => {
 
   describe('Coupon spin wheel promo type (session 114)', () => {
     async function openSpinWheelForm() {
-      renderPage();
+      renderPage({ spinWheelOn: true });
       const user = userEvent.setup();
 
       await user.click(
@@ -880,7 +797,7 @@ describe('AdminPromoConfigPage', () => {
         error: null,
       });
 
-      renderPage();
+      renderPage({ spinWheelOn: true });
 
       expect(await screen.findByText('Loyalty Spin')).toBeInTheDocument();
       expect(screen.getByText('Spin wheel · Standard')).toBeInTheDocument();
@@ -894,6 +811,24 @@ describe('AdminPromoConfigPage', () => {
         includeInactive: true,
         includeSpinWheel: true,
       });
+    });
+
+    it('is hidden while the coupon spin wheel is switched off (Settings > Experimental)', async () => {
+      renderPage();
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole('button', { name: 'New promo' })
+      );
+
+      expect(
+        screen.queryByRole('radio', { name: /Coupon spin wheel/ })
+      ).not.toBeInTheDocument();
+      expect(maintenanceApi.listPromos).toHaveBeenCalledWith('token', {
+        includeInactive: true,
+        includeSpinWheel: false,
+      });
+      expect(rewardsApi.listRewardPools).not.toHaveBeenCalled();
     });
   });
 });

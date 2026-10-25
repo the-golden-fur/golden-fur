@@ -536,6 +536,104 @@
   gap: var(--space-2);
 }
 
+/* Payment scheme: one bordered group of selectable rows - same visual
+   language as the Promos & Coupons list (PromoCouponMultiSelect). */
+.choiceGroup {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.choiceLegend {
+  padding: 0;
+  margin-bottom: 0.6rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.choiceList {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.choiceRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  border-top: 1px solid var(--color-border);
+  box-shadow: inset 0 0 0 2px transparent;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.choiceRow:first-child {
+  border-top: none;
+}
+
+.choiceRow:hover {
+  background: var(--color-bg-secondary);
+}
+
+.choiceRowSelected,
+.choiceRowSelected:hover {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-gold-highlight) 12%,
+    var(--color-surface)
+  );
+  box-shadow: inset 0 0 0 2px var(--color-accent-gold-primary);
+}
+
+.choiceRadio {
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0.15rem 0 0;
+  accent-color: var(--color-accent-gold-primary);
+}
+
+.choiceRadio:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.choiceText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.choiceTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.choiceHint {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .choiceRow {
+    transition: none;
+  }
+}
+
 .pricingSummary {
   display: grid;
   gap: var(--space-1);

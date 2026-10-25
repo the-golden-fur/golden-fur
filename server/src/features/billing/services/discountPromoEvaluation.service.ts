@@ -3,10 +3,6 @@ import {
   isPromoCurrentlyEligible,
   type PromoType,
 } from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
-import {
-  applyPromoCap,
-  type PromoCapRow,
-} from '../../../shared/services/promoCap/promoCap.service.ts';
 import type { DraftLineItem } from '../billing.types.ts';
 import type { BookingForBilling } from './lineItemSources.service.ts';
 
@@ -228,6 +224,8 @@ interface PromoRow {
   days_of_week: number[] | null;
   discount_type: 'Percentage' | 'Flat';
   value: number;
+  /** The promo cap (minimum order) - see Promo.min_spend (maintenance.types.ts). */
+  min_spend: number | null;
   scope_type: 'all_services' | 'specific';
   promo_scope: Array<{ service_id: string | null; package_id: string | null }>;
   promo_branch_availability: Array<{
@@ -236,71 +234,15 @@ interface PromoRow {
   }>;
 }
 
-/** Custom change (promos/coupons multiselect booking step): widened so the
- * same shape can represent either an auto-evaluated promo (this file) or a
- * booking-time-locked-in promo/coupon selection read back from
- * booking_promo_selections (checkoutAggregation.service.ts) - exactly one
- * of promoId/couponId is ever set. evaluatePromos below only ever produces
- * promo entries (couponId always null) - see its own doc comment on why
- * coupons never reach this auto-evaluate path. */
+/** Custom change (promos/coupons multiselect booking step): a promo/coupon
+ * line - either a booking-time-locked-in selection read back from
+ * booking_promo_selections (checkoutAggregation.service.ts) or a cashier's
+ * misc-sale pick (evaluateMiscSalePromos below). Exactly one of
+ * promoId/couponId is ever set. */
 export interface EvaluatedPromo {
   promoId: string | null;
   couponId: string | null;
   line: DraftLineItem;
-}
-
-/**
- * Auto-applies every active, in-window, scope-matching promo (Issue #84
- * AC-2), then caps the combined contribution at promo_cap_configuration
- * (branch-specific row if one exists, else the system-wide default -
- * mirrors policy_configurations' own override pattern).
- *
- * A 'percentage'/'flat' cap trims by amount: promos are applied
- * largest-value-first and the last one that would cross the cap is trimmed
- * to exactly fill the remaining headroom; nothing beyond it is applied. This
- * is a judgment call (the Guide doesn't specify a tie-break order for which
- * promos "win" under a cap) - flagged here and in the verification doc.
- *
- * A 'count' cap instead limits how many promos may combine, at their full
- * value - the largest-value cap_value promos are applied in full and the
- * rest are dropped entirely (no partial-amount trimming, since a "count"
- * has no notion of a fractional promo).
- */
-/**
- * Custom change (promo variations): coupons are deliberately NOT evaluated
- * here. A coupon (a per-customer, single-use spin-wheel reward - see
- * customer_coupons/rewards.types.ts) is only ever applied by explicit
- * customer/receptionist choice at the new booking-time Promos & Coupons
- * step (resolveDiscountAndPromos in booking.service.ts) - unlike a promo,
- * it never gets auto-applied at checkout when nothing was pre-selected,
- * since silently spending a customer's coupon without their say-so would be
- * surprising.
- */
-export async function evaluatePromos(
-  booking: Pick<BookingForBilling, 'branch_id' | 'items'>,
-  subtotal: number
-): Promise<EvaluatedPromo[]> {
-  const promos = await loadDiscountPromos();
-
-  const matched = promos.filter((promo) => {
-    const availableAtBranch = promo.promo_branch_availability.some(
-      (row) => row.branch_id === booking.branch_id && row.is_available
-    );
-    if (!availableAtBranch) return false;
-
-    if (!isPromoCurrentlyEligible(promo)) return false;
-    if (promo.scope_type === 'all_services') return true;
-
-    return promo.promo_scope.some((scopeRow) =>
-      booking.items.some(
-        (item) =>
-          (scopeRow.service_id && scopeRow.service_id === item.service_id) ||
-          (scopeRow.package_id && scopeRow.package_id === item.package_id)
-      )
-    );
-  });
-
-  return cappedPromoLines(matched, booking.branch_id, subtotal);
 }
 
 async function loadDiscountPromos(): Promise<PromoRow[]> {
@@ -322,29 +264,24 @@ async function loadDiscountPromos(): Promise<PromoRow[]> {
   return (promos ?? []) as PromoRow[];
 }
 
-/** Applies the branch's promo cap to an already-matched promo list and
- * builds the promo line items - shared by the booking auto-evaluate path
- * and the misc-sale cashier-picks path. */
-async function cappedPromoLines(
-  matched: PromoRow[],
-  branchId: string,
-  subtotal: number
-): Promise<EvaluatedPromo[]> {
-  if (matched.length === 0) return [];
+/** Builds the promo line items for promos that already passed their own
+ * cap (min_spend): each applies in full, a Flat one limited to the
+ * subtotal, and together they never take off more than the subtotal. */
+function promoLines(picked: PromoRow[], subtotal: number): EvaluatedPromo[] {
+  let remaining = subtotal;
 
-  const capRow = await getEffectivePromoCap(branchId);
+  return picked.map((promo) => {
+    const amount = round2(
+      Math.min(
+        promo.discount_type === 'Percentage'
+          ? (subtotal * Number(promo.value)) / 100
+          : Number(promo.value),
+        remaining
+      )
+    );
+    remaining = round2(remaining - amount);
 
-  const candidates = matched.map((promo) => ({
-    key: promo,
-    amount: round2(
-      promo.discount_type === 'Percentage'
-        ? (subtotal * Number(promo.value)) / 100
-        : Number(promo.value)
-    ),
-  }));
-
-  return applyPromoCap(candidates, capRow, subtotal).map(
-    ({ key: promo, amount }) => ({
+    return {
       promoId: promo.id,
       couponId: null,
       line: {
@@ -355,15 +292,15 @@ async function cappedPromoLines(
         unit_price: -amount,
         line_total: -amount,
       },
-    })
-  );
+    };
+  });
 }
 
 /**
  * Session 115: a misc sale has no service_id/package_id to scope-match, so
- * only 'all_services' promos can ever apply to one. Same eligibility rules
- * as evaluatePromos (active, in its date/weekday window, not a spin wheel,
- * not archived, available at the branch).
+ * only 'all_services' promos can ever apply to one. Eligibility: active, in
+ * its date/weekday window, not a spin wheel, not archived, available at the
+ * branch.
  */
 async function loadMiscSalePromos(branchId: string): Promise<PromoRow[]> {
   const promos = await loadDiscountPromos();
@@ -380,10 +317,8 @@ async function loadMiscSalePromos(branchId: string): Promise<PromoRow[]> {
 
 /**
  * Cashier-picks model: only the promos the cashier ticked, each re-checked
- * against loadMiscSalePromos (a stale/forged id is rejected), then capped
- * by the branch's promo_cap_configuration exactly like a booking checkout -
- * picking more promos than the cap allows trims/drops the excess the same
- * way it would at checkout.
+ * against loadMiscSalePromos (a stale/forged id is rejected) and against its
+ * own cap (min_spend - the sale must reach it), then applied in full.
  */
 export async function evaluateMiscSalePromos(params: {
   branchId: string;
@@ -403,10 +338,16 @@ export async function evaluateMiscSalePromos(params: {
         'A selected promo is no longer available for misc sales at this branch'
       );
     }
+    if (promo.min_spend != null && params.subtotal < Number(promo.min_spend)) {
+      throwWithStatus(
+        400,
+        `Promo "${promo.name}" needs a minimum order of PHP ${Number(promo.min_spend).toFixed(2)}`
+      );
+    }
     return promo;
   });
 
-  return cappedPromoLines(picked, params.branchId, params.subtotal);
+  return promoLines(picked, params.subtotal);
 }
 
 /** Backs GET /billing/misc-sale/options: every discount/promo the admin has
@@ -437,28 +378,4 @@ export async function listMiscSaleOptions(branchId: string): Promise<{
       end_date: promo.end_date,
     })),
   };
-}
-
-async function getEffectivePromoCap(branchId: string): Promise<PromoCapRow> {
-  const { data: branchRow, error: branchError } = await supabase
-    .from('promo_cap_configuration')
-    .select('cap_type, cap_value')
-    .eq('branch_id', branchId)
-    .maybeSingle();
-
-  if (branchError) throwWithStatus(400, branchError.message);
-  if (branchRow) return branchRow;
-
-  const { data: defaultRow, error: defaultError } = await supabase
-    .from('promo_cap_configuration')
-    .select('cap_type, cap_value')
-    .is('branch_id', null)
-    .maybeSingle();
-
-  if (defaultError) throwWithStatus(400, defaultError.message);
-  if (!defaultRow) {
-    throwWithStatus(500, 'No default promo cap configuration row exists');
-  }
-
-  return defaultRow;
 }

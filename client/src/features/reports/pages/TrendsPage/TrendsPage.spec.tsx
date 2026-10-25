@@ -188,11 +188,13 @@ describe('TrendsPage', () => {
     renderPage();
 
     const branchSelect = await screen.findByLabelText('Branch');
-    expect(reportsApi.getTrendsReport).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      null,
-      'token'
+    await waitFor(() =>
+      expect(reportsApi.getTrendsReport).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        null,
+        'token'
+      )
     );
 
     await user.selectOptions(branchSelect, 'branch-southwoods');

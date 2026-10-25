@@ -1,7 +1,6 @@
 import { listServices } from '../../maintenance/services/services.service.ts';
 import { listPackages } from '../../maintenance/services/packages.service.ts';
 import { listPromos } from '../../maintenance/services/promos.service.ts';
-import { listPromoCapConfigurations } from '../../maintenance/services/promoCap.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 import {
   longStayPriceAtBranch,
@@ -12,7 +11,6 @@ import type {
   Promo,
   Service,
 } from '../../maintenance/maintenance.types.ts';
-import type { PromoCapRow } from '../../../shared/services/promoCap/promoCap.service.ts';
 import type { ServiceCategory } from '../booking.types.ts';
 
 export interface CatalogParams {
@@ -32,13 +30,6 @@ export interface BookingCatalog {
   packages: Package[];
   promos: Promo[];
   fixedPrice: number | null;
-  /** Custom change (promos/coupons multiselect booking step, session 86):
-   * the effective promo_cap_configuration row for this branch (branch-
-   * specific if one exists, else the system-wide default), read through
-   * here for the same reason promos are - the cap config's own endpoint is
-   * staff-only, but the new Promos & Coupons booking step needs it to show
-   * a correctly-capped running total to a customer session too. */
-  promoCap: PromoCapRow;
 }
 
 /**
@@ -60,22 +51,12 @@ export async function getBookingCatalog({
   category,
   petType,
 }: CatalogParams): Promise<BookingCatalog> {
-  const [services, packages, promos, fixedPrice, capConfigurations] =
-    await Promise.all([
-      listServices({ branchId, category }),
-      listPackages({ branchId }),
-      listPromos({}),
-      petType ? getFixedPrice(petType, branchId) : Promise.resolve(null),
-      listPromoCapConfigurations(),
-    ]);
-
-  const promoCap: PromoCapRow = capConfigurations.find(
-    (row) => row.branch_id === branchId
-  ) ??
-    capConfigurations.find((row) => row.branch_id === null) ?? {
-      cap_type: 'percentage',
-      cap_value: 20,
-    };
+  const [services, packages, promos, fixedPrice] = await Promise.all([
+    listServices({ branchId, category }),
+    listPackages({ branchId }),
+    listPromos({}),
+    petType ? getFixedPrice(petType, branchId) : Promise.resolve(null),
+  ]);
 
   // A branch may charge its own price for a service (see
   // servicePriceAtBranch) - the booking flow only ever looks at one branch,
@@ -94,6 +75,5 @@ export async function getBookingCatalog({
     packages,
     promos,
     fixedPrice,
-    promoCap,
   };
 }
