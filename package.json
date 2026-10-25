@@ -33,6 +33,8 @@
     "seed:all:linked": "node scripts/seed-linked.mjs",
     "seed:temp": "tsx supabase/seeds/temp-demo/temp-demo.seed.ts",
     "seed:temp:linked": "tsx supabase/seeds/temp-demo/temp-demo.seed.ts --supabase-linked",
+    "seed:temp:roles": "tsx supabase/seeds/temp-demo/temp-demo.seed.ts --roles-only",
+    "seed:temp:roles:linked": "tsx supabase/seeds/temp-demo/temp-demo.seed.ts --roles-only --supabase-linked",
     "test:seed": "vitest run supabase/seeds"
   },
   "devDependencies": {
