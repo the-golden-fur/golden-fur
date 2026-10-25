@@ -6,6 +6,8 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden; /* body's overflow-x alone doesn't stop horizontal
+    scroll/swipe on every mobile browser - the root element needs it too */
 }
 
 body {
@@ -1467,6 +1469,19 @@ body {
   .feature-strip-card {
     min-height: 86px;
     border-radius: 0;
+  }
+
+  /* The desktop reveal slides cards in from +/-306px off-screen, which is
+     most of a phone's own width - even though invisible pre-reveal, that
+     extra width made the page horizontally scrollable on mobile. Shrink the
+     slide distance instead of just clipping it, so the animation stays
+     proportionate to the viewport and never extends past it. */
+  .feature-strip-card:nth-child(odd) {
+    transform: translateX(clamp(16px, 8vw, 36px));
+  }
+
+  .feature-strip-card:nth-child(even) {
+    transform: translateX(calc(clamp(16px, 8vw, 36px) * -1));
   }
 
   .feature-strip-card:hover:not(.is-expanded) {
