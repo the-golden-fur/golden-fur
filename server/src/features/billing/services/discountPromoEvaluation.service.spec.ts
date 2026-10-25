@@ -41,31 +41,6 @@ function queueFromResults(...results: QueryResult[]) {
   });
 }
 
-function buildBooking(
-  overrides: Partial<BookingForBilling> = {}
-): BookingForBilling {
-  return {
-    id: 'booking-1',
-    customer_id: 'customer-1',
-    branch_id: 'branch-makati',
-    branchName: 'Makati',
-    service_category: 'Grooming',
-    items: [{ id: 'item-1', service_id: 'service-1', package_id: null }],
-    status: 'Completed',
-    total_price: 1000,
-    downpayment_required: false,
-    downpayment_amount: null,
-    payment_method: 'Cash',
-    selected_discount_id: null,
-    selected_discount_name: null,
-    discount_amount: 0,
-    selected_promo_id: null,
-    selected_promo_name: null,
-    promo_amount: 0,
-    ...overrides,
-  } as BookingForBilling;
-}
-
 function buildPromoRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'promo-1',
