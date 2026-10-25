@@ -10,6 +10,7 @@ import {
   staffPreferenceValidator,
   updatePolicyValidator,
 } from './booking.validator.ts';
+import { sanitizeHotelPreferencesForStaffRole } from '../../booking.types.ts';
 
 const SERVICE_ID = '33333333-3333-4333-a333-333333333333';
 const PACKAGE_ID = '44444444-4444-4444-a444-444444444444';
@@ -267,6 +268,52 @@ describe('createBookingValidator', () => {
         },
       }).success
     ).toBe(false);
+  });
+
+  it('accepts a things_brought note on its own and trims it', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    const result = createBookingValidator.safeParse({
+      ...rest,
+      service_category: 'Daycare',
+      hotel_preferences: { things_brought: '  Leash, blue blanket  ' },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.hotel_preferences?.things_brought).toBe(
+      'Leash, blue blanket'
+    );
+  });
+
+  it('rejects a things_brought note over 500 characters', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Hotel',
+        hotel_preferences: { things_brought: 'x'.repeat(501) },
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe('sanitizeHotelPreferencesForStaffRole', () => {
+  it('keeps things_brought for a restricted staff role', () => {
+    expect(
+      sanitizeHotelPreferencesForStaffRole(
+        {
+          uniform_instructions: true,
+          feeding: [],
+          walking: [],
+          playing: [],
+          medications: [],
+          things_brought: 'Leash',
+        },
+        'Receptionist',
+        ['Receptionist']
+      )?.things_brought
+    ).toBe('Leash');
   });
 });
 

@@ -253,6 +253,7 @@ const hotelPreferencesValidator = z
           .strict()
       )
       .default([]),
+    things_brought: z.string().trim().max(500).optional(),
   })
   .strict();
 
