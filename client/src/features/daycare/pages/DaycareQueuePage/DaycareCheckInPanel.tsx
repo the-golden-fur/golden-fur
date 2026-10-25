@@ -635,6 +635,15 @@ export function DaycareCheckInPanel({
         ) : null}
       </section>
 
+      {booking.hotel_preferences?.things_brought ? (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Things brought</h2>
+          <p className={styles.copy}>
+            {booking.hotel_preferences.things_brought}
+          </p>
+        </section>
+      ) : null}
+
       <section className={styles.section}>
         <label className={styles.checkboxRow}>
           <input

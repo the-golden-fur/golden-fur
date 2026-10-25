@@ -268,6 +268,8 @@ interface SubBookingDraft {
   hotelWalking: Array<typeof EMPTY_HOTEL_WALKING_ROW>;
   hotelPlaying: Array<typeof EMPTY_HOTEL_PLAYING_ROW>;
   hotelMedications: Array<typeof EMPTY_HOTEL_MEDICATION_ROW>;
+  /** Optional - an entry saved before "Things brought" existed has none. */
+  hotelThingsBrought?: string;
   hotelUniformInstructions: boolean;
   /** Precomputed the same way the live `hotelPreferencesPayload` memo below
    * is (via buildHotelPreferencesPayload) - used directly when this entry is
@@ -511,6 +513,8 @@ interface PersistedBookingDraft {
   hotelWalking: Array<typeof EMPTY_HOTEL_WALKING_ROW>;
   hotelPlaying: Array<typeof EMPTY_HOTEL_PLAYING_ROW>;
   hotelMedications: Array<typeof EMPTY_HOTEL_MEDICATION_ROW>;
+  /** Optional - a draft saved before "Things brought" existed has none. */
+  hotelThingsBrought?: string;
   currentStepKey: StepDef['key'];
   // Set has no native JSON representation - stored as an array and
   // rehydrated back into a Set on restore.
@@ -900,6 +904,8 @@ export function CustomerBookingFlowPage() {
   const [hotelMedications, setHotelMedications] = useState<
     Array<typeof EMPTY_HOTEL_MEDICATION_ROW>
   >([]);
+  // Freetext "Things brought" note - one per booking, never per-night.
+  const [hotelThingsBrought, setHotelThingsBrought] = useState('');
   // "Same instructions every night" (default) vs per-night editing - when
   // false, NightTabs (rendered below) picks which night newly-added rows are
   // scoped to and which existing rows are shown; when true, every row is
@@ -1047,6 +1053,7 @@ export function CustomerBookingFlowPage() {
     setHotelWalking([]);
     setHotelPlaying([]);
     setHotelMedications([]);
+    setHotelThingsBrought('');
     setHotelUniformInstructions(true);
     setActiveNightDate(null);
   }
@@ -1324,6 +1331,7 @@ export function CustomerBookingFlowPage() {
       setHotelWalking(draft.hotelWalking);
       setHotelPlaying(draft.hotelPlaying);
       setHotelMedications(draft.hotelMedications);
+      setHotelThingsBrought(draft.hotelThingsBrought ?? '');
       setCurrentStepKey(draft.currentStepKey);
       setReachedStepKeys(new Set(draft.reachedStepKeys));
       if (isReceptionistMode && draft.walkInCustomer) {
@@ -1373,6 +1381,7 @@ export function CustomerBookingFlowPage() {
         hotelWalking,
         hotelPlaying,
         hotelMedications,
+        hotelThingsBrought,
         currentStepKey,
         reachedStepKeys: Array.from(reachedStepKeys),
         walkInCustomer: isReceptionistMode ? walkInCustomer : null,
@@ -1403,6 +1412,7 @@ export function CustomerBookingFlowPage() {
     hotelWalking,
     hotelPlaying,
     hotelMedications,
+    hotelThingsBrought,
     currentStepKey,
     reachedStepKeys,
     isReceptionistMode,
@@ -2888,11 +2898,14 @@ export function CustomerBookingFlowPage() {
         ...(row.stay_date ? { stay_date: row.stay_date } : {}),
       }));
 
+    const thingsBrought = hotelThingsBrought.trim();
+
     if (
       feeding.length === 0 &&
       walking.length === 0 &&
       playing.length === 0 &&
-      medications.length === 0
+      medications.length === 0 &&
+      !thingsBrought
     ) {
       return undefined;
     }
@@ -2903,6 +2916,7 @@ export function CustomerBookingFlowPage() {
       walking,
       playing,
       medications,
+      ...(thingsBrought ? { things_brought: thingsBrought } : {}),
     };
   }, [
     category,
@@ -2910,6 +2924,7 @@ export function CustomerBookingFlowPage() {
     hotelWalking,
     hotelPlaying,
     hotelMedications,
+    hotelThingsBrought,
     hotelUniformInstructions,
   ]);
 
@@ -2946,6 +2961,7 @@ export function CustomerBookingFlowPage() {
       hotelWalking,
       hotelPlaying,
       hotelMedications,
+      hotelThingsBrought,
       hotelUniformInstructions,
       hotelPreferencesPayload,
       itemsSubtotal: itemsTotal,
@@ -2979,6 +2995,7 @@ export function CustomerBookingFlowPage() {
     setHotelWalking(entry.hotelWalking);
     setHotelPlaying(entry.hotelPlaying);
     setHotelMedications(entry.hotelMedications);
+    setHotelThingsBrought(entry.hotelThingsBrought ?? '');
     setHotelUniformInstructions(entry.hotelUniformInstructions);
   }
 
@@ -4216,8 +4233,8 @@ export function CustomerBookingFlowPage() {
           <div className={styles.hotelDetailsStep}>
             <p className={styles.copy}>
               {restrictsToPlayWalkOnly
-                ? "Optional - let us know this pet's usual walking and playtime routine. Feeding and medication instructions can only be set by the customer."
-                : "Optional - let us know your pet's usual feeding, walking, and medication routine. Our receptionist will confirm and finalize these details when your pet checks in."}
+                ? "Optional - let us know this pet's usual walking and playtime routine, and anything brought along. Feeding and medication instructions can only be set by the customer."
+                : "Optional - let us know your pet's usual feeding, walking, and medication routine, and anything you're bringing along. Our receptionist will confirm and finalize these details when your pet checks in."}
             </p>
 
             {category === 'Hotel' ? (
@@ -4770,6 +4787,22 @@ export function CustomerBookingFlowPage() {
                 </button>
               </section>
             ) : null}
+
+            {/* Per booking, not per night - shown on every night tab. */}
+            <section className={styles.hotelDetailsSection}>
+              <label className={styles.field}>
+                <span className={styles.sectionTitle}>Things brought</span>
+                <textarea
+                  className={styles.input}
+                  placeholder="e.g. leash, favorite toy, food bag, bed"
+                  maxLength={500}
+                  value={hotelThingsBrought}
+                  onChange={(event) =>
+                    setHotelThingsBrought(event.target.value)
+                  }
+                />
+              </label>
+            </section>
           </div>
         );
 
@@ -5175,7 +5208,10 @@ export function CustomerBookingFlowPage() {
           const parts = counts
             .filter(([count]) => count > 0)
             .map(([count, label]) => `${count} ${label}`);
-          lines.push({ text: parts.join(', ') });
+          if (parts.length > 0) lines.push({ text: parts.join(', ') });
+          if (prefs.things_brought) {
+            lines.push({ text: 'Things brought noted' });
+          }
         }
         if (specialInstructions.trim()) {
           lines.push({ text: 'Special instructions added' });

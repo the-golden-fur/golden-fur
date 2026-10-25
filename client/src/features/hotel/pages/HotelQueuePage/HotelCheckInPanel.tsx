@@ -916,6 +916,15 @@ export function HotelCheckInPanel({
         ) : null}
       </section>
 
+      {booking.hotel_preferences?.things_brought ? (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>6. Things brought</h2>
+          <p className={styles.copy}>
+            {booking.hotel_preferences.things_brought}
+          </p>
+        </section>
+      ) : null}
+
       <button
         type="button"
         className={isEditing ? styles.secondaryButton : styles.primaryButton}

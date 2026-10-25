@@ -174,7 +174,7 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
         )}
       </section>
 
-      {isHotel && preferences ? (
+      {(isHotel || booking.service_category === 'Daycare') && preferences ? (
         <section className={styles.section}>
           <h4 className={styles.sectionTitle}>Care instructions</h4>
           <p className={styles.copy}>
@@ -223,6 +223,13 @@ export function BookingDetailsView({ data }: BookingDetailsViewProps) {
                   ? ` (${row.scheduled_times.join(', ')})`
                   : '')
             )}
+          />
+          {/* Per booking, not per night - same on every night tab. */}
+          <CarePreferenceBlock
+            label="Things brought"
+            lines={
+              preferences.things_brought ? [preferences.things_brought] : []
+            }
           />
         </section>
       ) : null}

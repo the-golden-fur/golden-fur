@@ -368,6 +368,10 @@ export interface HotelBookingPreferences {
   walking: HotelBookingPreferenceWalking[];
   playing: HotelBookingPreferencePlaying[];
   medications: HotelBookingPreferenceMedication[];
+  /** Freetext list of items brought with the pet (leash, toys, food bag...).
+   * One per booking, not per night - unlike the rows above it has no
+   * stay_date. Customer and front desk can both set it. */
+  things_brought?: string;
 }
 
 /**

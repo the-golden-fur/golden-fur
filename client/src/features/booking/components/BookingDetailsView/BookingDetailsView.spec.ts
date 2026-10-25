@@ -152,6 +152,29 @@ describe('BookingDetailsView', () => {
     expect(screen.getByText('Morning — Kibble (1 cup)')).toBeInTheDocument();
   });
 
+  it('shows care instructions and Things brought for a Daycare booking', () => {
+    const data = buildDetails({
+      booking: {
+        ...buildDetails().booking,
+        service_category: 'Daycare',
+        hotel_preferences: {
+          uniform_instructions: true,
+          feeding: [],
+          walking: [],
+          playing: [],
+          medications: [],
+          things_brought: 'Leash, blue blanket',
+        },
+      },
+    });
+
+    render(createElement(BookingDetailsView, { data }));
+
+    expect(screen.getByText('Care instructions')).toBeInTheDocument();
+    expect(screen.getByText('Things brought')).toBeInTheDocument();
+    expect(screen.getByText('Leash, blue blanket')).toBeInTheDocument();
+  });
+
   it('hides the Payments section entirely when payments are not visible to the viewer', () => {
     render(
       createElement(BookingDetailsView, {
