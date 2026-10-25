@@ -10,10 +10,6 @@ import type {
   SortTile,
 } from '../../../../shared/components/FilterSortBar/filterField.types';
 import { ViewSwitcher } from '../../../../shared/components/ViewSwitcher/ViewSwitcher';
-import {
-  MoreOptionsMenu,
-  type MoreOptionsMenuItem,
-} from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { TransactionReceiptPrintout } from '../../../../shared/components/TransactionReceiptPrintout/TransactionReceiptPrintout';
 import {
   listBranchLetterheads,
@@ -402,9 +398,9 @@ export function TransactionHistoryTable() {
     window.print();
   }
 
-  function buildMenuItems(
-    transaction: TransactionRecord
-  ): MoreOptionsMenuItem[] {
+  // Pay, View and Print receipt sit side by side as their own buttons rather
+  // than behind a "..." menu, so the common counter actions are one click.
+  function renderRowActions(transaction: TransactionRecord) {
     // A multi-booking checkout transaction carries booking_group_id instead
     // of booking_id (exactly one is ever set) - settling it is still valid,
     // the settlement RPCs are already group-aware (transactionPayment.service.ts).
@@ -413,21 +409,37 @@ export function TransactionHistoryTable() {
       transaction.transaction_type === 'booking_payment' &&
       Boolean(transaction.booking_id || transaction.booking_group_id) &&
       !isBookingCancelled(transaction);
-    return [
-      ...(transaction.booking_id
-        ? [
-            {
-              label: 'View booking',
-              onSelect: () =>
-                navigate(`/staff/bookings/${transaction.booking_id}`),
-            },
-          ]
-        : []),
-      ...(canPay
-        ? [{ label: 'Pay', onSelect: () => openPay(transaction) }]
-        : []),
-      { label: 'Print receipt', onSelect: () => printReceipt(transaction) },
-    ];
+    return (
+      <div className={styles.rowActions}>
+        {canPay ? (
+          <button
+            type="button"
+            className={styles.payButton}
+            onClick={() => openPay(transaction)}
+          >
+            Pay
+          </button>
+        ) : null}
+        {transaction.booking_id ? (
+          <button
+            type="button"
+            className={styles.rowActionButton}
+            onClick={() =>
+              navigate(`/staff/bookings/${transaction.booking_id}`)
+            }
+          >
+            View
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={styles.rowActionButton}
+          onClick={() => printReceipt(transaction)}
+        >
+          Print receipt
+        </button>
+      </div>
+    );
   }
 
   if (isRoleLoading) {
@@ -511,15 +523,7 @@ export function TransactionHistoryTable() {
       ) : view === 'board' ? (
         <TransactionBoard
           transactions={rows}
-          renderActions={(transaction) => {
-            const items = buildMenuItems(transaction);
-            return items.length > 0 ? (
-              <MoreOptionsMenu
-                label="Options for this transaction"
-                items={items}
-              />
-            ) : null;
-          }}
+          renderActions={renderRowActions}
         />
       ) : (
         <table className={styles.table}>
@@ -572,7 +576,6 @@ export function TransactionHistoryTable() {
                 </tr>
               ) : null}
               {group.items.map((transaction) => {
-                const menuItems = buildMenuItems(transaction);
                 return (
                   <tr
                     key={transaction.id}
@@ -594,14 +597,7 @@ export function TransactionHistoryTable() {
                     </td>
                     <td>{paymentStatusLabel(transaction.payment_status)}</td>
                     <td>PHP {transaction.total_amount.toFixed(2)}</td>
-                    <td>
-                      {menuItems.length > 0 ? (
-                        <MoreOptionsMenu
-                          label={`Options for this transaction`}
-                          items={menuItems}
-                        />
-                      ) : null}
-                    </td>
+                    <td>{renderRowActions(transaction)}</td>
                   </tr>
                 );
               })}

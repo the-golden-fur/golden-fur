@@ -9,6 +9,11 @@ import { useSidebarCollapse } from '../../hooks/useSidebarCollapse/useSidebarCol
 import { AppShell } from './AppShell';
 import type { SidebarSection } from '../Sidebar/Sidebar';
 
+// The customer shell mounts the HelpMascot, whose FAQ list fetches on open.
+vi.mock('../../../features/faq/api/faq.api', () => ({
+  fetchPublicFaqs: vi.fn().mockResolvedValue({ data: [], error: null }),
+}));
+
 const SECTIONS: SidebarSection[] = [
   {
     label: null,
@@ -90,6 +95,60 @@ function renderShell() {
                   'Close probe'
                 )
               ),
+            })
+          )
+        )
+      )
+    )
+  );
+}
+
+/** A customer shell (so the HelpMascot and its Tutorial bubble render),
+ * starting on a portal page other than home. */
+function renderCustomerShell(onStartTutorial: () => void) {
+  const authValue: AuthContextValue = {
+    session: null,
+    user: { id: 'user-1', email: 'user@example.com' },
+    accessToken: 'access',
+    isLoading: false,
+    refreshSession: vi.fn(),
+    applySession: vi.fn(),
+    signOut: vi.fn(),
+  };
+
+  return render(
+    createElement(
+      MemoryRouter,
+      { initialEntries: ['/portal/bookings'] },
+      createElement(
+        AuthContext.Provider,
+        { value: authValue },
+        createElement(
+          Routes,
+          null,
+          createElement(
+            Route,
+            {
+              element: createElement(AppShell, {
+                role: 'customer',
+                brandLabel: 'Golden Fur',
+                identity: { primary: 'Jane Doe' },
+                sidebarSections: [
+                  {
+                    label: null,
+                    items: [{ title: 'My Bookings', to: '/portal/bookings' }],
+                  },
+                ],
+                onStartTutorial,
+              }),
+            },
+            createElement(Route, {
+              path: '/portal',
+              element: createElement('div', null, 'Home content'),
+            }),
+            createElement(Route, {
+              path: '/portal/bookings',
+              element: createElement('div', null, 'Bookings content'),
             })
           )
         )
@@ -187,6 +246,21 @@ describe('AppShell', () => {
     ).toBeInTheDocument();
   });
 
+  it("the mascot's Tutorial takes the customer home and opens the sidebar first", async () => {
+    window.localStorage.setItem('sidebar-collapsed-customer', 'true');
+    const onStartTutorial = vi.fn();
+    renderCustomerShell(onStartTutorial);
+
+    expect(screen.getByText('Bookings content')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Tutorial' }));
+
+    expect(onStartTutorial).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Home content')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Collapse sidebar' })
+    ).toBeInTheDocument();
+  });
+
   describe('custom change (responsive navigation): phone drawer', () => {
     beforeEach(() => {
       vi.stubGlobal(
@@ -269,6 +343,16 @@ describe('AppShell', () => {
 
       expect(await screen.findByText('Probe content')).toBeInTheDocument();
       expect(drawer()).toHaveAttribute('inert');
+    });
+
+    it("the mascot's Tutorial opens the drawer on the home page", async () => {
+      renderCustomerShell(vi.fn());
+
+      await userEvent.click(screen.getByRole('button', { name: 'Help' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Tutorial' }));
+
+      expect(await screen.findByText('Home content')).toBeInTheDocument();
+      expect(drawer()).not.toHaveAttribute('inert');
     });
 
     it('leaves the desktop collapse preference untouched', async () => {

@@ -84,8 +84,10 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
   },
   {
     title: 'Promos & Rewards',
+    // Kept neutral: the spin-wheel rewards and reward pools inside are an
+    // experimental feature (Settings > Experimental) that may be off.
     description:
-      'Configure promotions (including coupon spin wheels and their trigger conditions), spin-wheel rewards, and reward pools.',
+      'Configure promotions, their minimum orders and branches, and any rewards they hand out.',
     to: '/staff/admin/maintenance/promos-and-rewards',
     icon: Gift,
     Component: AdminPromosAndRewardsPage,

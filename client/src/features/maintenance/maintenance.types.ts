@@ -141,27 +141,6 @@ export interface UpdatePetWeightClassConfigurationPayload {
   xl_min_kg?: number;
 }
 
-/** 'count' caps how many promos may combine on one transaction (cap_value
- * is then a whole number of promos), instead of capping their combined
- * PHP/percentage amount. */
-export type CapType = 'percentage' | 'flat' | 'count';
-
-/** Epic B (#84): per-branch (NULL = both branches) promo cap. */
-export interface PromoCapConfiguration {
-  id: string;
-  branch_id: string | null;
-  cap_type: CapType;
-  cap_value: number;
-  updated_by_staff_id: string | null;
-  updated_at: string;
-}
-
-export interface UpsertPromoCapConfigurationPayload {
-  branch_id?: string | null;
-  cap_type: CapType;
-  cap_value: number;
-}
-
 export interface ServiceBranchAvailability {
   service_id: string;
   branch_id: string;
@@ -530,6 +509,10 @@ export interface Promo {
    * promo has no discount of its own; its reward pool's rewards do. */
   discount_type: DiscountValueType | null;
   value: number | null;
+  /** The promo cap: the minimum booking subtotal needed to use this promo,
+   * any discount type. null = no cap. Replaces the per-branch Promo Cap
+   * Configuration. Optional so older fixtures still type-check. */
+  min_spend?: number | null;
   scope_type: PromoScopeType | null;
   /**
    * Deliberately NOT derived from promo_branch_availability - unlike
@@ -567,6 +550,8 @@ export interface CreatePromoPayload {
    * and send spin_wheel instead (session 114). */
   discount_type?: DiscountValueType;
   value?: number;
+  /** The promo cap (minimum order) - see Promo.min_spend. */
+  min_spend?: number | null;
   scope_type?: PromoScopeType;
   scope?: PromoScopeInput[];
   branch_ids?: string[];
@@ -584,6 +569,8 @@ export interface UpdatePromoPayload {
   condition_note?: string | null;
   discount_type?: DiscountValueType;
   value?: number;
+  /** The promo cap (minimum order) - see Promo.min_spend. */
+  min_spend?: number | null;
   scope_type?: PromoScopeType;
   scope?: PromoScopeInput[];
   is_active?: boolean;

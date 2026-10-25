@@ -117,4 +117,13 @@ describe('buildStaffFilterFields', () => {
     expect(without.find((f) => f.id === 'pet')?.disabled).toBe(true);
     expect(withCustomer.find((f) => f.id === 'pet')?.disabled).toBe(false);
   });
+
+  it('the Date filter offers past ranges - transactions have already happened', () => {
+    const dateField = buildStaffFilterFields({
+      customers: [],
+      pets: [],
+      hasCustomerFilter: false,
+    }).find((field) => field.id === 'date');
+    expect(dateField).toMatchObject({ type: 'date-range', pastOnly: true });
+  });
 });

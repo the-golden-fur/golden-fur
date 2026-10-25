@@ -1,0 +1,103 @@
+/* Never part of the screen layout - this sheet only exists for the printer. */
+.sheet {
+  display: none;
+}
+
+@media print {
+  /* While a sheet is mounted it is the only thing printed: the app (#root)
+     and any open modal are siblings of it under <body>. Same rule as
+     PrescriptionPrintout. */
+  :global(body):has(> .sheet) > *:not(.sheet) {
+    display: none !important;
+  }
+
+  .sheet {
+    display: block;
+    color: #000;
+    background: #fff;
+    font-size: 10pt;
+    line-height: 1.4;
+    padding: 12mm 4mm 0;
+  }
+
+  .letterhead {
+    border-bottom: 1.5pt solid #000;
+    padding-bottom: 4mm;
+    text-align: center;
+  }
+
+  .brand {
+    margin: 0;
+    font-size: 18pt;
+    font-weight: 700;
+  }
+
+  .title {
+    margin: 8mm 0 5mm;
+    font-size: 13pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2mm 10mm;
+    margin: 0 0 8mm;
+  }
+
+  .details div {
+    display: flex;
+    gap: 3mm;
+  }
+
+  .details dt {
+    min-width: 26mm;
+    font-weight: 700;
+  }
+
+  .details dd {
+    margin: 0;
+  }
+
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .table th,
+  .table td {
+    border: 0.5pt solid #000;
+    padding: 2mm;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .table thead th {
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .table tr {
+    break-inside: avoid;
+  }
+
+  .table tfoot th,
+  .table tfoot td {
+    font-weight: 700;
+  }
+
+  .table .amount {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .reason {
+    display: block;
+    margin-top: 1mm;
+    font-size: 9pt;
+    font-style: italic;
+  }
+}

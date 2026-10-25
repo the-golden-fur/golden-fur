@@ -390,6 +390,9 @@ export interface HotelBookingPreferenceMedication {
 }
 
 export interface HotelBookingPreferences {
+  /** Freetext list of items brought with the pet - one per booking, not
+   * per night (no stay_date). */
+  things_brought?: string;
   /** Whether the customer/receptionist opted into per-night editing -
    * informational only, the authoritative scoping is each row's stay_date. */
   uniform_instructions: boolean;

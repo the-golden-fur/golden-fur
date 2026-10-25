@@ -7,7 +7,6 @@ import {
 } from './lineItemSources.service.ts';
 import {
   evaluateDiscounts,
-  evaluatePromos,
   type DiscountEligibility,
   type EvaluatedPromo,
 } from './discountPromoEvaluation.service.ts';
@@ -111,11 +110,10 @@ export async function buildCheckoutPreview(
     : await evaluateDiscounts(booking, eligibility, subtotal);
 
   // Multiselect (session 86): booking.promo_selections (one row per promo/
-  // coupon locked in at booking time) is now the primary source; a booking
+  // coupon locked in at booking time) is the primary source; a booking
   // created before this feature falls back to its own singular
-  // selected_promo_id, and one created before ANY booking-time selection
-  // existed falls back all the way to evaluatePromos, same three-tier
-  // fallback discountLines above already uses for discounts.
+  // selected_promo_id. A booking with no promo picked at all gets none -
+  // promos are never auto-applied at checkout (per-promo cap change).
   const evaluatedPromos: EvaluatedPromo[] =
     booking.promo_selections.length > 0
       ? booking.promo_selections.map((selection) => ({
@@ -145,7 +143,7 @@ export async function buildCheckoutPreview(
               },
             },
           ]
-        : await evaluatePromos(booking, subtotal);
+        : [];
   const promoLines = evaluatedPromos.map((evaluated) => evaluated.line);
 
   const nonServiceDiscountLines = serviceLines.filter(
@@ -421,14 +419,14 @@ export interface GroupCheckoutPreview {
  * unmodified - same per-category M04/M05/M06/M07 sources a single-booking
  * checkout already uses) into one receipt.
  *
- * Discount/promo are NOT re-evaluated here the way buildCheckoutPreview falls
- * back to evaluateDiscounts/evaluatePromos for a booking with nothing
- * pre-selected: createBookingGroup ALWAYS calls resolveDiscountAndPromo once,
- * up front (there is no legacy "group created before this feature existed"
- * case to fall back for, unlike a single booking), so the group's own stored
+ * Discounts are NOT re-evaluated here the way buildCheckoutPreview falls
+ * back to evaluateDiscounts for a booking with nothing pre-selected:
+ * createBookingGroup ALWAYS calls resolveDiscountAndPromo once, up front
+ * (there is no legacy "group created before this feature existed" case to
+ * fall back for, unlike a single booking), so the group's own stored
  * selected_discount_id/discount_amount/selected_promo_id/promo_amount are
- * authoritative, full stop - and evaluateDiscounts/evaluatePromos are built
- * around one BookingForBilling's own service_category/id anyway, which
+ * authoritative, full stop - and evaluateDiscounts is built around one
+ * BookingForBilling's own service_category/id anyway, which
  * doesn't generalize cleanly to a multi-category cart (bookingGroup.service.ts
  * hits the identical category-ambiguity issue for its own discount scope
  * match and resolves it the same way: fail safe rather than guess).

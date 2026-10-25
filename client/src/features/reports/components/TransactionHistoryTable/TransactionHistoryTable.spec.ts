@@ -160,9 +160,6 @@ describe('TransactionHistoryTable', () => {
     });
     renderTable();
     await screen.findByText('PHP 693.00');
-    await userEvent.click(
-      screen.getByRole('button', { name: /options for this transaction/i })
-    );
     await userEvent.click(await screen.findByText('Pay'));
     await screen.findByRole('dialog');
   }
@@ -264,12 +261,9 @@ describe('TransactionHistoryTable', () => {
     renderTable();
 
     await screen.findByText('PHP 4840.00');
-    await userEvent.click(
-      screen.getByRole('button', { name: /options for this transaction/i })
-    );
     expect(screen.getByText('Pay')).toBeInTheDocument();
     // No single booking to view for a group transaction.
-    expect(screen.queryByText('View booking')).not.toBeInTheDocument();
+    expect(screen.queryByText('View')).not.toBeInTheDocument();
   });
 
   it('does not offer Pay on a charge whose booking was cancelled', async () => {
@@ -289,9 +283,6 @@ describe('TransactionHistoryTable', () => {
     renderTable();
 
     await screen.findByText('PHP 500.00');
-    await userEvent.click(
-      screen.getByRole('button', { name: /options for this transaction/i })
-    );
     expect(await screen.findByText('Print receipt')).toBeInTheDocument();
     expect(screen.queryByText('Pay')).not.toBeInTheDocument();
   });
@@ -374,7 +365,7 @@ describe('TransactionHistoryTable', () => {
     expect(await screen.findByText('PHP 2.00')).toBeInTheDocument();
   });
 
-  it('offers "View booking" in the row menu for a booking payment, but not for a misc sale', async () => {
+  it('offers a View button for a booking payment, but not for a misc sale', async () => {
     vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
       data: [
         buildTransaction({ id: 'txn-1', booking_id: 'booking-9' }),
@@ -393,32 +384,21 @@ describe('TransactionHistoryTable', () => {
     renderTable();
     await screen.findByText('Leash');
 
-    // Both rows have a "..." menu (a receipt can be printed for either), in
-    // the default Booking grouping's order: the booking payment, then the
-    // misc sale.
-    const menus = screen.getAllByRole('button', {
-      name: /options for this transaction/i,
-    });
-    expect(menus).toHaveLength(2);
+    // Both rows can print a receipt, but only the booking payment has a
+    // booking to view - the misc sale gets no View button.
+    expect(
+      screen.getAllByRole('button', { name: 'Print receipt' })
+    ).toHaveLength(2);
+    const viewButtons = screen.getAllByRole('button', { name: 'View' });
+    expect(viewButtons).toHaveLength(1);
 
-    // The misc sale has no booking to view.
-    await userEvent.click(menus[1]);
-    expect(await screen.findByText('Print receipt')).toBeInTheDocument();
-    expect(screen.queryByText('View booking')).not.toBeInTheDocument();
-    await userEvent.keyboard('{Escape}');
-
-    await userEvent.click(menus[0]);
-    await userEvent.click(await screen.findByText('View booking'));
+    await userEvent.click(viewButtons[0]);
     expect(await screen.findByText('Booking details')).toBeInTheDocument();
   });
 
-  it('prints a receipt for a paid transaction from the row menu', async () => {
+  it('prints a receipt for a paid transaction from its row button', async () => {
     renderTable();
     await screen.findByText('PHP 500.00');
-
-    await userEvent.click(
-      screen.getByRole('button', { name: /options for this transaction/i })
-    );
     await userEvent.click(await screen.findByText('Print receipt'));
 
     expect(window.print).toHaveBeenCalledTimes(1);
@@ -491,11 +471,10 @@ describe('TransactionHistoryTable', () => {
     renderTable();
     await screen.findByText('PHP 900.00');
 
-    const menus = screen.getAllByRole('button', {
-      name: /options for this transaction/i,
+    const printButtons = screen.getAllByRole('button', {
+      name: 'Print receipt',
     });
-    await userEvent.click(menus[0]);
-    await userEvent.click(await screen.findByText('Print receipt'));
+    await userEvent.click(printButtons[0]);
 
     const bill = within(
       screen.getByRole('document', { name: 'Receipt' })
@@ -510,8 +489,7 @@ describe('TransactionHistoryTable', () => {
     act(() => {
       window.dispatchEvent(new Event('afterprint'));
     });
-    await userEvent.click(menus[1]);
-    await userEvent.click(await screen.findByText('Print receipt'));
+    await userEvent.click(printButtons[1]);
     expect(
       screen.queryByRole('table', { name: 'Bill' })
     ).not.toBeInTheDocument();
@@ -524,10 +502,6 @@ describe('TransactionHistoryTable', () => {
     });
     renderTable();
     await screen.findByText('PHP 500.00');
-
-    await userEvent.click(
-      screen.getByRole('button', { name: /options for this transaction/i })
-    );
     await userEvent.click(await screen.findByText('Print receipt'));
 
     const sheet = screen.getByRole('document', { name: 'Payment Due' });
@@ -576,11 +550,7 @@ describe('TransactionHistoryTable', () => {
     expect(screen.getByText('Due payment')).toBeInTheDocument();
     expect(screen.getByText('Fully Paid')).toBeInTheDocument();
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
-
-    await userEvent.click(
-      screen.getByRole('button', { name: /options for this transaction/i })
-    );
-    await userEvent.click(await screen.findByText('View booking'));
+    await userEvent.click(await screen.findByText('View'));
     expect(await screen.findByText('Booking details')).toBeInTheDocument();
   });
   it('groups rows by booking by default, with a header naming the service, pet, and booking status', async () => {

@@ -73,6 +73,12 @@ vi.mock('./availability.service.ts', () => ({
   assertDaycareStartsBeforeCutoff: vi.fn(),
 }));
 
+// Reward coupons are gated on the coupon spin wheel experimental feature
+// (Settings > Experimental) - off by default, as in the real app.
+vi.mock('../../featureFlags/services/featureFlags.service.ts', () => ({
+  isFeatureEnabled: vi.fn().mockResolvedValue(false),
+}));
+
 vi.mock('./bookingNotifications.service.ts', () => ({
   sendBookingConfirmedNotification: vi.fn().mockResolvedValue(undefined),
   sendStaffAssignedNotification: vi.fn().mockResolvedValue(undefined),
@@ -2625,6 +2631,27 @@ describe('booking.service (#51)', () => {
       expect(getPromoById).not.toHaveBeenCalled();
     });
 
+    it('refuses a reward coupon while the coupon spin wheel is switched off', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults({ data: PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: {
+            ...BASE_INPUT,
+            service_category: 'Daycare',
+            items: [{ service_id: 'service-daycare' }],
+            coupon_ids: ['coupon-1'],
+          },
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Reward coupons are currently unavailable.',
+      });
+    });
+
     it('rejects a discount when the requester is not a money-handling staff role', async () => {
       vi.mocked(getStaffRoleOrNull).mockResolvedValue('Groomer');
       queueFromResults({ data: PET, error: null }); // pet ownership
@@ -2645,16 +2672,15 @@ describe('booking.service (#51)', () => {
       expect(getDiscountById).not.toHaveBeenCalled();
     });
 
-    it('applies a promo regardless of role, capped by promo_cap_configuration', async () => {
+    it('applies a promo regardless of role, in full - no branch cap lookup', async () => {
       vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
       vi.mocked(getPromoById).mockResolvedValue(ALL_SERVICES_PROMO);
       vi.mocked(getStaffRoleOrNull).mockResolvedValue(null); // a customer, not staff
       queueFromResults(
         { data: PET, error: null }, // pet ownership
-        // Discounts/promos are now resolved BEFORE the down payment
-        // (advisor: "discounts and promos apply before downpayment is
-        // calculated"), so the promo cap lookup comes first.
-        { data: { cap_type: 'flat', cap_value: 1000 }, error: null }, // promo_cap_configuration (branch row)
+        // Discounts/promos are resolved BEFORE the down payment (advisor:
+        // "discounts and promos apply before downpayment is calculated").
+        // No promo_cap_configuration lookup - each promo carries its own cap.
         { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
         { data: [], error: null }, // daycare overlap - empty
         { data: INSERTED_BOOKING, error: null }, // bookings insert
@@ -2696,6 +2722,94 @@ describe('booking.service (#51)', () => {
           applied_amount: 10,
         },
       ]);
+    });
+
+    it('applies a Flat promo in full once its promo cap (minimum order) is met', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getPromoById).mockResolvedValue({
+        ...ALL_SERVICES_PROMO,
+        discount_type: 'Flat',
+        value: 40, // 40% of the 100 price, under the 50% payable floor
+        min_spend: 100, // exactly the 100 price - met
+      } as never);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults(
+        { data: PET, error: null }, // pet ownership
+        { data: [DEFAULT_POLICY], error: null }, // resolveDownpaymentPolicy
+        { data: [], error: null }, // daycare overlap - empty
+        { data: INSERTED_BOOKING, error: null }, // bookings insert
+        { data: null, error: null }, // booking_items insert
+        { data: null, error: null }, // booking_promo_selections insert
+        { data: [{ id: 'booking-1' }], error: null }, // re-count winner
+        { data: INSERTED_BOOKING, error: null } // final fetch
+      );
+
+      await createBooking({
+        requesterId: CUSTOMER_ID,
+        input: {
+          ...BASE_INPUT,
+          service_category: 'Daycare',
+          items: [{ service_id: 'service-daycare' }],
+          promo_ids: ['promo-1'],
+        },
+      });
+
+      const insert = recordedWrites.find(
+        (write) => write.table === 'bookings' && write.method === 'insert'
+      );
+      expect(insert?.payload).toMatchObject({ promo_amount: 40 });
+    });
+
+    it('rejects a Percentage promo below its promo cap (minimum order)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getPromoById).mockResolvedValue({
+        ...ALL_SERVICES_PROMO,
+        min_spend: 150, // the daycare service costs 100
+      } as never);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults({ data: PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: {
+            ...BASE_INPUT,
+            service_category: 'Daycare',
+            items: [{ service_id: 'service-daycare' }],
+            promo_ids: ['promo-1'],
+          },
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: expect.stringContaining('minimum order of PHP 150.00'),
+      });
+    });
+
+    it('rejects a Flat promo below its promo cap (minimum order)', async () => {
+      vi.mocked(getServiceById).mockResolvedValue(DAYCARE_SERVICE);
+      vi.mocked(getPromoById).mockResolvedValue({
+        ...ALL_SERVICES_PROMO,
+        discount_type: 'Flat',
+        value: 40,
+        min_spend: 500, // the daycare service costs 100
+      } as never);
+      vi.mocked(getStaffRoleOrNull).mockResolvedValue(null);
+      queueFromResults({ data: PET, error: null }); // pet ownership
+
+      await expect(
+        createBooking({
+          requesterId: CUSTOMER_ID,
+          input: {
+            ...BASE_INPUT,
+            service_category: 'Daycare',
+            items: [{ service_id: 'service-daycare' }],
+            promo_ids: ['promo-1'],
+          },
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: expect.stringContaining('minimum order of PHP 500.00'),
+      });
     });
 
     it('rejects a promo whose scope does not match the selected items', async () => {

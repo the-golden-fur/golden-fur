@@ -1,13 +1,23 @@
 import { useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import { listStaff } from '../../../staff/api/staff.api';
-import { listBranches } from '../../../maintenance/api/maintenance.api';
+import {
+  listBranches,
+  listBranchLetterheads,
+  type BranchLetterhead,
+} from '../../../maintenance/api/maintenance.api';
 import type { BranchSummary } from '../../../maintenance/maintenance.types';
-import { getDailySalesReport } from '../../api/reports.api';
-import type { DailySalesReport } from '../../reports.types';
+import {
+  getDailySalesReport,
+  getTransactionHistory,
+} from '../../api/reports.api';
+import type { DailySalesReport, TransactionRecord } from '../../reports.types';
+import { TransactionReceiptPrintout } from '../../../../shared/components/TransactionReceiptPrintout/TransactionReceiptPrintout';
+import { receiptPropsFor } from '../../components/TransactionHistoryTable/transactionReceipt';
 import {
   currentReportDay,
   formatReportDay,
@@ -34,6 +44,10 @@ const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Supervisor', 'Superadmin']);
  * Goals page's this-month/last-month panels - and Previous/Next day buttons
  * around the date field, like the Goals page's month picker. Both days come
  * from the same GET /reports/dsr, fetched side by side.
+ *
+ * Custom change (receipt print): Print no longer prints the report layout -
+ * it prints one receipt per transaction the report counts (the same slip the
+ * Transactions page prints), each on its own page.
  */
 export function DailySalesReportPage() {
   const { user, accessToken } = useAuth();
@@ -46,6 +60,12 @@ export function DailySalesReportPage() {
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [reportDate, setReportDate] = useState(() => currentReportDay());
 
+  // Only for the printed receipts' letterheads.
+  const [letterheads, setLetterheads] = useState<Map<string, BranchLetterhead>>(
+    () => new Map()
+  );
+  const [isPrinting, setIsPrinting] = useState(false);
+
   // Tagged with what it was fetched for, so "loading" is derived (result is
   // for a different day/branch) rather than set inside the effect - same
   // pattern as GoalsPage.
@@ -54,6 +74,9 @@ export function DailySalesReportPage() {
     branchId: string | null;
     report: DailySalesReport | null;
     previous: DailySalesReport | null;
+    /** The day's transactions the report counts, oldest first - what Print
+     * prints. */
+    receipts: TransactionRecord[];
     error: string | null;
   } | null>(null);
 
@@ -73,6 +96,14 @@ export function DailySalesReportPage() {
 
     void listBranches().then((branchesResult) => {
       if (isMounted && branchesResult.data) setBranches(branchesResult.data);
+    });
+
+    void listBranchLetterheads().then((letterheadsResult) => {
+      if (isMounted && letterheadsResult.data) {
+        setLetterheads(
+          new Map(letterheadsResult.data.map((branch) => [branch.id, branch]))
+        );
+      }
     });
 
     return () => {
@@ -97,7 +128,15 @@ export function DailySalesReportPage() {
         branchId,
         accessToken
       ),
-    ]).then(([current, previous]) => {
+      getTransactionHistory(
+        {
+          branchId: branchId ?? undefined,
+          dateFrom: reportDate,
+          dateTo: reportDate,
+        },
+        accessToken
+      ),
+    ]).then(([current, previous, history]) => {
       if (!isMounted) return;
 
       setResult({
@@ -106,6 +145,12 @@ export function DailySalesReportPage() {
         report: current.data,
         // A failed previous-day fetch only drops the comparison line.
         previous: previous.error ? null : previous.data,
+        // The report only counts settled transactions (both booking payments
+        // and misc sales) - print the same set. A failed fetch only leaves
+        // nothing to print.
+        receipts: (history.data ?? [])
+          .filter((transaction) => transaction.payment_status === 'Fully Paid')
+          .sort((a, b) => a.created_at.localeCompare(b.created_at)),
         error: current.error,
       });
     });
@@ -130,6 +175,14 @@ export function DailySalesReportPage() {
   const report = isLoading ? null : (result?.report ?? null);
   const previous = isLoading ? null : (result?.previous ?? null);
   const error = isLoading ? null : (result?.error ?? null);
+  const receipts = isLoading ? [] : (result?.receipts ?? []);
+
+  function printReceipts() {
+    // The sheets have to be in the page before the print dialog opens, so
+    // their render is flushed rather than left for the next paint.
+    flushSync(() => setIsPrinting(true));
+    window.print();
+  }
 
   const today = currentReportDay();
   const isToday = reportDate === today;
@@ -209,7 +262,13 @@ export function DailySalesReportPage() {
           <button
             type="button"
             className={styles.printButton}
-            onClick={() => window.print()}
+            onClick={printReceipts}
+            disabled={receipts.length === 0}
+            title={
+              receipts.length === 0
+                ? 'No paid transactions to print for this day'
+                : undefined
+            }
           >
             Print
           </button>
@@ -331,6 +390,19 @@ export function DailySalesReportPage() {
           </div>
         </div>
       )}
+
+      {isPrinting
+        ? receipts.map((transaction) => (
+            <TransactionReceiptPrintout
+              key={transaction.id}
+              {...receiptPropsFor(
+                transaction,
+                letterheads.get(transaction.branch_id)
+              )}
+              onDone={() => setIsPrinting(false)}
+            />
+          ))
+        : null}
     </main>
   );
 }

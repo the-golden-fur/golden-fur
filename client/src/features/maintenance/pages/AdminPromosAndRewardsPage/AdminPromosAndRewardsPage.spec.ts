@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { FeatureFlagsContext } from '../../../../shared/providers/FeatureFlagsProvider/FeatureFlagsContext';
 import { AdminPromosAndRewardsPage } from './AdminPromosAndRewardsPage';
 
 vi.mock('../AdminPromoConfigPage/AdminPromoConfigPage', () => ({
@@ -18,9 +19,27 @@ vi.mock(
   })
 );
 
+/** Renders with the coupon spin wheel experimental feature on or off. */
+function renderPage(spinWheelOn: boolean) {
+  return render(
+    createElement(
+      FeatureFlagsContext.Provider,
+      {
+        value: {
+          flags: { spin_wheel: spinWheelOn },
+          isLoaded: true,
+          refreshFeatureFlags: async () => {},
+          setFlags: () => {},
+        },
+      },
+      createElement(AdminPromosAndRewardsPage)
+    )
+  );
+}
+
 describe('AdminPromosAndRewardsPage', () => {
   it('defaults to the Promos section', () => {
-    render(createElement(AdminPromosAndRewardsPage));
+    renderPage(true);
 
     expect(screen.getByText('Promos content')).toBeInTheDocument();
     expect(screen.queryByText('Rewards content')).not.toBeInTheDocument();
@@ -31,7 +50,7 @@ describe('AdminPromosAndRewardsPage', () => {
   });
 
   it('session 114: has Promos, Rewards, and Reward Pools tabs - no Coupon Spin Wheel tab', () => {
-    render(createElement(AdminPromosAndRewardsPage));
+    renderPage(true);
 
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Promos',
@@ -44,7 +63,7 @@ describe('AdminPromosAndRewardsPage', () => {
   });
 
   it('switches between Rewards and Reward Pools', async () => {
-    render(createElement(AdminPromosAndRewardsPage));
+    renderPage(true);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole('tab', { name: 'Rewards' }));
@@ -57,5 +76,13 @@ describe('AdminPromosAndRewardsPage', () => {
       'aria-selected',
       'true'
     );
+  });
+
+  it('shows Promos only - no tabs - while the coupon spin wheel is switched off', () => {
+    renderPage(false);
+
+    expect(screen.getByText('Promos content')).toBeInTheDocument();
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(screen.queryByText('Rewards content')).not.toBeInTheDocument();
   });
 });

@@ -132,9 +132,7 @@ function requireNoDuplicateItems(
  * `promo_id` scalar made a repeated id structurally impossible; the array
  * form doesn't, so this mirrors requireNoDuplicateItems's own dedup check
  * above for the new promo_ids/coupon_ids fields - without it, sending the
- * same promo id twice would apply it twice (two independent candidates
- * into applyPromoCap, capped only by whatever promo_cap_configuration
- * happens to allow).
+ * same promo id twice would apply it twice.
  */
 function requireNoDuplicatePromoOrCouponIds(
   input: { promo_ids?: string[]; coupon_ids?: string[] },
@@ -253,6 +251,7 @@ const hotelPreferencesValidator = z
           .strict()
       )
       .default([]),
+    things_brought: z.string().trim().max(500).optional(),
   })
   .strict();
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildCheckoutPreview,
   buildGroupCheckoutPreview,
   checkoutBooking,
   checkoutBookingGroup,
@@ -10,10 +11,7 @@ import {
   getBookingPromoSelections,
   getServiceLineItems,
 } from './lineItemSources.service.ts';
-import {
-  evaluateDiscounts,
-  evaluatePromos,
-} from './discountPromoEvaluation.service.ts';
+import { evaluateDiscounts } from './discountPromoEvaluation.service.ts';
 import { applyCredit, getAvailableCredit } from './creditStub.service.ts';
 import { resolvePaymentConfirmation } from './paymentMethod.service.ts';
 import {
@@ -31,7 +29,6 @@ vi.mock('./lineItemSources.service.ts', () => ({
 }));
 vi.mock('./discountPromoEvaluation.service.ts', () => ({
   evaluateDiscounts: vi.fn(),
-  evaluatePromos: vi.fn(),
 }));
 vi.mock('./creditStub.service.ts', () => ({
   applyCredit: vi.fn(),
@@ -126,6 +123,35 @@ function mockSupabase(existingTransactions: unknown[]) {
   return calls;
 }
 
+describe('buildCheckoutPreview - promos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getBookingForBilling).mockResolvedValue(BOOKING as never);
+    vi.mocked(getServiceLineItems).mockResolvedValue([
+      {
+        line_item_type: 'service',
+        reference_id: 'svc-1',
+        description: 'Bath',
+        quantity: 1,
+        unit_price: 500,
+        line_total: 500,
+      },
+    ] as never);
+    vi.mocked(evaluateDiscounts).mockResolvedValue([]);
+  });
+
+  it('applies no promo at all when none was picked at booking', async () => {
+    const preview = await buildCheckoutPreview('booking-1', {
+      seniorCitizenEligible: false,
+      pwdEligible: false,
+    } as never);
+
+    expect(preview.promoLines).toEqual([]);
+    expect(preview.promoAmount).toBe(0);
+    expect(preview.preCreditTotal).toBe(500);
+  });
+});
+
 describe('checkoutBooking — initial-charge reconciliation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -141,7 +167,6 @@ describe('checkoutBooking — initial-charge reconciliation', () => {
       },
     ] as never);
     vi.mocked(evaluateDiscounts).mockResolvedValue([]);
-    vi.mocked(evaluatePromos).mockResolvedValue([]);
     vi.mocked(getAvailableCredit).mockResolvedValue(0);
     vi.mocked(applyCredit).mockResolvedValue({ appliedAmount: 0 } as never);
     vi.mocked(resolvePaymentConfirmation).mockReturnValue({

@@ -14,11 +14,14 @@ import { paymentChoiceLabel } from '../../../../reports/components/TransactionHi
 import { receiptPropsFor } from '../../../../reports/components/TransactionHistoryTable/transactionReceipt';
 import { TransactionReceiptPrintout } from '../../../../../shared/components/TransactionReceiptPrintout/TransactionReceiptPrintout';
 import { formatCurrency } from '../../../../../shared/utils/formatCurrency';
+import { ServiceHistoryPrintout } from './ServiceHistoryPrintout';
 import styles from './ServiceHistoryList.module.css';
 import { LoadingState } from '../../../../../shared/components/LoadingState/LoadingState';
 
 interface ServiceHistoryListProps {
   petId: string;
+  /** Printed at the top of the service history report. */
+  petName?: string;
   accessToken: string;
 }
 
@@ -38,10 +41,12 @@ function formatShortDate(iso: string): string {
  * Read-only, same simple list shape as ConsultationResultList. A cancelled or
  * no-show booking's price is shown muted as "not charged" so it doesn't read
  * as money taken. Each paid payment behind a booking can be reprinted - the
- * same slip the Transactions page prints (see receiptPropsFor).
+ * same slip the Transactions page prints (see receiptPropsFor). The whole
+ * history also prints as one report (ServiceHistoryPrintout).
  */
 export function ServiceHistoryList({
   petId,
+  petName,
   accessToken,
 }: ServiceHistoryListProps) {
   const [entries, setEntries] = useState<PetServiceHistoryEntry[]>([]);
@@ -52,6 +57,7 @@ export function ServiceHistoryList({
   const [printing, setPrinting] = useState<PetServiceHistoryPayment | null>(
     null
   );
+  const [isPrintingReport, setIsPrintingReport] = useState(false);
   const [branches, setBranches] = useState<Map<string, BranchLetterhead>>(
     () => new Map()
   );
@@ -98,6 +104,11 @@ export function ServiceHistoryList({
     window.print();
   }
 
+  function printReport() {
+    flushSync(() => setIsPrintingReport(true));
+    window.print();
+  }
+
   if (isLoading) {
     return <LoadingState label="Loading service history..." />;
   }
@@ -116,6 +127,16 @@ export function ServiceHistoryList({
 
   return (
     <>
+      <div className={styles.toolbar}>
+        <button
+          type="button"
+          className={styles.printReportButton}
+          onClick={printReport}
+        >
+          Print history
+        </button>
+      </div>
+
       <ul className={styles.list}>
         {entries.map((entry) => {
           const isCompleted = entry.status === 'Completed';
@@ -185,6 +206,14 @@ export function ServiceHistoryList({
         <TransactionReceiptPrintout
           {...receiptPropsFor(printing, branches.get(printing.branch_id))}
           onDone={() => setPrinting(null)}
+        />
+      ) : null}
+
+      {isPrintingReport ? (
+        <ServiceHistoryPrintout
+          petName={petName ?? null}
+          entries={entries}
+          onDone={() => setIsPrintingReport(false)}
         />
       ) : null}
     </>

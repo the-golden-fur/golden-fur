@@ -304,6 +304,17 @@
       }
     },
     {
+      "label": "supabase:seed:temp:roles",
+      "type": "npm",
+      "script": "seed:temp:roles:linked",
+      "detail": "Inserts only the Groomer and Front Desk demo data (grooming queue, hotel/daycare stays, care log, transactions, misc sales, credit review, days off), dated from today, into the project linked by the Supabase CLI. Needs base data (seed:all) first. Re-running adds no duplicates.",
+      "presentation": {
+        "group": "seed",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
       "label": "supabase:reset:temp",
       "type": "npm",
       "script": "supabase:reset:temp",

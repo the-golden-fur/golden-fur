@@ -5,14 +5,13 @@
  * separate copies of the old date-only check that used to live in
  * promos.service.ts's listPromos, booking.service.ts's
  * resolveDiscountAndPromo(s), and discountPromoEvaluation.service.ts's
- * evaluatePromos.
+ * misc-sale promo checks.
  *
  * Fixed +8h offset for Asia/Manila (no DST, same convention already used
  * SQL-side by the credit-expiry-at-Manila-end-of-day migrations) rather than
  * a timezone library - duplicated in
  * client/src/shared/utils/promoEligibility.ts since client and server can't
- * share a TS module across that boundary (same reasoning as
- * getPromoCapAmount's own duplication note in booking.service.ts).
+ * share a TS module across that boundary.
  */
 
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;

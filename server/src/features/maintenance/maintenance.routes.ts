@@ -41,7 +41,6 @@ import {
   listPackagesController,
   listPetTypePriceOverridesController,
   listPetTypesController,
-  listPromoCapConfigurationsController,
   listPromosController,
   listServiceTypesController,
   listServicesController,
@@ -69,7 +68,6 @@ import {
   updateServiceTypeController,
   uploadServiceImageController,
   upsertPetTypePriceOverrideController,
-  upsertPromoCapConfigurationController,
 } from './maintenance.controller.ts';
 import {
   MAINTENANCE_READ_ROLES,
@@ -274,18 +272,6 @@ router.patch(
   '/maintenance/package-pricing-configuration',
   adminWrite,
   updatePackagePricingConfigurationController
-);
-
-// Promo cap configuration (Epic B #84)
-router.get(
-  '/maintenance/promo-cap-configurations',
-  staffRead,
-  listPromoCapConfigurationsController
-);
-router.put(
-  '/maintenance/promo-cap-configurations',
-  adminWrite,
-  upsertPromoCapConfigurationController
 );
 
 // Breeds (Epic A follow-up - previously seed-only, no CRUD anywhere)

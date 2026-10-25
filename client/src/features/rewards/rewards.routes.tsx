@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Navigate, Route } from 'react-router';
 import { CustomerAuthGuard } from '../auth/customer/guards/CustomerAuthGuard/CustomerAuthGuard';
 import { CustomerRewardsPage } from './pages/CustomerRewardsPage/CustomerRewardsPage';
+import { FeatureGate } from '../../shared/components/FeatureGate/FeatureGate';
 
 /**
  * Coupon spin wheel routes (session 86). /portal/rewards is the
@@ -24,7 +25,15 @@ export const rewardsRoutes = (
       }
     />
     <Route element={<CustomerAuthGuard />}>
-      <Route path="/portal/rewards" element={<CustomerRewardsPage />} />
+      {/* Experimental (Settings > Experimental): off -> back to the portal. */}
+      <Route
+        path="/portal/rewards"
+        element={
+          <FeatureGate feature="spin_wheel" redirectTo="/portal">
+            <CustomerRewardsPage />
+          </FeatureGate>
+        }
+      />
     </Route>
   </Fragment>
 );

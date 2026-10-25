@@ -7,6 +7,7 @@ import {
   isDiscountPromo,
   isPromoCurrentlyEligible,
 } from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
+import { isFeatureEnabled } from '../../featureFlags/services/featureFlags.service.ts';
 import type {
   Promo,
   PromoBranchAvailability,
@@ -26,6 +27,17 @@ import {
 // pool/pity/trigger settings, plus the pool's name for list display.
 const PROMO_SELECT =
   '*, promo_scope(*), promo_branch_availability(*), spin_wheel_promo_settings(*, reward_pools(id, name))';
+
+/** Spin-wheel promos can't be created or edited while the coupon spin wheel
+ * is switched off in Settings > Experimental. */
+async function assertSpinWheelEnabled(): Promise<void> {
+  if (!(await isFeatureEnabled('spin_wheel'))) {
+    throwWithStatus(
+      400,
+      'The coupon spin wheel is switched off (Settings > Experimental)'
+    );
+  }
+}
 
 /** PostgREST returns a one-to-one embed as an object, but older
  * relationship detection can hand back a single-element array - normalize
@@ -93,7 +105,7 @@ interface SetPromoBranchAvailabilityParams {
  * weekly_recurring promo can be "currently eligible" or not independent of
  * end_date, the eligibility check is done post-fetch via the shared
  * isPromoCurrentlyEligible predicate (also used by
- * resolveDiscountAndPromos/evaluatePromos) instead.
+ * resolveDiscountAndPromos and the misc-sale promo checks) instead.
  *
  * Custom change: branchId now filters on the joined availability rows
  * (post-fetch, same as services.service.ts's listServices) rather than a
@@ -114,7 +126,10 @@ export async function listPromos({
 
   let promos = ((data ?? []) as Promo[]).map(normalizePromo);
 
-  if (!includeSpinWheel) {
+  // A spin-wheel promo also drops out while the coupon spin wheel is
+  // switched off (Settings > Experimental) - it comes back, untouched, when
+  // the feature is turned on again.
+  if (!includeSpinWheel || !(await isFeatureEnabled('spin_wheel'))) {
     promos = promos.filter((promo) => isDiscountPromo(promo));
   }
 
@@ -234,6 +249,7 @@ export async function createPromo({
   } = input;
 
   if (promoFields.promo_type === 'spin_wheel') {
+    await assertSpinWheelEnabled();
     if (!spinWheel) {
       throwWithStatus(400, 'A spin wheel promo needs a reward pool');
     }
@@ -368,6 +384,7 @@ export async function updatePromo({
   const existing = await getPromoById(promoId);
 
   if (existing.promo_type === 'spin_wheel') {
+    await assertSpinWheelEnabled();
     return updateSpinWheelPromo({
       requesterId,
       existing,
@@ -530,7 +547,13 @@ async function updateSpinWheelPromo({
   spinWheelUpdates: UpdatePromoInput['spin_wheel'];
 }): Promise<Promo> {
   const forbidden = (
-    ['discount_type', 'value', 'scope_type', 'days_of_week'] as const
+    [
+      'discount_type',
+      'value',
+      'min_spend',
+      'scope_type',
+      'days_of_week',
+    ] as const
   ).filter((field) => promoFields[field] !== undefined);
 
   if (forbidden.length > 0 || scope !== undefined) {

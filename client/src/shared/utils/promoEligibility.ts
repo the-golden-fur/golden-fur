@@ -8,7 +8,7 @@
  * Duplicated (not shared) since the client and server can't share a TS
  * module across that boundary in this codebase - same reasoning as this
  * project's other client/server duplicated helpers (e.g. the promo cap
- * math, see applyPromoCap.ts).
+ * check, see booking/utils/promoMinSpend.ts).
  */
 
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
