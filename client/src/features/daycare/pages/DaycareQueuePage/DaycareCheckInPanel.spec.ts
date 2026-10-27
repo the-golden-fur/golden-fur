@@ -179,6 +179,76 @@ describe('DaycareCheckInPanel (#69)', () => {
     expect(screen.getByDisplayValue('1 cup')).toBeInTheDocument();
   });
 
+  it('staff can edit a pre-filled feeding row at check-in (previously read-only)', async () => {
+    setupCageSuggestion();
+    vi.mocked(daycareApi.checkInDaycareSession).mockResolvedValue({
+      data: { id: 'session-1' },
+      error: null,
+    } as never);
+
+    renderPanel({
+      ...BOOKING,
+      hotel_preferences: {
+        uniform_instructions: true,
+        feeding: [
+          { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+        ],
+        walking: [],
+        playing: [],
+        medications: [],
+      },
+    } as unknown as Booking);
+
+    const foodTypeInput = await screen.findByDisplayValue('Kibble');
+    expect(foodTypeInput).not.toBeDisabled();
+
+    await userEvent.clear(foodTypeInput);
+    await userEvent.type(foodTypeInput, 'Wet food');
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+
+    expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({
+        feeding: [expect.objectContaining({ food_type: 'Wet food' })],
+      })
+    );
+  });
+
+  it('Custom change (Daycare-only clock-time scheduling): a newly added walk time submits a literal scheduled_time, not a day-period time_block', async () => {
+    setupCageSuggestion();
+    vi.mocked(daycareApi.checkInDaycareSession).mockResolvedValue({
+      data: { id: 'session-1' },
+      error: null,
+    } as never);
+
+    renderPanel();
+
+    await screen.findByText(/Suggested size: M/);
+    await userEvent.click(screen.getByRole('button', { name: 'Add walk time' }));
+
+    const walkTimeInput = screen.getByLabelText('Walk time');
+    await userEvent.clear(walkTimeInput);
+    await userEvent.type(walkTimeInput, '09:30');
+
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+
+    expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({
+        walking: [
+          expect.objectContaining({
+            scheduled_time: '09:30',
+            duration_minutes: 15,
+          }),
+        ],
+      })
+    );
+
+    const walkingPayload = vi.mocked(daycareApi.checkInDaycareSession).mock
+      .calls[0][1].walking?.[0] as Record<string, unknown>;
+    expect(walkingPayload).not.toHaveProperty('time_block');
+  });
+
   it('warns before checking in to a cage of a different size; "Check in anyway" proceeds', async () => {
     setupCageSuggestion();
     vi.mocked(daycareApi.checkInDaycareSession).mockClear();

@@ -382,7 +382,15 @@ function daycareBookingPrice(
 }
 
 interface HotelFeedingRowState {
+  // Custom change (Daycare-only clock-time scheduling): Hotel keeps
+  // meal_time (the Morning/Noon/Afternoon/Evening day-period picker);
+  // Daycare uses scheduled_time (a literal "HH:MM") instead, since a
+  // few-hour Daycare visit doesn't fit a day-period the way a multi-night
+  // Hotel stay does. Both fields always exist on the row state regardless
+  // of category - only one is ever sent, chosen by category in
+  // hotelPreferencesPayload below.
   meal_time: HotelBookingPreferenceFeeding['meal_time'];
+  scheduled_time: string;
   food_type: string;
   quantity: string;
   quantity_unit: FoodQuantityUnit;
@@ -401,6 +409,7 @@ interface HotelFeedingRowState {
 
 const EMPTY_HOTEL_FEEDING_ROW: HotelFeedingRowState = {
   meal_time: 'Morning',
+  scheduled_time: '08:00',
   food_type: '',
   quantity: '1',
   quantity_unit: 'cup',
@@ -414,6 +423,7 @@ const EMPTY_HOTEL_FEEDING_ROW: HotelFeedingRowState = {
 
 const EMPTY_HOTEL_WALKING_ROW = {
   time_block: 'Morning' as HotelBookingPreferenceWalking['time_block'],
+  scheduled_time: '08:00',
   duration_minutes: 15,
   notes: '',
   stay_date: null as string | null,
@@ -421,6 +431,7 @@ const EMPTY_HOTEL_WALKING_ROW = {
 
 const EMPTY_HOTEL_PLAYING_ROW = {
   time_block: 'Morning' as HotelBookingPreferenceWalking['time_block'],
+  scheduled_time: '08:00',
   duration_minutes: 15,
   notes: '',
   stay_date: null as string | null,
@@ -2851,10 +2862,20 @@ export function CustomerBookingFlowPage() {
     // server's hotelPreferencesValidator with an opaque "Invalid payload".
     // isStepValid('hotelDetails') separately blocks Next while any row is
     // still 'partial', so nothing the user cares about is silently dropped.
+    // Custom change (Daycare-only clock-time scheduling): Hotel sends
+    // meal_time/time_block (unchanged); Daycare sends a literal
+    // scheduled_time instead - a few-hour Daycare visit doesn't fit the
+    // Morning/Noon/Afternoon/Evening vocabulary a multi-night Hotel stay
+    // does. Exactly one of the two per row, per booking.validator.ts's
+    // category-conditional check.
+    const isDaycare = category === 'Daycare';
+
     const feeding: HotelBookingPreferenceFeeding[] = hotelFeeding
       .filter((row) => hotelFeedingRowStatus(row) === 'complete')
       .map((row) => ({
-        meal_time: row.meal_time,
+        ...(isDaycare
+          ? { scheduled_time: row.scheduled_time }
+          : { meal_time: row.meal_time }),
         food_type: row.food_type,
         quantity: row.quantity,
         quantity_unit: row.quantity_unit,
@@ -2871,7 +2892,9 @@ export function CustomerBookingFlowPage() {
     const walking: HotelBookingPreferenceWalking[] = hotelWalking
       .filter((row) => hotelWalkPlayRowStatus(row) === 'complete')
       .map((row) => ({
-        time_block: row.time_block,
+        ...(isDaycare
+          ? { scheduled_time: row.scheduled_time }
+          : { time_block: row.time_block }),
         duration_minutes: row.duration_minutes,
         ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
         ...(row.stay_date ? { stay_date: row.stay_date } : {}),
@@ -2880,7 +2903,9 @@ export function CustomerBookingFlowPage() {
     const playing: HotelBookingPreferencePlaying[] = hotelPlaying
       .filter((row) => hotelWalkPlayRowStatus(row) === 'complete')
       .map((row) => ({
-        time_block: row.time_block,
+        ...(isDaycare
+          ? { scheduled_time: row.scheduled_time }
+          : { time_block: row.time_block }),
         duration_minutes: row.duration_minutes,
         ...(row.notes.trim() ? { notes: row.notes.trim() } : {}),
         ...(row.stay_date ? { stay_date: row.stay_date } : {}),
@@ -4322,33 +4347,51 @@ export function CustomerBookingFlowPage() {
                   return null;
                 }
 
+                // Custom change (Daycare-only clock-time scheduling): the
+                // day-one/last-day meal-window check only makes sense for
+                // Hotel's multi-night meal_time enum - a Daycare visit's
+                // scheduled_time is an unambiguous literal time, with no
+                // "does this day-period window fit the stay's edge days" to
+                // judge.
                 const notOnDayOne =
+                  category === 'Hotel' &&
                   hotelCheckInTime !== null &&
                   !isMealApplicableOnDayOne(row.meal_time, hotelCheckInTime);
                 const notOnLastDay =
+                  category === 'Hotel' &&
                   hotelCheckOutTime !== null &&
                   !isMealApplicableOnLastDay(row.meal_time, hotelCheckOutTime);
 
                 return (
                   <div key={index} className={styles.instructionBlock}>
                     <div className={styles.inlineFields}>
-                      <select
-                        className={styles.input}
-                        aria-label="Meal time"
-                        value={row.meal_time}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            meal_time: event.target
-                              .value as HotelBookingPreferenceFeeding['meal_time'],
-                          })
-                        }
-                      >
-                        {MEAL_TIMES.map((mealTime) => (
-                          <option key={mealTime} value={mealTime}>
-                            {mealTime}
-                          </option>
-                        ))}
-                      </select>
+                      {category === 'Daycare' ? (
+                        <TimeInput
+                          aria-label="Feeding time"
+                          value={row.scheduled_time}
+                          onChange={(value) =>
+                            updateHotelFeeding(index, { scheduled_time: value })
+                          }
+                        />
+                      ) : (
+                        <select
+                          className={styles.input}
+                          aria-label="Meal time"
+                          value={row.meal_time}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              meal_time: event.target
+                                .value as HotelBookingPreferenceFeeding['meal_time'],
+                            })
+                          }
+                        >
+                          {MEAL_TIMES.map((mealTime) => (
+                            <option key={mealTime} value={mealTime}>
+                              {mealTime}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <CatalogComboBox
                         placeholder="Food type"
                         items={foodCatalog}
@@ -4480,23 +4523,35 @@ export function CustomerBookingFlowPage() {
                 return (
                   <div key={index} className={styles.instructionBlock}>
                     <div className={styles.inlineFields}>
-                      <select
-                        className={styles.input}
-                        aria-label="Walk time of day"
-                        value={row.time_block}
-                        onChange={(event) =>
-                          updateHotelWalkBlock(index, {
-                            time_block: event.target
-                              .value as HotelBookingPreferenceWalking['time_block'],
-                          })
-                        }
-                      >
-                        {PARTS_OF_DAY.map((part) => (
-                          <option key={part} value={part}>
-                            {part}
-                          </option>
-                        ))}
-                      </select>
+                      {category === 'Daycare' ? (
+                        <TimeInput
+                          aria-label="Walk time"
+                          value={row.scheduled_time}
+                          onChange={(value) =>
+                            updateHotelWalkBlock(index, {
+                              scheduled_time: value,
+                            })
+                          }
+                        />
+                      ) : (
+                        <select
+                          className={styles.input}
+                          aria-label="Walk time of day"
+                          value={row.time_block}
+                          onChange={(event) =>
+                            updateHotelWalkBlock(index, {
+                              time_block: event.target
+                                .value as HotelBookingPreferenceWalking['time_block'],
+                            })
+                          }
+                        >
+                          {PARTS_OF_DAY.map((part) => (
+                            <option key={part} value={part}>
+                              {part}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <input
                         className={styles.input}
                         type="number"
@@ -4541,10 +4596,12 @@ export function CustomerBookingFlowPage() {
                         Remove
                       </button>
                     </div>
-                    <p className={styles.copy}>
-                      Applies daily - won&apos;t happen before check-in on
-                      arrival day or after checkout on departure day.
-                    </p>
+                    {category === 'Hotel' ? (
+                      <p className={styles.copy}>
+                        Applies daily - won&apos;t happen before check-in on
+                        arrival day or after checkout on departure day.
+                      </p>
+                    ) : null}
                   </div>
                 );
               })}
@@ -4570,23 +4627,35 @@ export function CustomerBookingFlowPage() {
                 return (
                   <div key={index} className={styles.instructionBlock}>
                     <div className={styles.inlineFields}>
-                      <select
-                        className={styles.input}
-                        aria-label="Playtime time of day"
-                        value={row.time_block}
-                        onChange={(event) =>
-                          updateHotelPlayBlock(index, {
-                            time_block: event.target
-                              .value as HotelBookingPreferenceWalking['time_block'],
-                          })
-                        }
-                      >
-                        {PARTS_OF_DAY.map((part) => (
-                          <option key={part} value={part}>
-                            {part}
-                          </option>
-                        ))}
-                      </select>
+                      {category === 'Daycare' ? (
+                        <TimeInput
+                          aria-label="Playtime start"
+                          value={row.scheduled_time}
+                          onChange={(value) =>
+                            updateHotelPlayBlock(index, {
+                              scheduled_time: value,
+                            })
+                          }
+                        />
+                      ) : (
+                        <select
+                          className={styles.input}
+                          aria-label="Playtime time of day"
+                          value={row.time_block}
+                          onChange={(event) =>
+                            updateHotelPlayBlock(index, {
+                              time_block: event.target
+                                .value as HotelBookingPreferenceWalking['time_block'],
+                            })
+                          }
+                        >
+                          {PARTS_OF_DAY.map((part) => (
+                            <option key={part} value={part}>
+                              {part}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <input
                         className={styles.input}
                         type="number"
@@ -4631,10 +4700,12 @@ export function CustomerBookingFlowPage() {
                         Remove
                       </button>
                     </div>
-                    <p className={styles.copy}>
-                      Applies daily - won&apos;t happen before check-in on
-                      arrival day or after checkout on departure day.
-                    </p>
+                    {category === 'Hotel' ? (
+                      <p className={styles.copy}>
+                        Applies daily - won&apos;t happen before check-in on
+                        arrival day or after checkout on departure day.
+                      </p>
+                    ) : null}
                   </div>
                 );
               })}

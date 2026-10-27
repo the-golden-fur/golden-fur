@@ -191,7 +191,12 @@ export interface HotelStay {
 export interface CareFeedingInstruction {
   id: string;
   stay_id: string;
-  meal_time: MealTime;
+  // Custom change (Daycare-only clock-time scheduling): exactly one of
+  // meal_time/scheduled_time is set per row - Hotel rows use meal_time
+  // (unchanged), Daycare rows use scheduled_time, enforced by the DB's
+  // care_feeding_instructions_time_xor_check constraint.
+  meal_time: MealTime | null;
+  scheduled_time: string | null;
   food_type: string;
   quantity: string;
   /** Null for rows created before this field existed, or a walk-in row
@@ -210,7 +215,11 @@ export interface CareFeedingInstruction {
 export interface CareWalkingInstruction {
   id: string;
   stay_id: string;
-  time_block: PartOfDay;
+  // Custom change (Daycare-only clock-time scheduling): exactly one of
+  // time_block/scheduled_time is set per row, same convention as feeding's
+  // meal_time/scheduled_time above.
+  time_block: PartOfDay | null;
+  scheduled_time: string | null;
   duration_minutes: number;
   notes: string | null;
   stay_date: string | null;
@@ -219,7 +228,8 @@ export interface CareWalkingInstruction {
 export interface CarePlayingInstruction {
   id: string;
   stay_id: string;
-  time_block: PartOfDay;
+  time_block: PartOfDay | null;
+  scheduled_time: string | null;
   duration_minutes: number;
   notes: string | null;
   stay_date: string | null;
