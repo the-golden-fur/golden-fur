@@ -498,11 +498,20 @@ export async function getDaySlots({
   // branch's effective policy window (default 12:00-13:00), the same
   // resolveEffectivePolicy() staffPicker.service.ts already uses elsewhere -
   // single source of truth for default-vs-branch-override precedence.
-  // Daycare is exempt: a pet in Daycare simply stays through lunch, and
-  // dropping every session that overlapped it hid most of the day.
+  // Hotel/Daycare are exempt: a drop-off/arrival isn't a continuous staffed
+  // appointment the way Grooming/Veterinary are, so there's no reason to
+  // block it from landing during lunch. For Hotel specifically this isn't
+  // just a policy call - it's load-bearing: a Hotel candidate's `end` is
+  // always ~24h past `start` (the stay length), so without this exemption
+  // every candidate's [start, end) trivially overlaps *any* same-day window,
+  // which silently collapsed the whole day down to "lunch_break_end onward"
+  // (previously reported as "only bookable from 1 PM").
   let lunchCandidates = candidates;
 
-  if (policy.lunch_break_enabled && serviceCategory !== 'Daycare') {
+  if (
+    policy.lunch_break_enabled &&
+    !['Daycare', 'Hotel'].includes(serviceCategory)
+  ) {
     const lunchStartUtc = zonedTimeToUtc(
       date,
       policy.lunch_break_start.slice(0, 5),

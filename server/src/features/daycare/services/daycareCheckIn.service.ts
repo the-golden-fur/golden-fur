@@ -293,22 +293,27 @@ export async function checkInDaycareSession({
     // the Care Log is generated for today only.
     const checkInDate = now.toISOString().slice(0, 10);
 
+    // Feeding/Medications default to the customer's own booking-time
+    // preferences (none for a walk-in, which has no booking at all), but
+    // staff at check-in can override/confirm them: an explicit
+    // `feeding`/`medications` in the request (including `[]`) is the
+    // receptionist's final, possibly-edited list; omitting the field falls
+    // back to the booking's preference.
     const feeding = await insertFeedingInstructions(
       inserted.id,
-      bookingId ? (hotelPreferences?.feeding ?? []) : input.feeding
+      input.feeding ?? hotelPreferences?.feeding ?? []
     );
     const walking = await insertWalkingInstructions(inserted.id, input.walking);
     const playing = await insertPlayingInstructions(inserted.id, input.playing);
-    // No `?? []` fallback here when booking-linked (unlike feeding above):
-    // insertMedicationInstructions treats `undefined` as "no customer
-    // preference exists at all" and falls back to the M07 current-
-    // prescription auto-fill (#75 AC-3) - a booking with no hotel_preferences
-    // captured should still get that fallback, not silently end up with zero
-    // medications.
+    // No `?? []` fallback here (unlike feeding above): insertMedicationInstructions
+    // treats `undefined` as "no preference exists at all" and falls back to
+    // the M07 current-prescription auto-fill (#75 AC-3) - a booking with no
+    // hotel_preferences captured, and no staff override either, should still
+    // get that fallback, not silently end up with zero medications.
     const medications = await insertMedicationInstructions(
       inserted.id,
       petId,
-      bookingId ? hotelPreferences?.medications : input.medications
+      input.medications ?? hotelPreferences?.medications
     );
 
     await generateCareLogEntries(

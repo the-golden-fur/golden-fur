@@ -74,16 +74,18 @@ export const medicationInstructionSchema = z
 /**
  * #75 AC-2/AC-3: cage_id is an optional manual override of the server-
  * computed size suggestion - omitted means "accept the suggestion".
- * medications is optional/omittable - when omitted entirely, the service
- * auto-fills from M07's current-prescription derivation (#75 dev notes);
- * when provided (including `[]`), it is used verbatim as the receptionist's
- * final, possibly-edited list.
+ * feeding and medications are both optional/omittable - when omitted
+ * entirely, the service falls back to the customer's own booking-time
+ * preferences (medications further falls back to M07's current-prescription
+ * derivation when no preference exists either, #75 dev notes); when provided
+ * (including `[]`), either is used verbatim as the receptionist's final,
+ * possibly-edited list.
  */
 export const checkInValidator = z
   .object({
     booking_id: z.uuid(),
     cage_id: z.uuid().optional(),
-    feeding: z.array(feedingInstructionSchema).default([]),
+    feeding: z.array(feedingInstructionSchema).optional(),
     walking: z.array(walkingInstructionSchema).default([]),
     playing: z.array(playingInstructionSchema).default([]),
     medications: z.array(medicationInstructionSchema).optional(),

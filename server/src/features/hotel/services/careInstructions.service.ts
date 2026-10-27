@@ -19,9 +19,37 @@ import type {
   CarePlayingInstruction,
   CareWalkingInstruction,
   CheckInResult,
+  FoodQuantityUnit,
   HotelStay,
   MealTime,
+  PartOfDay,
 } from '../hotel.types.ts';
+
+// Custom change (Daycare-only clock-time scheduling): looser than either
+// Hotel's or Daycare's own validator-inferred row shape (both schemas'
+// required enum, or Daycare's required scheduled_time, structurally satisfy
+// these optional fields) - insertFeedingInstructions/insertWalkingInstructions/
+// insertPlayingInstructions below are shared by both categories' check-in
+// services and need to accept either shape.
+interface FeedingInstructionRow {
+  meal_time?: MealTime;
+  scheduled_time?: string;
+  food_type: string;
+  quantity: string;
+  quantity_unit?: FoodQuantityUnit;
+  photo_url?: string;
+  special_instructions?: string;
+  food_catalog_id?: string;
+  stay_date?: string;
+}
+
+interface CareBlockInstructionRow {
+  time_block?: PartOfDay;
+  scheduled_time?: string;
+  duration_minutes: number;
+  notes?: string;
+  stay_date?: string;
+}
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -148,30 +176,34 @@ export async function checkInHotelStay({
     const checkInDate = now.toISOString().slice(0, 10);
     const days = enumerateDates(checkInDate, scheduledCheckOutDate);
 
-    // Feeding/Medications are read-only for staff at check-in - they are
-    // always sourced from the customer's own booking-time preferences, never
-    // from this request's body (which the client UI no longer lets staff
-    // edit for these two, but a direct API call still could without this).
-    // Walking/Playtime stay staff-editable from the request as before.
+    // Feeding/Medications default to the customer's own booking-time
+    // preferences, but staff at check-in can override/confirm them: an
+    // explicit `feeding`/`medications` in the request (including `[]`) is
+    // the receptionist's final, possibly-edited list; omitting the field
+    // falls back to the booking's own preference. Walking/Playtime have
+    // always worked this way from the request.
     const hotelPreferences = booking.hotel_preferences as
       | HotelBookingPreferences
       | null
       | undefined;
     const feeding = await insertFeedingInstructions(
       stay.id,
-      hotelPreferences?.feeding ?? []
+      input.feeding ?? hotelPreferences?.feeding ?? []
     );
     const walking = await insertWalkingInstructions(stay.id, input.walking);
     const playing = await insertPlayingInstructions(stay.id, input.playing);
-    // No `?? []` fallback here (unlike feeding above): insertMedicationInstructions
-    // treats `undefined` as "no customer preference exists at all" and falls
-    // back to the M07 current-prescription auto-fill (#75 AC-3) - a booking
-    // with no hotel_preferences captured should still get that fallback, not
-    // silently end up with zero medications.
+    // Staff's own request takes precedence (their final, possibly-edited
+    // list, including an explicit `[]`); otherwise fall back to the
+    // booking's preference. No `?? []` tacked on the end (unlike feeding
+    // above): insertMedicationInstructions treats `undefined` as "no
+    // preference exists at all" and falls back to the M07 current-
+    // prescription auto-fill (#75 AC-3) - a booking with no hotel_preferences
+    // captured, and no staff override either, should still get that
+    // fallback, not silently end up with zero medications.
     const medications = await insertMedicationInstructions(
       stay.id,
       booking.pet_id,
-      hotelPreferences?.medications
+      input.medications ?? hotelPreferences?.medications
     );
 
     const careLogEntries = await generateCareLogEntries(
@@ -233,12 +265,13 @@ export async function resolveAndClaimCage(
 
 export async function insertFeedingInstructions(
   stayId: string,
-  rows: CheckInInput['feeding']
+  rows: FeedingInstructionRow[]
 ): Promise<CareFeedingInstruction[]> {
   if (rows.length === 0) return [];
 
   const preparedRows = rows.map((row) => ({
-    meal_time: row.meal_time,
+    meal_time: row.meal_time ?? null,
+    scheduled_time: row.scheduled_time ?? null,
     food_type: row.food_type,
     quantity: row.quantity,
     quantity_unit: row.quantity_unit ?? null,
@@ -260,7 +293,7 @@ export async function insertFeedingInstructions(
 
 export async function insertWalkingInstructions(
   stayId: string,
-  rows: CheckInInput['walking']
+  rows: CareBlockInstructionRow[]
 ): Promise<CareWalkingInstruction[]> {
   if (rows.length === 0) return [];
 
@@ -275,7 +308,7 @@ export async function insertWalkingInstructions(
 
 export async function insertPlayingInstructions(
   stayId: string,
-  rows: CheckInInput['playing']
+  rows: CareBlockInstructionRow[]
 ): Promise<CarePlayingInstruction[]> {
   if (rows.length === 0) return [];
 
@@ -362,12 +395,13 @@ function rowsForDate<T extends { stay_date: string | null }>(
   return rows.filter((row) => row.stay_date == null);
 }
 
-/** Buckets a medication's "HH:MM" scheduled time into the same Morning/
- * Noon/Afternoon/Evening vocabulary feeding/walking/playing already use, so
+/** Buckets a literal "HH:MM" scheduled time into the same Morning/Noon/
+ * Afternoon/Evening vocabulary feeding/walking/playing's own enum uses, so
  * every care_type can be grouped by time-of-day consistently on the
- * Boarding Checklist. `null` for the 'as scheduled' fallback (no real time
- * to bucket). */
-function bucketMedicationTime(time: string): MealTime | null {
+ * Boarding Checklist regardless of whether the underlying row used the enum
+ * (Hotel) or a literal scheduled_time (Daycare, #22 follow-up). `null` for
+ * medication's 'as scheduled' fallback (no real time to bucket). */
+function bucketTimeOfDay(time: string): MealTime | null {
   const [hourStr] = time.split(':');
   const hour = Number(hourStr);
   if (!Number.isFinite(hour)) return null;
@@ -396,32 +430,45 @@ export async function generateCareLogEntries(
 
   for (const date of days) {
     for (const meal of rowsForDate(feeding, date)) {
+      // Daycare rows carry scheduled_time instead of meal_time (#22
+      // follow-up) - bucket it into the same display vocabulary for
+      // time_block, but keep the literal time in the description so staff
+      // still see exactly when it's due.
+      const timeLabel = meal.meal_time ?? meal.scheduled_time ?? 'Unscheduled';
       rows.push({
         stay_id: stayId,
         care_type: 'Feeding',
         scheduled_date: date,
-        description: `${meal.meal_time} meal — ${meal.quantity}${meal.quantity_unit ? ` ${meal.quantity_unit}` : ''} ${meal.food_type}`,
-        time_block: meal.meal_time,
+        description: `${timeLabel} meal — ${meal.quantity}${meal.quantity_unit ? ` ${meal.quantity_unit}` : ''} ${meal.food_type}`,
+        time_block:
+          meal.meal_time ??
+          (meal.scheduled_time ? bucketTimeOfDay(meal.scheduled_time) : null),
       });
     }
 
     for (const walk of rowsForDate(walking, date)) {
+      const timeLabel = walk.time_block ?? walk.scheduled_time ?? 'Unscheduled';
       rows.push({
         stay_id: stayId,
         care_type: 'Walking',
         scheduled_date: date,
-        description: `${walk.time_block} walk — ${walk.duration_minutes} min`,
-        time_block: walk.time_block,
+        description: `${timeLabel} walk — ${walk.duration_minutes} min`,
+        time_block:
+          walk.time_block ??
+          (walk.scheduled_time ? bucketTimeOfDay(walk.scheduled_time) : null),
       });
     }
 
     for (const play of rowsForDate(playing, date)) {
+      const timeLabel = play.time_block ?? play.scheduled_time ?? 'Unscheduled';
       rows.push({
         stay_id: stayId,
         care_type: 'Playing',
         scheduled_date: date,
-        description: `${play.time_block} playtime — ${play.duration_minutes} min`,
-        time_block: play.time_block,
+        description: `${timeLabel} playtime — ${play.duration_minutes} min`,
+        time_block:
+          play.time_block ??
+          (play.scheduled_time ? bucketTimeOfDay(play.scheduled_time) : null),
       });
     }
 
@@ -437,7 +484,7 @@ export async function generateCareLogEntries(
           care_type: 'Medication',
           scheduled_date: date,
           description: `${medication.medication_name} ${medication.dose}${medication.dose_unit ? ` ${medication.dose_unit}` : ''} — ${time}`,
-          time_block: bucketMedicationTime(time),
+          time_block: bucketTimeOfDay(time),
         });
       }
     }

@@ -1,21 +1,62 @@
 import { z } from 'zod';
-import {
-  feedingInstructionSchema,
-  medicationInstructionSchema,
-  playingInstructionSchema,
-  walkingInstructionSchema,
-} from '../../../hotel/modules/validators/hotel.validator.ts';
+import { FOOD_QUANTITY_UNITS } from '../../../hotel/hotel.types.ts';
+import { medicationInstructionSchema } from '../../../hotel/modules/validators/hotel.validator.ts';
+
+const foodQuantityUnit = z.enum(FOOD_QUANTITY_UNITS);
+// Custom change (Daycare-only clock-time scheduling): Daycare doesn't fit
+// the Morning/Noon/Afternoon/Evening day-period vocabulary Hotel's
+// feeding/walking/playing instructions use - a Daycare visit is a few
+// hours long, so staff/customers pick an actual clock time instead. These
+// schemas used to just re-import Hotel's own enum-based
+// feedingInstructionSchema/walkingInstructionSchema/playingInstructionSchema;
+// they're declared separately now that the two categories' shapes diverge.
+// Medication is unaffected - it already stores literal clock times for both
+// categories, so medicationInstructionSchema is still reused as-is.
+const dayClockTime = z.string().regex(/^\d{2}:\d{2}$/, 'Expected "HH:MM"');
+
+const feedingInstructionSchema = z
+  .object({
+    scheduled_time: dayClockTime,
+    food_type: z.string().min(1),
+    quantity: z.string().min(1),
+    quantity_unit: foodQuantityUnit.optional(),
+    photo_url: z.url().optional(),
+    special_instructions: z.string().optional(),
+    food_catalog_id: z.uuid().optional(),
+    stay_date: z.iso.date().optional(),
+  })
+  .strict();
+
+const walkingInstructionSchema = z
+  .object({
+    scheduled_time: dayClockTime,
+    duration_minutes: z.number().int().positive(),
+    notes: z.string().optional(),
+    stay_date: z.iso.date().optional(),
+  })
+  .strict();
+
+const playingInstructionSchema = z
+  .object({
+    scheduled_time: dayClockTime,
+    duration_minutes: z.number().int().positive(),
+    notes: z.string().optional(),
+    stay_date: z.iso.date().optional(),
+  })
+  .strict();
 
 /**
  * Custom change (Daycare/Hotel parity): "make daycare the same as hotel...
  * as well as the feeding, medication, walk and playtime (exactly like
- * hotel)". Daycare check-in now accepts the exact same cage_id override +
- * structured care-instruction fields Hotel's checkInValidator does (shared
- * schemas imported above - both categories write to the same care_*
- * instruction tables, migration 20260807104), on top of Daycare's
- * pre-existing either/or path: an existing confirmed booking (booking_id),
- * or a brand-new walk-in session created directly against a pet profile
- * (pet_id + branch_id, no booking_id at all) - #65 dev notes.
+ * hotel)". Daycare check-in accepts the same cage_id override + structured
+ * care-instruction fields Hotel's checkInValidator does, writing to the
+ * same care_* instruction tables (migration 20260807104) - except feeding/
+ * walking/playing use scheduled_time instead of Hotel's Morning/Noon/
+ * Afternoon/Evening enum (#22 follow-up, Daycare-only clock-time
+ * scheduling), on top of Daycare's pre-existing either/or path: an existing
+ * confirmed booking (booking_id), or a brand-new walk-in session created
+ * directly against a pet profile (pet_id + branch_id, no booking_id at
+ * all) - #65 dev notes.
  */
 export const checkInValidator = z
   .object({
@@ -29,7 +70,10 @@ export const checkInValidator = z
     // service instead, ignoring this field if sent). Omitted entirely
     // falls back to the branch's first active Daycare service.
     service_id: z.uuid().optional(),
-    feeding: z.array(feedingInstructionSchema).default([]),
+    // Optional/omittable, same as medications below: omitted falls back to
+    // the customer's own booking-time preference (walk-ins with no booking
+    // just get `[]`); provided (including `[]`) is the staff's final list.
+    feeding: z.array(feedingInstructionSchema).optional(),
     walking: z.array(walkingInstructionSchema).default([]),
     playing: z.array(playingInstructionSchema).default([]),
     medications: z.array(medicationInstructionSchema).optional(),

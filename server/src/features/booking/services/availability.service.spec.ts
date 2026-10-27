@@ -439,6 +439,42 @@ describe('availability.service (#56/#60 supporting infra)', () => {
 
       expect(slots).toHaveLength(6);
     });
+
+    it('does not apply the lunch break to Hotel (regression: collapsed the whole day to "lunch_break_end onward")', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // 08:00 Asia/Manila
+
+      queueFromResults(
+        WIDE_BRANCH_ROW, // branch lookup
+        policyRow({ lunch_break_enabled: true }), // lunch break 12:00-13:00
+        { data: [], error: null }, // overlapping bookings for 09:00
+        { data: [], error: null }, // 10:00
+        { data: [], error: null }, // 11:00
+        { data: [], error: null }, // 12:00 - inside the lunch window
+        { data: [], error: null }, // 13:00
+        { data: [], error: null } // 14:00
+      );
+
+      const slots = await getDaySlots({
+        branchId: 'branch-1',
+        serviceCategory: 'Hotel',
+        date: '2026-08-03', // a Monday, 09:00-15:00 per WIDE_BRANCH_ROW
+        slotDurationMinutes: 1440,
+        petWeightClass: 'S',
+      });
+
+      // All 6 hourly candidates survive, including 12:00 (the lunch-window
+      // start) - the opposite of Grooming's behaviour just above.
+      expect(slots).toHaveLength(6);
+      expect(slots.map((slot) => slot.start)).toEqual([
+        '2026-08-03T01:00:00.000Z', // 09:00
+        '2026-08-03T02:00:00.000Z', // 10:00
+        '2026-08-03T03:00:00.000Z', // 11:00
+        '2026-08-03T04:00:00.000Z', // 12:00
+        '2026-08-03T05:00:00.000Z', // 13:00
+        '2026-08-03T06:00:00.000Z', // 14:00
+      ]);
+    });
   });
 
   describe('minimum-notice lead time', () => {

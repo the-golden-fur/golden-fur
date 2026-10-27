@@ -184,6 +184,85 @@ describe('daycareCheckIn.service (#65)', () => {
       vi.useRealTimers();
     });
 
+    it('a staff-submitted feeding list overrides the booking preference on a booking-linked check-in (previously discarded unconditionally)', async () => {
+      const beforeCutoff = new Date('2026-07-19T01:00:00.000Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(beforeCutoff);
+
+      queueFromResults(
+        {
+          data: {
+            id: 'booking-1',
+            pet_id: 'pet-1',
+            branch_id: 'branch-makati',
+            service_category: 'Daycare',
+            status: 'Pending',
+            hotel_preferences: {
+              feeding: [
+                {
+                  meal_time: 'Morning',
+                  food_type: 'Kibble',
+                  quantity: '1 cup',
+                },
+              ],
+              medications: [],
+            },
+          },
+          error: null,
+        },
+        { data: MAKATI_BRANCH, error: null },
+        { data: { weight_class: 'S', pet_type: 'Dog' }, error: null },
+        {
+          data: [
+            {
+              id: 'cage-1',
+              size: 'S',
+              status: 'Available',
+              cage_pet_types: [{ pet_type: 'Dog' }],
+            },
+          ],
+          error: null,
+        },
+        { data: { id: 'cage-1', size: 'S', status: 'Occupied' }, error: null },
+        { data: { service_id: 'service-daycare-1' }, error: null },
+        {
+          data: { id: 'session-1', booking_id: 'booking-1', status: 'Active' },
+          error: null,
+        },
+        {
+          data: [{ id: 'feed-1', meal_time: 'Evening', food_type: 'Wet food' }],
+          error: null,
+        }, // care_feeding_instructions insert
+        { data: [{ id: 'log-1' }], error: null } // care_log_entries insert
+      );
+
+      await checkInDaycareSession({
+        requesterId: 'staff-1',
+        input: {
+          booking_id: 'booking-1',
+          feeding: [
+            { meal_time: 'Evening', food_type: 'Wet food', quantity: '1 can' },
+          ],
+          walking: [],
+          playing: [],
+          medications: [],
+          notify_opt_in: false,
+        },
+      });
+
+      const feedingInsert = recordedWrites.find(
+        (write) => write.table === 'care_feeding_instructions'
+      );
+      expect(feedingInsert?.payload).toMatchObject([
+        expect.objectContaining({
+          meal_time: 'Evening',
+          food_type: 'Wet food',
+        }),
+      ]);
+
+      vi.useRealTimers();
+    });
+
     it('rejects check-in for a booking that is neither Pending nor In Progress', async () => {
       queueFromResults({
         data: {

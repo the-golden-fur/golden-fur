@@ -15,17 +15,12 @@ import type {
   Cage,
   FeedingInstructionPayload,
   FoodQuantityUnit,
-  MealTime,
   MedicationDoseUnit,
   MedicationInstructionPayload,
-  PartOfDay,
   PlayingInstructionPayload,
   WalkingInstructionPayload,
 } from '../../../hotel/hotel.types';
 import styles from './DaycareCheckInPanel.module.css';
-
-const MEAL_TIMES: MealTime[] = ['Morning', 'Noon', 'Afternoon', 'Evening'];
-const PARTS_OF_DAY: PartOfDay[] = ['Morning', 'Afternoon', 'Evening'];
 
 interface DaycareCheckInPanelProps {
   accessToken: string;
@@ -41,7 +36,10 @@ interface DaycareCheckInPanelProps {
 }
 
 interface FeedingUiState {
-  mealTime: MealTime;
+  // Custom change (Daycare-only clock-time scheduling): a literal "HH:MM"
+  // instead of Hotel's Morning/Noon/Afternoon/Evening meal_time - a few-hour
+  // Daycare visit needs an actual drop-off/feeding time, not a day period.
+  scheduledTime: string;
   foodType: string;
   quantity: string;
   quantityUnit?: FoodQuantityUnit;
@@ -50,7 +48,9 @@ interface FeedingUiState {
 }
 
 interface CareBlockUiState {
-  timeBlock: PartOfDay;
+  // Custom change (Daycare-only clock-time scheduling): same as
+  // FeedingUiState.scheduledTime above, replacing Hotel's time_block.
+  scheduledTime: string;
   durationMinutes: number;
   notes: string;
 }
@@ -72,7 +72,7 @@ interface MedicationUiState {
  * had (see the file-level comment below). */
 function initialFeeding(booking: Booking): FeedingUiState[] {
   return (booking.hotel_preferences?.feeding ?? []).map((item) => ({
-    mealTime: item.meal_time,
+    scheduledTime: item.scheduled_time ?? '08:00',
     foodType: item.food_type,
     quantity: item.quantity,
     // Custom change (care instruction units + photos): no unit-picker/photo
@@ -85,10 +85,10 @@ function initialFeeding(booking: Booking): FeedingUiState[] {
 }
 
 function initialCareBlocks(
-  items: { time_block: PartOfDay; duration_minutes: number; notes?: string }[]
+  items: { scheduled_time?: string; duration_minutes: number; notes?: string }[]
 ): CareBlockUiState[] {
   return items.map((item) => ({
-    timeBlock: item.time_block,
+    scheduledTime: item.scheduled_time ?? '08:00',
     durationMinutes: item.duration_minutes,
     notes: item.notes ?? '',
   }));
@@ -121,8 +121,12 @@ function initialMedications(booking: Booking): MedicationUiState[] {
  * daycareCheckIn.service.ts). The UI here is intentionally simpler than
  * HotelCheckInPanel's - plain text inputs instead of the catalog-autocomplete
  * CatalogComboBox, no M07 current-prescription pre-fill, and no time-range/
- * duration toggle for walk/play blocks (just a part-of-day select + a
- * minutes field) - the captured data shape is identical either way.
+ * duration toggle for walk/play blocks (just a clock-time input + a minutes
+ * field). Custom change (Daycare-only clock-time scheduling): feeding/
+ * walking/playing all take a literal scheduled_time here instead of Hotel's
+ * Morning/Noon/Afternoon/Evening enum - a few-hour Daycare visit needs an
+ * actual time, not a day period - medication is unaffected either way,
+ * since it already used literal clock times for both categories.
  *
  * Daycare Queue redesign: this used to own a DaycareBookingPicker and let
  * staff pick which booking to check in inline; it's now a routed page
@@ -178,19 +182,35 @@ export function DaycareCheckInPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking.id]);
 
-  // Feeding is read-only at check-in (always the customer's own booking-time
-  // entry) - only its update fn remains, wired to disabled inputs that never
-  // actually fire it; add/remove are gone since staff can't add new rows.
+  // Feeding defaults to the customer's own booking-time entry, but staff can
+  // now edit/add/remove rows at check-in the same way Walking/Playtime
+  // already could - their edits become the final list sent on submit.
+  function addFeedingRow() {
+    setFeeding((prev) => [
+      ...prev,
+      {
+        scheduledTime: '08:00',
+        foodType: '',
+        quantity: '',
+        specialInstructions: '',
+      },
+    ]);
+  }
+
   function updateFeeding(index: number, updates: Partial<FeedingUiState>) {
     setFeeding((prev) =>
       prev.map((state, i) => (i === index ? { ...state, ...updates } : state))
     );
   }
 
+  function removeFeedingRow(index: number) {
+    setFeeding((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function addCareBlock(setter: typeof setWalking) {
     setter((prev) => [
       ...prev,
-      { timeBlock: 'Morning', durationMinutes: 15, notes: '' },
+      { scheduledTime: '08:00', durationMinutes: 15, notes: '' },
     ]);
   }
 
@@ -208,9 +228,16 @@ export function DaycareCheckInPanel({
     setter((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // Medications is read-only at check-in, same as Feeding above - only the
-  // update fns remain, wired to disabled inputs that never actually fire
-  // them; add/remove are gone since staff can't add new rows or times.
+  // Medications defaults to the customer's own booking-time entry, but staff
+  // can now edit/add/remove medications and scheduled times at check-in,
+  // same as Feeding above.
+  function addMedication() {
+    setMedications((prev) => [
+      ...prev,
+      { name: '', dose: '', scheduledTimes: [], administrationNotes: '' },
+    ]);
+  }
+
   function updateMedication(
     index: number,
     updates: Partial<MedicationUiState>
@@ -218,6 +245,23 @@ export function DaycareCheckInPanel({
     setMedications((prev) =>
       prev.map((medication, i) =>
         i === index ? { ...medication, ...updates } : medication
+      )
+    );
+  }
+
+  function removeMedication(index: number) {
+    setMedications((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addMedicationTime(medicationIndex: number) {
+    setMedications((prev) =>
+      prev.map((medication, i) =>
+        i === medicationIndex
+          ? {
+              ...medication,
+              scheduledTimes: [...medication.scheduledTimes, '07:00'],
+            }
+          : medication
       )
     );
   }
@@ -234,6 +278,21 @@ export function DaycareCheckInPanel({
               ...medication,
               scheduledTimes: medication.scheduledTimes.map((time, j) =>
                 j === timeIndex ? value : time
+              ),
+            }
+          : medication
+      )
+    );
+  }
+
+  function removeMedicationTime(medicationIndex: number, timeIndex: number) {
+    setMedications((prev) =>
+      prev.map((medication, i) =>
+        i === medicationIndex
+          ? {
+              ...medication,
+              scheduledTimes: medication.scheduledTimes.filter(
+                (_, j) => j !== timeIndex
               ),
             }
           : medication
@@ -276,7 +335,7 @@ export function DaycareCheckInPanel({
 
     const feedingPayload: FeedingInstructionPayload[] = feeding.map(
       (state) => ({
-        meal_time: state.mealTime,
+        scheduled_time: state.scheduledTime,
         food_type: state.foodType,
         quantity: state.quantity,
         quantity_unit: state.quantityUnit,
@@ -287,7 +346,7 @@ export function DaycareCheckInPanel({
 
     const walkingPayload: WalkingInstructionPayload[] = walking.map(
       (block) => ({
-        time_block: block.timeBlock,
+        scheduled_time: block.scheduledTime,
         duration_minutes: block.durationMinutes,
         notes: block.notes || undefined,
       })
@@ -295,7 +354,7 @@ export function DaycareCheckInPanel({
 
     const playingPayload: PlayingInstructionPayload[] = playing.map(
       (block) => ({
-        time_block: block.timeBlock,
+        scheduled_time: block.scheduledTime,
         duration_minutes: block.durationMinutes,
         notes: block.notes || undefined,
       })
@@ -384,34 +443,20 @@ export function DaycareCheckInPanel({
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Feeding instructions</h2>
-        <p className={styles.copy}>
-          Set by the customer at booking time - staff can&apos;t edit this.
-        </p>
         {feeding.map((state, index) => (
           <div key={index} className={styles.instructionBlock}>
             <div className={styles.inlineFields}>
-              <select
-                className={styles.input}
-                aria-label="Meal time"
-                value={state.mealTime}
-                disabled
-                onChange={(event) =>
-                  updateFeeding(index, {
-                    mealTime: event.target.value as MealTime,
-                  })
+              <TimeInput
+                aria-label="Feeding time"
+                value={state.scheduledTime}
+                onChange={(value) =>
+                  updateFeeding(index, { scheduledTime: value })
                 }
-              >
-                {MEAL_TIMES.map((mealTime) => (
-                  <option key={mealTime} value={mealTime}>
-                    {mealTime}
-                  </option>
-                ))}
-              </select>
+              />
               <input
                 className={styles.input}
                 placeholder="Food type"
                 value={state.foodType}
-                disabled
                 onChange={(event) =>
                   updateFeeding(index, { foodType: event.target.value })
                 }
@@ -420,7 +465,6 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Quantity"
                 value={state.quantity}
-                disabled
                 onChange={(event) =>
                   updateFeeding(index, { quantity: event.target.value })
                 }
@@ -429,19 +473,32 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Special instructions (optional)"
                 value={state.specialInstructions}
-                disabled
                 onChange={(event) =>
                   updateFeeding(index, {
                     specialInstructions: event.target.value,
                   })
                 }
               />
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => removeFeedingRow(index)}
+              >
+                Remove
+              </button>
             </div>
           </div>
         ))}
         {feeding.length === 0 ? (
           <p className={styles.copy}>No feeding times added.</p>
         ) : null}
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={addFeedingRow}
+        >
+          Add feeding time
+        </button>
       </section>
 
       <section className={styles.section}>
@@ -449,22 +506,13 @@ export function DaycareCheckInPanel({
         {walking.map((block, index) => (
           <div key={index} className={styles.instructionBlock}>
             <div className={styles.inlineFields}>
-              <select
-                className={styles.input}
-                aria-label="Walk time block"
-                value={block.timeBlock}
-                onChange={(event) =>
-                  updateCareBlock(setWalking, index, {
-                    timeBlock: event.target.value as PartOfDay,
-                  })
+              <TimeInput
+                aria-label="Walk time"
+                value={block.scheduledTime}
+                onChange={(value) =>
+                  updateCareBlock(setWalking, index, { scheduledTime: value })
                 }
-              >
-                {PARTS_OF_DAY.map((part) => (
-                  <option key={part} value={part}>
-                    {part}
-                  </option>
-                ))}
-              </select>
+              />
               <input
                 className={styles.input}
                 type="number"
@@ -514,22 +562,13 @@ export function DaycareCheckInPanel({
         {playing.map((block, index) => (
           <div key={index} className={styles.instructionBlock}>
             <div className={styles.inlineFields}>
-              <select
-                className={styles.input}
-                aria-label="Playtime block"
-                value={block.timeBlock}
-                onChange={(event) =>
-                  updateCareBlock(setPlaying, index, {
-                    timeBlock: event.target.value as PartOfDay,
-                  })
+              <TimeInput
+                aria-label="Playtime start"
+                value={block.scheduledTime}
+                onChange={(value) =>
+                  updateCareBlock(setPlaying, index, { scheduledTime: value })
                 }
-              >
-                {PARTS_OF_DAY.map((part) => (
-                  <option key={part} value={part}>
-                    {part}
-                  </option>
-                ))}
-              </select>
+              />
               <input
                 className={styles.input}
                 type="number"
@@ -576,9 +615,6 @@ export function DaycareCheckInPanel({
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Medications</h2>
-        <p className={styles.copy}>
-          Set by the customer at booking time - staff can&apos;t edit this.
-        </p>
         {medications.map((medication, index) => (
           <div key={index} className={styles.instructionBlock}>
             <div className={styles.inlineFields}>
@@ -586,7 +622,6 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Medication name"
                 value={medication.name}
-                disabled
                 onChange={(event) =>
                   updateMedication(index, { name: event.target.value })
                 }
@@ -595,7 +630,6 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Dose"
                 value={medication.dose}
-                disabled
                 onChange={(event) =>
                   updateMedication(index, { dose: event.target.value })
                 }
@@ -604,13 +638,19 @@ export function DaycareCheckInPanel({
                 className={styles.input}
                 placeholder="Notes (optional)"
                 value={medication.administrationNotes}
-                disabled
                 onChange={(event) =>
                   updateMedication(index, {
                     administrationNotes: event.target.value,
                   })
                 }
               />
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => removeMedication(index)}
+              >
+                Remove
+              </button>
             </div>
 
             <div className={styles.inlineFields}>
@@ -620,19 +660,39 @@ export function DaycareCheckInPanel({
                   <TimeInput
                     aria-label={`Medication time ${timeIndex + 1}`}
                     value={time}
-                    disabled
                     onChange={(value) =>
                       updateMedicationTime(index, timeIndex, value)
                     }
                   />
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => removeMedicationTime(index, timeIndex)}
+                  >
+                    Remove
+                  </button>
                 </div>
               ))}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => addMedicationTime(index)}
+              >
+                Add time
+              </button>
             </div>
           </div>
         ))}
         {medications.length === 0 ? (
           <p className={styles.copy}>No medications added.</p>
         ) : null}
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={addMedication}
+        >
+          Add medication
+        </button>
       </section>
 
       {booking.hotel_preferences?.things_brought ? (
