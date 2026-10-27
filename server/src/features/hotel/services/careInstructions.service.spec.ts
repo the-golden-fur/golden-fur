@@ -97,7 +97,7 @@ describe('careInstructions.service (#75)', () => {
   });
 
   describe('generateCareLogEntries (Daycare-only clock-time scheduling: buckets scheduled_time into the same display time_block)', () => {
-    it('buckets a Daycare feeding row\'s scheduled_time (08:30 -> Morning) since meal_time is null', async () => {
+    it("buckets a Daycare feeding row's scheduled_time (08:30 -> Morning) since meal_time is null", async () => {
       queueFromResults({ data: [{ id: 'log-1' }], error: null });
 
       await generateCareLogEntries(
@@ -135,7 +135,7 @@ describe('careInstructions.service (#75)', () => {
       ]);
     });
 
-    it('buckets a Daycare walking row\'s scheduled_time (14:00 -> Afternoon) since time_block is null', async () => {
+    it("buckets a Daycare walking row's scheduled_time (14:00 -> Afternoon) since time_block is null", async () => {
       queueFromResults({ data: [{ id: 'log-1' }], error: null });
 
       await generateCareLogEntries(
@@ -478,7 +478,11 @@ describe('careInstructions.service (#75)', () => {
               ...CONFIRMED_HOTEL_BOOKING,
               hotel_preferences: {
                 feeding: [
-                  { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+                  {
+                    meal_time: 'Morning',
+                    food_type: 'Kibble',
+                    quantity: '1 cup',
+                  },
                 ],
                 medications: [],
               },
@@ -506,7 +510,11 @@ describe('careInstructions.service (#75)', () => {
             booking_id: 'booking-1',
             cage_id: 'cage-1',
             feeding: [
-              { meal_time: 'Evening', food_type: 'Wet food', quantity: '1 can' },
+              {
+                meal_time: 'Evening',
+                food_type: 'Wet food',
+                quantity: '1 can',
+              },
             ],
             walking: [],
             playing: [],
@@ -519,7 +527,10 @@ describe('careInstructions.service (#75)', () => {
           (write) => write.table === 'care_feeding_instructions'
         );
         expect(feedingInsert?.payload).toMatchObject([
-          expect.objectContaining({ meal_time: 'Evening', food_type: 'Wet food' }),
+          expect.objectContaining({
+            meal_time: 'Evening',
+            food_type: 'Wet food',
+          }),
         ]);
       });
 
@@ -530,7 +541,11 @@ describe('careInstructions.service (#75)', () => {
               ...CONFIRMED_HOTEL_BOOKING,
               hotel_preferences: {
                 feeding: [
-                  { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+                  {
+                    meal_time: 'Morning',
+                    food_type: 'Kibble',
+                    quantity: '1 cup',
+                  },
                 ],
                 medications: [],
               },
@@ -567,7 +582,10 @@ describe('careInstructions.service (#75)', () => {
           (write) => write.table === 'care_feeding_instructions'
         );
         expect(feedingInsert?.payload).toMatchObject([
-          expect.objectContaining({ meal_time: 'Morning', food_type: 'Kibble' }),
+          expect.objectContaining({
+            meal_time: 'Morning',
+            food_type: 'Kibble',
+          }),
         ]);
       });
 
@@ -578,7 +596,11 @@ describe('careInstructions.service (#75)', () => {
               ...CONFIRMED_HOTEL_BOOKING,
               hotel_preferences: {
                 feeding: [
-                  { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+                  {
+                    meal_time: 'Morning',
+                    food_type: 'Kibble',
+                    quantity: '1 cup',
+                  },
                 ],
                 medications: [],
               },
@@ -609,7 +631,9 @@ describe('careInstructions.service (#75)', () => {
 
         expect(result.feeding).toEqual([]);
         expect(
-          recordedInserts.find((write) => write.table === 'care_feeding_instructions')
+          recordedInserts.find(
+            (write) => write.table === 'care_feeding_instructions'
+          )
         ).toBeUndefined();
       });
 
@@ -621,7 +645,11 @@ describe('careInstructions.service (#75)', () => {
               hotel_preferences: {
                 feeding: [],
                 medications: [
-                  { medication_name: 'Rimadyl', dose: '75mg', scheduled_times: [] },
+                  {
+                    medication_name: 'Rimadyl',
+                    dose: '75mg',
+                    scheduled_times: [],
+                  },
                 ],
               },
             },
@@ -656,7 +684,11 @@ describe('careInstructions.service (#75)', () => {
             walking: [],
             playing: [],
             medications: [
-              { medication_name: 'Amoxicillin', dose: '250mg', scheduled_times: [] },
+              {
+                medication_name: 'Amoxicillin',
+                dose: '250mg',
+                scheduled_times: [],
+              },
             ],
             notify_opt_in: false,
           },
@@ -666,7 +698,10 @@ describe('careInstructions.service (#75)', () => {
           (write) => write.table === 'care_medication_instructions'
         );
         expect(medicationsInsert?.payload).toMatchObject([
-          expect.objectContaining({ medication_name: 'Amoxicillin', dose: '250mg' }),
+          expect.objectContaining({
+            medication_name: 'Amoxicillin',
+            dose: '250mg',
+          }),
         ]);
       });
     });

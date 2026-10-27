@@ -209,14 +209,21 @@ function requireCareInstructionShapeMatchesCategory(
   ctx: z.RefinementCtx
 ) {
   if (!input.hotel_preferences) return;
-  if (input.service_category !== 'Hotel' && input.service_category !== 'Daycare') {
+  if (
+    input.service_category !== 'Hotel' &&
+    input.service_category !== 'Daycare'
+  ) {
     return;
   }
 
   const isDaycare = input.service_category === 'Daycare';
 
   const checkRows = (
-    rows: Array<{ meal_time?: string; time_block?: string; scheduled_time?: string }>,
+    rows: Array<{
+      meal_time?: string;
+      time_block?: string;
+      scheduled_time?: string;
+    }>,
     field: 'feeding' | 'walking' | 'playing',
     enumField: 'meal_time' | 'time_block'
   ) => {

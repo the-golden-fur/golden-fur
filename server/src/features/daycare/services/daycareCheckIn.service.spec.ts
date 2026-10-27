@@ -199,7 +199,11 @@ describe('daycareCheckIn.service (#65)', () => {
             status: 'Pending',
             hotel_preferences: {
               feeding: [
-                { meal_time: 'Morning', food_type: 'Kibble', quantity: '1 cup' },
+                {
+                  meal_time: 'Morning',
+                  food_type: 'Kibble',
+                  quantity: '1 cup',
+                },
               ],
               medications: [],
             },
@@ -226,9 +230,7 @@ describe('daycareCheckIn.service (#65)', () => {
           error: null,
         },
         {
-          data: [
-            { id: 'feed-1', meal_time: 'Evening', food_type: 'Wet food' },
-          ],
+          data: [{ id: 'feed-1', meal_time: 'Evening', food_type: 'Wet food' }],
           error: null,
         }, // care_feeding_instructions insert
         { data: [{ id: 'log-1' }], error: null } // care_log_entries insert
@@ -252,7 +254,10 @@ describe('daycareCheckIn.service (#65)', () => {
         (write) => write.table === 'care_feeding_instructions'
       );
       expect(feedingInsert?.payload).toMatchObject([
-        expect.objectContaining({ meal_time: 'Evening', food_type: 'Wet food' }),
+        expect.objectContaining({
+          meal_time: 'Evening',
+          food_type: 'Wet food',
+        }),
       ]);
 
       vi.useRealTimers();

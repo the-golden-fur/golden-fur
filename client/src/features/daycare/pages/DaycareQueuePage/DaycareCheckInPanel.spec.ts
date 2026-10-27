@@ -224,7 +224,9 @@ describe('DaycareCheckInPanel (#69)', () => {
     renderPanel();
 
     await screen.findByText(/Suggested size: M/);
-    await userEvent.click(screen.getByRole('button', { name: 'Add walk time' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Add walk time' })
+    );
 
     const walkTimeInput = screen.getByLabelText('Walk time');
     await userEvent.clear(walkTimeInput);

@@ -1,10 +1,6 @@
 import { z } from 'zod';
-import {
-  FOOD_QUANTITY_UNITS,
-} from '../../../hotel/hotel.types.ts';
-import {
-  medicationInstructionSchema,
-} from '../../../hotel/modules/validators/hotel.validator.ts';
+import { FOOD_QUANTITY_UNITS } from '../../../hotel/hotel.types.ts';
+import { medicationInstructionSchema } from '../../../hotel/modules/validators/hotel.validator.ts';
 
 const foodQuantityUnit = z.enum(FOOD_QUANTITY_UNITS);
 // Custom change (Daycare-only clock-time scheduling): Daycare doesn't fit

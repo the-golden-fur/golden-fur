@@ -60,7 +60,11 @@ const PART_OF_DAY_DEFAULT_TIME: Record<PartOfDay, string> = {
 // record.
 function initialFeeding(booking: Booking): FeedingUiState[] {
   return (booking.hotel_preferences?.feeding ?? []).map((item) => ({
-    mealTime: item.meal_time,
+    // meal_time is optional on the shared type (Daycare rows use
+    // scheduled_time instead), but this panel only ever handles Hotel
+    // bookings, whose feeding rows always carry a concrete meal_time - the
+    // fallback is defensive, never actually hit here.
+    mealTime: item.meal_time ?? 'Morning',
     // Carries the booking flow's catalog match through when present (its
     // Care Instructions step now uses the same catalog), instead of always
     // discarding it as freetext.
@@ -82,7 +86,10 @@ function initialFeeding(booking: Booking): FeedingUiState[] {
 function initialWalking(booking: Booking): WalkBlockUi[] {
   return (booking.hotel_preferences?.walking ?? []).map((item) => ({
     mode: 'duration',
-    startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
+    // time_block is optional on the shared type (Daycare rows use
+    // scheduled_time instead), but this panel only ever handles Hotel
+    // bookings - see initialFeeding's dev note above.
+    startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block ?? 'Morning'],
     endTime: '',
     durationMinutes: item.duration_minutes,
     notes: item.notes ?? '',
@@ -92,7 +99,7 @@ function initialWalking(booking: Booking): WalkBlockUi[] {
 function initialPlaying(booking: Booking): WalkBlockUi[] {
   return (booking.hotel_preferences?.playing ?? []).map((item) => ({
     mode: 'duration',
-    startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block],
+    startTime: PART_OF_DAY_DEFAULT_TIME[item.time_block ?? 'Morning'],
     endTime: '',
     durationMinutes: item.duration_minutes,
     notes: item.notes ?? '',

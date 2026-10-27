@@ -388,8 +388,10 @@ interface HotelFeedingRowState {
   // few-hour Daycare visit doesn't fit a day-period the way a multi-night
   // Hotel stay does. Both fields always exist on the row state regardless
   // of category - only one is ever sent, chosen by category in
-  // hotelPreferencesPayload below.
-  meal_time: HotelBookingPreferenceFeeding['meal_time'];
+  // hotelPreferencesPayload below. NonNullable because the shared
+  // HotelBookingPreferenceFeeding type made meal_time optional (Daycare
+  // rows omit it) - this local row state always has a concrete value.
+  meal_time: NonNullable<HotelBookingPreferenceFeeding['meal_time']>;
   scheduled_time: string;
   food_type: string;
   quantity: string;
