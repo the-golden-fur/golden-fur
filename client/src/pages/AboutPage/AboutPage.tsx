@@ -20,8 +20,7 @@ export function AboutPage() {
 
       <HelpMascot
         links={[
-          { label: 'Create an account', href: '#' },
-          { label: 'Create a ticket', href: '#' },
+          { label: 'Create an account', href: '/signup' },
         ]}
       />
     </>

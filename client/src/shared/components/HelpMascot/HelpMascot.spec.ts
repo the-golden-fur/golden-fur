@@ -61,8 +61,7 @@ function renderMascot() {
       null,
       createElement(HelpMascot, {
         links: [
-          { label: 'Create an account', href: '#' },
-          { label: 'Create a ticket', href: '#' },
+          { label: 'Create an account', href: '/signup' },
         ],
       })
     )
@@ -112,7 +111,6 @@ describe('HelpMascot - hide / show', () => {
     expect(bubbles.map((bubble) => bubble.textContent)).toEqual([
       'FAQs',
       'Create an account',
-      'Create a ticket',
       'Change pet',
       'Hide me',
     ]);
@@ -639,19 +637,26 @@ describe('HelpMascot - tutorial bubble', () => {
     ).map((bubble) => bubble.textContent);
   }
 
-  it('keeps the five bubbles when no tutorial is wired (the landing pages)', () => {
+  it('keeps four bubbles on the landing pages (one link, no tutorial)', () => {
     renderMascot();
 
     expect(bubbleLabels()).toEqual([
       'FAQs',
       'Create an account',
-      'Create a ticket',
       'Change pet',
       'Hide me',
     ]);
     expect(
       screen.getByRole('navigation', { name: 'Support links' })
-    ).not.toHaveAttribute('data-items');
+    ).toHaveAttribute('data-items', '4');
+  });
+
+  it('"Create an account" links to the signup form', () => {
+    renderMascot();
+
+    expect(
+      screen.getByRole('link', { name: 'Create an account' })
+    ).toHaveAttribute('href', '/signup');
   });
 
   it('adds a sixth "Tutorial" bubble after the two links, which replays the tutorial', () => {
@@ -733,7 +738,6 @@ describe('HelpMascot - phones', () => {
     expect(Array.from(list.children).map((item) => item.textContent)).toEqual([
       'FAQs',
       'Create an account',
-      'Create a ticket',
     ]);
     expect(pawButton()).toHaveAttribute('aria-expanded', 'true');
     expect(screen.queryByAltText('Dog mascot')).not.toBeInTheDocument();
