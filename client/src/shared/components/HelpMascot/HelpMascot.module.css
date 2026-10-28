@@ -301,8 +301,9 @@
    HIDE / SHOW - the visitor can put the mascot away
    EDIT GUIDE:
    - "Hide me" is the last bubble of the hover menu: `.link:nth-child(5)`,
-     or `.menu[data-items='6'] .link:nth-child(6)` when the customer
-     portal's extra "Tutorial" bubble is shown
+     `.menu[data-items='4'] .link:nth-child(4)` on the landing pages (one
+     page link), or `.menu[data-items='6'] .link:nth-child(6)` when the
+     customer portal's extra "Tutorial" bubble is shown
    - Paw button shown while hidden: `.showButton` size/colors
    ========================================================= */
 .showButton {
@@ -443,6 +444,21 @@
   transform: translate(-100%, -50%) translate(-58px, 64px);
 }
 
+/* Four bubbles (landing pages: FAQs, "Create an account", "Change pet",
+   "Hide me"). Same 34px spacing as five, centred on the same point. */
+.menu[data-items='4'] .link:nth-child(1) {
+  transform: translate(-100%, -50%) translate(-73px, -63px);
+}
+.menu[data-items='4'] .link:nth-child(2) {
+  transform: translate(-100%, -50%) translate(-76px, -29px);
+}
+.menu[data-items='4'] .link:nth-child(3) {
+  transform: translate(-100%, -50%) translate(-75px, 5px);
+}
+.menu[data-items='4'] .link:nth-child(4) {
+  transform: translate(-100%, -50%) translate(-64px, 39px);
+}
+
 .mascot:hover .link,
 .mascot:focus-within .link {
   opacity: 1;
@@ -560,6 +576,22 @@
 
   .menu[data-items='6'] .link:nth-child(6) {
     transform: translate(-100%, -50%) translate(-48px, 50px);
+  }
+
+  .menu[data-items='4'] .link:nth-child(1) {
+    transform: translate(-100%, -50%) translate(-59px, -52px);
+  }
+
+  .menu[data-items='4'] .link:nth-child(2) {
+    transform: translate(-100%, -50%) translate(-62px, -25px);
+  }
+
+  .menu[data-items='4'] .link:nth-child(3) {
+    transform: translate(-100%, -50%) translate(-61px, 2px);
+  }
+
+  .menu[data-items='4'] .link:nth-child(4) {
+    transform: translate(-100%, -50%) translate(-53px, 29px);
   }
 
   .link {

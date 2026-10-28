@@ -75,14 +75,35 @@
   stroke: var(--color-surface);
 }
 
-.makatiSlice {
+/* One colour per branch position (validated series tokens, see tokens.css).
+   Recharts sets fill as an SVG attribute; CSS outranks it, so each Cell
+   paints with its series colour via currentColor. */
+.series1,
+.series2,
+.series3,
+.series4,
+.seriesOther {
   fill: currentColor;
-  color: var(--color-accent);
 }
 
-.southwoodsSlice {
-  fill: currentColor;
-  color: var(--color-booking-in-progress-text);
+.series1 {
+  color: var(--color-series-1);
+}
+
+.series2 {
+  color: var(--color-series-2);
+}
+
+.series3 {
+  color: var(--color-series-3);
+}
+
+.series4 {
+  color: var(--color-series-4);
+}
+
+.seriesOther {
+  color: var(--color-text-muted);
 }
 
 .legend {

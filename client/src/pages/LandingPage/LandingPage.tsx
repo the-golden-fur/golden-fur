@@ -832,12 +832,7 @@ export default function GoldenFurLanding() {
         </section>
       ) : null}
 
-      <HelpMascot
-        links={[
-          { label: 'Create an account', href: '#' },
-          { label: 'Create a ticket', href: '#' },
-        ]}
-      />
+      <HelpMascot links={[{ label: 'Create an account', href: '/signup' }]} />
 
       <footer className="site-footer">
         <div className="footer-top">

@@ -77,7 +77,7 @@ describe('BranchRevenueComparisonChart', () => {
     );
   });
 
-  it('reloads both branches for the chosen time period', async () => {
+  it('reloads every branch for the chosen time period', async () => {
     renderChart({ filterable: true });
     await screen.findByText('₱300.00');
 
@@ -123,6 +123,28 @@ describe('BranchRevenueComparisonChart', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     );
     expect(screen.getAllByText('₱500.00')).toHaveLength(2);
+  });
+
+  it('includes every branch it is given, not just Makati and Southwoods', async () => {
+    render(
+      createElement(BranchRevenueComparisonChart, {
+        branches: [
+          ...BRANCHES,
+          { id: 'branch-imus', name: 'Imus', is_vet_branch: false },
+        ],
+        timeFilter: 'today',
+        accessToken: 'token',
+      })
+    );
+
+    expect(await screen.findByText('Imus')).toBeInTheDocument();
+    expect(screen.getByText('Makati')).toBeInTheDocument();
+    expect(screen.getByText('Southwoods')).toBeInTheDocument();
+    expect(reportsApi.getAnalyticsSummary).toHaveBeenCalledWith(
+      'today',
+      'branch-imus',
+      'token'
+    );
   });
 
   it('keeps the time period control available when a period has no revenue', async () => {

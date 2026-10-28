@@ -267,7 +267,7 @@ describe('StaffDashboardPage', () => {
       screen.getByRole('heading', { name: 'Recent Transactions' })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Makati vs Southwoods Revenue' })
+      screen.getByRole('heading', { name: 'Revenue by Branch' })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'View all queues' })
@@ -309,7 +309,7 @@ describe('StaffDashboardPage', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('heading', {
-        name: 'Makati vs Southwoods Revenue',
+        name: 'Revenue by Branch',
       })
     ).not.toBeInTheDocument();
     expect(
