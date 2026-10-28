@@ -32,12 +32,26 @@ const PESO_FORMATTER = new Intl.NumberFormat('en-PH', {
   currency: 'PHP',
 });
 
+/** Fixed hue per branch position (branches arrive ordered by name), never
+ * cycled - a 5th+ branch falls back to a muted series and relies on its
+ * legend label. Same palette and order as the Branch Comparison page, so a
+ * branch keeps its colour across both. */
+const SERIES_CLASSES = [
+  styles.series1,
+  styles.series2,
+  styles.series3,
+  styles.series4,
+];
+
+function seriesClass(index: number) {
+  return SERIES_CLASSES[index] ?? styles.seriesOther;
+}
+
 /**
- * Always compares both Makati and Southwoods regardless of the page's
- * branch dropdown above (single-branch-at-a-time) - that dropdown can't
- * show the one thing this chart is for. Matched by name against the
- * already-loaded branches list rather than hardcoded ids, since branch ids
- * are seed/environment-specific.
+ * Always compares every branch it is given regardless of the page's branch
+ * dropdown above (single-branch-at-a-time) - that dropdown can't show the
+ * one thing this chart is for. A newly added branch shows up here with no
+ * code change.
  */
 export function BranchRevenueComparisonChart({
   branches,
@@ -52,23 +66,21 @@ export function BranchRevenueComparisonChart({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const makati = branches.find((branch) => branch.name === 'Makati');
-  const southwoods = branches.find((branch) => branch.name === 'Southwoods');
-
   useEffect(() => {
-    if (!accessToken || !makati || !southwoods) return;
+    if (!accessToken || branches.length === 0) return;
 
     let isMounted = true;
 
-    void Promise.all([
-      getAnalyticsSummary(activeTimeFilter, makati.id, accessToken),
-      getAnalyticsSummary(activeTimeFilter, southwoods.id, accessToken),
-    ]).then(([makatiResult, southwoodsResult]) => {
+    void Promise.all(
+      branches.map((branch) =>
+        getAnalyticsSummary(activeTimeFilter, branch.id, accessToken)
+      )
+    ).then((results) => {
       if (!isMounted) return;
 
       setIsLoading(false);
 
-      const firstError = makatiResult.error ?? southwoodsResult.error;
+      const firstError = results.find((result) => result.error)?.error;
       if (firstError) {
         setError(firstError);
         return;
@@ -76,28 +88,22 @@ export function BranchRevenueComparisonChart({
 
       // A period that failed must not leave its error up once another loads.
       setError(null);
-      setSlices([
-        {
-          branchId: makati.id,
-          branchName: makati.name,
-          revenue: makatiResult.data?.total_revenue ?? 0,
-          className: styles.makatiSlice,
-        },
-        {
-          branchId: southwoods.id,
-          branchName: southwoods.name,
-          revenue: southwoodsResult.data?.total_revenue ?? 0,
-          className: styles.southwoodsSlice,
-        },
-      ]);
+      setSlices(
+        branches.map((branch, index) => ({
+          branchId: branch.id,
+          branchName: branch.name,
+          revenue: results[index].data?.total_revenue ?? 0,
+          className: seriesClass(index),
+        }))
+      );
     });
 
     return () => {
       isMounted = false;
     };
-  }, [accessToken, activeTimeFilter, makati, southwoods]);
+  }, [accessToken, activeTimeFilter, branches]);
 
-  if (!makati || !southwoods) {
+  if (branches.length === 0) {
     return null;
   }
 
@@ -107,7 +113,7 @@ export function BranchRevenueComparisonChart({
   return (
     <section className={styles.panel}>
       <div className={styles.header}>
-        <h2 className={styles.title}>Makati vs Southwoods Revenue</h2>
+        <h2 className={styles.title}>Revenue by Branch</h2>
 
         {filterable ? (
           <label className={styles.field}>
