@@ -60,9 +60,7 @@ function renderMascot() {
       MemoryRouter,
       null,
       createElement(HelpMascot, {
-        links: [
-          { label: 'Create an account', href: '/signup' },
-        ],
+        links: [{ label: 'Create an account', href: '/signup' }],
       })
     )
   );

@@ -60,11 +60,7 @@ export function BranchesPage() {
         </Link>
       </main>
 
-      <HelpMascot
-        links={[
-          { label: 'Create an account', href: '/signup' },
-        ]}
-      />
+      <HelpMascot links={[{ label: 'Create an account', href: '/signup' }]} />
     </>
   );
 }
