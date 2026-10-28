@@ -38,7 +38,7 @@ function queueFromResults(...results: QueryResult[]) {
     const result = queue.shift() ?? { data: null, error: null };
     const builder: Record<string, unknown> = {};
 
-    for (const method of ['select', 'eq', 'in', 'gte', 'lt', 'or']) {
+    for (const method of ['select', 'eq', 'in', 'gte', 'lt', 'gt', 'or']) {
       builder[method] = vi.fn(() => builder);
     }
 
@@ -776,6 +776,150 @@ describe('grooming.service (#64, booking-status revision)', () => {
         'session-early',
         'session-late',
       ]);
+    });
+
+    it('Custom change (clear check-in gate): blocks every row when the branch is closed today', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-02T00:00:00.000Z')); // Sunday 08:00 Manila
+
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              assigned_staff_id: GROOMER_ID,
+              branch_id: 'branch-1',
+              status: 'Pending',
+              payment_status: 'Fully Paid',
+            },
+          ],
+          error: null,
+        }, // bookings
+        NO_OTHER_IN_PROGRESS,
+        { data: [], error: null }, // existing sessions
+        { data: null, error: null }, // insert
+        {
+          data: [
+            {
+              ...sessionRow(),
+              booking: {
+                branch_id: 'branch-1',
+                assigned_staff_id: GROOMER_ID,
+                scheduled_start: '2026-08-02T02:00:00.000Z',
+              },
+            },
+          ],
+          error: null,
+        }, // sessions select
+        {
+          data: {
+            name: 'Makati',
+            timezone: 'Asia/Manila',
+            operating_hours: { monday: { open: '09:00', close: '18:00' } },
+          },
+          error: null,
+        } // branch lookup - no sunday entry, so closed today
+      );
+
+      const result = await listGroomingQueue({
+        requesterId: GROOMER_ID,
+        requesterRole: 'Groomer',
+        requesterBranchId: 'branch-1',
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].check_in_blocked_reason).toContain('is closed today');
+
+      vi.useRealTimers();
+    });
+
+    it('Custom change (clear check-in gate): blocks only the sessions of a groomer with an approved rest day today, in one batched staff query - not N', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // Monday 08:00 Manila
+
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'booking-1',
+              assigned_staff_id: GROOMER_ID,
+              branch_id: 'branch-1',
+              status: 'Pending',
+              payment_status: 'Fully Paid',
+            },
+            {
+              id: 'booking-2',
+              assigned_staff_id: OTHER_GROOMER_ID,
+              branch_id: 'branch-1',
+              status: 'Pending',
+              payment_status: 'Fully Paid',
+            },
+          ],
+          error: null,
+        }, // bookings
+        NO_OTHER_IN_PROGRESS,
+        { data: [], error: null }, // existing sessions
+        { data: null, error: null }, // insert
+        {
+          data: [
+            {
+              ...sessionRow({ id: 'session-1', booking_id: 'booking-1' }),
+              booking: {
+                branch_id: 'branch-1',
+                assigned_staff_id: GROOMER_ID,
+                scheduled_start: '2026-08-03T02:00:00.000Z',
+              },
+            },
+            {
+              ...sessionRow({ id: 'session-2', booking_id: 'booking-2' }),
+              booking: {
+                branch_id: 'branch-1',
+                assigned_staff_id: OTHER_GROOMER_ID,
+                scheduled_start: '2026-08-03T03:00:00.000Z',
+              },
+            },
+          ],
+          error: null,
+        }, // sessions select
+        {
+          data: {
+            name: 'Makati',
+            timezone: 'Asia/Manila',
+            operating_hours: { monday: { open: '09:00', close: '18:00' } },
+          },
+          error: null,
+        }, // branch lookup - open today
+        {
+          data: [
+            {
+              staff_id: GROOMER_ID,
+              leave_type: 'Rest Day',
+              staff: { display_name: 'Jane Dela Cruz' },
+            },
+          ],
+          error: null,
+        } // the one batched staff_unavailability_blocks query
+      );
+
+      const result = await listGroomingQueue({
+        requesterId: 'admin-1',
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-1',
+      });
+
+      const blocked = result.find((row) => row.booking_id === 'booking-1');
+      const notBlocked = result.find((row) => row.booking_id === 'booking-2');
+
+      expect(blocked?.check_in_blocked_reason).toBe(
+        "Jane Dela Cruz has an approved Rest Day today - check-in isn't available until they're back."
+      );
+      expect(notBlocked?.check_in_blocked_reason).toBeNull();
+      // bookings x2 + existing sessions + insert + sessions select + branch
+      // lookup + ONE staff_unavailability_blocks query = 7, not 8 (one per
+      // distinct groomer would make it 8).
+      expect(supabase.from).toHaveBeenCalledTimes(7);
+
+      vi.useRealTimers();
     });
   });
 });

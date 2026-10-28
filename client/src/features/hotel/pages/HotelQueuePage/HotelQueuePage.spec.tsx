@@ -6,6 +6,7 @@ import { AuthContext } from '../../../../shared/auth/providers/AuthProvider/Auth
 import type { AuthContextValue } from '../../../../shared/auth/providers/AuthProvider/AuthContext';
 import * as staffApi from '../../../staff/api/staff.api';
 import * as hotelApi from '../../api/hotel.api';
+import * as bookingApi from '../../../booking/api/booking.api';
 import type { Booking } from '../../../booking/booking.types';
 import type { StaffProfile } from '../../../staff/staff.types';
 import { HotelQueuePage } from './HotelQueuePage';
@@ -18,6 +19,15 @@ vi.mock('../../api/hotel.api', () => ({
   checkInHotelStay: vi.fn(),
 }));
 
+// Custom change (clear check-in gate, groomer rest-day indicator): defaults
+// to "nothing blocked" so existing tests that don't care about this don't
+// need to mock it per-case; the dedicated test below overrides it.
+vi.mock('../../../booking/api/booking.api', () => ({
+  getCheckInBlock: vi
+    .fn()
+    .mockResolvedValue({ data: { reason: null }, error: null }),
+}));
+
 // The picker's own data loading is exercised in HotelBookingPicker.spec -
 // here we only care that the page wires its callbacks up correctly.
 vi.mock('../../components/HotelBookingPicker/HotelBookingPicker', () => ({
@@ -25,6 +35,7 @@ vi.mock('../../components/HotelBookingPicker/HotelBookingPicker', () => ({
     onCheckIn: (booking: Booking) => void;
     onViewDetails: (booking: Booking) => void;
     checkingInBookingId?: string | null;
+    blockedReason?: string | null;
   }) => {
     const booking = { id: 'booking-1', hotel_preferences: null } as Booking;
     return createElement(
@@ -32,7 +43,11 @@ vi.mock('../../components/HotelBookingPicker/HotelBookingPicker', () => ({
       null,
       createElement(
         'button',
-        { type: 'button', onClick: () => props.onCheckIn(booking) },
+        {
+          type: 'button',
+          disabled: Boolean(props.blockedReason),
+          onClick: () => props.onCheckIn(booking),
+        },
         'Check in Mochi'
       ),
       createElement(
@@ -44,7 +59,10 @@ vi.mock('../../components/HotelBookingPicker/HotelBookingPicker', () => ({
         'span',
         null,
         `checkingIn:${props.checkingInBookingId ?? 'none'}`
-      )
+      ),
+      props.blockedReason
+        ? createElement('p', { role: 'alert' }, props.blockedReason)
+        : null
     );
   },
 }));
@@ -156,6 +174,27 @@ describe('HotelQueuePage (custom change: one-click check-in)', () => {
     expect(
       screen.getByText('No available cage of the suggested size (S)')
     ).toBeInTheDocument();
+  });
+
+  // Custom change (clear check-in gate, groomer rest-day indicator): the
+  // page fetches the branch-level block once and passes it straight through
+  // to the picker, which disables every "Check in" button on it.
+  it('passes a branch check-in block reason down to the picker, disabling check-in', async () => {
+    // mockResolvedValueOnce - a permanent mockResolvedValue here would leak
+    // into later tests, since this file's beforeEach only clearAllMocks
+    // (not resetAllMocks), which doesn't restore the module factory's own
+    // "nothing blocked" default implementation.
+    vi.mocked(bookingApi.getCheckInBlock).mockResolvedValueOnce({
+      data: {
+        reason: "Makati is closed today (Sunday) - check-in isn't available.",
+      },
+      error: null,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/is closed today/)).toBeInTheDocument();
+    expect(screen.getByText('Check in Mochi')).toBeDisabled();
   });
 
   it('"View booking details" navigates to the booking detail route', async () => {

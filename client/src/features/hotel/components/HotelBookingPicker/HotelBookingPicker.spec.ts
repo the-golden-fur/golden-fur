@@ -234,6 +234,22 @@ describe('HotelBookingPicker', () => {
     expect(button).toBeDisabled();
   });
 
+  // Custom change (clear check-in gate, groomer rest-day indicator): the
+  // branch-level reason disables every "Check in" button at once and shows
+  // the reason as a banner.
+  it('a blockedReason disables every Check in button and shows the reason', async () => {
+    setupMocks([booking()]);
+
+    renderPicker({
+      blockedReason:
+        "Makati is closed today (Sunday) - check-in isn't available.",
+    });
+
+    await screen.findByText('Mochi');
+    expect(screen.getByText(/is closed today \(Sunday\)/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check in' })).toBeDisabled();
+  });
+
   it('a non-Pending booking renders its status badge and offers no Check in button', async () => {
     setupMocks([booking({ id: 'booking-2', status: 'Cancelled' })]);
 

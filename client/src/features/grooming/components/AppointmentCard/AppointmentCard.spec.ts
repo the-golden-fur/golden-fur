@@ -109,6 +109,43 @@ describe('AppointmentCard (#68, booking-status revision)', () => {
     expect(screen.getByRole('button', { name: /start/i })).toBeDisabled();
   });
 
+  // Custom change (clear check-in gate, groomer rest-day indicator): a
+  // Pending session the server would refuse to start (closed branch, or
+  // the assigned groomer's approved day off) shows the reason and disables
+  // Start - same pattern as the assessment gate above.
+  it('a Pending session blocked by the check-in gate shows the reason and disables Start', () => {
+    render(
+      createElement(AppointmentCard, {
+        ...baseProps,
+        session: buildSession('Pending', {
+          check_in_blocked_reason:
+            "Jane Dela Cruz has an approved Rest Day today - check-in isn't available until they're back.",
+        }),
+        onAdvance: vi.fn(),
+      })
+    );
+
+    expect(
+      screen.getByText(/has an approved Rest Day today/)
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start/i })).toBeDisabled();
+  });
+
+  it('an In Progress session with a check-in block still shows an enabled Complete button - already started, not re-checking-in', () => {
+    render(
+      createElement(AppointmentCard, {
+        ...baseProps,
+        session: buildSession('In Progress', {
+          check_in_blocked_reason: 'Makati is closed today (Sunday).',
+        }),
+        onAdvance: vi.fn(),
+      })
+    );
+
+    expect(screen.queryByText(/is closed today/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /complete/i })).toBeEnabled();
+  });
+
   it('an ordinary booking carries no assessment label', () => {
     render(
       createElement(AppointmentCard, {

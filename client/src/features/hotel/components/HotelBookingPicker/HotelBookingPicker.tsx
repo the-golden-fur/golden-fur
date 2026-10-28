@@ -96,6 +96,10 @@ interface HotelBookingPickerProps {
    * button shows a pending label and is disabled. */
   checkingInBookingId?: string | null;
   selectedBookingId?: string | null;
+  /** Custom change (clear check-in gate, groomer rest-day indicator): set
+   * when the branch is closed today - disables every "Check in" button and
+   * shows the reason, instead of each one failing individually on click. */
+  blockedReason?: string | null;
 }
 
 /** Whether a booking can still be checked in: Pending, or In Progress with
@@ -147,6 +151,7 @@ export function HotelBookingPicker({
   onViewDetails,
   checkingInBookingId,
   selectedBookingId,
+  blockedReason,
 }: HotelBookingPickerProps) {
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
@@ -433,6 +438,12 @@ export function HotelBookingPicker({
         </p>
       ) : null}
 
+      {blockedReason ? (
+        <p className={styles.errorBanner} role="alert">
+          {blockedReason}
+        </p>
+      ) : null}
+
       {!isLoading && !error && filteredAndSorted.length === 0 ? (
         <p className={styles.copy}>
           No Hotel bookings match these filters. Try widening the date range or
@@ -515,7 +526,10 @@ export function HotelBookingPicker({
                         <button
                           type="button"
                           className={styles.checkInButton}
-                          disabled={checkingInBookingId === item.booking.id}
+                          disabled={
+                            checkingInBookingId === item.booking.id ||
+                            Boolean(blockedReason)
+                          }
                           onClick={() => onCheckIn(item.booking)}
                         >
                           {checkingInBookingId === item.booking.id

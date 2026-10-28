@@ -18,6 +18,16 @@ vi.mock('./activityLog.service.ts', () => ({
   recordActivity: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Custom change (clear check-in gate, groomer rest-day indicator):
+// checkInHotelStay calls the real startBooking() (booking.service.ts),
+// which now asks this gate first - covered by its own unit tests
+// (availability.service.spec.ts) and by booking.service.spec.ts's own
+// startBooking tests, so it's mocked out here to keep these check-in tests
+// focused on care-instruction behavior, not re-queuing a branches lookup.
+vi.mock('../../booking/services/availability.service.ts', () => ({
+  assertCheckInAllowed: vi.fn().mockResolvedValue(undefined),
+}));
+
 interface QueryResult {
   data: unknown;
   error: unknown;

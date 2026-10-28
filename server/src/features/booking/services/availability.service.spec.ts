@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  assertCheckInAllowed,
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
   getDaySlots,
+  resolveBranchClosedToday,
+  resolveCheckInBlockReason,
   resolveOperatingWindow,
 } from './availability.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
@@ -983,6 +986,177 @@ describe('availability.service (#56/#60 supporting infra)', () => {
             '2026-08-03T23:00:00.000Z'
           )
         ).resolves.toBeUndefined();
+      });
+    });
+  });
+
+  describe('check-in gate (clear check-in gate, groomer rest-day indicator)', () => {
+    const OPEN_MONDAY_BRANCH = {
+      data: {
+        name: 'Makati',
+        timezone: 'Asia/Manila',
+        operating_hours: {
+          monday: { open: '09:00', close: '18:00' },
+        },
+      },
+      error: null,
+    };
+
+    describe('resolveBranchClosedToday', () => {
+      it('is not closed on a day the branch has operating hours for', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // Monday 08:00 Manila
+
+        queueFromResults(OPEN_MONDAY_BRANCH);
+
+        const result = await resolveBranchClosedToday('branch-1');
+
+        expect(result).toEqual({
+          closed: false,
+          reason: null,
+          timezone: 'Asia/Manila',
+        });
+      });
+
+      it('is closed on a day with no operating_hours entry (e.g. Sunday)', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-02T00:00:00.000Z')); // Sunday 08:00 Manila
+
+        queueFromResults(OPEN_MONDAY_BRANCH);
+
+        const result = await resolveBranchClosedToday('branch-1');
+
+        expect(result.closed).toBe(true);
+        expect(result.reason).toContain('Makati is closed today (Sunday)');
+      });
+    });
+
+    describe('resolveCheckInBlockReason', () => {
+      it('returns the branch-closed reason without ever querying staff_unavailability_blocks', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-02T00:00:00.000Z')); // Sunday
+
+        queueFromResults(OPEN_MONDAY_BRANCH);
+
+        const reason = await resolveCheckInBlockReason({
+          branchId: 'branch-1',
+          assignedStaffId: 'groomer-1',
+        });
+
+        expect(reason).toContain('is closed today');
+        expect(supabase.from).toHaveBeenCalledTimes(1); // branch lookup only
+      });
+
+      it('returns null when the branch is open and no staff is assigned (Hotel/Daycare)', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // Monday
+
+        queueFromResults(OPEN_MONDAY_BRANCH);
+
+        const reason = await resolveCheckInBlockReason({
+          branchId: 'branch-1',
+          assignedStaffId: null,
+        });
+
+        expect(reason).toBeNull();
+      });
+
+      it('returns a clear reason when the assigned staff has an approved block covering right now', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // Monday 08:00 Manila
+
+        queueFromResults(OPEN_MONDAY_BRANCH, {
+          data: [
+            {
+              leave_type: 'Rest Day',
+              staff: { display_name: 'Jane Dela Cruz' },
+            },
+          ],
+          error: null,
+        });
+
+        const reason = await resolveCheckInBlockReason({
+          branchId: 'branch-1',
+          assignedStaffId: 'groomer-1',
+        });
+
+        expect(reason).toBe(
+          "Jane Dela Cruz has an approved Rest Day today - check-in isn't available until they're back."
+        );
+      });
+
+      it('returns null when no approved block covers the assigned staff right now', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // Monday 08:00 Manila
+
+        queueFromResults(OPEN_MONDAY_BRANCH, { data: null, error: null });
+
+        const reason = await resolveCheckInBlockReason({
+          branchId: 'branch-1',
+          assignedStaffId: 'groomer-1',
+        });
+
+        expect(reason).toBeNull();
+      });
+
+      it("queries only approved blocks for the assigned staff, within today's instant range", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z')); // Monday 08:00 Manila
+
+        queueFromResults(OPEN_MONDAY_BRANCH, { data: null, error: null });
+
+        await resolveCheckInBlockReason({
+          branchId: 'branch-1',
+          assignedStaffId: 'groomer-1',
+        });
+
+        const builder = vi.mocked(supabase.from).mock.results[1]!.value as {
+          eq: ReturnType<typeof vi.fn>;
+          lt: ReturnType<typeof vi.fn>;
+          gt: ReturnType<typeof vi.fn>;
+        };
+        expect(builder.eq).toHaveBeenCalledWith('staff_id', 'groomer-1');
+        expect(builder.eq).toHaveBeenCalledWith('status', 'approved');
+        // Monday 2026-08-03 00:00 Asia/Manila (UTC+8) -> 2026-08-02T16:00:00.000Z;
+        // next day 00:00 -> 2026-08-03T16:00:00.000Z.
+        expect(builder.lt).toHaveBeenCalledWith(
+          'start_time',
+          '2026-08-03T16:00:00.000Z'
+        );
+        expect(builder.gt).toHaveBeenCalledWith(
+          'end_time',
+          '2026-08-02T16:00:00.000Z'
+        );
+      });
+    });
+
+    describe('assertCheckInAllowed', () => {
+      it('resolves when nothing blocks check-in', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
+
+        queueFromResults(OPEN_MONDAY_BRANCH, { data: null, error: null });
+
+        await expect(
+          assertCheckInAllowed({
+            branchId: 'branch-1',
+            assignedStaffId: 'groomer-1',
+          })
+        ).resolves.toBeUndefined();
+      });
+
+      it('throws 409 with the resolved reason when blocked', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-08-02T00:00:00.000Z')); // Sunday
+
+        queueFromResults(OPEN_MONDAY_BRANCH);
+
+        await expect(
+          assertCheckInAllowed({ branchId: 'branch-1', assignedStaffId: null })
+        ).rejects.toMatchObject({
+          statusCode: 409,
+          message: expect.stringContaining('is closed today'),
+        });
       });
     });
   });

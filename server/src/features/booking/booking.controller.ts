@@ -34,6 +34,7 @@ import { cancelBooking } from './services/cancellation.service.ts';
 import {
   getDaySlots,
   partsOfDayWithinOperatingHours,
+  resolveBranchClosedToday,
   resolveOperatingWindow,
 } from './services/availability.service.ts';
 import { getBookingCatalog } from './services/catalog.service.ts';
@@ -282,6 +283,35 @@ export async function availabilityController(
     return res
       .status(200)
       .json({ slots, window, min_notice_days: minNoticeDays });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/**
+ * Custom change (clear check-in gate, groomer rest-day indicator): whether
+ * the caller's own branch is closed today - Hotel's and Daycare's "check in
+ * what's pending" queues have no per-booking staff dimension to check
+ * (assigned_staff_id is always null for those categories - no Staff
+ * Picker), so a single branch-level flag is all those pages need, fetched
+ * once rather than threaded through the general bookings list. Grooming's
+ * own queue instead annotates each session directly (see
+ * grooming.service.ts's listGroomingQueue), since different sessions can
+ * have different assigned groomers.
+ */
+export async function checkInBlockController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const branchId = req.user?.branch_id;
+
+  if (!branchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const status = await resolveBranchClosedToday(branchId);
+    return res.status(200).json({ reason: status.reason });
   } catch (error) {
     return sendServiceError(res, error);
   }
