@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * Run `npm run seed:all` against the Supabase project the CLI is linked to
- * (supabase/.temp/project-ref) instead of the one in server/.env.
+ * Run a seed npm script (default `seed:all`; e.g. `seed:prod`,
+ * `seed:sample-data`) against the Supabase project the CLI is linked to
+ * (supabase/.temp/project-ref) instead of the one in server/.env:
+ *
+ *   node scripts/seed-linked.mjs [script]
  *
  * Resolves the linked project's URL + service_role key via the Supabase CLI
  * and exports them as SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY before
- * spawning seed:all. Every seed calls dotenv without `override`, so these
+ * spawning the script. Every seed calls dotenv without `override`, so these
  * already-set values win over server/.env.
  *
  * Every seed is idempotent (per-row existence checks), so against a project
@@ -66,9 +69,14 @@ if (typeof serviceRoleKey !== 'string' || !serviceRoleKey) {
   fail(`No service_role API key was returned for ${projectRef}.`);
 }
 
-console.log(`Seeding linked Supabase project: ${projectRef}`);
+const script = process.argv[2] ?? 'seed:all';
+if (!/^seed:[a-z:-]+$/.test(script)) {
+  fail(`Not a seed script: "${script}".`);
+}
 
-const seedResult = spawnSync('npm', ['run', 'seed:all'], {
+console.log(`Running ${script} against linked Supabase project: ${projectRef}`);
+
+const seedResult = spawnSync('npm', ['run', script], {
   stdio: 'inherit',
   shell: isWindows,
   env: {

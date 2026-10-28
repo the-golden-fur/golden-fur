@@ -291,41 +291,6 @@
       }
     },
 
-    // ── Temp demo data (supabase/seeds/temp-demo) - NOT part of seed:all ──
-    {
-      "label": "supabase:seed:all:temp",
-      "type": "npm",
-      "script": "seed:temp:linked",
-      "detail": "Inserts temp demo data into the Supabase project linked by the CLI. Retrieves that project's service-role API key through the Supabase CLI; server/.env is not used for this task. Re-running adds no duplicates.",
-      "presentation": {
-        "group": "seed",
-        "panel": "shared",
-        "reveal": "always"
-      }
-    },
-    {
-      "label": "supabase:seed:temp:roles",
-      "type": "npm",
-      "script": "seed:temp:roles:linked",
-      "detail": "Inserts only the Groomer and Front Desk demo data (grooming queue, hotel/daycare stays, care log, transactions, misc sales, credit review, days off), dated from today, into the project linked by the Supabase CLI. Needs base data (seed:all) first. Re-running adds no duplicates.",
-      "presentation": {
-        "group": "seed",
-        "panel": "shared",
-        "reveal": "always"
-      }
-    },
-    {
-      "label": "supabase:reset:temp",
-      "type": "npm",
-      "script": "supabase:reset:temp",
-      "detail": "Re-seeds temp demo data into the project linked by the Supabase CLI (no reset - nothing is wiped). Retrieves that project's service-role API key through the Supabase CLI; server/.env is not used for this task.",
-      "presentation": {
-        "group": "supabase",
-        "panel": "shared",
-        "reveal": "always"
-      }
-    },
-
     // ── Seed Data (folders named for the Modules-Features module) ──
     {
       "label": "🌱 Seed: All Modules",
@@ -343,6 +308,28 @@
       "type": "npm",
       "script": "seed:all:linked",
       "detail": "Runs seed:all against the `supabase link`ed project instead of server/.env. Idempotent - only adds missing rows.",
+      "presentation": {
+        "group": "seed",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "🏭 Seed: Production Reference Data (Linked Project)",
+      "type": "npm",
+      "script": "seed:prod:linked",
+      "detail": "Seeds the reference tables production needs (branches, cages, vet catalogs, discounts, service availability, packages, promos, rewards) into the `supabase link`ed project. No staff or customer accounts - add those by hand. Check the linked project first. Idempotent - only adds missing rows.",
+      "presentation": {
+        "group": "seed",
+        "panel": "shared",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "🎬 Seed: Sample Data (Linked Project)",
+      "type": "npm",
+      "script": "seed:sample-data:linked",
+      "detail": "Runs seed:all, then fills every app table (bookings, transactions, stays, care logs, consultations, messages, credits, rewards, months of sales history...) with demo rows, into the `supabase link`ed project. For demos and videos - never production. Re-running adds no duplicates.",
       "presentation": {
         "group": "seed",
         "panel": "shared",

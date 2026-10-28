@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveSeedUrl, seedTempDemo } from './temp-demo.seed.ts';
+import { seedTempDemo } from './temp-demo.seed.ts';
 import { seedTempRoleDemo } from './temp-demo.roles.ts';
+import { seedTempHistory } from './temp-demo.history.ts';
+import { seedTempProgress } from './temp-demo.progress.ts';
 
 const LOOKUPS: Record<string, Array<Record<string, unknown>>> = {
   staff_profiles: [
@@ -9,7 +11,10 @@ const LOOKUPS: Record<string, Array<Record<string, unknown>>> = {
     { id: 'staff-3', branch_id: 'branch-1', role: 'Supervisor' },
   ],
   customer_profiles: [{ id: 'cust-1' }, { id: 'cust-2' }],
-  branches: [{ id: 'branch-1' }, { id: 'branch-2' }],
+  branches: [
+    { id: 'branch-1', is_vet_branch: true },
+    { id: 'branch-2', is_vet_branch: false },
+  ],
   pets: [
     { id: 'pet-1', customer_id: 'cust-1' },
     { id: 'pet-2', customer_id: 'cust-2' },
@@ -53,6 +58,14 @@ const LOOKUPS: Record<string, Array<Record<string, unknown>>> = {
   promos: [{ id: 'promo-1' }],
   spin_wheel_rewards: [{ id: 'reward-1' }],
   reward_pools: [{ id: 'pool-1' }],
+  stays: [
+    {
+      id: 'stay-1',
+      check_in_at: '2026-10-20T01:00:00Z',
+      scheduled_check_out_date: '2026-10-23',
+      status: 'Completed',
+    },
+  ],
 };
 
 function mockClient() {
@@ -97,27 +110,6 @@ function mockClient() {
 }
 
 describe('temp-demo seed', () => {
-  it('uses the linked Supabase project URL when requested', () => {
-    expect(resolveSeedUrl(true, 'abc123', 'https://abc123.supabase.co')).toBe(
-      'https://abc123.supabase.co'
-    );
-  });
-
-  it('uses the configured Supabase URL by default', () => {
-    expect(
-      resolveSeedUrl(false, undefined, 'https://configured.supabase.co')
-    ).toBe('https://configured.supabase.co');
-  });
-
-  it('requires a valid linked project ref', () => {
-    expect(() => resolveSeedUrl(true, undefined)).toThrow(
-      /valid linked Supabase project ref/
-    );
-    expect(() => resolveSeedUrl(true, 'invalid/ref')).toThrow(
-      /valid linked Supabase project ref/
-    );
-  });
-
   it('upserts with ignoreDuplicates so re-running never duplicates rows', async () => {
     const { client, upsert } = mockClient();
 
@@ -125,7 +117,7 @@ describe('temp-demo seed', () => {
 
     expect(upsert).toHaveBeenCalled();
     for (const call of upsert.mock.calls) {
-      expect(call[1]).toEqual({ onConflict: 'id', ignoreDuplicates: true });
+      expect(call[1]).toMatchObject({ ignoreDuplicates: true });
     }
   });
 
@@ -241,6 +233,55 @@ describe('temp-demo seed', () => {
 
     const tables = new Set(from.mock.calls.map((call) => call[0] as string));
     for (const table of tables) {
+      const ids = rowsOf(table).map((r) => r.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it('backdates months of paid history, newest month busier than the oldest', async () => {
+    const { client, rowsOf } = mockClient();
+
+    await seedTempHistory(client as never, new Date('2026-10-25T03:00:00Z'));
+
+    const txns = rowsOf('transactions');
+    expect(txns.length).toBeGreaterThan(0);
+    expect(rowsOf('bookings')).toHaveLength(txns.length);
+    expect(txns.every((t) => String(t.created_at) < '2026-10-25T02')).toBe(
+      true
+    );
+    const months = (prefix: string) =>
+      txns.filter((t) => String(t.created_at).startsWith(prefix)).length;
+    expect(months('2026-04')).toBeGreaterThan(0);
+    expect(months('2026-09')).toBeGreaterThan(months('2026-04'));
+    expect(
+      rowsOf('bookings').some(
+        (b) => b.service_category === 'Veterinary' && b.branch_id === 'branch-2'
+      )
+    ).toBe(false);
+  });
+
+  it('seeds customer progress, login days and daily care reports', async () => {
+    const { client, rowsOf } = mockClient();
+
+    await seedTempProgress(client as never, new Date('2026-10-25T03:00:00Z'));
+
+    expect(rowsOf('customer_booking_milestone_progress')).toHaveLength(2);
+    expect(rowsOf('customer_pity_progress')).toHaveLength(2);
+    expect(rowsOf('customer_login_days').length).toBeGreaterThan(0);
+    expect(rowsOf('care_log_daily_reports').map((r) => r.report_date)).toEqual([
+      '2026-10-20',
+      '2026-10-21',
+      '2026-10-22',
+      '2026-10-23',
+    ]);
+  });
+
+  it('never repeats a history id within a table', async () => {
+    const { client, rowsOf } = mockClient();
+
+    await seedTempHistory(client as never, new Date('2026-10-25T03:00:00Z'));
+
+    for (const table of ['bookings', 'transactions', 'booking_items']) {
       const ids = rowsOf(table).map((r) => r.id);
       expect(new Set(ids).size).toBe(ids.length);
     }

@@ -206,6 +206,9 @@ export async function seedStaff(supabase: ReturnType<typeof createClient>) {
 async function main() {
   const supabase = getClient();
   await seedBranches(supabase);
+
+  // seed:prod - staff accounts are created by hand in production.
+  if (process.argv.includes('--branches-only')) return;
   await seedStaff(supabase);
 }
 
