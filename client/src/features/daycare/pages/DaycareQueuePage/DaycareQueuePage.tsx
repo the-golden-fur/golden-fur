@@ -21,7 +21,10 @@ import { SearchSortBar } from '../../../../shared/components/SearchSortBar/Searc
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import { PaymentStatusBadge } from '../../../booking/components/shared/PaymentStatusBadge/PaymentStatusBadge';
-import { listBookings } from '../../../booking/api/booking.api';
+import {
+  getCheckInBlock,
+  listBookings,
+} from '../../../booking/api/booking.api';
 import {
   isNotStartedStatus,
   type Booking,
@@ -125,6 +128,12 @@ export function DaycareQueuePage() {
   // behavior from before walk-ins were told apart.
   const [checkedInBookingIds, setCheckedInBookingIds] =
     useState<Set<string> | null>(null);
+  // Custom change (clear check-in gate, groomer rest-day indicator): set
+  // when the branch is closed today - disables check-in row clicks with a
+  // clear reason, instead of each one failing individually.
+  const [checkInBlockedReason, setCheckInBlockedReason] = useState<
+    string | null
+  >(null);
 
   const showCheckedInBanner = searchParams.get('checkedIn') === 'success';
 
@@ -150,6 +159,22 @@ export function DaycareQueuePage() {
       isMounted = false;
     };
   }, [accessToken, user?.id]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+
+    let isMounted = true;
+
+    void getCheckInBlock(accessToken).then((result) => {
+      if (isMounted && result.data) {
+        setCheckInBlockedReason(result.data.reason);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken]);
 
   useEffect(() => {
     if (roleStatus !== 'ok' || !accessToken || !branchId) return;
@@ -402,6 +427,12 @@ export function DaycareQueuePage() {
           </p>
         ) : null}
 
+        {checkInBlockedReason ? (
+          <p className={styles.errorBanner} role="alert">
+            {checkInBlockedReason}
+          </p>
+        ) : null}
+
         {!isLoading && !loadError && filteredAndSorted.length === 0 ? (
           <p className={styles.copy}>
             No Daycare bookings match these filters.
@@ -411,9 +442,19 @@ export function DaycareQueuePage() {
         {!isLoading && !loadError && filteredAndSorted.length > 0 ? (
           <ul className={styles.bookingList}>
             {filteredAndSorted.map((booking) => {
+              // Custom change (clear check-in gate, groomer rest-day
+              // indicator): only a row that would actually go through
+              // check-in is blocked - an already-checked-in "In Progress"
+              // row still opens its boarding checklist regardless, since
+              // that isn't a check-in action.
+              const isCheckInRow =
+                isNotStartedStatus(booking.status) || needsCheckIn(booking);
+              const isBlockedForCheckIn =
+                isCheckInRow && Boolean(checkInBlockedReason);
               const isClickable =
-                isNotStartedStatus(booking.status) ||
-                booking.status === 'In Progress';
+                (isNotStartedStatus(booking.status) ||
+                  booking.status === 'In Progress') &&
+                !isBlockedForCheckIn;
 
               const summary = (
                 <>
@@ -439,12 +480,15 @@ export function DaycareQueuePage() {
                   <span className={styles.bookingMeta}>
                     Owner {owners[booking.customer_id]?.full_name ?? 'Unknown'}
                   </span>
-                  {isNotStartedStatus(booking.status) ? (
+                  {isBlockedForCheckIn ? (
+                    <span className={styles.actionHint} role="alert">
+                      {checkInBlockedReason}
+                    </span>
+                  ) : isNotStartedStatus(booking.status) ? (
                     <span className={styles.actionHint}>
                       Click to finalize the cage and care instructions
                     </span>
-                  ) : null}
-                  {needsCheckIn(booking) ? (
+                  ) : needsCheckIn(booking) ? (
                     <span className={styles.actionHint}>
                       Not checked in yet - click to finalize the cage and care
                       instructions

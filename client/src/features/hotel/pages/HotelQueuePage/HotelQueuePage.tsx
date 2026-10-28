@@ -4,6 +4,7 @@ import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth'
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import type { Booking } from '../../../booking/booking.types';
 import { getStaffProfile } from '../../../staff/api/staff.api';
+import { getCheckInBlock } from '../../../booking/api/booking.api';
 import { checkInHotelStay } from '../../api/hotel.api';
 import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBookingPicker';
 import { buildQuickCheckInPayload } from './buildQuickCheckInPayload';
@@ -52,6 +53,12 @@ export function HotelQueuePage() {
     'loading'
   );
   const [branchId, setBranchId] = useState<string | null>(null);
+  // Custom change (clear check-in gate, groomer rest-day indicator): set
+  // when the branch is closed today - disables every "Check in" button on
+  // this queue with a clear reason, instead of each failing individually.
+  const [checkInBlockedReason, setCheckInBlockedReason] = useState<
+    string | null
+  >(null);
 
   const [tab, setTab] = useState<Tab>(
     searchParams.get('tab') === 'check-out' ? 'check-out' : 'check-in'
@@ -98,6 +105,22 @@ export function HotelQueuePage() {
       isMounted = false;
     };
   }, [accessToken, user?.id]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+
+    let isMounted = true;
+
+    void getCheckInBlock(accessToken).then((result) => {
+      if (isMounted && result.data) {
+        setCheckInBlockedReason(result.data.reason);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken]);
 
   async function handleQuickCheckIn(booking: Booking) {
     if (!accessToken || checkingInBookingId) return;
@@ -186,6 +209,7 @@ export function HotelQueuePage() {
               }
               checkingInBookingId={checkingInBookingId}
               selectedBookingId={null}
+              blockedReason={checkInBlockedReason}
             />
           </section>
         ) : null}

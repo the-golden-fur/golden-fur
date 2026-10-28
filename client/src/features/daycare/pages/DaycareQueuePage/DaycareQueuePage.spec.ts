@@ -22,6 +22,12 @@ vi.mock('../../../customers/api/customer.api', () => ({
 }));
 vi.mock('../../../booking/api/booking.api', () => ({
   listBookings: vi.fn(),
+  // Custom change (clear check-in gate, groomer rest-day indicator):
+  // defaults to "nothing blocked" so existing tests don't need to mock
+  // this; the dedicated test below overrides it.
+  getCheckInBlock: vi
+    .fn()
+    .mockResolvedValue({ data: { reason: null }, error: null }),
 }));
 vi.mock('../../api/daycare.api', () => ({
   listDaycareSessions: vi.fn(),
@@ -243,6 +249,45 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
     await user.click(await screen.findByText('Buddy'));
 
     expect(navigateMock).toHaveBeenCalledWith(
+      '/staff/daycare/queue/check-in/booking-1'
+    );
+  });
+
+  // Custom change (clear check-in gate, groomer rest-day indicator): a
+  // Pending row stops being clickable and shows the reason, while an
+  // already-checked-in In Progress row (Boarding Checklist link, not a
+  // check-in action) is unaffected.
+  it('a check-in block reason stops a Pending row from being clickable but leaves a checked-in row alone', async () => {
+    stubPetAndOwner();
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildViewerProfile('Groomer'),
+      error: null,
+    });
+    vi.mocked(bookingApi.listBookings).mockResolvedValue({
+      data: [buildBooking({ status: 'Pending' })],
+      error: null,
+    });
+    // mockResolvedValueOnce - a permanent mockResolvedValue here would leak
+    // into later tests, since this file's beforeEach only clearAllMocks
+    // (not resetAllMocks), which doesn't restore the module factory's own
+    // "nothing blocked" default implementation.
+    vi.mocked(bookingApi.getCheckInBlock).mockResolvedValueOnce({
+      data: {
+        reason: "Makati is closed today (Sunday) - check-in isn't available.",
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(
+      await screen.findByText(/is closed today \(Sunday\)/)
+    ).toBeInTheDocument();
+
+    await user.click(await screen.findByText('Buddy'));
+
+    expect(navigateMock).not.toHaveBeenCalledWith(
       '/staff/daycare/queue/check-in/booking-1'
     );
   });
