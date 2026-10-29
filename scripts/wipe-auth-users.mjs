@@ -43,7 +43,9 @@ for (;;) {
 
   let deletedThisPage = 0;
   for (const user of data.users) {
-    const { error: deleteError } = await supabase.auth.admin.deleteUser(user.id);
+    const { error: deleteError } = await supabase.auth.admin.deleteUser(
+      user.id
+    );
     if (deleteError) {
       console.error(`skip: ${user.email ?? user.id}: ${deleteError.message}`);
       failed++;
@@ -55,5 +57,7 @@ for (;;) {
   if (deletedThisPage === 0) break;
 }
 
-console.log(`deleted ${deleted} auth user(s)${failed ? `, ${failed} failed` : ''}`);
+console.log(
+  `deleted ${deleted} auth user(s)${failed ? `, ${failed} failed` : ''}`
+);
 process.exitCode = failed ? 1 : 0;
