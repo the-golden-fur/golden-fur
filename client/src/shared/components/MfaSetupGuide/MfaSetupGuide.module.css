@@ -1,0 +1,120 @@
+.guide {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.summary {
+  cursor: pointer;
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2) var(--space-3);
+}
+
+.summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.body {
+  display: grid;
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tab {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-3);
+}
+
+.tab:hover {
+  border-color: var(--color-accent);
+}
+
+.tabActive {
+  composes: tab;
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+.steps {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding-left: var(--space-4, 1.5rem);
+}
+
+.step {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.step::marker {
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
+}
+
+.stepTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-main);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.subSteps {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-4, 1.5rem);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.link {
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
+}
+
+.inlineButton {
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  padding: 0;
+  text-decoration: underline;
+}
+
+.troubleshooting {
+  display: grid;
+  gap: var(--space-1);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}

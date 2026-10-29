@@ -129,6 +129,14 @@ describe('TotpChallengeForm', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('tells the user where to find the code in their authenticator app', async () => {
+    renderForm();
+
+    expect(
+      await screen.findByText(/open the google authenticator app/i)
+    ).toBeInTheDocument();
+  });
+
   it('lets the user switch methods after already choosing one, via "Other ways to verify"', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: {

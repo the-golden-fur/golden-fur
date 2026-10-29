@@ -62,6 +62,20 @@ describe('TotpEnrollPanel', () => {
     expect(mfaApi.enrollMfa).toHaveBeenCalledTimes(1);
   });
 
+  it('includes the step-by-step setup guide', async () => {
+    vi.mocked(mfaApi.enrollMfa).mockResolvedValue({
+      data: {
+        totp: { qr_code: 'data:image/png;base64,abc', secret: 'ABCD1234' },
+      },
+      error: null,
+    });
+
+    renderPanel();
+
+    await screen.findByAltText('MFA enrollment QR code');
+    expect(screen.getByText(/step-by-step setup guide/i)).toBeInTheDocument();
+  });
+
   it('shows the QR code and a manual entry key with a copy button', async () => {
     vi.mocked(mfaApi.enrollMfa).mockResolvedValue({
       data: {
