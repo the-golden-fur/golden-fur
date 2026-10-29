@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -92,11 +92,15 @@ describe('LandingPage', () => {
       screen.queryByRole('button', { name: 'Makati' })
     ).not.toBeInTheDocument();
 
-    const cards = container.querySelectorAll('.service-card-title');
-    expect([...cards].map((card) => card.textContent)).toEqual([
-      'Grooming',
-      'Day Care',
-    ]);
+    // The service cards are built by the setup effect, after React has
+    // rendered the branch buttons, so they are waited for on their own.
+    await waitFor(() => {
+      const cards = container.querySelectorAll('.service-card-title');
+      expect([...cards].map((card) => card.textContent)).toEqual([
+        'Grooming',
+        'Day Care',
+      ]);
+    });
 
     const visit = container.querySelector('#visitSection') as HTMLElement;
     expect(within(visit).getByText('Imus, Cavite')).toBeInTheDocument();
@@ -128,8 +132,10 @@ describe('LandingPage', () => {
     expect(
       await screen.findByText('<img src=x onerror=alert(1)>')
     ).toBeInTheDocument();
-    const firstCard = container.querySelector('.service-card-title');
-    expect(firstCard?.textContent).toBe('<b>Grooming</b>');
+    await waitFor(() => {
+      const firstCard = container.querySelector('.service-card-title');
+      expect(firstCard?.textContent).toBe('<b>Grooming</b>');
+    });
     expect(container.querySelector('.service-card-title b')).toBeNull();
     expect(container.querySelector('img[src="x"]')).toBeNull();
   });
