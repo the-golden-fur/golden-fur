@@ -1290,6 +1290,12 @@ describe('CustomerBookingFlowPage', () => {
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Add feeding time' }));
+    // Custom change (Daycare-only clock-time scheduling): Daycare gets a
+    // literal time input for feeding, never Hotel's Morning/Noon/Afternoon/
+    // Evening meal-time dropdown.
+    expect(screen.getByLabelText('Feeding time')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Meal time')).not.toBeInTheDocument();
+
     const foodInput = await screen.findByPlaceholderText('Food type');
     await user.click(foodInput);
     await user.click(await screen.findByText('Premium Kibble'));
@@ -1319,12 +1325,20 @@ describe('CustomerBookingFlowPage', () => {
               expect.objectContaining({
                 food_type: 'Premium Kibble',
                 food_catalog_id: 'food-1',
+                // Custom change (Daycare-only clock-time scheduling): a
+                // Daycare feeding row sends a literal scheduled_time, never
+                // Hotel's meal_time day-period enum.
+                scheduled_time: '08:00',
               }),
             ],
           }),
         })
       )
     );
+
+    const feedingPayload = vi.mocked(bookingApi.createBooking).mock.calls[0][1]
+      .hotel_preferences?.feeding?.[0] as Record<string, unknown>;
+    expect(feedingPayload).not.toHaveProperty('meal_time');
   });
 
   it('Care Instructions: a blank row is dropped silently, a half-filled row blocks Next', async () => {

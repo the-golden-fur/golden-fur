@@ -195,7 +195,31 @@ describe('createBookingValidator', () => {
     ).toBe(false);
   });
 
-  it('Custom change (Daycare/Hotel parity follow-up): accepts hotel_preferences on a Daycare booking too', () => {
+  it('Custom change (Daycare/Hotel parity follow-up): accepts hotel_preferences on a Daycare booking too, with a scheduled_time instead of meal_time', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Daycare',
+        hotel_preferences: {
+          feeding: [
+            {
+              scheduled_time: '08:30',
+              food_type: 'Kibble',
+              quantity: '1',
+              quantity_unit: 'cup',
+            },
+          ],
+          walking: [],
+          playing: [],
+          medications: [],
+        },
+      }).success
+    ).toBe(true);
+  });
+
+  it('Custom change (Daycare-only clock-time scheduling): rejects a Daycare feeding row that uses meal_time instead of scheduled_time', () => {
     const { service_category: _category, ...rest } = BASE_BOOKING;
 
     expect(
@@ -216,7 +240,31 @@ describe('createBookingValidator', () => {
           medications: [],
         },
       }).success
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it('Custom change (Daycare-only clock-time scheduling): rejects a Hotel feeding row that uses scheduled_time instead of meal_time', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Hotel',
+        hotel_preferences: {
+          feeding: [
+            {
+              scheduled_time: '08:30',
+              food_type: 'Kibble',
+              quantity: '1',
+              quantity_unit: 'cup',
+            },
+          ],
+          walking: [],
+          playing: [],
+          medications: [],
+        },
+      }).success
+    ).toBe(false);
   });
 
   it('accepts hotel_preferences with catalog linkage from the staff booking flow', () => {
@@ -374,6 +422,58 @@ describe('createBookingGroupValidator', () => {
       createBookingGroupValidator.safeParse({
         ...BASE_GROUP,
         coupon_ids: [couponId, couponId],
+      }).success
+    ).toBe(false);
+  });
+
+  it('Custom change (Daycare-only clock-time scheduling): a sub-booking also enforces the category-conditional feeding shape', () => {
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        bookings: [
+          {
+            ...BASE_GROUP.bookings[0],
+            service_category: 'Daycare',
+            hotel_preferences: {
+              feeding: [
+                {
+                  scheduled_time: '08:30',
+                  food_type: 'Kibble',
+                  quantity: '1',
+                  quantity_unit: 'cup',
+                },
+              ],
+              walking: [],
+              playing: [],
+              medications: [],
+            },
+          },
+        ],
+      }).success
+    ).toBe(true);
+
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        bookings: [
+          {
+            ...BASE_GROUP.bookings[0],
+            service_category: 'Daycare',
+            hotel_preferences: {
+              feeding: [
+                {
+                  meal_time: 'Morning',
+                  food_type: 'Kibble',
+                  quantity: '1',
+                  quantity_unit: 'cup',
+                },
+              ],
+              walking: [],
+              playing: [],
+              medications: [],
+            },
+          },
+        ],
       }).success
     ).toBe(false);
   });

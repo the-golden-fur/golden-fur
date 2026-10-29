@@ -21,7 +21,10 @@ import { getPackageById } from '../../maintenance/services/packages.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
-import { assertWithinGroomingHours } from './availability.service.ts';
+import {
+  assertCheckInAllowed,
+  assertWithinGroomingHours,
+} from './availability.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -71,6 +74,7 @@ vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
 vi.mock('./availability.service.ts', () => ({
   assertWithinGroomingHours: vi.fn(),
   assertDaycareStartsBeforeCutoff: vi.fn(),
+  assertCheckInAllowed: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Reward coupons are gated on the coupon spin wheel experimental feature
@@ -1981,6 +1985,47 @@ describe('booking.service (#51)', () => {
       expect(
         (update?.payload as { started_at?: string }).started_at
       ).toBeTruthy();
+    });
+
+    it("startBooking: asks the check-in gate before anything else, using the booking's own branch and assigned staff", async () => {
+      queueFromResults(
+        { data: { ...INSERTED_BOOKING, status: 'Pending' }, error: null },
+        { data: { ...INSERTED_BOOKING, status: 'In Progress' }, error: null }
+      );
+
+      await startBooking({ bookingId: 'booking-1' });
+
+      expect(assertCheckInAllowed).toHaveBeenCalledWith({
+        branchId: INSERTED_BOOKING.branch_id,
+        assignedStaffId: INSERTED_BOOKING.assigned_staff_id,
+      });
+    });
+
+    it('startBooking: blocked by the check-in gate (closed branch / assigned staff on an approved day off) surfaces that reason and writes nothing', async () => {
+      vi.mocked(assertCheckInAllowed).mockRejectedValueOnce(
+        Object.assign(
+          new Error(
+            "Makati is closed today (Sunday) - check-in isn't available."
+          ),
+          {
+            statusCode: 409,
+          }
+        )
+      );
+      queueFromResults({
+        data: { ...INSERTED_BOOKING, status: 'Pending' },
+        error: null,
+      });
+
+      await expect(
+        startBooking({ bookingId: 'booking-1' })
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        message: expect.stringContaining('is closed today'),
+      });
+      expect(
+        recordedWrites.find((write) => write.method === 'update')
+      ).toBeUndefined();
     });
 
     it('startBooking: rejects a booking that is not Pending', async () => {

@@ -180,12 +180,7 @@ export function PackagesPromosPage() {
         </Link>
       </main>
 
-      <HelpMascot
-        links={[
-          { label: 'Create an account', href: '#' },
-          { label: 'Create a ticket', href: '#' },
-        ]}
-      />
+      <HelpMascot links={[{ label: 'Create an account', href: '/signup' }]} />
     </>
   );
 }

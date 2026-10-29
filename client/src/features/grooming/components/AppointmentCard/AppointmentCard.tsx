@@ -88,6 +88,18 @@ export function AppointmentCard({
         </p>
       ) : null}
 
+      {/* Custom change (clear check-in gate, groomer rest-day indicator):
+          the branch is closed today, or the assigned groomer has an
+          approved day off - only relevant before check-in (Pending), since
+          an already-started groom should still be completable regardless.
+          Disables Start and says exactly why, instead of letting the click
+          fail with an unrelated error. */}
+      {bookingStatus === 'Pending' && session.check_in_blocked_reason ? (
+        <p className={styles.notArrived} role="alert">
+          {session.check_in_blocked_reason}
+        </p>
+      ) : null}
+
       {/* A paid booking shows on the queue before the customer arrives -
           say so, with the booked time, so it isn't mistaken for a pet
           that's already waiting. */}
@@ -139,10 +151,14 @@ export function AppointmentCard({
         <button
           type="button"
           className={styles.primaryButton}
-          // Awaiting assessment: the server refuses to start it anyway -
-          // don't offer a button that can only fail.
+          // Awaiting assessment, or (Pending only - Start, not Complete) a
+          // rest-day/closed-branch check-in block: the server refuses to
+          // start it anyway - don't offer a button that can only fail.
           disabled={
-            isAdvancing || session.booking?.awaiting_assessment === true
+            isAdvancing ||
+            session.booking?.awaiting_assessment === true ||
+            (bookingStatus === 'Pending' &&
+              Boolean(session.check_in_blocked_reason))
           }
           onClick={() => onAdvance(session.id, advanceAction.target)}
         >

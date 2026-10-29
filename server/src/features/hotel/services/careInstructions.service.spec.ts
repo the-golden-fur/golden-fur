@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkInHotelStay,
   enumerateDates,
+  generateCareLogEntries,
 } from './careInstructions.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 
@@ -15,6 +16,16 @@ vi.mock('../../../config/supabase/supabase.config.ts', () => ({
 // their sequential mock queue below.
 vi.mock('./activityLog.service.ts', () => ({
   recordActivity: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Custom change (clear check-in gate, groomer rest-day indicator):
+// checkInHotelStay calls the real startBooking() (booking.service.ts),
+// which now asks this gate first - covered by its own unit tests
+// (availability.service.spec.ts) and by booking.service.spec.ts's own
+// startBooking tests, so it's mocked out here to keep these check-in tests
+// focused on care-instruction behavior, not re-queuing a branches lookup.
+vi.mock('../../booking/services/availability.service.ts', () => ({
+  assertCheckInAllowed: vi.fn().mockResolvedValue(undefined),
 }));
 
 interface QueryResult {
@@ -91,6 +102,80 @@ describe('careInstructions.service (#75)', () => {
         '2026-08-05',
         '2026-08-06',
         '2026-08-07',
+      ]);
+    });
+  });
+
+  describe('generateCareLogEntries (Daycare-only clock-time scheduling: buckets scheduled_time into the same display time_block)', () => {
+    it("buckets a Daycare feeding row's scheduled_time (08:30 -> Morning) since meal_time is null", async () => {
+      queueFromResults({ data: [{ id: 'log-1' }], error: null });
+
+      await generateCareLogEntries(
+        'stay-1',
+        ['2026-08-05'],
+        [
+          {
+            id: 'feed-1',
+            stay_id: 'stay-1',
+            meal_time: null,
+            scheduled_time: '08:30',
+            food_type: 'Kibble',
+            quantity: '1 cup',
+            quantity_unit: null,
+            photo_url: null,
+            special_instructions: null,
+            food_catalog_id: null,
+            stay_date: null,
+          },
+        ],
+        [],
+        [],
+        []
+      );
+
+      const careLogInsert = recordedInserts.find(
+        (write) => write.table === 'care_log_entries'
+      );
+      expect(careLogInsert?.payload).toMatchObject([
+        expect.objectContaining({
+          care_type: 'Feeding',
+          time_block: 'Morning',
+          description: expect.stringContaining('08:30'),
+        }),
+      ]);
+    });
+
+    it("buckets a Daycare walking row's scheduled_time (14:00 -> Afternoon) since time_block is null", async () => {
+      queueFromResults({ data: [{ id: 'log-1' }], error: null });
+
+      await generateCareLogEntries(
+        'stay-1',
+        ['2026-08-05'],
+        [],
+        [
+          {
+            id: 'walk-1',
+            stay_id: 'stay-1',
+            time_block: null,
+            scheduled_time: '14:00',
+            duration_minutes: 15,
+            notes: null,
+            stay_date: null,
+          },
+        ],
+        [],
+        []
+      );
+
+      const careLogInsert = recordedInserts.find(
+        (write) => write.table === 'care_log_entries'
+      );
+      expect(careLogInsert?.payload).toMatchObject([
+        expect.objectContaining({
+          care_type: 'Walking',
+          time_block: 'Afternoon',
+          description: expect.stringContaining('14:00'),
+        }),
       ]);
     });
   });
@@ -393,6 +478,242 @@ describe('careInstructions.service (#75)', () => {
           stay_date: '2026-08-06',
         }),
       ]);
+    });
+
+    describe('staff can override feeding/medications at check-in (no longer read-only)', () => {
+      it('a staff-submitted feeding list overrides the booking preference', async () => {
+        queueFromResults(
+          {
+            data: {
+              ...CONFIRMED_HOTEL_BOOKING,
+              hotel_preferences: {
+                feeding: [
+                  {
+                    meal_time: 'Morning',
+                    food_type: 'Kibble',
+                    quantity: '1 cup',
+                  },
+                ],
+                medications: [],
+              },
+            },
+            error: null,
+          },
+          { data: null, error: null }, // no existing stay
+          { data: { id: 'cage-1', status: 'Occupied' }, error: null },
+          { data: { id: 'stay-1', status: 'Active' }, error: null },
+          { data: { id: 'booking-1', status: 'Pending' }, error: null },
+          { data: { id: 'booking-1', status: 'In Progress' }, error: null },
+          {
+            data: [
+              { id: 'feed-1', meal_time: 'Evening', food_type: 'Wet food' },
+            ],
+            error: null,
+          }, // care_feeding_instructions insert
+          { data: [{ id: 'log-1' }], error: null }
+        );
+
+        await checkInHotelStay({
+          requesterId: 'staff-1',
+          branchId: 'branch-1',
+          input: {
+            booking_id: 'booking-1',
+            cage_id: 'cage-1',
+            feeding: [
+              {
+                meal_time: 'Evening',
+                food_type: 'Wet food',
+                quantity: '1 can',
+              },
+            ],
+            walking: [],
+            playing: [],
+            medications: [],
+            notify_opt_in: false,
+          },
+        });
+
+        const feedingInsert = recordedInserts.find(
+          (write) => write.table === 'care_feeding_instructions'
+        );
+        expect(feedingInsert?.payload).toMatchObject([
+          expect.objectContaining({
+            meal_time: 'Evening',
+            food_type: 'Wet food',
+          }),
+        ]);
+      });
+
+      it('omitting feeding entirely falls back to the booking preference', async () => {
+        queueFromResults(
+          {
+            data: {
+              ...CONFIRMED_HOTEL_BOOKING,
+              hotel_preferences: {
+                feeding: [
+                  {
+                    meal_time: 'Morning',
+                    food_type: 'Kibble',
+                    quantity: '1 cup',
+                  },
+                ],
+                medications: [],
+              },
+            },
+            error: null,
+          },
+          { data: null, error: null },
+          { data: { id: 'cage-1', status: 'Occupied' }, error: null },
+          { data: { id: 'stay-1', status: 'Active' }, error: null },
+          { data: { id: 'booking-1', status: 'Pending' }, error: null },
+          { data: { id: 'booking-1', status: 'In Progress' }, error: null },
+          {
+            data: [{ id: 'feed-1', meal_time: 'Morning', food_type: 'Kibble' }],
+            error: null,
+          },
+          { data: [{ id: 'log-1' }], error: null }
+        );
+
+        await checkInHotelStay({
+          requesterId: 'staff-1',
+          branchId: 'branch-1',
+          input: {
+            booking_id: 'booking-1',
+            cage_id: 'cage-1',
+            feeding: undefined,
+            walking: [],
+            playing: [],
+            medications: [],
+            notify_opt_in: false,
+          },
+        });
+
+        const feedingInsert = recordedInserts.find(
+          (write) => write.table === 'care_feeding_instructions'
+        );
+        expect(feedingInsert?.payload).toMatchObject([
+          expect.objectContaining({
+            meal_time: 'Morning',
+            food_type: 'Kibble',
+          }),
+        ]);
+      });
+
+      it('an explicit empty feeding list from staff clears it, even over a non-empty booking preference', async () => {
+        queueFromResults(
+          {
+            data: {
+              ...CONFIRMED_HOTEL_BOOKING,
+              hotel_preferences: {
+                feeding: [
+                  {
+                    meal_time: 'Morning',
+                    food_type: 'Kibble',
+                    quantity: '1 cup',
+                  },
+                ],
+                medications: [],
+              },
+            },
+            error: null,
+          },
+          { data: null, error: null },
+          { data: { id: 'cage-1', status: 'Occupied' }, error: null },
+          { data: { id: 'stay-1', status: 'Active' }, error: null },
+          { data: { id: 'booking-1', status: 'Pending' }, error: null },
+          { data: { id: 'booking-1', status: 'In Progress' }, error: null },
+          { data: [{ id: 'log-1' }], error: null } // no feeding insert - rows is empty
+        );
+
+        const result = await checkInHotelStay({
+          requesterId: 'staff-1',
+          branchId: 'branch-1',
+          input: {
+            booking_id: 'booking-1',
+            cage_id: 'cage-1',
+            feeding: [],
+            walking: [],
+            playing: [],
+            medications: [],
+            notify_opt_in: false,
+          },
+        });
+
+        expect(result.feeding).toEqual([]);
+        expect(
+          recordedInserts.find(
+            (write) => write.table === 'care_feeding_instructions'
+          )
+        ).toBeUndefined();
+      });
+
+      it('a staff-submitted medications list overrides a non-empty booking preference', async () => {
+        queueFromResults(
+          {
+            data: {
+              ...CONFIRMED_HOTEL_BOOKING,
+              hotel_preferences: {
+                feeding: [],
+                medications: [
+                  {
+                    medication_name: 'Rimadyl',
+                    dose: '75mg',
+                    scheduled_times: [],
+                  },
+                ],
+              },
+            },
+            error: null,
+          },
+          { data: null, error: null },
+          { data: { id: 'cage-1', status: 'Occupied' }, error: null },
+          { data: { id: 'stay-1', status: 'Active' }, error: null },
+          { data: { id: 'booking-1', status: 'Pending' }, error: null },
+          { data: { id: 'booking-1', status: 'In Progress' }, error: null },
+          {
+            data: [
+              {
+                id: 'med-1',
+                medication_name: 'Amoxicillin',
+                dose: '250mg',
+                scheduled_times: [],
+              },
+            ],
+            error: null,
+          }, // care_medication_instructions insert
+          { data: [{ id: 'log-1' }], error: null }
+        );
+
+        await checkInHotelStay({
+          requesterId: 'staff-1',
+          branchId: 'branch-1',
+          input: {
+            booking_id: 'booking-1',
+            cage_id: 'cage-1',
+            feeding: [],
+            walking: [],
+            playing: [],
+            medications: [
+              {
+                medication_name: 'Amoxicillin',
+                dose: '250mg',
+                scheduled_times: [],
+              },
+            ],
+            notify_opt_in: false,
+          },
+        });
+
+        const medicationsInsert = recordedInserts.find(
+          (write) => write.table === 'care_medication_instructions'
+        );
+        expect(medicationsInsert?.payload).toMatchObject([
+          expect.objectContaining({
+            medication_name: 'Amoxicillin',
+            dose: '250mg',
+          }),
+        ]);
+      });
     });
 
     it('AC-3: auto-fills medications from the M07 current prescription when the field is omitted', async () => {

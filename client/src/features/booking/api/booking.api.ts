@@ -611,6 +611,27 @@ export async function getDownpaymentStatus(
 }
 
 /**
+ * Custom change (clear check-in gate, groomer rest-day indicator): is the
+ * caller's own branch closed today - the Hotel/Daycare check-in queues call
+ * this once to proactively disable "Check in" with a clear reason, instead
+ * of only finding out from a 409 on click. `reason` is null when nothing
+ * blocks check-in.
+ */
+export async function getCheckInBlock(
+  accessToken: string
+): Promise<BookingApiResult<{ reason: string | null }>> {
+  const response = await fetch(`${API_BASE_URL}/bookings/check-in-block`, {
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody<{ reason: string | null }>(response);
+}
+
+/**
  * Manual status-advance actions: Start (Pending -> In Progress), Complete
  * (In Progress -> Completed). No-show has no endpoint - it's a lazy
  * transition the server applies whenever a booking is read. Payment is

@@ -108,9 +108,16 @@ export interface MedicationCatalogItem {
 }
 
 /** stay_date omitted = applies to every night of the stay; a specific date
- * scopes the row to that single night only (#22). */
+ * scopes the row to that single night only (#22).
+ *
+ * Custom change (Daycare-only clock-time scheduling): exactly one of
+ * meal_time/scheduled_time is set - Hotel sends meal_time (unchanged),
+ * Daycare sends a literal "HH:MM" scheduled_time instead, since a few-hour
+ * Daycare visit doesn't fit the Morning/Noon/Afternoon/Evening vocabulary a
+ * multi-night Hotel stay does. */
 export interface FeedingInstructionPayload {
-  meal_time: MealTime;
+  meal_time?: MealTime;
+  scheduled_time?: string;
   food_type: string;
   quantity: string;
   // Optional here (unlike the booking feature's required booking-time copy)
@@ -126,14 +133,16 @@ export interface FeedingInstructionPayload {
 }
 
 export interface WalkingInstructionPayload {
-  time_block: PartOfDay;
+  time_block?: PartOfDay;
+  scheduled_time?: string;
   duration_minutes: number;
   notes?: string;
   stay_date?: string;
 }
 
 export interface PlayingInstructionPayload {
-  time_block: PartOfDay;
+  time_block?: PartOfDay;
+  scheduled_time?: string;
   duration_minutes: number;
   notes?: string;
   stay_date?: string;

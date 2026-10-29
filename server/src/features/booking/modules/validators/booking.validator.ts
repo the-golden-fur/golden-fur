@@ -180,6 +180,77 @@ const hotelPartOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
 const hotelMealTime = z.enum(['Morning', 'Noon', 'Afternoon', 'Evening']);
 const foodQuantityUnit = z.enum(FOOD_QUANTITY_UNITS);
 const medicationDoseUnit = z.enum(MEDICATION_DOSE_UNITS);
+// Custom change (Daycare-only clock-time scheduling): Daycare doesn't fit
+// the Morning/Noon/Afternoon/Evening day-period vocabulary, so its feeding/
+// walking/playing rows carry a literal clock time instead. Shared by both
+// categories at the schema level (meal_time/time_block and scheduled_time
+// are both just optional here); requireCareInstructionShapeMatchesCategory
+// below is what actually enforces "exactly one, and which one" per category.
+const dayClockTime = z.string().regex(/^\d{2}:\d{2}$/, 'Expected "HH:MM"');
+
+/**
+ * Enforces, per service_category, which of {meal_time/time_block,
+ * scheduled_time} each feeding/walking/playing row must carry: Hotel rows
+ * use the Morning/Noon/Afternoon/Evening enum (unchanged); Daycare rows use
+ * a literal scheduled_time instead, since a few-hour Daycare visit doesn't
+ * fit a vague day-period the way a multi-night Hotel stay does. A no-op for
+ * any other category (hotel_preferences' own presence there is already
+ * rejected by the caller's sibling check).
+ */
+function requireCareInstructionShapeMatchesCategory(
+  input: {
+    service_category: string;
+    hotel_preferences?: {
+      feeding: Array<{ meal_time?: string; scheduled_time?: string }>;
+      walking: Array<{ time_block?: string; scheduled_time?: string }>;
+      playing: Array<{ time_block?: string; scheduled_time?: string }>;
+    };
+  },
+  ctx: z.RefinementCtx
+) {
+  if (!input.hotel_preferences) return;
+  if (
+    input.service_category !== 'Hotel' &&
+    input.service_category !== 'Daycare'
+  ) {
+    return;
+  }
+
+  const isDaycare = input.service_category === 'Daycare';
+
+  const checkRows = (
+    rows: Array<{
+      meal_time?: string;
+      time_block?: string;
+      scheduled_time?: string;
+    }>,
+    field: 'feeding' | 'walking' | 'playing',
+    enumField: 'meal_time' | 'time_block'
+  ) => {
+    rows.forEach((row, index) => {
+      const hasEnum = row[enumField] !== undefined;
+      const hasScheduledTime = row.scheduled_time !== undefined;
+
+      if (isDaycare && (hasEnum || !hasScheduledTime)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['hotel_preferences', field, index],
+          message: `Daycare ${field} must set scheduled_time, not ${enumField}`,
+        });
+      } else if (!isDaycare && (!hasEnum || hasScheduledTime)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['hotel_preferences', field, index],
+          message: `Hotel ${field} must set ${enumField}, not scheduled_time`,
+        });
+      }
+    });
+  };
+
+  checkRows(input.hotel_preferences.feeding, 'feeding', 'meal_time');
+  checkRows(input.hotel_preferences.walking, 'walking', 'time_block');
+  checkRows(input.hotel_preferences.playing, 'playing', 'time_block');
+}
 
 /**
  * Booking-time preferences for a Hotel booking - a preview the check-in form
@@ -199,7 +270,8 @@ const hotelPreferencesValidator = z
       .array(
         z
           .object({
-            meal_time: hotelMealTime,
+            meal_time: hotelMealTime.optional(),
+            scheduled_time: dayClockTime.optional(),
             food_type: z.string().trim().min(1),
             quantity: z.string().trim().min(1),
             quantity_unit: foodQuantityUnit,
@@ -215,7 +287,8 @@ const hotelPreferencesValidator = z
       .array(
         z
           .object({
-            time_block: hotelPartOfDay,
+            time_block: hotelPartOfDay.optional(),
+            scheduled_time: dayClockTime.optional(),
             duration_minutes: z.number().int().positive(),
             notes: z.string().trim().optional(),
             stay_date: z.iso.date().optional(),
@@ -227,7 +300,8 @@ const hotelPreferencesValidator = z
       .array(
         z
           .object({
-            time_block: hotelPartOfDay,
+            time_block: hotelPartOfDay.optional(),
+            scheduled_time: dayClockTime.optional(),
             duration_minutes: z.number().int().positive(),
             notes: z.string().trim().optional(),
             stay_date: z.iso.date().optional(),
@@ -322,6 +396,8 @@ export const createBookingValidator = z
           'hotel_preferences is only valid for Hotel or Daycare bookings',
       });
     }
+
+    requireCareInstructionShapeMatchesCategory(input, ctx);
   });
 
 /**
@@ -367,6 +443,8 @@ const bookingGroupItemValidator = z
           'hotel_preferences is only valid for Hotel or Daycare bookings',
       });
     }
+
+    requireCareInstructionShapeMatchesCategory(input, ctx);
   });
 
 export const createBookingGroupValidator = z

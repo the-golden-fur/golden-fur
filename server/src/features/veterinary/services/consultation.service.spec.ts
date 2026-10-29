@@ -43,6 +43,17 @@ vi.mock('./vetChargeNotifications.service.ts', () => ({
   notifyMedicineChargeChange: vi.fn(),
 }));
 
+// Custom change (clear check-in gate, groomer rest-day indicator):
+// updateConsultation's Start action calls the real startBooking()
+// (booking.service.ts), which now asks this gate first - covered by its
+// own unit tests (availability.service.spec.ts) and by
+// booking.service.spec.ts's own startBooking tests, so it's mocked out
+// here to keep these ownership/charge tests focused, not re-queuing a
+// branches lookup.
+vi.mock('../../booking/services/availability.service.ts', () => ({
+  assertCheckInAllowed: vi.fn().mockResolvedValue(undefined),
+}));
+
 const NOTHING_TO_BILL = { locked: false, existing: null, lines: [] };
 
 interface QueryResult {

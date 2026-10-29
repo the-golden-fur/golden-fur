@@ -73,6 +73,7 @@ import {
 } from './cagePicker.service.ts';
 import { daycareHourlyCharge } from '../../daycare/modules/daycareCharge.util.ts';
 import {
+  assertCheckInAllowed,
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
   closingInstantOn,
@@ -2253,6 +2254,18 @@ export async function startBooking({
   if (!isNotStartedStatus(booking.status)) {
     throwWithStatus(409, `A ${booking.status} booking cannot be started`);
   }
+
+  // Custom change (clear check-in gate, groomer rest-day indicator): the
+  // most fundamental "you can't act on this right now" reason, checked
+  // first - a branch closed today, or (Grooming/Veterinary only - Hotel/
+  // Daycare have no assigned staff) the assigned staff member on an
+  // approved day off. Previously nothing caught this, so check-in on a
+  // closed/rest day either silently succeeded or tripped an unrelated
+  // status error (e.g. a stale No-show) with no real explanation.
+  await assertCheckInAllowed({
+    branchId: booking.branch_id,
+    assignedStaffId: booking.assigned_staff_id,
+  });
 
   // Book before assessment: said first, since it is the actual next step -
   // there is no bill to pay until the pet has been assessed.

@@ -346,8 +346,14 @@ export const MEDICATION_DOSE_UNITS = [
 ] as const;
 export type MedicationDoseUnit = (typeof MEDICATION_DOSE_UNITS)[number];
 
+// Custom change (Daycare-only clock-time scheduling): exactly one of
+// meal_time/time_block/scheduled_time is set - Hotel sends the enum
+// (unchanged), Daycare sends a literal "HH:MM" scheduled_time instead,
+// since a few-hour Daycare visit doesn't fit the Morning/Noon/Afternoon/
+// Evening vocabulary a multi-night Hotel stay does.
 export interface HotelBookingPreferenceFeeding {
-  meal_time: 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
+  meal_time?: 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
+  scheduled_time?: string;
   food_type: string;
   quantity: string;
   quantity_unit: FoodQuantityUnit;
@@ -363,14 +369,16 @@ export interface HotelBookingPreferenceFeeding {
 }
 
 export interface HotelBookingPreferenceWalking {
-  time_block: 'Morning' | 'Afternoon' | 'Evening';
+  time_block?: 'Morning' | 'Afternoon' | 'Evening';
+  scheduled_time?: string;
   duration_minutes: number;
   notes?: string;
   stay_date?: string;
 }
 
 export interface HotelBookingPreferencePlaying {
-  time_block: 'Morning' | 'Afternoon' | 'Evening';
+  time_block?: 'Morning' | 'Afternoon' | 'Evening';
+  scheduled_time?: string;
   duration_minutes: number;
   notes?: string;
   stay_date?: string;

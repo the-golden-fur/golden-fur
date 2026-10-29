@@ -9,6 +9,7 @@ import {
   cagePickerOptionsController,
   cancelBookingController,
   catalogController,
+  checkInBlockController,
   completeBookingController,
   conflictedBookingsController,
   createBookingController,
@@ -120,6 +121,19 @@ router.get(
   '/bookings/availability/parts-of-day',
   jwtMiddleware,
   partsOfDayController
+);
+
+// Custom change (clear check-in gate, groomer rest-day indicator): is the
+// caller's own branch closed today - the Hotel/Daycare check-in queues use
+// this to disable "Check in" proactively, with a clear reason, instead of
+// the groomer/receptionist hitting startBooking's 409 on click.
+// requireBranch resolves req.user.branch_id from the caller's own staff
+// profile (same middleware the Daycare routes already use).
+router.get(
+  '/bookings/check-in-block',
+  jwtMiddleware,
+  requireBranch,
+  checkInBlockController
 );
 
 // Active services/packages/promos for a branch - supporting infra for #55's

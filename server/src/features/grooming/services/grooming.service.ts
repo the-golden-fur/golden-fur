@@ -3,6 +3,10 @@ import {
   completeBooking,
   startBooking,
 } from '../../booking/services/booking.service.ts';
+import {
+  resolveBranchClosedToday,
+  resolveStaffRestDayWindow,
+} from '../../booking/services/availability.service.ts';
 import type { Booking } from '../../booking/booking.types.ts';
 import type { GroomingSession } from '../grooming.types.ts';
 import type { TransitionGroomingStatusInput } from '../modules/validators/grooming.validator.ts';
@@ -227,6 +231,106 @@ async function listPastGroomingBookings(
  *
  * view 'history' is "Past bookings" instead - see listPastGroomingBookings.
  */
+
+interface UnavailabilityBlockRow {
+  staff_id: string;
+  leave_type: string;
+  staff: { display_name: string } | null;
+}
+
+/**
+ * Custom change (clear check-in gate, groomer rest-day indicator): annotates
+ * each session with why it can't be checked in right now, or null when
+ * nothing blocks it - same reasons startBooking() itself enforces
+ * (availability.service.ts's resolveBranchClosedToday/
+ * resolveCheckInBlockReason), computed proactively here so the queue can
+ * disable the Start button and explain why instead of the groomer hitting a
+ * 409 on click. Batched rather than one resolveCheckInBlockReason() call per
+ * row: resolves each DISTINCT branch once (almost always just one - a
+ * Groomer/Admin/Supervisor's own queue is already single-branch; only
+ * Superadmin's cross-branch view ever has more), then one single
+ * staff_unavailability_blocks query across every distinct assigned groomer
+ * at an open branch, instead of N.
+ */
+async function annotateCheckInBlockedReason(
+  rows: GroomingSession[]
+): Promise<GroomingSession[]> {
+  const distinctBranchIds = [
+    ...new Set(
+      rows
+        .map((row) => row.booking?.branch_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+
+  const branchStatuses = await Promise.all(
+    distinctBranchIds.map(
+      async (branchId) =>
+        [branchId, await resolveBranchClosedToday(branchId)] as const
+    )
+  );
+  const branchStatusById = new Map(branchStatuses);
+
+  // Every seeded branch today shares one timezone (Asia/Manila) - using the
+  // first open branch's timezone for the staff query window is exact for
+  // that reality and only theoretically imprecise if branches ever span
+  // different timezones, which nothing in this app currently does.
+  const openBranchTimezone = branchStatuses.find(
+    ([, status]) => !status.closed
+  )?.[1].timezone;
+
+  const distinctStaffIds = [
+    ...new Set(
+      rows
+        .filter((row) => {
+          const branchId = row.booking?.branch_id;
+          return Boolean(branchId && !branchStatusById.get(branchId!)?.closed);
+        })
+        .map((row) => row.booking?.assigned_staff_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+
+  const restDayReasonByStaffId = new Map<string, string>();
+
+  if (distinctStaffIds.length > 0 && openBranchTimezone) {
+    const { start, end } = resolveStaffRestDayWindow(openBranchTimezone);
+
+    const { data: blocks, error: blocksError } = await supabase
+      .from('staff_unavailability_blocks')
+      .select(
+        'staff_id, leave_type, staff:staff_profiles!staff_unavailability_blocks_staff_id_fkey(display_name)'
+      )
+      .in('staff_id', distinctStaffIds)
+      .eq('status', 'approved')
+      .lt('start_time', end.toISOString())
+      .gt('end_time', start.toISOString());
+
+    if (blocksError) throwWithStatus(400, blocksError.message);
+
+    for (const block of (blocks ?? []) as unknown as UnavailabilityBlockRow[]) {
+      const staffName =
+        block.staff?.display_name ?? 'The assigned staff member';
+      restDayReasonByStaffId.set(
+        block.staff_id,
+        `${staffName} has an approved ${block.leave_type} today - check-in isn't available until they're back.`
+      );
+    }
+  }
+
+  return rows.map((row) => {
+    const branchId = row.booking?.branch_id;
+    const staffId = row.booking?.assigned_staff_id;
+    const branchStatus = branchId ? branchStatusById.get(branchId) : undefined;
+
+    const check_in_blocked_reason =
+      branchStatus?.reason ??
+      (staffId ? (restDayReasonByStaffId.get(staffId) ?? null) : null);
+
+    return { ...row, check_in_blocked_reason };
+  });
+}
+
 export async function listGroomingQueue({
   requesterId,
   requesterRole,
@@ -337,7 +441,9 @@ export async function listGroomingQueue({
 
   if (sessionsError) throwWithStatus(400, sessionsError.message);
 
-  const rows = (sessions ?? []) as GroomingSession[];
+  const rows = await annotateCheckInBlockedReason(
+    (sessions ?? []) as GroomingSession[]
+  );
 
   // Started-but-not-completed first; then queue order: queue_position when
   // set, otherwise the booking's scheduled_start (chronological) - per

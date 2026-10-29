@@ -319,8 +319,14 @@ export const MEDICATION_DOSE_UNITS = [
 ] as const;
 export type MedicationDoseUnit = (typeof MEDICATION_DOSE_UNITS)[number];
 
+// Custom change (Daycare-only clock-time scheduling): a Hotel row sets
+// meal_time/time_block (unchanged); a Daycare row sets scheduled_time
+// ("HH:MM") instead - exactly one of the two per row, enforced by
+// booking.validator.ts's category-conditional check and the DB's XOR
+// constraint on the underlying care_* tables.
 export interface HotelBookingPreferenceFeeding {
-  meal_time: 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
+  meal_time?: 'Morning' | 'Noon' | 'Afternoon' | 'Evening';
+  scheduled_time?: string;
   food_type: string;
   quantity: string;
   quantity_unit: FoodQuantityUnit;
@@ -333,14 +339,16 @@ export interface HotelBookingPreferenceFeeding {
 }
 
 export interface HotelBookingPreferenceWalking {
-  time_block: 'Morning' | 'Afternoon' | 'Evening';
+  time_block?: 'Morning' | 'Afternoon' | 'Evening';
+  scheduled_time?: string;
   duration_minutes: number;
   notes?: string;
   stay_date?: string;
 }
 
 export interface HotelBookingPreferencePlaying {
-  time_block: 'Morning' | 'Afternoon' | 'Evening';
+  time_block?: 'Morning' | 'Afternoon' | 'Evening';
+  scheduled_time?: string;
   duration_minutes: number;
   notes?: string;
   stay_date?: string;

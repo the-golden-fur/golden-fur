@@ -498,11 +498,20 @@ export async function getDaySlots({
   // branch's effective policy window (default 12:00-13:00), the same
   // resolveEffectivePolicy() staffPicker.service.ts already uses elsewhere -
   // single source of truth for default-vs-branch-override precedence.
-  // Daycare is exempt: a pet in Daycare simply stays through lunch, and
-  // dropping every session that overlapped it hid most of the day.
+  // Hotel/Daycare are exempt: a drop-off/arrival isn't a continuous staffed
+  // appointment the way Grooming/Veterinary are, so there's no reason to
+  // block it from landing during lunch. For Hotel specifically this isn't
+  // just a policy call - it's load-bearing: a Hotel candidate's `end` is
+  // always ~24h past `start` (the stay length), so without this exemption
+  // every candidate's [start, end) trivially overlaps *any* same-day window,
+  // which silently collapsed the whole day down to "lunch_break_end onward"
+  // (previously reported as "only bookable from 1 PM").
   let lunchCandidates = candidates;
 
-  if (policy.lunch_break_enabled && serviceCategory !== 'Daycare') {
+  if (
+    policy.lunch_break_enabled &&
+    !['Daycare', 'Hotel'].includes(serviceCategory)
+  ) {
     const lunchStartUtc = zonedTimeToUtc(
       date,
       policy.lunch_break_start.slice(0, 5),
@@ -770,4 +779,145 @@ export async function countOvernightNights(
 ): Promise<number> {
   return (await listClosingTimesBetween(checkInAt, checkOutAt, branchId))
     .length;
+}
+
+export interface BranchClosedToday {
+  closed: boolean;
+  reason: string | null;
+  timezone: string;
+}
+
+/**
+ * Custom change (clear check-in gate, groomer rest-day indicator): whether
+ * `branchId` has no operating_hours entry for today's weekday, in the
+ * branch's own timezone - the single source of truth for "this branch is
+ * closed today" (Sunday, or any other day a branch simply hasn't
+ * configured). A missing branch degrades to "not closed" rather than
+ * throwing, since this feeds a check-in gate that should never itself be
+ * the reason a legitimate check-in fails.
+ */
+export async function resolveBranchClosedToday(
+  branchId: string
+): Promise<BranchClosedToday> {
+  const { data: branch, error } = await supabase
+    .from('branches')
+    .select('name, operating_hours, timezone')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!branch) return { closed: false, reason: null, timezone: 'UTC' };
+
+  const branchRow = branch as {
+    name: string;
+    operating_hours: WeeklyHours;
+    timezone: string;
+  };
+
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: branchRow.timezone,
+  }).format(new Date());
+  const dayName = weekdayName(today, branchRow.timezone);
+
+  if (branchRow.operating_hours?.[dayName]) {
+    return { closed: false, reason: null, timezone: branchRow.timezone };
+  }
+
+  const label = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+
+  return {
+    closed: true,
+    reason: `${branchRow.name} is closed today (${label}) - check-in isn't available.`,
+    timezone: branchRow.timezone,
+  };
+}
+
+/**
+ * Today's [start, end) instants in `timezone`, for testing whether an
+ * approved staff_unavailability_blocks row covers "right now". Pure - no DB
+ * call, so a batch caller (listGroomingQueue) can compute this once and
+ * reuse it across every staff id it queries instead of re-deriving it per
+ * row.
+ */
+export function resolveStaffRestDayWindow(timezone: string): {
+  start: Date;
+  end: Date;
+} {
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+  }).format(new Date());
+
+  return {
+    start: zonedTimeToUtc(today, '00:00', timezone),
+    end: zonedTimeToUtc(addDaysToDateString(today, 1), '00:00', timezone),
+  };
+}
+
+interface UnavailabilityBlockRow {
+  leave_type: string;
+  staff: { display_name: string } | null;
+}
+
+/**
+ * Custom change (clear check-in gate, groomer rest-day indicator): why a
+ * staff member can't check a booking in right now, or null when nothing
+ * blocks it. Branch-closed-today wins over a staff block (checked first, so
+ * a fully shut branch never needs the second query at all).
+ * assignedStaffId is null for Hotel/Daycare (no Staff Picker for those
+ * categories - see service_types.staff_picker_enabled), so only the branch
+ * check ever applies there; Grooming/Veterinary bookings also get the staff
+ * check. Any approved unavailability block covering right now blocks check-
+ * in, not just leave_type = 'Rest Day' - a groomer on approved Sick/
+ * Vacation Leave shouldn't be checking pets in either, matching
+ * get_staff_availability()'s own Check 3, which has no leave_type filter.
+ * Evaluated against the current instant, not the booking's scheduled_start
+ * - check-in is a live action, unlike assertWithinGroomingHours/
+ * assertDaycareStartsBeforeCutoff above, which gate booking creation
+ * against the chosen slot time.
+ */
+export async function resolveCheckInBlockReason({
+  branchId,
+  assignedStaffId,
+}: {
+  branchId: string;
+  assignedStaffId: string | null;
+}): Promise<string | null> {
+  const branchStatus = await resolveBranchClosedToday(branchId);
+
+  if (branchStatus.closed) return branchStatus.reason;
+  if (!assignedStaffId) return null;
+
+  const { start, end } = resolveStaffRestDayWindow(branchStatus.timezone);
+
+  const { data: blocks, error } = await supabase
+    .from('staff_unavailability_blocks')
+    .select(
+      'leave_type, staff:staff_profiles!staff_unavailability_blocks_staff_id_fkey(display_name)'
+    )
+    .eq('staff_id', assignedStaffId)
+    .eq('status', 'approved')
+    .lt('start_time', end.toISOString())
+    .gt('end_time', start.toISOString());
+
+  if (error) throwWithStatus(400, error.message);
+
+  const block = (blocks as unknown as UnavailabilityBlockRow[] | null)?.[0];
+  if (!block) return null;
+
+  const staffName = block.staff?.display_name ?? 'The assigned staff member';
+
+  return `${staffName} has an approved ${block.leave_type} today - check-in isn't available until they're back.`;
+}
+
+/**
+ * Throws a 409 with resolveCheckInBlockReason's own message when check-in
+ * is currently blocked - the hard gate behind startBooking() (see
+ * booking.service.ts), shared by Grooming/Hotel/Daycare check-in.
+ */
+export async function assertCheckInAllowed(params: {
+  branchId: string;
+  assignedStaffId: string | null;
+}): Promise<void> {
+  const reason = await resolveCheckInBlockReason(params);
+  if (reason) throwWithStatus(409, reason);
 }

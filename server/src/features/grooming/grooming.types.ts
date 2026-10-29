@@ -28,4 +28,9 @@ export interface GroomingSession {
   created_at: string;
   updated_at: string;
   booking?: Booking;
+  /** Custom change (clear check-in gate, groomer rest-day indicator): why
+   * this session can't be checked in right now (branch closed today, or
+   * the assigned groomer has an approved day off), or null when nothing
+   * blocks it. Only computed for the live queue view, not history. */
+  check_in_blocked_reason?: string | null;
 }
