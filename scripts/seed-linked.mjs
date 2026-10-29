@@ -70,8 +70,8 @@ if (typeof serviceRoleKey !== 'string' || !serviceRoleKey) {
 }
 
 const script = process.argv[2] ?? 'seed:all';
-if (!/^seed:[a-z:-]+$/.test(script)) {
-  fail(`Not a seed script: "${script}".`);
+if (!/^(seed|auth):[a-z:-]+$/.test(script)) {
+  fail(`Not a seed or auth script: "${script}".`);
 }
 
 console.log(`Running ${script} against linked Supabase project: ${projectRef}`);

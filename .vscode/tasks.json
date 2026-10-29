@@ -273,7 +273,7 @@
       "label": "⚠️ Supabase: Reset REMOTE DB (destructive)",
       "type": "npm",
       "script": "supabase:reset:remote",
-      "detail": "Wipes and re-seeds the LINKED remote project (supabase db reset --linked) - not local. Confirm the linked project before running.",
+      "detail": "Wipes the LINKED remote project (supabase db reset --linked --no-seed), deletes every Authentication user, then runs seed:prod against it - reference data only, no staff or customer accounts. Not local. Confirm the linked project before running.",
       "presentation": {
         "group": "supabase",
         "panel": "shared",
