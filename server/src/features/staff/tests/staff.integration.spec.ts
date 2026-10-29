@@ -376,6 +376,25 @@ describe('staff profile CRUD (Issue #22)', () => {
       expect(res.status).toBe(403);
     });
 
+    it('GET /staff/:id/unavailability rejects history=true combined with a from/to range', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { role: 'Groomer' }, error: null },
+        { data: { role: 'Groomer', branch_id: 'branch-a' }, error: null }
+      );
+
+      const res = await request(app)
+        .get('/staff/staff-1/unavailability')
+        .query({
+          history: 'true',
+          from: '2026-06-01T00:00:00.000Z',
+          to: '2026-07-01T00:00:00.000Z',
+        })
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(400);
+    });
+
     it('GET /staff/unavailability/pending rejects a non-manager role at the requireRole layer', async () => {
       mockCaller('staff-1');
       queueFromResults({ data: { role: 'Groomer' }, error: null });

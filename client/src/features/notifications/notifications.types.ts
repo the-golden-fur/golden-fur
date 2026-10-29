@@ -16,7 +16,9 @@ export type NotificationEventType =
   | 'vet_charge_posted'
   | 'checkout_reminder'
   | 'stay_checked_out'
-  | 'vaccination_reviewed';
+  | 'vaccination_reviewed'
+  | 'day_off_requested'
+  | 'day_off_reviewed';
 
 export interface Notification {
   id: string;

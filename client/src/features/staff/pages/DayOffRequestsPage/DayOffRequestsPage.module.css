@@ -1,10 +1,43 @@
+/* Layout mirrors CustomerBookingsPage.module.css - the reference page for
+   the shared search / filter / sort / group-by / view controls. */
 .page {
   composes: animate-fade-in from global;
   display: grid;
-  gap: var(--space-4);
-  max-width: 40rem;
+  gap: var(--space-3);
+  max-width: 60rem;
   margin: 0 auto;
   padding: var(--space-4) var(--space-2);
+}
+
+/* Board view only: full width so the board panel can run wider than the
+   60rem column, while the header, toolbar and banners stay put. */
+.pageWide {
+  max-width: none;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, calc(60rem - 2 * var(--space-2)))
+    minmax(0, 1fr);
+  column-gap: 0;
+}
+
+.pageWide > * {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.pageWide > .boardPanel {
+  grid-column: 1 / -1;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.header > .primaryButton {
+  margin-left: auto;
 }
 
 .title {
@@ -19,16 +52,6 @@
   margin: 0;
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
-}
-
-.panel {
-  display: grid;
-  gap: var(--space-2);
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-card);
-  padding: var(--space-4);
 }
 
 .errorBanner,
@@ -47,4 +70,163 @@
 .successBanner {
   background: var(--color-success-bg);
   color: var(--color-success-text);
+}
+
+.primaryButton {
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-gold-primary);
+  color: var(--color-text-on-accent);
+  cursor: pointer;
+  font-size: var(--text-button);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-2) var(--space-3);
+  width: fit-content;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.primaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--color-accent-gold-highlight);
+  box-shadow: var(--shadow-md);
+}
+
+/* The view's own setting (board: Group by, calendar: range) sits on its own
+   row under the toolbar, so the toolbar looks the same in every view. */
+.viewOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: fit-content;
+}
+
+.boardPanel {
+  --column-min-width: 8rem;
+  display: grid;
+  gap: var(--space-2);
+  justify-self: center;
+  width: 100%;
+  max-width: 100rem;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-2);
+}
+
+.filterLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-label);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+}
+
+.filterSelect {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-1) var(--space-2);
+}
+
+/* List view: the summary grows, the "..." sits at the row's end. */
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.listRow > .summary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.galleryCard,
+.boardCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-2);
+}
+
+.boardCard {
+  padding: var(--space-1);
+}
+
+.boardCard .summary > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.summaryTitle {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.summaryMeta {
+  flex-basis: 100%;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.calendarChip {
+  display: block;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  padding: var(--space-0-5) var(--space-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-block;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-0-5) var(--space-2);
+  white-space: nowrap;
+}
+
+.pending {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.approved {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.denied {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+}
+
+.cancelled {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
 }

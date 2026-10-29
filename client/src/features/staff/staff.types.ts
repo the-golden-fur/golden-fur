@@ -52,7 +52,13 @@ export interface StaffProfileUpdatePayload {
   preferred_communication_channel?: CommunicationChannel;
 }
 
-export type UnavailabilityBlockStatus = 'pending' | 'approved' | 'denied';
+/** 'cancelled' = the requester withdrew it (kept for their history, never
+ * counts as time off). */
+export type UnavailabilityBlockStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'cancelled';
 
 /** 'Rest Day' is fixed/manager-set only - never self-service (server-
  * enforced). The rest are self-requestable or manager-added. */
@@ -151,6 +157,15 @@ export interface PendingUnavailabilityBlock extends UnavailabilityBlock {
  * the "who added this and when" log. */
 export interface BranchScheduleEntry extends UnavailabilityBlock {
   staff: PendingUnavailabilityBlockStaffSummary | null;
+  created_by_name: string | null;
+}
+
+/** Day Off Requests history row - every block the staff member has, past
+ * or future, with reviewer / requested reviewer / creator names resolved
+ * server-side (GET /staff/:id/unavailability?history=true). */
+export interface UnavailabilityHistoryEntry extends UnavailabilityBlock {
+  reviewer_name: string | null;
+  requested_reviewer_name: string | null;
   created_by_name: string | null;
 }
 

@@ -105,6 +105,22 @@ export function NotificationBell({
       await markNotificationRead(notification.id, accessToken);
     }
 
+    // Day-off events carry no related row - they go to the page where the
+    // recipient acts on them: the approval queue for a new request, the
+    // requester's own Day Off Requests for a decision.
+    const dayOffPath =
+      notification.event_type === 'day_off_requested'
+        ? '/staff/admin/unavailability'
+        : notification.event_type === 'day_off_reviewed'
+          ? '/staff/days-off'
+          : null;
+
+    if (dayOffPath) {
+      setIsOpen(false);
+      navigate(dayOffPath);
+      return;
+    }
+
     if (notification.related_booking_id) {
       setIsOpen(false);
       navigate(

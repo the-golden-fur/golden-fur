@@ -19,6 +19,7 @@ import {
   listPendingUnavailabilityBlocksController,
   listStaffController,
   listUnavailabilityBlocksController,
+  updateUnavailabilityBlockController,
   getStaffProfileController,
   manageStaffAccountController,
   resendAccountEmailController,
@@ -211,6 +212,15 @@ router.get(
   requireRole([...ALL_STAFF_ROLES]),
   requireBranch,
   listUnavailabilityBlocksController
+);
+
+router.patch(
+  '/staff/:id/unavailability/:blockId',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...ALL_STAFF_ROLES]),
+  requireBranch,
+  updateUnavailabilityBlockController
 );
 
 router.delete(

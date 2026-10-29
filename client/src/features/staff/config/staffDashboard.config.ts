@@ -418,7 +418,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -462,7 +462,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -511,7 +511,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -557,7 +557,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -606,7 +606,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -672,7 +672,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -725,10 +725,10 @@ const ADMIN_SECTION_ICONS: Record<string, LucideIcon> = {
 };
 
 /** Per-tile icon, keyed by title so every dashboard config sharing a tile
- * (e.g. every role has its own "Days Off") gets the same icon without
+ * (e.g. every role has its own "Day Off Requests") gets the same icon without
  * repeating it on each tile definition above. */
 const TILE_ICONS: Record<string, LucideIcon> = {
-  'Days Off': CalendarOff,
+  'Day Off Requests': CalendarOff,
   'My Schedule': CalendarDays,
   'Staff Management': UserCog,
   'Customer Management': UserSearch,

@@ -80,6 +80,26 @@ describe('UnavailabilityBlockBadge', () => {
     expect(await screen.findByText('Full day off')).toBeInTheDocument();
   });
 
+  it('only counts approved blocks - a pending request is not time off yet', async () => {
+    const client = mockClient([]);
+    vi.mocked(getSupabaseClient).mockReturnValue(
+      client as unknown as ReturnType<typeof getSupabaseClient>
+    );
+
+    render(
+      createElement(UnavailabilityBlockBadge, {
+        staffId: 'staff-1',
+        accessToken: 'token',
+      })
+    );
+
+    await screen.findByText('Available');
+    const query = client.from.mock.results[0]?.value as {
+      eq: ReturnType<typeof vi.fn>;
+    };
+    expect(query.eq).toHaveBeenCalledWith('status', 'approved');
+  });
+
   it('shows an error state when no Supabase client is configured', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
 

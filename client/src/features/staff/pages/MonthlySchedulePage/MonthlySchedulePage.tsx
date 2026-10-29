@@ -522,7 +522,7 @@ export function MonthlySchedulePage() {
           Rest days and vacation/sick leave for every staff member at this
           branch - shared across Admin, Supervisor, and Superadmin. Rest days
           are fixed by a manager; vacation/sick leave can also be self-
-          requested from Days Off.
+          requested from Day Off Requests.
         </p>
 
         <div className={styles.toolbar}>

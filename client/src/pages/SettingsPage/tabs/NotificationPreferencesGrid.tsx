@@ -49,6 +49,8 @@ const EVENT_TYPES_BY_ROLE: Record<
       type: 'staff_assigned',
       label: 'Customer selected you as preferred staff',
     },
+    { type: 'day_off_requested', label: 'Day off request to review' },
+    { type: 'day_off_reviewed', label: 'Day off request approved or denied' },
   ],
   customer: [
     { type: 'booking_confirmed', label: 'Booking made' },

@@ -50,6 +50,24 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString([], { dateStyle: 'medium' });
 }
 
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/** Full days read as dates; part of a day as the day plus its hours. */
+function formatEntryWindow(entry: UnavailabilityBlock): string {
+  if (entry.is_full_day) {
+    const start = formatDate(entry.start_time);
+    const end = formatDate(entry.end_time);
+    return start === end ? start : `${start} - ${end}`;
+  }
+
+  return `${formatDate(entry.start_time)}, ${formatTime(entry.start_time)} - ${formatTime(entry.end_time)}`;
+}
+
 /**
  * "See my schedule" (rest days / vacation / sick leave a Supervisor or Admin
  * plotted on the branch-wide Monthly Schedule) - read-only, scoped to the
@@ -198,8 +216,8 @@ export function MySchedulePage() {
       <div className={styles.content}>
         <h1 className={styles.title}>My Schedule</h1>
         <p className={styles.copy}>
-          Rest days and approved leave your Supervisor/Admin has plotted for
-          you. Want time off?{' '}
+          Rest days, approved leave (whole days and part days) and requests
+          still waiting for approval. Want time off?{' '}
           <Link className={styles.link} to="/staff/days-off">
             Request a day off
           </Link>
@@ -269,6 +287,9 @@ export function MySchedulePage() {
                         onClick={() => setSelectedEntry(entry)}
                       >
                         {entry.leave_type}
+                        {entry.is_full_day
+                          ? ''
+                          : ` ${formatTime(entry.start_time)}-${formatTime(entry.end_time)}`}
                         {entry.status !== 'approved'
                           ? ` (${entry.status})`
                           : ''}
@@ -298,10 +319,7 @@ export function MySchedulePage() {
                 {selectedEntry.leave_type}
               </h2>
               <p className={styles.copy}>Status: {selectedEntry.status}</p>
-              <p className={styles.copy}>
-                {formatDate(selectedEntry.start_time)} &ndash;{' '}
-                {formatDate(selectedEntry.end_time)}
-              </p>
+              <p className={styles.copy}>{formatEntryWindow(selectedEntry)}</p>
               {selectedEntry.reason ? (
                 <p className={styles.copy}>Reason: {selectedEntry.reason}</p>
               ) : null}

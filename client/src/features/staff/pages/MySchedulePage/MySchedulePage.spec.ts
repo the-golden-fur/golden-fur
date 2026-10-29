@@ -143,6 +143,28 @@ describe('MySchedulePage', () => {
     expect(screen.getByText('Reason: Family trip')).toBeInTheDocument();
   });
 
+  it('shows an approved part-day entry with its hours', async () => {
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: PROFILE,
+      error: null,
+    });
+    vi.mocked(staffApi.listUnavailabilityBlocks).mockResolvedValue({
+      data: [buildBlock({ leave_type: 'Other', is_full_day: false })],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    const chip = await screen.findByRole('button', { name: /^Other \d/ });
+    await user.click(chip);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Status: approved');
+    // Part-day detail names the hours, not just the date.
+    expect(dialog).toHaveTextContent(/\d{1,2}:\d{2}/);
+  });
+
   it('month navigation re-fetches with a new date range', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: PROFILE,
@@ -173,7 +195,7 @@ describe('MySchedulePage', () => {
     expect(secondRange).not.toEqual(firstRange);
   });
 
-  it('links to the Days Off request page', async () => {
+  it('links to the Day Off Requests page', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: PROFILE,
       error: null,
