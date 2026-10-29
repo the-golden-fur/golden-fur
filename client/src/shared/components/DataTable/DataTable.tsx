@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { CardContextMenu } from '../MoreOptionsMenu/CardContextMenu';
+import type { MoreOptionsMenuItem } from '../MoreOptionsMenu/MoreOptionsMenu';
 import styles from './DataTable.module.css';
 
 export interface DataTableColumn<T> {
@@ -17,6 +19,12 @@ interface DataTableProps<T> {
   getRowKey: (item: T) => string;
   /** Trailing column, e.g. an Edit/Delete button or a MoreOptionsMenu. */
   renderRowActions?: (item: T) => ReactNode;
+  /** Optional right-click / press-and-hold menu for a whole row (same
+   * CardContextMenu card views use). Return null, or no items, for a row
+   * with nothing to offer - its cells then render untouched. */
+  getRowContextMenu?: (
+    item: T
+  ) => { label: string; items: MoreOptionsMenuItem[] } | null;
   emptyMessage?: string;
 }
 
@@ -32,6 +40,7 @@ export function DataTable<T>({
   rows,
   getRowKey,
   renderRowActions,
+  getRowContextMenu,
   emptyMessage = 'Nothing here yet.',
 }: DataTableProps<T>) {
   if (rows.length === 0) {
@@ -64,23 +73,41 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={getRowKey(row)} className={styles.row}>
-              {columns.map((column) => (
-                <td
-                  key={column.id}
-                  className={
-                    column.align === 'end' ? styles.cellEnd : styles.cell
-                  }
-                >
-                  {column.render(row)}
-                </td>
-              ))}
-              {renderRowActions ? (
-                <td className={styles.cellActions}>{renderRowActions(row)}</td>
-              ) : null}
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const contextMenu = getRowContextMenu?.(row);
+            const hasContextMenu = Boolean(contextMenu?.items.length);
+
+            return (
+              <tr key={getRowKey(row)} className={styles.row}>
+                {columns.map((column) => (
+                  <td
+                    key={column.id}
+                    className={
+                      column.align === 'end' ? styles.cellEnd : styles.cell
+                    }
+                  >
+                    {/* A <tr> can't take a wrapper element, so each cell
+                        carries the same row menu. */}
+                    {hasContextMenu && contextMenu ? (
+                      <CardContextMenu
+                        label={contextMenu.label}
+                        items={contextMenu.items}
+                      >
+                        {column.render(row)}
+                      </CardContextMenu>
+                    ) : (
+                      column.render(row)
+                    )}
+                  </td>
+                ))}
+                {renderRowActions ? (
+                  <td className={styles.cellActions}>
+                    {renderRowActions(row)}
+                  </td>
+                ) : null}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

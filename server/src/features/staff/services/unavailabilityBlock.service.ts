@@ -1,5 +1,9 @@
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import {
+  notifyDayOffRequested,
+  notifyDayOffReviewed,
+} from './dayOffNotifications.service.ts';
+import {
   SELF_SERVICE_DAYS_OFF_BLOCKED_ROLES,
   UNAVAILABILITY_MANAGER_ROLES,
 } from '../staff.types.ts';
@@ -9,8 +13,14 @@ import type {
   PendingUnavailabilityBlockStaffSummary,
   RequestedReviewerSummary,
   UnavailabilityBlock,
+  UnavailabilityHistoryEntry,
   UnavailabilityLeaveType,
 } from '../staff.types.ts';
+
+/** Statuses that actually take a staff member's time - what overlap checks,
+ * Auto Build and the schedules count. A denied or cancelled request frees
+ * the slot again. */
+const LIVE_BLOCK_STATUSES = ['approved', 'pending'];
 
 interface OperatingHoursEntry {
   open: string;
@@ -57,10 +67,9 @@ interface ListUnavailabilityBlocksParams {
   requesterRole: string;
   targetStaffId: string;
   /** Custom change (My Schedule): when both are given, returns every
-   * full-day entry overlapping [rangeStart, rangeEnd) - past or future,
-   * mirroring listBranchSchedule's own window so a staff member sees the
-   * same rest days/leave on their own calendar that a manager sees on the
-   * branch-wide one. Omitted (the original behavior, still used by the
+   * approved or pending entry overlapping [rangeStart, rangeEnd) - past or
+   * future, full-day or part of a day (an approved afternoon off belongs on
+   * the calendar too); denied requests are left off. Omitted (the original behavior, still used by the
    * self-service Days Off badge) instead returns every not-yet-ended block
    * of any is_full_day value. */
   rangeStart?: string;
@@ -434,6 +443,7 @@ async function fetchExistingBlocksForMonth(
     .from('staff_unavailability_blocks')
     .select('staff_id, start_time, end_time')
     .in('staff_id', staffIds)
+    .in('status', LIVE_BLOCK_STATUSES)
     .lt('start_time', monthEnd.toISOString())
     .gt('end_time', monthStart.toISOString());
 
@@ -642,6 +652,180 @@ export async function clearAutoBuildSchedule({
   return { deleted: data?.length ?? 0 };
 }
 
+/**
+ * "Any manager": a pending request sent to nobody in particular is handed to
+ * one active Supervisor/Admin/Superadmin at the requester's branch, picked
+ * at random, and recorded as its requested_reviewer_id - so it shows as
+ * "Sent to <name>" and lands in exactly one inbox instead of nobody's (or
+ * everybody's). Any manager at the branch can still approve it. A branch
+ * with no other manager leaves it unassigned; notifyDayOffRequested then
+ * falls back to the whole branch.
+ */
+async function assignRandomReviewer(
+  block: UnavailabilityBlock,
+  branchId: string
+): Promise<UnavailabilityBlock> {
+  if (block.requested_reviewer_id) return block;
+
+  const { data: managers, error } = await supabase
+    .from('staff_profiles')
+    .select('id')
+    .eq('branch_id', branchId)
+    .eq('is_active', true)
+    .in('role', [...UNAVAILABILITY_MANAGER_ROLES]);
+
+  if (error) throwWithStatus(400, error.message);
+
+  const candidates = (managers ?? []).filter(
+    (manager) => manager.id !== block.staff_id
+  );
+  if (candidates.length === 0) return block;
+
+  const reviewerId = candidates[Math.floor(Math.random() * candidates.length)]
+    ?.id as string;
+
+  const { data: updated, error: updateError } = await supabase
+    .from('staff_unavailability_blocks')
+    .update({ requested_reviewer_id: reviewerId })
+    .eq('id', block.id)
+    .select('*')
+    .maybeSingle();
+
+  if (updateError) throwWithStatus(400, updateError.message);
+
+  return (updated as UnavailabilityBlock | null) ?? block;
+}
+
+/** The optional "send to" reviewer must be a manager at the requester's
+ * branch. */
+async function assertValidRequestedReviewer(
+  requestedReviewerId: string,
+  branchId: string
+): Promise<void> {
+  const { data: reviewer, error: reviewerError } = await supabase
+    .from('staff_profiles')
+    .select('id, role, branch_id')
+    .eq('id', requestedReviewerId)
+    .maybeSingle();
+
+  if (reviewerError) throwWithStatus(400, reviewerError.message);
+  if (
+    !reviewer ||
+    reviewer.branch_id !== branchId ||
+    !UNAVAILABILITY_MANAGER_ROLES.includes(reviewer.role)
+  ) {
+    throwWithStatus(
+      400,
+      'requested_reviewer_id must be a Supervisor, Admin, or Superadmin at the same branch'
+    );
+  }
+}
+
+/**
+ * Resolves a request's [start, end) window - quick action (now until the
+ * branch closes), a full day (that date's operating hours), or an explicit
+ * range - and validates it (end after start, not in the past). Shared by
+ * createUnavailabilityBlock and updateUnavailabilityBlock.
+ */
+async function resolveRequestWindow(
+  branchId: string,
+  {
+    quickAction,
+    isFullDay,
+    date,
+    startTime,
+    endTime,
+    now,
+    fullDayFromTomorrow = false,
+  }: {
+    quickAction?: boolean;
+    isFullDay?: boolean;
+    date?: string;
+    startTime?: string;
+    endTime?: string;
+    now: Date;
+    /** Self-service requests: an entire-day request must be for a future
+     * date (branch-local) - today is already under way. Managers setting a
+     * day on someone's behalf aren't held to this. */
+    fullDayFromTomorrow?: boolean;
+  }
+): Promise<{ start: Date; end: Date }> {
+  let resolvedStart: Date;
+  let resolvedEnd: Date;
+
+  if (quickAction || isFullDay) {
+    const { data: branch, error: branchError } = await supabase
+      .from('branches')
+      .select('operating_hours, timezone')
+      .eq('id', branchId)
+      .maybeSingle();
+
+    if (branchError) throwWithStatus(400, branchError.message);
+    if (!branch) throwWithStatus(400, 'Branch not found for staff member');
+
+    if (quickAction) {
+      resolvedStart = now;
+      resolvedEnd = resolveShiftEnd(
+        branch.timezone,
+        branch.operating_hours ?? {},
+        resolvedStart
+      );
+    } else {
+      if (!date) {
+        throwWithStatus(400, 'date is required for a full-day request');
+      }
+
+      if (fullDayFromTomorrow) {
+        // en-CA formats as YYYY-MM-DD, comparable with `date` as a string.
+        const branchToday = new Intl.DateTimeFormat('en-CA', {
+          timeZone: branch.timezone,
+        }).format(now);
+
+        if (date <= branchToday) {
+          throwWithStatus(
+            400,
+            'An entire-day request must be for a date after today'
+          );
+        }
+      }
+
+      const window = resolveDateWindow(
+        branch.timezone,
+        branch.operating_hours ?? {},
+        date
+      );
+      resolvedStart = window.start;
+      resolvedEnd = window.end;
+    }
+  } else {
+    if (!startTime || !endTime) {
+      throwWithStatus(400, 'start_time and end_time are required');
+    }
+
+    resolvedStart = new Date(startTime);
+    resolvedEnd = new Date(endTime);
+
+    if (
+      Number.isNaN(resolvedStart.getTime()) ||
+      Number.isNaN(resolvedEnd.getTime())
+    ) {
+      throwWithStatus(400, 'Invalid start_time or end_time');
+    }
+  }
+
+  if (resolvedEnd <= resolvedStart) {
+    throwWithStatus(400, 'end_time must be after start_time');
+  }
+
+  // quickAction's resolvedStart is `now` itself, so it's always exactly
+  // non-past - excluded explicitly rather than relying on that equality.
+  if (!quickAction && resolvedStart.getTime() < now.getTime()) {
+    throwWithStatus(400, 'start_time cannot be in the past');
+  }
+
+  return { start: resolvedStart, end: resolvedEnd };
+}
+
 export async function createUnavailabilityBlock({
   requesterId,
   requesterRole,
@@ -691,88 +875,30 @@ export async function createUnavailabilityBlock({
   }
 
   if (requestedReviewerId) {
-    const { data: reviewer, error: reviewerError } = await supabase
-      .from('staff_profiles')
-      .select('id, role, branch_id')
-      .eq('id', requestedReviewerId)
-      .maybeSingle();
-
-    if (reviewerError) throwWithStatus(400, reviewerError.message);
-    if (
-      !reviewer ||
-      reviewer.branch_id !== targetProfile.branch_id ||
-      !UNAVAILABILITY_MANAGER_ROLES.includes(reviewer.role)
-    ) {
-      throwWithStatus(
-        400,
-        'requested_reviewer_id must be a Supervisor, Admin, or Superadmin at the same branch'
-      );
-    }
+    await assertValidRequestedReviewer(
+      requestedReviewerId,
+      targetProfile.branch_id
+    );
   }
 
-  let resolvedStart: Date;
-  let resolvedEnd: Date;
-
-  if (quickAction || isFullDay) {
-    const { data: branch, error: branchError } = await supabase
-      .from('branches')
-      .select('operating_hours, timezone')
-      .eq('id', targetProfile.branch_id)
-      .maybeSingle();
-
-    if (branchError) throwWithStatus(400, branchError.message);
-    if (!branch) throwWithStatus(400, 'Branch not found for staff member');
-
-    if (quickAction) {
-      resolvedStart = now;
-      resolvedEnd = resolveShiftEnd(
-        branch.timezone,
-        branch.operating_hours ?? {},
-        resolvedStart
-      );
-    } else {
-      if (!date) {
-        throwWithStatus(400, 'date is required for a full-day request');
-      }
-
-      const window = resolveDateWindow(
-        branch.timezone,
-        branch.operating_hours ?? {},
-        date
-      );
-      resolvedStart = window.start;
-      resolvedEnd = window.end;
+  const { start: resolvedStart, end: resolvedEnd } = await resolveRequestWindow(
+    targetProfile.branch_id,
+    {
+      quickAction,
+      isFullDay,
+      date,
+      startTime,
+      endTime,
+      now,
+      fullDayFromTomorrow: requesterId === targetStaffId,
     }
-  } else {
-    if (!startTime || !endTime) {
-      throwWithStatus(400, 'start_time and end_time are required');
-    }
-
-    resolvedStart = new Date(startTime);
-    resolvedEnd = new Date(endTime);
-
-    if (
-      Number.isNaN(resolvedStart.getTime()) ||
-      Number.isNaN(resolvedEnd.getTime())
-    ) {
-      throwWithStatus(400, 'Invalid start_time or end_time');
-    }
-  }
-
-  if (resolvedEnd <= resolvedStart) {
-    throwWithStatus(400, 'end_time must be after start_time');
-  }
-
-  // quickAction's resolvedStart is `now` itself, so it's always exactly
-  // non-past - excluded explicitly rather than relying on that equality.
-  if (!quickAction && resolvedStart.getTime() < now.getTime()) {
-    throwWithStatus(400, 'start_time cannot be in the past');
-  }
+  );
 
   const { data: overlapping, error: overlapError } = await supabase
     .from('staff_unavailability_blocks')
     .select('id')
     .eq('staff_id', targetStaffId)
+    .in('status', LIVE_BLOCK_STATUSES)
     .lt('start_time', resolvedEnd.toISOString())
     .gt('end_time', resolvedStart.toISOString())
     .limit(1);
@@ -805,7 +931,137 @@ export async function createUnavailabilityBlock({
     );
   }
 
+  // Only a staff member's own request lands as pending (the status trigger
+  // auto-approves anything created on someone else's behalf) - that's the
+  // one case with an approver to tell.
+  if (data.status === 'pending') {
+    const assigned = await assignRandomReviewer(data, targetProfile.branch_id);
+    await notifyDayOffRequested(assigned);
+    return assigned;
+  }
+
   return data;
+}
+
+interface UpdateUnavailabilityBlockParams {
+  requesterId: string;
+  targetStaffId: string;
+  blockId: string;
+  isFullDay?: boolean;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  reason?: string;
+  requestedReviewerId?: string;
+  leaveType?: UnavailabilityLeaveType;
+  now?: Date;
+}
+
+/**
+ * Day Off Requests: a staff member edits their own still-pending request
+ * (dates, type, reason, who it's sent to). Only the requester, only while
+ * pending - once a manager has decided, the request is final (cancel and
+ * re-request instead). The approver(s) are notified again, since what they
+ * are being asked to approve changed.
+ */
+export async function updateUnavailabilityBlock({
+  requesterId,
+  targetStaffId,
+  blockId,
+  isFullDay,
+  date,
+  startTime,
+  endTime,
+  reason,
+  requestedReviewerId,
+  leaveType,
+  now = new Date(),
+}: UpdateUnavailabilityBlockParams): Promise<UnavailabilityBlock> {
+  if (requesterId !== targetStaffId) {
+    throwWithStatus(403, 'You can only edit your own day off requests');
+  }
+
+  if (leaveType === 'Rest Day') {
+    throwWithStatus(
+      403,
+      'Rest days can only be set by a Supervisor, Admin, or Superadmin'
+    );
+  }
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('staff_unavailability_blocks')
+    .select('id, status, created_by')
+    .eq('id', blockId)
+    .eq('staff_id', targetStaffId)
+    .maybeSingle();
+
+  if (lookupError) throwWithStatus(400, lookupError.message);
+  if (!existing) throwWithStatus(404, 'Unavailability block not found');
+  if (existing.status !== 'pending' || existing.created_by !== requesterId) {
+    throwWithStatus(409, 'Only your own pending requests can be edited');
+  }
+
+  const { data: targetProfile, error: profileError } = await supabase
+    .from('staff_profiles')
+    .select('id, branch_id')
+    .eq('id', targetStaffId)
+    .maybeSingle();
+
+  if (profileError) throwWithStatus(400, profileError.message);
+  if (!targetProfile) throwWithStatus(404, 'Staff profile not found');
+
+  if (requestedReviewerId) {
+    await assertValidRequestedReviewer(
+      requestedReviewerId,
+      targetProfile.branch_id
+    );
+  }
+
+  const { start, end } = await resolveRequestWindow(targetProfile.branch_id, {
+    isFullDay,
+    date,
+    startTime,
+    endTime,
+    now,
+    fullDayFromTomorrow: true,
+  });
+
+  const { data: overlapping, error: overlapError } = await supabase
+    .from('staff_unavailability_blocks')
+    .select('id')
+    .eq('staff_id', targetStaffId)
+    .in('status', LIVE_BLOCK_STATUSES)
+    .lt('start_time', end.toISOString())
+    .gt('end_time', start.toISOString());
+
+  if (overlapError) throwWithStatus(400, overlapError.message);
+  if ((overlapping ?? []).some((row) => row.id !== blockId)) {
+    throwWithStatus(409, 'Block overlaps an existing unavailability block');
+  }
+
+  const { data, error } = await supabase
+    .from('staff_unavailability_blocks')
+    .update({
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      is_full_day: Boolean(isFullDay),
+      is_quick_action: false,
+      reason: reason ?? null,
+      requested_reviewer_id: requestedReviewerId ?? null,
+      ...(leaveType ? { leave_type: leaveType } : {}),
+    })
+    .eq('id', blockId)
+    .select('*')
+    .maybeSingle();
+
+  if (error || !data) {
+    throwWithStatus(400, error?.message ?? 'Failed to update the request');
+  }
+
+  const assigned = await assignRandomReviewer(data, targetProfile.branch_id);
+  await notifyDayOffRequested(assigned);
+
+  return assigned;
 }
 
 export async function cancelUnavailabilityBlock({
@@ -828,7 +1084,7 @@ export async function cancelUnavailabilityBlock({
 
   const { data: existing, error: lookupError } = await supabase
     .from('staff_unavailability_blocks')
-    .select('id')
+    .select('id, status')
     .eq('id', blockId)
     .eq('staff_id', targetStaffId)
     .maybeSingle();
@@ -836,18 +1092,34 @@ export async function cancelUnavailabilityBlock({
   if (lookupError) throwWithStatus(400, lookupError.message);
   if (!existing) throwWithStatus(404, 'Unavailability block not found');
 
-  if (requesterId !== targetStaffId) {
-    const { data: targetProfile, error: profileError } = await supabase
-      .from('staff_profiles')
-      .select('branch_id')
-      .eq('id', targetStaffId)
-      .maybeSingle();
+  // A staff member withdrawing their own request keeps the row, marked
+  // 'cancelled', so it stays in their Day Off Requests history. A manager
+  // removing an entry (Monthly Schedule) still deletes it below.
+  if (requesterId === targetStaffId) {
+    if (existing.status === 'cancelled') return;
+    if (existing.status !== 'pending') {
+      throwWithStatus(409, 'Only a pending request can be cancelled');
+    }
 
-    if (profileError) throwWithStatus(400, profileError.message);
-    if (!targetProfile) throwWithStatus(404, 'Staff profile not found');
+    const { error: cancelError } = await supabase
+      .from('staff_unavailability_blocks')
+      .update({ status: 'cancelled' })
+      .eq('id', blockId);
 
-    assertSameBranch(requesterRole, requesterBranchId, targetProfile.branch_id);
+    if (cancelError) throwWithStatus(400, cancelError.message);
+    return;
   }
+
+  const { data: targetProfile, error: profileError } = await supabase
+    .from('staff_profiles')
+    .select('branch_id')
+    .eq('id', targetStaffId)
+    .maybeSingle();
+
+  if (profileError) throwWithStatus(400, profileError.message);
+  if (!targetProfile) throwWithStatus(404, 'Staff profile not found');
+
+  assertSameBranch(requesterRole, requesterBranchId, targetProfile.branch_id);
 
   const { error } = await supabase
     .from('staff_unavailability_blocks')
@@ -874,7 +1146,7 @@ export async function listUnavailabilityBlocks({
   query =
     rangeStart && rangeEnd
       ? query
-          .eq('is_full_day', true)
+          .in('status', LIVE_BLOCK_STATUSES)
           .lt('start_time', rangeEnd)
           .gt('end_time', rangeStart)
       : query.gt('end_time', new Date().toISOString());
@@ -886,6 +1158,66 @@ export async function listUnavailabilityBlocks({
   if (error) throwWithStatus(400, error.message);
 
   return data ?? [];
+}
+
+/**
+ * Day Off Requests page: every block the target staff member has, past or
+ * future, newest request first - pending, approved and denied alike, and
+ * manager-set Rest Days too (the page filters those client-side). Same
+ * authorization as listUnavailabilityBlocks. Reviewer / requested reviewer
+ * / creator ids are resolved to display names in one extra staff_profiles
+ * lookup, like listBranchSchedule's created_by_name.
+ */
+export async function listUnavailabilityHistory({
+  requesterId,
+  requesterRole,
+  targetStaffId,
+}: Omit<ListUnavailabilityBlocksParams, 'rangeStart' | 'rangeEnd'>): Promise<
+  UnavailabilityHistoryEntry[]
+> {
+  assertCanActOnTarget(requesterId, requesterRole, targetStaffId);
+
+  const { data, error } = await supabase
+    .from('staff_unavailability_blocks')
+    .select('*')
+    .eq('staff_id', targetStaffId)
+    .order('created_at', { ascending: false });
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as UnavailabilityBlock[];
+
+  const personIds = [
+    ...new Set(
+      rows.flatMap((row) =>
+        [row.reviewed_by, row.requested_reviewer_id, row.created_by].filter(
+          (id): id is string => Boolean(id)
+        )
+      )
+    ),
+  ];
+
+  const { data: people, error: peopleError } = personIds.length
+    ? await supabase
+        .from('staff_profiles')
+        .select('id, display_name')
+        .in('id', personIds)
+    : { data: [] as Array<{ id: string; display_name: string }>, error: null };
+
+  if (peopleError) throwWithStatus(400, peopleError.message);
+
+  const nameById = new Map(
+    (people ?? []).map((person) => [person.id, person.display_name])
+  );
+  const nameOf = (id: string | null) =>
+    id ? (nameById.get(id) ?? null) : null;
+
+  return rows.map((row) => ({
+    ...row,
+    reviewer_name: nameOf(row.reviewed_by),
+    requested_reviewer_name: nameOf(row.requested_reviewer_id),
+    created_by_name: nameOf(row.created_by),
+  }));
 }
 
 /**
@@ -942,6 +1274,8 @@ export async function reviewUnavailabilityBlock({
       error?.message ?? 'Failed to review unavailability block'
     );
   }
+
+  await notifyDayOffReviewed(data);
 
   return data;
 }
@@ -1021,6 +1355,7 @@ export async function listBranchSchedule({
       '*, staff:staff_profiles!staff_unavailability_blocks_staff_id_fkey(id, display_name, profile_photo_url, role, branch_id)'
     )
     .eq('is_full_day', true)
+    .in('status', LIVE_BLOCK_STATUSES)
     .lt('start_time', rangeEnd)
     .gt('end_time', rangeStart)
     .order('start_time', { ascending: true });

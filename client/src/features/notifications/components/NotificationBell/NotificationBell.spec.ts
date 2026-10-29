@@ -57,6 +57,14 @@ function renderBell(notificationsHref: string) {
         createElement(Route, {
           path: '/staff/bookings/:id',
           element: createElement('main', null, 'Staff booking details page'),
+        }),
+        createElement(Route, {
+          path: '/staff/admin/unavailability',
+          element: createElement('main', null, 'Approval queue page'),
+        }),
+        createElement(Route, {
+          path: '/staff/days-off',
+          element: createElement('main', null, 'Day Off Requests page'),
         })
       )
     )
@@ -127,6 +135,37 @@ describe('NotificationBell', () => {
       await screen.findByText('Staff booking details page')
     ).toBeInTheDocument();
   });
+
+  it.each([
+    ['day_off_requested', 'Approval queue page'],
+    ['day_off_reviewed', 'Day Off Requests page'],
+  ] as const)(
+    'staff: a %s notification opens the page to act on it',
+    async (eventType, page) => {
+      const user = userEvent.setup();
+      vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+        data: [
+          buildNotification({
+            recipient_staff_id: 'staff-1',
+            recipient_customer_id: null,
+            event_type: eventType,
+            title: 'Day off notification',
+            related_booking_id: null,
+          }),
+        ],
+        error: null,
+      });
+
+      renderBell('/staff/notifications');
+
+      await user.click(
+        await screen.findByRole('button', { name: /notifications/i })
+      );
+      await user.click(await screen.findByText('Day off notification'));
+
+      expect(await screen.findByText(page)).toBeInTheDocument();
+    }
+  );
 
   it('does not navigate when the notification has no related booking', async () => {
     const user = userEvent.setup();

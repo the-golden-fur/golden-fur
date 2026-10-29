@@ -5,7 +5,7 @@ import { StaffDashboardPage } from './pages/StaffDashboardPage/StaffDashboardPag
 import { CustomerManagementPage } from './pages/CustomerManagementPage/CustomerManagementPage';
 import { StaffManagementPage } from './pages/StaffManagementPage/StaffManagementPage';
 import { StaffPetProfilePage } from './pages/StaffPetProfilePage/StaffPetProfilePage';
-import { DaysOffPage } from './pages/DaysOffPage/DaysOffPage';
+import { DayOffRequestsPage } from './pages/DayOffRequestsPage/DayOffRequestsPage';
 import { MySchedulePage } from './pages/MySchedulePage/MySchedulePage';
 import { UnavailabilityApprovalQueuePage } from './pages/UnavailabilityApprovalQueuePage/UnavailabilityApprovalQueuePage';
 import { MonthlySchedulePage } from './pages/MonthlySchedulePage/MonthlySchedulePage';
@@ -28,7 +28,7 @@ export const staffRoutes = createElement(
     }),
     createElement(Route, {
       path: '/staff/days-off',
-      element: createElement(DaysOffPage),
+      element: createElement(DayOffRequestsPage),
     }),
     createElement(Route, {
       path: '/staff/my-schedule',

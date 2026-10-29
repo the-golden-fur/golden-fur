@@ -11,6 +11,7 @@ import type {
   StaffProfileUpdatePayload,
   UnavailabilityBlock,
   UnavailabilityBlockPayload,
+  UnavailabilityHistoryEntry,
 } from '../staff.types';
 
 interface StaffApiResult<T> {
@@ -171,6 +172,27 @@ export async function listUnavailabilityBlocks(
   return { data: result.data?.blocks ?? null, error: result.error };
 }
 
+/** Day Off Requests: the staff member's full history (pending, approved,
+ * denied - past and future), newest request first. */
+export async function listUnavailabilityHistory(
+  staffId: string,
+  accessToken: string
+): Promise<StaffApiResult<UnavailabilityHistoryEntry[]>> {
+  const response = await fetch(
+    `${API_BASE_URL}/staff/${staffId}/unavailability?history=true`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ blocks: UnavailabilityHistoryEntry[] }>(
+    response
+  );
+  return { data: result.data?.blocks ?? null, error: result.error };
+}
+
 export async function createUnavailabilityBlock(
   staffId: string,
   accessToken: string,
@@ -180,6 +202,33 @@ export async function createUnavailabilityBlock(
     `${API_BASE_URL}/staff/${staffId}/unavailability`,
     {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(accessToken),
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ block: UnavailabilityBlock }>(response);
+  return { data: result.data?.block ?? null, error: result.error };
+}
+
+/** Day Off Requests: edit your own still-pending request. */
+export async function updateUnavailabilityBlock(
+  staffId: string,
+  accessToken: string,
+  blockId: string,
+  payload: Omit<UnavailabilityBlockPayload, 'quick_action'>
+): Promise<StaffApiResult<UnavailabilityBlock>> {
+  const response = await fetch(
+    `${API_BASE_URL}/staff/${staffId}/unavailability/${blockId}`,
+    {
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         ...authHeaders(accessToken),

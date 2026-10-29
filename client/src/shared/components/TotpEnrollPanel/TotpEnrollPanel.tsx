@@ -9,6 +9,7 @@ import { enrollMfa, unenrollMfa, verifyMfa } from '../../api/mfa.api';
 import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
 import { totpCodeSchema } from '../../auth/mfa.validator';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
+import { MfaSetupGuide } from '../MfaSetupGuide/MfaSetupGuide';
 import { OtpInput } from '../OtpInput/OtpInput';
 import styles from './TotpEnrollPanel.module.css';
 
@@ -123,9 +124,10 @@ export function TotpEnrollPanel({
   return (
     <div className={styles.panel}>
       <p className={styles.copy}>
-        Scan the QR code with your authenticator app, then enter the 6-digit
-        code it generates.
+        Scan the QR code with the Google Authenticator app (or any authenticator
+        app) on your phone, then enter the 6-digit code it shows.
       </p>
+      <MfaSetupGuide />
       {qrCode ? (
         <img
           className={styles.qrCode}

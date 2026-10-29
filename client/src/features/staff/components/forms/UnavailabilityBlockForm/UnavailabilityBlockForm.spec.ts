@@ -61,33 +61,48 @@ function buildReviewer(overrides: Partial<StaffProfile> = {}): StaffProfile {
 }
 
 describe('UnavailabilityBlockForm', () => {
-  it('creates a quick-action block and reports it back to the caller', async () => {
-    const block = {
-      id: 'block-1',
-      staff_id: 'staff-1',
-      start_time: '2026-07-11T09:00:00.000Z',
-      end_time: '2026-07-11T17:00:00.000Z',
-      reason: null,
-      created_by: 'staff-1',
-      created_at: '2026-07-11T09:00:00.000Z',
-    };
-    vi.mocked(staffApi.createUnavailabilityBlock).mockResolvedValue({
-      data: block,
-      error: null,
+  it('has a single submit action - no separate "rest of today" quick button', () => {
+    renderForm();
+
+    expect(
+      screen.queryByRole('button', { name: /take the rest of today off/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /request day\(s\) off/i })
+    ).toBeInTheDocument();
+  });
+
+  it('self-service: an entire day starts at tomorrow and today is rejected', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({ data: [], error: null });
+    vi.mocked(staffApi.createUnavailabilityBlock).mockClear();
+    renderForm(vi.fn(), true);
+
+    await userEvent.click(screen.getByLabelText('Entire day'));
+    const dateInput = screen.getByLabelText('Date') as HTMLInputElement;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const tomorrowIso = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+
+    expect(dateInput.min).toBe(tomorrowIso);
+    expect(dateInput.value).toBe(tomorrowIso);
+
+    const today = new Date();
+    fireEvent.change(dateInput, {
+      target: {
+        value: `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`,
+      },
     });
-    const onCreated = vi.fn();
-    renderForm(onCreated);
+    // The native min stops the browser from submitting today...
+    expect(dateInput.validity.rangeUnderflow).toBe(true);
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /take the rest of today off/i })
-    );
+    // ...and the form's own check catches it even if that's bypassed.
+    fireEvent.submit(dateInput.closest('form') as HTMLFormElement);
 
-    expect(staffApi.createUnavailabilityBlock).toHaveBeenCalledWith(
-      'staff-1',
-      'token',
-      { quick_action: true }
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /can't request today off as an entire day/i
     );
-    expect(onCreated).toHaveBeenCalledWith(block);
+    expect(staffApi.createUnavailabilityBlock).not.toHaveBeenCalled();
   });
 
   it('submits a valid custom range', async () => {
@@ -288,8 +303,9 @@ describe('UnavailabilityBlockForm', () => {
 
       const select = await screen.findByLabelText('Send to');
       await userEvent.selectOptions(select, 'reviewer-1');
+      await userEvent.click(screen.getByLabelText('Entire day'));
       await userEvent.click(
-        screen.getByRole('button', { name: /take the rest of today off/i })
+        screen.getByRole('button', { name: /request day\(s\) off/i })
       );
 
       await waitFor(() =>

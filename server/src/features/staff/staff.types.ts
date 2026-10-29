@@ -82,7 +82,13 @@ export interface StaffProfile {
   updated_at: string;
 }
 
-export type UnavailabilityBlockStatus = 'pending' | 'approved' | 'denied';
+/** 'cancelled' = the requester withdrew it (kept for their history, never
+ * counts as time off). */
+export type UnavailabilityBlockStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'cancelled';
 
 /** 'Rest Day' is fixed/manager-set only (never self-service, enforced in
  * unavailabilityBlock.service.ts); the rest can be self-requested or
@@ -161,5 +167,16 @@ export interface PendingUnavailabilityBlock extends UnavailabilityBlock {
  */
 export interface BranchScheduleEntry extends UnavailabilityBlock {
   staff: PendingUnavailabilityBlockStaffSummary | null;
+  created_by_name: string | null;
+}
+
+/**
+ * Day Off Requests history row - every one of a staff member's own blocks,
+ * past or future, with the people on it resolved to display names (same
+ * second-lookup technique as BranchScheduleEntry's created_by_name).
+ */
+export interface UnavailabilityHistoryEntry extends UnavailabilityBlock {
+  reviewer_name: string | null;
+  requested_reviewer_name: string | null;
   created_by_name: string | null;
 }

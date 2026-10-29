@@ -220,7 +220,7 @@ describe('Sidebar', () => {
         label: null,
         items: [
           { title: 'Dashboard', to: '/staff/dashboard/admin' },
-          { title: 'Days Off', to: '/staff/days-off' },
+          { title: 'Day Off Requests', to: '/staff/days-off' },
         ],
       },
     ]);
