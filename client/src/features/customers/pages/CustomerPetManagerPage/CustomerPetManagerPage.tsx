@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import {
+  Archive,
   Columns3,
   List as ListIcon,
+  RotateCcw,
   Table as TableIcon,
-  TriangleAlert,
 } from 'lucide-react';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getPetBookingConflicts } from '../../../booking/api/booking.api';
@@ -13,7 +14,9 @@ import { BookingDetailsModal } from '../../../booking/components/BookingDetailsM
 import {
   archivePet,
   deactivatePet,
+  listArchivedPets,
   listCustomerPets,
+  restorePet,
 } from '../../api/customer.api';
 import { PetCard } from '../../components/cards/PetCard/PetCard';
 import { PetForm } from '../../components/forms/PetForm/PetForm';
@@ -77,7 +80,7 @@ export function CustomerPetManagerPage() {
   const [showPetForm, setShowPetForm] = useState(false);
   const [petMessage, setPetMessage] = useState<string | null>(null);
   // Each pet's unresolved booking (one per pet, the earliest) - these pets
-  // can't be deleted (same check the booking flow's Pet step uses to block
+  // can't be archived (same check the booking flow's Pet step uses to block
   // a double booking), and the Booking filter/column read it too.
   const [conflictByPetId, setConflictByPetId] = useState<
     Map<string, PetBookingConflict>
@@ -88,16 +91,21 @@ export function CustomerPetManagerPage() {
   );
   // Booking opened from a pet's Booking cell - shows its full details.
   const [detailsBookingId, setDetailsBookingId] = useState<string | null>(null);
-  const [petToDelete, setPetToDelete] = useState<Pet | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  // Why the customer is deleting - required before "Delete pet" enables.
+  const [petToArchive, setPetToArchive] = useState<Pet | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  // Archived pets - listed (collapsed) under the roster, each restorable by
+  // the customer themselves.
+  const [archivedPets, setArchivedPets] = useState<Pet[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  // Why the customer is archiving - required before "Archive pet" enables.
   // Saved with the archive for a future Trends tab, not shown anywhere yet.
-  const [deleteReason, setDeleteReason] = useState<PetDeleteReason | ''>('');
-  const [deleteReasonOther, setDeleteReasonOther] = useState('');
-  const isDeleteReasonMissing =
-    deleteReason === '' ||
-    (deleteReason === 'other' && deleteReasonOther.trim() === '');
+  const [archiveReason, setArchiveReason] = useState<PetDeleteReason | ''>('');
+  const [archiveReasonOther, setArchiveReasonOther] = useState('');
+  const isArchiveReasonMissing =
+    archiveReason === '' ||
+    (archiveReason === 'other' && archiveReasonOther.trim() === '');
 
   const [filterTiles, setFilterTiles] = useState<FilterTile[]>([]);
   const [sortTile, setSortTile] = useState<SortTile | null>(null);
@@ -118,6 +126,12 @@ export function CustomerPetManagerPage() {
         if (result.data) {
           setPets(result.data);
         }
+      }
+    });
+
+    void listArchivedPets(accessToken, user.id).then((result) => {
+      if (isMounted && result.data) {
+        setArchivedPets(result.data);
       }
     });
 
@@ -144,56 +158,107 @@ export function CustomerPetManagerPage() {
     );
   };
 
-  function handleDeleteClick(pet: Pet) {
+  function handleArchiveClick(pet: Pet) {
     setPetMessage(null);
 
     if (conflictByPetId.has(pet.id)) {
-      setDeleteError(
-        `${pet.name} has a booking that isn't finished yet. Cancel or complete it before deleting this pet.`
+      setArchiveError(
+        `${pet.name} has a booking that isn't finished yet. Cancel or complete it before archiving this pet.`
       );
       return;
     }
 
-    setDeleteError(null);
-    setDeleteReason('');
-    setDeleteReasonOther('');
-    setPetToDelete(pet);
+    setArchiveError(null);
+    setArchiveReason('');
+    setArchiveReasonOther('');
+    setPetToArchive(pet);
   }
 
-  /** "Delete" archives the pet: it leaves the customer's list but its
-   * booking and medical history stay, and staff can restore it. The server
-   * only archives an inactive pet (petArchive.service.ts), so deactivate
-   * goes first. */
-  async function handleConfirmDelete() {
+  /** Archiving moves the pet off the roster into "Archived pets" - its
+   * booking and medical history stay, and the customer (or staff) can
+   * restore it. The server only archives an inactive pet
+   * (petArchive.service.ts), so deactivate goes first. */
+  async function handleConfirmArchive() {
     if (
-      !petToDelete ||
+      !petToArchive ||
       !accessToken ||
-      deleteReason === '' ||
-      isDeleteReasonMissing
+      archiveReason === '' ||
+      isArchiveReasonMissing
     ) {
       return;
     }
 
-    setIsDeleting(true);
-    const deactivated = await deactivatePet(petToDelete.id, accessToken);
+    setIsArchiving(true);
+    const deactivated = await deactivatePet(petToArchive.id, accessToken);
     const archived = deactivated.error
       ? deactivated
-      : await archivePet(petToDelete.id, accessToken, {
-          reason: deleteReason,
+      : await archivePet(petToArchive.id, accessToken, {
+          reason: archiveReason,
           reasonOther:
-            deleteReason === 'other' ? deleteReasonOther.trim() : null,
+            archiveReason === 'other' ? archiveReasonOther.trim() : null,
         });
-    setIsDeleting(false);
+    setIsArchiving(false);
 
     if (archived.error) {
-      setDeleteError(archived.error);
-      setPetToDelete(null);
+      setArchiveError(archived.error);
+      setPetToArchive(null);
       return;
     }
 
-    setPets((prev) => prev.filter((pet) => pet.id !== petToDelete.id));
-    setPetToDelete(null);
-    setPetMessage('Pet deleted.');
+    const archivedPet: Pet = {
+      ...petToArchive,
+      is_active: false,
+      archived_at: new Date().toISOString(),
+      archive_reason: archiveReason,
+      archive_reason_other:
+        archiveReason === 'other' ? archiveReasonOther.trim() : null,
+    };
+    setPets((prev) => prev.filter((pet) => pet.id !== petToArchive.id));
+    setArchivedPets((prev) => [archivedPet, ...prev]);
+    setPetToArchive(null);
+    setPetMessage(
+      `${petToArchive.name} archived. You can restore it from Archived pets below.`
+    );
+  }
+
+  /** Brings an archived pet back onto the roster - the server reactivates
+   * it too, so it can be booked again. */
+  async function handleRestore(pet: Pet) {
+    if (!accessToken) return;
+
+    setRestoringId(pet.id);
+    setArchiveError(null);
+    const result = await restorePet(pet.id, accessToken);
+    setRestoringId(null);
+
+    if (result.error) {
+      setArchiveError(result.error);
+      return;
+    }
+
+    setArchivedPets((prev) => prev.filter((item) => item.id !== pet.id));
+    setPets((prev) => [
+      ...prev,
+      {
+        ...pet,
+        is_active: true,
+        archived_at: null,
+        archive_reason: null,
+        archive_reason_other: null,
+      },
+    ]);
+    setPetMessage(`${pet.name} restored.`);
+  }
+
+  function archiveReasonLabel(pet: Pet): string | null {
+    if (!pet.archive_reason) return null;
+    if (pet.archive_reason === 'other') {
+      return pet.archive_reason_other ?? 'Other';
+    }
+    return (
+      PET_DELETE_REASONS.find((option) => option.value === pet.archive_reason)
+        ?.label ?? null
+    );
   }
 
   const filterFields = useMemo(() => buildPetFilterFields(pets), [pets]);
@@ -361,9 +426,9 @@ export function CustomerPetManagerPage() {
         {petMessage ? (
           <p className={styles.successBanner}>{petMessage}</p>
         ) : null}
-        {deleteError ? (
+        {archiveError ? (
           <p className={styles.errorBanner} role="alert">
-            {deleteError}
+            {archiveError}
           </p>
         ) : null}
 
@@ -421,12 +486,12 @@ export function CustomerPetManagerPage() {
                 renderRowActions={(pet) => (
                   <button
                     type="button"
-                    className={styles.deleteButton}
-                    aria-label={`Delete ${pet.name}`}
-                    title={`Delete ${pet.name}`}
-                    onClick={() => handleDeleteClick(pet)}
+                    className={styles.archiveButton}
+                    aria-label={`Archive ${pet.name}`}
+                    title={`Archive ${pet.name}`}
+                    onClick={() => handleArchiveClick(pet)}
                   >
-                    Delete
+                    Archive
                   </button>
                 )}
                 emptyMessage="No pets match this filter."
@@ -449,6 +514,57 @@ export function CustomerPetManagerPage() {
           </>
         )}
       </section>
+
+      {archivedPets.length > 0 ? (
+        <section className={styles.archivedSection}>
+          <button
+            type="button"
+            className={styles.archivedToggle}
+            aria-expanded={showArchived}
+            aria-controls="archived-pets-list"
+            onClick={() => setShowArchived((open) => !open)}
+          >
+            <Archive aria-hidden="true" size={16} />
+            Archived pets ({archivedPets.length})
+          </button>
+          {showArchived ? (
+            <ul className={styles.archivedList} id="archived-pets-list">
+              {archivedPets.map((pet) => {
+                const reason = archiveReasonLabel(pet);
+                return (
+                  <li key={pet.id} className={styles.archivedRow}>
+                    <PetAvatar
+                      name={pet.name}
+                      photoUrl={pet.photo_url}
+                      size="sm"
+                    />
+                    <div className={styles.archivedInfo}>
+                      <span className={styles.archivedName}>{pet.name}</span>
+                      <span className={styles.copy}>
+                        {pet.pet_type}
+                        {pet.archived_at
+                          ? ` · Archived ${formatRelativeTime(pet.archived_at)}`
+                          : ''}
+                        {reason ? ` · ${reason}` : ''}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.restoreButton}
+                      aria-label={`Restore ${pet.name}`}
+                      disabled={restoringId === pet.id}
+                      onClick={() => void handleRestore(pet)}
+                    >
+                      <RotateCcw aria-hidden="true" size={14} />
+                      {restoringId === pet.id ? 'Restoring...' : 'Restore'}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
 
       {/* Opens over the pet list instead of pushing it down. An outside
           click doesn't close it, so half-typed pet details aren't lost - the
@@ -479,45 +595,45 @@ export function CustomerPetManagerPage() {
       />
 
       <ConfirmDialog
-        isOpen={petToDelete !== null}
-        title={`Delete ${petToDelete?.name ?? 'pet'}?`}
+        isOpen={petToArchive !== null}
+        title={`Archive ${petToArchive?.name ?? 'pet'}?`}
         body={
           <>
-            <p className={styles.deleteWarning}>
-              <TriangleAlert
-                className={styles.deleteWarningIcon}
+            <p className={styles.archiveNotice}>
+              <Archive
+                className={styles.archiveNoticeIcon}
                 aria-hidden="true"
               />
               <span>
-                <strong>Warning:</strong> {petToDelete?.name} will be removed
-                from your pets. You won&apos;t be able to book services for{' '}
-                {petToDelete?.name} unless the clinic restores it.
+                {petToArchive?.name} will move to <strong>Archived pets</strong>
+                . You won&apos;t be able to book services for{' '}
+                {petToArchive?.name} until you restore it.
               </span>
             </p>
-            <fieldset className={styles.reasonGroup} disabled={isDeleting}>
+            <fieldset className={styles.reasonGroup} disabled={isArchiving}>
               <legend className={styles.reasonLegend}>
-                Why are you deleting {petToDelete?.name}?
+                Why are you archiving {petToArchive?.name}?
               </legend>
               {PET_DELETE_REASONS.map((option) => (
                 <label key={option.value} className={styles.reasonOption}>
                   <input
                     type="radio"
-                    name="pet-delete-reason"
+                    name="pet-archive-reason"
                     value={option.value}
-                    checked={deleteReason === option.value}
-                    onChange={() => setDeleteReason(option.value)}
+                    checked={archiveReason === option.value}
+                    onChange={() => setArchiveReason(option.value)}
                   />
                   {option.label}
                 </label>
               ))}
-              {deleteReason === 'other' ? (
+              {archiveReason === 'other' ? (
                 <label className={styles.reasonOther}>
                   <span className={styles.filterLabel}>Tell us more</span>
                   <textarea
                     className={styles.reasonTextarea}
-                    value={deleteReasonOther}
+                    value={archiveReasonOther}
                     onChange={(event) =>
-                      setDeleteReasonOther(event.target.value)
+                      setArchiveReasonOther(event.target.value)
                     }
                     maxLength={PET_DELETE_REASON_OTHER_MAX_LENGTH}
                     rows={3}
@@ -528,12 +644,11 @@ export function CustomerPetManagerPage() {
             </fieldset>
           </>
         }
-        confirmLabel="Delete pet"
-        tone="danger"
-        isConfirming={isDeleting}
-        confirmDisabled={isDeleteReasonMissing}
-        onConfirm={() => void handleConfirmDelete()}
-        onCancel={() => setPetToDelete(null)}
+        confirmLabel="Archive pet"
+        isConfirming={isArchiving}
+        confirmDisabled={isArchiveReasonMissing}
+        onConfirm={() => void handleConfirmArchive()}
+        onCancel={() => setPetToArchive(null)}
       />
     </main>
   );
