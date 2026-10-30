@@ -1444,7 +1444,7 @@ describe('CustomerBookingFlowPage', () => {
     const foodInput = await screen.findByPlaceholderText('Food type');
     await user.click(foodInput);
     await user.click(await screen.findByText('Premium Kibble'));
-    await user.clear(screen.getByPlaceholderText('Quantity'));
+    await user.clear(screen.getByLabelText('Quantity'));
     await user.click(screen.getByText('Next'));
 
     expect(
@@ -1453,7 +1453,7 @@ describe('CustomerBookingFlowPage', () => {
     expect(bookingApi.createBooking).not.toHaveBeenCalled();
 
     // Restore the quantity - Next proceeds and the row is submitted.
-    await user.type(screen.getByPlaceholderText('Quantity'), '2');
+    await user.type(screen.getByLabelText('Quantity'), '2');
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
