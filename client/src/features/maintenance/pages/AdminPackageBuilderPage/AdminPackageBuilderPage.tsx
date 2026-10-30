@@ -165,6 +165,10 @@ export function AdminPackageBuilderPage() {
   // Package cat price: one separate price for a cat, as typed. '' = none.
   const [formCatPrice, setFormCatPrice] = useState('');
   const [discountPercentInput, setDiscountPercentInput] = useState('0');
+  // Superadmin-only: a typed price for this package instead of the bundle
+  // discount. The price is as typed, kept if the switch is flipped back.
+  const [formUseFixedPrice, setFormUseFixedPrice] = useState(false);
+  const [formFixedPrice, setFormFixedPrice] = useState('');
   const [formUsePricingMatrix, setFormUsePricingMatrix] = useState(false);
   // Superadmin-only (optional Extra Long Coat): whether the grid has an
   // Extra Long Coat column at all.
@@ -445,6 +449,10 @@ export function AdminPackageBuilderPage() {
   // so it can feed the matrix breakdown below (PricingMatrixPreview takes a
   // single basePrice, not a service list).
   const derivedBundledPrice = useMemo(() => {
+    if (formUseFixedPrice) {
+      return Number(formFixedPrice) || 0;
+    }
+
     if (!packagePricingConfiguration) {
       return 0;
     }
@@ -474,6 +482,8 @@ export function AdminPackageBuilderPage() {
     services,
     packagePricingConfiguration,
     discountPercentInput,
+    formUseFixedPrice,
+    formFixedPrice,
   ]);
 
   const replacePackage = (updated: Package) => {
@@ -489,6 +499,8 @@ export function AdminPackageBuilderPage() {
     setFormExtras([]);
     setExtraDraft('');
     setFormCatPrice('');
+    setFormUseFixedPrice(false);
+    setFormFixedPrice('');
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(false);
@@ -536,6 +548,8 @@ export function AdminPackageBuilderPage() {
     setFormExtras(pkg.extras ?? []);
     setExtraDraft('');
     setFormCatPrice(pkg.cat_price == null ? '' : String(pkg.cat_price));
+    setFormUseFixedPrice(pkg.fixed_price != null);
+    setFormFixedPrice(pkg.fixed_price == null ? '' : String(pkg.fixed_price));
     setServiceSearch('');
     setServiceTypeFilter('All');
     setFormUsePricingMatrix(pkg.use_pricing_matrix);
@@ -713,6 +727,17 @@ export function AdminPackageBuilderPage() {
       return;
     }
 
+    // Package fixed price: null = use the bundle discount.
+    const fixedPrice = formUseFixedPrice ? Number(formFixedPrice) : null;
+
+    if (
+      formUseFixedPrice &&
+      (formFixedPrice.trim() === '' || !(fixedPrice! >= 0))
+    ) {
+      setFormError('Enter a fixed price of 0 or more.');
+      return;
+    }
+
     // Per-item weight x coat pricing: only a Superadmin's grid is ever sent.
     const savedPackage =
       editingPackageId === null
@@ -738,7 +763,11 @@ export function AdminPackageBuilderPage() {
     setIsSubmitting(true);
     setFormError(null);
 
-    const discountError = await maybeSaveDiscountPercent();
+    // A fixed-price package has no use for the discount, and the discount is
+    // shared by every other package - leave it alone.
+    const discountError = formUseFixedPrice
+      ? null
+      : await maybeSaveDiscountPercent();
 
     if (discountError) {
       setIsSubmitting(false);
@@ -752,6 +781,7 @@ export function AdminPackageBuilderPage() {
         service_ids: selectedServiceIds,
         ...(formExtras.length > 0 ? { extras: formExtras } : {}),
         ...(catPrice !== null ? { cat_price: catPrice } : {}),
+        ...(fixedPrice !== null ? { fixed_price: fixedPrice } : {}),
         branch_ids: selectedBranchIds,
         use_pricing_matrix: formUsePricingMatrix,
         has_extra_long_coat: formHasExtraLongCoat,
@@ -795,6 +825,10 @@ export function AdminPackageBuilderPage() {
       // Same for the cat price: only sent when it changed (null clears it).
       ...(catPrice !== (savedPackage?.cat_price ?? null)
         ? { cat_price: catPrice }
+        : {}),
+      // Also only when changed: an Admin's save must not touch it at all.
+      ...(fixedPrice !== (savedPackage?.fixed_price ?? null)
+        ? { fixed_price: fixedPrice }
         : {}),
       use_pricing_matrix: formUsePricingMatrix,
       has_extra_long_coat: formHasExtraLongCoat,
@@ -1261,7 +1295,41 @@ export function AdminPackageBuilderPage() {
               <div className={styles.formSection}>
                 <h3 className={styles.formSectionTitle}>Pricing</h3>
 
-                {packagePricingConfiguration ? (
+                <ToggleSwitch
+                  label="Use a fixed price instead of the bundle discount"
+                  checked={formUseFixedPrice}
+                  disabled={!isSuperadmin}
+                  onChange={setFormUseFixedPrice}
+                />
+
+                {formUseFixedPrice ? (
+                  <>
+                    <label className={styles.field}>
+                      <span className={styles.fieldLabel}>
+                        Fixed price (PHP)
+                      </span>
+                      <input
+                        className={styles.input}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        disabled={!isSuperadmin}
+                        value={formFixedPrice}
+                        onChange={(event) =>
+                          setFormFixedPrice(event.target.value)
+                        }
+                      />
+                    </label>
+                    <p className={styles.copy}>
+                      This package keeps this price even when its services or
+                      the bundle discount change.
+                      {isSuperadmin
+                        ? null
+                        : ' Only a Superadmin can change this.'}
+                    </p>
+                  </>
+                ) : packagePricingConfiguration ? (
                   <PackagePricingPreview
                     includedServiceBasePrices={selectedServiceIds.map(
                       (serviceId) =>

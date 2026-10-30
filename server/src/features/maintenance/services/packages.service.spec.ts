@@ -254,6 +254,93 @@ describe('packages.service', () => {
     });
   });
 
+  // Custom change (package fixed price, 20261030292).
+  describe('fixed price', () => {
+    const PRICED_PACKAGE = { ...RAW_GOLDEN_PACKAGE, fixed_price: 599 };
+
+    it('uses fixed_price as bundled_price instead of the bundle discount, and as the grid base', async () => {
+      queueFromResults(
+        { data: PRICED_PACKAGE, error: null },
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null },
+        { data: GROOMING_PRICING_CONFIGURATION, error: null }
+      );
+
+      const result = await getPackageById('package-1');
+
+      expect(result.bundled_price).toBe(599);
+      expect(
+        result.pricing_tiers.find(
+          (cell) => cell.weight_class === 'S' && cell.coat_type === 'SC'
+        )?.price
+      ).toBe(599);
+    });
+
+    it('honours a fixed price of 0 rather than falling back to the discount', async () => {
+      queueFromResults(
+        { data: { ...RAW_GOLDEN_PACKAGE, fixed_price: 0 }, error: null },
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null },
+        { data: GROOMING_PRICING_CONFIGURATION, error: null }
+      );
+
+      const result = await getPackageById('package-1');
+
+      expect(result.bundled_price).toBe(0);
+    });
+
+    it('rejects an Admin creating a fixed-price package', async () => {
+      await expect(
+        createPackage({
+          requesterId: 'admin-1',
+          requesterRole: 'Admin',
+          input: {
+            branch_ids: ['branch-makati'],
+            name: 'Golden Package',
+            service_ids: ['service-bath', 'service-blowdry'],
+            fixed_price: 599,
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('rejects an Admin changing or clearing the fixed price', async () => {
+      queueFromResults({
+        data: { id: 'package-1', fixed_price: 599 },
+        error: null,
+      });
+
+      await expect(
+        updatePackage({
+          requesterId: 'admin-1',
+          requesterRole: 'Admin',
+          packageId: 'package-1',
+          updates: { fixed_price: null },
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('lets a Superadmin set it', async () => {
+      queueFromResults(
+        { data: { id: 'package-1', fixed_price: null }, error: null }, // lookup
+        { data: null, error: null }, // update
+        { data: PRICED_PACKAGE, error: null }, // final fetch
+        { data: PACKAGE_PRICING_CONFIGURATION, error: null },
+        { data: GROOMING_PRICING_CONFIGURATION, error: null }
+      );
+
+      const result = await updatePackage({
+        requesterId: 'super-1',
+        requesterRole: 'Superadmin',
+        packageId: 'package-1',
+        updates: { fixed_price: 599 },
+      });
+
+      expect(builders[1].update).toHaveBeenCalledWith(
+        expect.objectContaining({ fixed_price: 599 })
+      );
+      expect(result.bundled_price).toBe(599);
+    });
+  });
+
   describe('listPackages', () => {
     it('AC-5: lists active packages filterable by branch, via the joined package_branch_availability array', async () => {
       queueFromResults(

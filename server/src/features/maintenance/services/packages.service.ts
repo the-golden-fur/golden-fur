@@ -20,6 +20,7 @@ import { mergePriceCells } from '../utils/mergePriceCells.ts';
 import {
   assertCanSetPricingMatrix,
   EXTRA_LONG_COAT_SUPERADMIN_ONLY,
+  FIXED_PRICE_SUPERADMIN_ONLY,
 } from '../utils/assertCanSetPricingMatrix.ts';
 import { dropExtraLongCoat } from '../utils/extraLongCoat.ts';
 import { derivePackageDuration } from '../utils/derivePackageDuration.ts';
@@ -99,10 +100,12 @@ function attachBundledPrice(
     (link) => link.services?.duration_minutes ?? null
   );
 
-  const bundledPrice = deriveBundledPrice(
-    basePrices,
-    pricingConfigurations.bundle
-  );
+  // Custom change (package fixed price, 20261030292): a typed price replaces
+  // the bundle discount outright - everything below builds on bundledPrice.
+  const bundledPrice =
+    pkg.fixed_price === null || pkg.fixed_price === undefined
+      ? deriveBundledPrice(basePrices, pricingConfigurations.bundle)
+      : Number(pkg.fixed_price);
   const { package_pricing_cell_overrides: overrides, ...rest } = pkg;
 
   return {
@@ -256,6 +259,12 @@ export async function createPackage({
     current: false,
     message: EXTRA_LONG_COAT_SUPERADMIN_ONLY,
   });
+  assertCanSetPricingMatrix<number | null>({
+    requesterRole,
+    next: input.fixed_price,
+    current: null,
+    message: FIXED_PRICE_SUPERADMIN_ONLY,
+  });
 
   const {
     service_ids: serviceIds,
@@ -317,7 +326,7 @@ export async function updatePackage({
 
   const { data: existing, error: lookupError } = await supabase
     .from('packages')
-    .select('id, use_pricing_matrix, has_extra_long_coat')
+    .select('id, use_pricing_matrix, has_extra_long_coat, fixed_price')
     .eq('id', packageId)
     .maybeSingle();
 
@@ -334,6 +343,13 @@ export async function updatePackage({
     next: updates.has_extra_long_coat,
     current: Boolean(existing.has_extra_long_coat),
     message: EXTRA_LONG_COAT_SUPERADMIN_ONLY,
+  });
+  assertCanSetPricingMatrix<number | null>({
+    requesterRole,
+    next: updates.fixed_price,
+    current:
+      existing.fixed_price === null ? null : Number(existing.fixed_price),
+    message: FIXED_PRICE_SUPERADMIN_ONLY,
   });
 
   if (serviceIds) {

@@ -260,6 +260,9 @@ export interface Package {
    * price and the weight x coat grid. null/absent = cats are priced like any
    * other pet type. */
   cat_price?: number | null;
+  /** This package's own price, replacing the bundle discount. null/absent =
+   * bundled_price is derived. Superadmin-only. */
+  fixed_price?: number | null;
   bundled_price: number;
   /** Derived server-side from included services' duration_minutes - used to
    * estimate a package's contribution to a booking's total scheduled time
@@ -437,6 +440,7 @@ export interface CreatePackagePayload {
   service_ids: string[];
   extras?: string[];
   cat_price?: number;
+  fixed_price?: number;
   use_pricing_matrix?: boolean;
   has_extra_long_coat?: boolean;
   icon?: string | null;
@@ -453,6 +457,8 @@ export interface UpdatePackagePayload {
   extras?: string[];
   /** null clears it - cats go back to the pet type's own pricing. */
   cat_price?: number | null;
+  /** null clears it - the package goes back to the bundle discount. */
+  fixed_price?: number | null;
   use_pricing_matrix?: boolean;
   has_extra_long_coat?: boolean;
   icon?: string | null;
