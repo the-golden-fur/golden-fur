@@ -17,12 +17,23 @@ vi.mock('../../../api/customer.api', () => ({
 }));
 
 vi.mock('../../../../maintenance/api/maintenance.api', () => ({
+  getPetAgeConfiguration: vi.fn().mockResolvedValue({
+    data: {
+      id: 'pet-age-config',
+      max_age_years: 10,
+      updated_by_staff_id: null,
+      updated_at: '2026-01-01T00:00:00.000Z',
+    },
+    error: null,
+  }),
   getPetWeightClassConfiguration: vi.fn().mockResolvedValue({
     data: {
       id: 'weight-class-config',
       m_min_kg: 9.5,
       l_min_kg: 22,
       xl_min_kg: 41,
+      min_weight_kg: 0.1,
+      max_weight_kg: 156,
       updated_by_staff_id: null,
       updated_at: '2026-01-01T00:00:00.000Z',
     },
@@ -372,6 +383,49 @@ describe('PetForm', () => {
     );
   });
 
+  it('pet weight limits: a staff weight out of range is flagged and blocks Add pet', async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-2',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+        isStaff: true,
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Lab' } });
+    fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
+
+    const weightInput = screen.getByLabelText(/^Weight \(/);
+    fireEvent.change(weightInput, { target: { value: '200' } });
+
+    expect(
+      await screen.findByText(
+        /Invalid weight - enter between 0.1 kg and 156 kg/
+      )
+    ).toBeInTheDocument();
+
+    // Bypass the browser's own `max` check to reach the form's.
+    fireEvent.submit(weightInput.closest('form') as HTMLFormElement);
+
+    await vi.waitFor(() =>
+      expect(screen.getAllByText(/Invalid weight/)).toHaveLength(2)
+    );
+    expect(createPet).not.toHaveBeenCalled();
+  });
+
   it('staff can record every coat type, Extra Long Coat (XLC) included', () => {
     render(
       createElement(PetForm, {
@@ -419,5 +473,58 @@ describe('PetForm', () => {
     });
 
     expect(await screen.findByText('Age: 2 yr')).toBeInTheDocument();
+  });
+
+  it('blocks a date of birth older than the configured age limit', async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    const dateInput = screen.getByLabelText(/Date of birth/);
+    const elevenYearsAgo = new Date();
+    elevenYearsAgo.setFullYear(elevenYearsAgo.getFullYear() - 11);
+    const tenYearsAgoKey = [
+      elevenYearsAgo.getFullYear() + 1,
+      String(elevenYearsAgo.getMonth() + 1).padStart(2, '0'),
+      String(elevenYearsAgo.getDate()).padStart(2, '0'),
+    ].join('-');
+    // The picker's `min` follows the loaded 10-year limit.
+    await vi.waitFor(() =>
+      expect(dateInput).toHaveAttribute('min', tenYearsAgoKey)
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Lab' } });
+    fireEvent.click(await screen.findByText('Labrador Retriever'));
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Male' },
+    });
+    fireEvent.change(dateInput, {
+      target: { value: `${elevenYearsAgo.getFullYear()}-01-01` },
+    });
+
+    // The browser's own `min` check blocks a normal submit...
+    expect(dateInput).toBeInvalid();
+    fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
+    expect(createPet).not.toHaveBeenCalled();
+
+    // ...and the form's own check still catches it if that's bypassed.
+    fireEvent.submit(dateInput.closest('form') as HTMLFormElement);
+    expect(
+      await screen.findByText(/A pet cannot be older than 10 years/)
+    ).toBeInTheDocument();
+    expect(createPet).not.toHaveBeenCalled();
   });
 });

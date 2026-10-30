@@ -9,6 +9,10 @@ import {
   toDisplayValue,
   weightUnitLabel,
 } from '../../../../shared/utils/petWeight';
+import {
+  weightLimitMessage,
+  weightLimitsFrom,
+} from '../../../maintenance/utils/petWeightLimits';
 import type { PetWeightClass } from '../../customer.types';
 import styles from './PetWeightAssessmentFields.module.css';
 
@@ -27,6 +31,10 @@ export interface PetWeightAssessmentFieldsProps {
   onWeightClassChange: (value: PetWeightClass | '') => void;
   overridden: boolean;
   onOverriddenChange: (overridden: boolean) => void;
+  /** Pet weight limits: told the out-of-range message (or null once it's
+   * fixed) so the host form can refuse to save - the message is also shown
+   * inline under the weight field. */
+  onWeightLimitErrorChange?: (message: string | null) => void;
   /** Styling hooks so this drops into each host form's own field layout. */
   fieldClassName: string;
   labelClassName: string;
@@ -49,6 +57,7 @@ export function PetWeightAssessmentFields({
   onWeightClassChange,
   overridden,
   onOverriddenChange,
+  onWeightLimitErrorChange,
   fieldClassName,
   labelClassName,
   inputClassName,
@@ -92,6 +101,25 @@ export function PetWeightAssessmentFields({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canonicalKg]);
 
+  // Pet weight limits (Superadmin-set on the same config row as the cut-offs;
+  // the default range until it loads). Any entered weight that can't be
+  // recorded - out of range, zero, negative - is flagged as it's typed; the
+  // server re-checks on save either way.
+  const weightLimits = weightLimitsFrom(cutoffs);
+  const limitMessage =
+    rawValue === ''
+      ? null
+      : weightLimitMessage(
+          toCanonicalKg(Number(rawValue), entryUnit),
+          weightLimits,
+          entryUnit
+        );
+
+  useEffect(() => {
+    onWeightLimitErrorChange?.(limitMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [limitMessage]);
+
   const derivedClass =
     canonicalKg !== null && cutoffs
       ? deriveWeightClass(canonicalKg, cutoffs)
@@ -118,14 +146,28 @@ export function PetWeightAssessmentFields({
           yet weighed
         </span>
         <input
-          className={inputClassName}
+          className={`${inputClassName} ${
+            limitMessage ? styles.inputInvalid : ''
+          }`}
           type="number"
-          min="0"
+          min={toDisplayValue(weightLimits.min_weight_kg, entryUnit)}
+          max={toDisplayValue(weightLimits.max_weight_kg, entryUnit)}
           step="0.01"
           inputMode="decimal"
+          aria-invalid={limitMessage ? true : undefined}
+          aria-describedby={limitMessage ? 'pet-weight-error' : undefined}
           value={rawValue}
           onChange={(event) => setRawValue(event.target.value)}
         />
+        {limitMessage ? (
+          <span
+            className={styles.fieldError}
+            id="pet-weight-error"
+            role="alert"
+          >
+            {limitMessage}
+          </span>
+        ) : null}
       </label>
 
       <div

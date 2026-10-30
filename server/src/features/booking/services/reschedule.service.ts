@@ -14,6 +14,7 @@ import {
 } from './availability.service.ts';
 import {
   assertMeetsNoticeLeadTime,
+  assertWithinAdvanceBookingWindow,
   listAvailableStaff,
   pickRandomAvailableStaff,
   resolveEffectivePolicy,
@@ -160,6 +161,10 @@ export async function rescheduleBooking({
   // CURRENT appointment the customer is making the change. Reuses the policy
   // evaluateNoticePeriod already resolved - no extra query.
   assertMeetsNoticeLeadTime(notice.policy, input.scheduled_start, 'Reschedule');
+
+  // Booking date limit: the NEW slot can't be further out than the target
+  // branch's booking window (1 year max), same as a new booking.
+  await assertWithinAdvanceBookingWindow(input.scheduled_start, targetBranchId);
 
   // Per-branch Grooming hours: the NEW slot must sit inside the target
   // branch's Grooming time too, mirroring createBooking.

@@ -343,6 +343,50 @@ describe('SlotPicker', () => {
     expect(screen.getByText(/at least 3 days notice/i)).toBeInTheDocument();
   });
 
+  it('booking date limit: caps the calendar at today + maxAdvanceDays and disables Next day there', async () => {
+    vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+      data: {
+        slots: SLOTS,
+        window: WINDOW,
+        minNoticeDays: 0,
+        maxAdvanceDays: 1,
+      },
+      error: null,
+    });
+
+    render(
+      createElement(SlotPicker, {
+        accessToken: 'token',
+        branchId: 'branch-1',
+        serviceCategory: 'Grooming',
+        slotDurationMinutes: 60,
+        viewerMode: 'customer',
+        selectedSlot: null,
+        onSelect: vi.fn(),
+      })
+    );
+
+    const now = new Date();
+    const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const ceilingDate = new Date(`${localToday}T00:00:00Z`);
+    ceilingDate.setUTCDate(ceilingDate.getUTCDate() + 1);
+    const ceiling = ceilingDate.toISOString().slice(0, 10);
+
+    const dateInput = (await screen.findByLabelText(
+      'Date'
+    )) as HTMLInputElement;
+    await waitFor(() => expect(dateInput.max).toBe(ceiling));
+    expect(screen.getByText('Next day')).toBeEnabled();
+
+    fireEvent.click(screen.getByText('Next day'));
+
+    await waitFor(() => expect(dateInput.value).toBe(ceiling));
+    expect(screen.getByText('Next day')).toBeDisabled();
+    expect(
+      screen.getByText(/takes bookings up to 1 day ahead/i)
+    ).toBeInTheDocument();
+  });
+
   it('never lets a past date be selected (repro: navigating back a few days still showed a bookable slot)', async () => {
     vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
       data: { slots: SLOTS, window: WINDOW },

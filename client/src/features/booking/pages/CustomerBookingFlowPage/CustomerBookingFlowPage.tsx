@@ -30,6 +30,7 @@ import { PriceMatrixTable } from '../../components/PriceMatrixTable/PriceMatrixT
 import { PetForm } from '../../../customers/components/forms/PetForm/PetForm';
 import { CustomerPicker } from '../../components/CustomerPicker/CustomerPicker';
 import { listBranches } from '../../../maintenance/api/maintenance.api';
+import { branchImageFor } from '../../utils/branchImage';
 import type {
   BranchSummary,
   Package,
@@ -3456,54 +3457,72 @@ export function CustomerBookingFlowPage() {
                 </div>
               );
             })}
-            {pets.length === 0 && !showAddPet ? (
+            {pets.length === 0 ? (
               <p className={styles.copy}>No pets on file yet.</p>
             ) : null}
-            {showAddPet && effectiveCustomerId ? (
-              <PetForm
-                customerId={effectiveCustomerId}
-                accessToken={accessToken!}
-                isStaff={isReceptionistMode}
-                onCreated={(pet) => {
-                  setPets((current) => [...current, pet]);
-                  setSelectedPetId(pet.id);
-                  setShowAddPet(false);
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                // A customer adds pets in their own Pet Manager (the full
-                // pet profile lives there); the booking draft is saved, so
-                // they can come back and carry on. Staff booking for a
-                // walk-in customer have no such page, so they keep the
-                // inline form.
-                onClick={() =>
-                  isReceptionistMode
-                    ? setShowAddPet(true)
-                    : navigate('/portal/pets')
-                }
-              >
-                + Add a pet
-              </button>
-            )}
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              // A customer adds pets in their own Pet Manager (the full pet
+              // profile lives there); the booking draft is saved, so they
+              // can come back and carry on. Staff booking for a walk-in
+              // customer have no such page, so they get the form in a
+              // pop-up over the pet list instead.
+              onClick={() =>
+                isReceptionistMode
+                  ? setShowAddPet(true)
+                  : navigate('/portal/pets')
+              }
+            >
+              + Add a pet
+            </button>
+            {/* Backdrop clicks don't close it - a stray click shouldn't
+                throw away a half-filled pet form. */}
+            <Modal
+              isOpen={showAddPet && Boolean(effectiveCustomerId)}
+              title="Add a pet"
+              onClose={() => setShowAddPet(false)}
+              closeOnBackdropClick={false}
+            >
+              {effectiveCustomerId ? (
+                <PetForm
+                  customerId={effectiveCustomerId}
+                  accessToken={accessToken!}
+                  isStaff={isReceptionistMode}
+                  onCreated={(pet) => {
+                    setPets((current) => [...current, pet]);
+                    setSelectedPetId(pet.id);
+                    setShowAddPet(false);
+                  }}
+                />
+              ) : null}
+            </Modal>
           </div>
         );
 
       case 'branch':
         return (
-          <div className={styles.optionGrid}>
+          <div className={`${styles.optionGrid} ${styles.branchGrid}`}>
             {branches.map((branch) => (
               <button
                 key={branch.id}
                 type="button"
-                className={`${styles.optionCard} ${
+                aria-pressed={selectedBranchId === branch.id}
+                className={`${styles.optionCard} ${styles.branchCard} ${
                   selectedBranchId === branch.id ? styles.selected : ''
                 }`}
                 onClick={() => handleBranchSelect(branch.id)}
               >
-                <span className={styles.optionTitle}>{branch.name}</span>
+                {/* Decorative - the branch name is right below it. */}
+                <img
+                  className={styles.branchImage}
+                  src={branchImageFor(branch.name)}
+                  alt=""
+                  loading="lazy"
+                />
+                <span className={styles.branchBody}>
+                  <span className={styles.optionTitle}>{branch.name}</span>
+                </span>
               </button>
             ))}
           </div>

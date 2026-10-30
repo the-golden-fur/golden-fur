@@ -19,6 +19,11 @@ import {
   isFutureDate,
   todayDateKey,
 } from '../../../../../shared/utils/isFutureDate';
+import { getPetAgeConfiguration } from '../../../../maintenance/api/maintenance.api';
+import {
+  earliestDateOfBirth,
+  RECORD_MAX_PET_AGE_YEARS,
+} from '../../../../maintenance/utils/petAgeLimit';
 import { BreedSelect } from '../BreedSelect/BreedSelect';
 import { PetWeightAssessmentFields } from '../../PetWeightAssessmentFields/PetWeightAssessmentFields';
 import styles from './PetForm.module.css';
@@ -62,9 +67,16 @@ export function PetForm({
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [gender, setGender] = useState<PetGender | ''>('');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  // The Admin-configured age limit (Settings > Config > Pets > Age Limit).
+  // Starts at the 38-year record so the form still guards something if the
+  // config can't be loaded - the server re-checks the real limit either way.
+  const [maxAgeYears, setMaxAgeYears] = useState(RECORD_MAX_PET_AGE_YEARS);
   const [weightClass, setWeightClass] = useState<PetWeightClass | ''>('');
   const [weightKg, setWeightKg] = useState<number | null>(null);
   const [weightClassOverridden, setWeightClassOverridden] = useState(false);
+  // Pet weight limits: set by PetWeightAssessmentFields while the typed
+  // weight is out of range.
+  const [weightLimitError, setWeightLimitError] = useState<string | null>(null);
   const [coatType, setCoatType] = useState<PetCoatType | ''>('');
   // Bumped after each successful create so PetWeightAssessmentFields (which
   // owns its raw input/unit state) remounts clean for the next pet.
@@ -88,6 +100,27 @@ export function PetForm({
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void getPetAgeConfiguration(accessToken)
+      .then((result) => {
+        if (isMounted && result.data) {
+          setMaxAgeYears(result.data.max_age_years);
+        }
+      })
+      .catch(() => {
+        // Non-fatal: keep the 38-year default - the server re-checks the
+        // real limit on save.
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken]);
+
+  const minDateOfBirth = earliestDateOfBirth(todayDateKey(), maxAgeYears);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -115,6 +148,21 @@ export function PetForm({
     // date can still get past it.
     if (dateOfBirth && isFutureDate(dateOfBirth)) {
       setError('Date of birth cannot be in the future.');
+      return;
+    }
+
+    // Same for `min` and a typed-in date older than the age limit.
+    if (dateOfBirth && dateOfBirth < minDateOfBirth) {
+      setError(
+        `A pet cannot be older than ${maxAgeYears} ${
+          maxAgeYears === 1 ? 'year' : 'years'
+        }. Please check the date of birth.`
+      );
+      return;
+    }
+
+    if (isStaff && weightLimitError) {
+      setError(weightLimitError);
       return;
     }
 
@@ -252,6 +300,7 @@ export function PetForm({
         <input
           className={styles.input}
           type="date"
+          min={minDateOfBirth}
           max={todayDateKey()}
           value={dateOfBirth}
           onChange={(event) => setDateOfBirth(event.target.value)}
@@ -271,6 +320,7 @@ export function PetForm({
             onWeightClassChange={setWeightClass}
             overridden={weightClassOverridden}
             onOverriddenChange={setWeightClassOverridden}
+            onWeightLimitErrorChange={setWeightLimitError}
             fieldClassName={styles.field}
             labelClassName={styles.label}
             inputClassName={styles.input}

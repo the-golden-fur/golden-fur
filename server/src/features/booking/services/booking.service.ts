@@ -62,6 +62,7 @@ import {
 } from './capacity.service.ts';
 import {
   assertMeetsBookingLeadTime,
+  assertWithinAdvanceBookingWindow,
   autoAssignStaff,
   isStaffPickerEnabled,
   listAvailableStaff,
@@ -1214,6 +1215,11 @@ export async function createBooking({
 
     await assertMeetsBookingLeadTime(
       policy,
+      input.scheduled_start,
+      input.branch_id
+    );
+    // ...and no further out than the branch's booking window (1 year max).
+    await assertWithinAdvanceBookingWindow(
       input.scheduled_start,
       input.branch_id
     );

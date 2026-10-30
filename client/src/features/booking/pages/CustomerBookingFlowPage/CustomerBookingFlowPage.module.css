@@ -220,6 +220,34 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* Branch step: photo-on-top cards. Both branch photos have very different
+ * source shapes (Makati portrait, Southwoods landscape), so the shared
+ * aspect-ratio + object-fit crop is what keeps them identical. */
+.branchGrid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.optionCard.branchCard {
+  align-content: start;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.branchImage {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  object-position: center;
+}
+
+.branchBody {
+  display: grid;
+  gap: var(--space-0-5);
+  padding: var(--space-2);
+}
+
 .optionCardWrapper {
   display: grid;
   gap: var(--space-1);

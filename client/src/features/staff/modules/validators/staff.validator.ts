@@ -10,10 +10,13 @@ const COMMUNICATION_CHANNELS = ['Call', 'Text', 'Viber', 'Messenger'] as const;
  */
 export const updateStaffProfileValidator = z
   .object({
-    display_name: z
+    // Staff names (20261030290): staff set their own nickname (blank
+    // clears it); display_name is derived by the database.
+    nickname: z
       .string()
       .trim()
-      .min(1, 'Display name cannot be empty')
+      .transform((value) => (value === '' ? null : value))
+      .nullable()
       .optional(),
     phone_number: z
       .string()

@@ -167,6 +167,18 @@ describe('date_of_birth', () => {
       updatePetValidator.safeParse({ date_of_birth: 'yesterday' }).success
     ).toBe(false);
   });
+
+  it('rejects a pet older than the 38-year record, accepts exactly 38', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-18T04:00:00.000Z'));
+
+    expect(
+      updatePetValidator.safeParse({ date_of_birth: '1988-10-17' }).success
+    ).toBe(false);
+    expect(
+      updatePetValidator.safeParse({ date_of_birth: '1988-10-18' }).success
+    ).toBe(true);
+  });
 });
 
 describe('createPetValidatorStaff', () => {

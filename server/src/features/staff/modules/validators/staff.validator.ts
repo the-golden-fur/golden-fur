@@ -3,6 +3,16 @@ import { ALL_STAFF_ROLES } from '../../staff.types.ts';
 
 const COMMUNICATION_CHANNELS = ['Call', 'Text', 'Viber', 'Messenger'] as const;
 
+/** Staff names (20261030290): a legal name part - required wherever it's
+ * accepted - and the optional ones, where an empty string or null clears it. */
+const requiredNamePart = (label: string) =>
+  z.string().trim().min(1, `${label} cannot be empty`);
+const optionalNamePart = z
+  .string()
+  .trim()
+  .transform((value) => (value === '' ? null : value))
+  .nullable();
+
 /**
  * Deliberately narrow and `.strict()`: role/branch_id/username/profile_photo_url
  * are out of scope for this self-service PATCH (see Issue #22 dev notes), so any
@@ -11,11 +21,10 @@ const COMMUNICATION_CHANNELS = ['Call', 'Text', 'Viber', 'Messenger'] as const;
  */
 export const updateStaffProfileValidator = z
   .object({
-    display_name: z
-      .string()
-      .trim()
-      .min(1, 'Display name cannot be empty')
-      .optional(),
+    // Staff names (20261030290): staff choose what they're called; their
+    // legal name is managed by Admins (manageStaffAccountValidator) and
+    // display_name is derived by the database, so neither is accepted here.
+    nickname: optionalNamePart.optional(),
     phone_number: z
       .string()
       .trim()
@@ -52,10 +61,17 @@ export const manageStaffAccountValidator = z
     role: z.enum(ALL_STAFF_ROLES).optional(),
     branch_id: z.string().uuid().optional(),
     is_active: z.boolean().optional(),
+    // Staff names (20261030290) - same Admin-or-Superadmin permission as
+    // is_active. First/last can be changed but not cleared; middle name and
+    // nickname can be cleared (null or '').
+    first_name: requiredNamePart('First name').optional(),
+    middle_name: optionalNamePart.optional(),
+    last_name: requiredNamePart('Last name').optional(),
+    nickname: optionalNamePart.optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one of role, branch_id, is_active is required',
+    message: 'At least one field to change is required',
   });
 
 export type ManageStaffAccountInput = z.infer<
@@ -63,15 +79,18 @@ export type ManageStaffAccountInput = z.infer<
 >;
 
 /**
- * Admin Creates a Staff Account (M01 Process 1). display_name is required
- * here (not optional as in self-edit) since the profile row's own column is
- * NOT NULL and there's no self-service step before the account is usable.
+ * Admin Creates a Staff Account (M01 Process 1). First and last name are
+ * required (staff names, 20261030290); display_name is derived from them (or
+ * the nickname) by the database, so it is no longer accepted.
  */
 export const createStaffAccountValidator = z
   .object({
     username: z.string().trim().min(1, 'Username is required'),
     registered_email: z.string().trim().email('Invalid email address'),
-    display_name: z.string().trim().min(1, 'Display name is required'),
+    first_name: z.string().trim().min(1, 'First name is required'),
+    middle_name: optionalNamePart.optional(),
+    last_name: z.string().trim().min(1, 'Last name is required'),
+    nickname: optionalNamePart.optional(),
     role: z.enum(ALL_STAFF_ROLES),
     branch_id: z.string().uuid('Invalid branch_id'),
   })

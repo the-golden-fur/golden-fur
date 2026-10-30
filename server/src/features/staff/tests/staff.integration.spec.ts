@@ -212,7 +212,8 @@ describe('staff profile CRUD (Issue #22)', () => {
             id: 'staff-1',
             branch_id: 'branch-a',
             role: 'Receptionist',
-            display_name: 'New Name',
+            nickname: 'Newbie',
+            display_name: 'Newbie',
           },
           error: null,
         }
@@ -221,12 +222,12 @@ describe('staff profile CRUD (Issue #22)', () => {
       const res = await request(app)
         .patch('/staff/staff-1')
         .set('Authorization', 'Bearer token')
-        .send({ display_name: 'New Name' });
+        .send({ nickname: 'Newbie' });
 
       expect(res.status).toBe(200);
-      expect(res.body.staff.display_name).toBe('New Name');
+      expect(res.body.staff.display_name).toBe('Newbie');
       expect(builders[2].update).toHaveBeenCalledWith({
-        display_name: 'New Name',
+        nickname: 'Newbie',
       });
     });
 

@@ -10,6 +10,9 @@ vi.mock('../AdminPetTypesPage/AdminPetTypesPage', () => ({
 vi.mock('../AdminBreedsPage/AdminBreedsPage', () => ({
   AdminBreedsPage: () => createElement('div', null, 'Breeds content'),
 }));
+vi.mock('../PetAgeLimitPage/PetAgeLimitPage', () => ({
+  PetAgeLimitPage: () => createElement('div', null, 'Age Limit content'),
+}));
 
 describe('AdminPetsPage', () => {
   it('defaults to the Pet Types section', () => {
@@ -35,5 +38,15 @@ describe('AdminPetsPage', () => {
       'aria-selected',
       'true'
     );
+  });
+
+  it('switches to Age Limit', async () => {
+    render(createElement(AdminPetsPage));
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('tab', { name: 'Age Limit' }));
+
+    expect(screen.getByText('Age Limit content')).toBeInTheDocument();
+    expect(screen.queryByText('Pet Types content')).not.toBeInTheDocument();
   });
 });

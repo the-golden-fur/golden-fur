@@ -8,7 +8,7 @@ import {
 describe('updateStaffProfileValidator', () => {
   it('accepts a partial, valid payload', () => {
     const result = updateStaffProfileValidator.safeParse({
-      display_name: 'Jamie Cruz',
+      nickname: 'Jamie',
       preferred_communication_channel: 'Text',
     });
 
@@ -19,12 +19,13 @@ describe('updateStaffProfileValidator', () => {
     expect(updateStaffProfileValidator.safeParse({}).success).toBe(true);
   });
 
-  it('rejects an empty display name', () => {
-    const result = updateStaffProfileValidator.safeParse({
-      display_name: '   ',
+  it('treats a blank nickname as clearing it, and no longer accepts display_name', () => {
+    expect(updateStaffProfileValidator.parse({ nickname: '   ' })).toEqual({
+      nickname: null,
     });
-
-    expect(result.success).toBe(false);
+    expect(
+      updateStaffProfileValidator.safeParse({ display_name: 'Jamie' }).success
+    ).toBe(false);
   });
 
   it('rejects an unrecognized field, e.g. role', () => {

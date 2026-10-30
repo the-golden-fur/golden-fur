@@ -131,6 +131,10 @@ export interface PetWeightClassConfiguration {
   m_min_kg: number;
   l_min_kg: number;
   xl_min_kg: number;
+  /** Custom change (pet weight limits): the lightest/heaviest weight staff
+   * may record. min < m_min_kg and xl_min_kg < max <= 499. */
+  min_weight_kg: number;
+  max_weight_kg: number;
   updated_by_staff_id: string | null;
   updated_at: string;
 }
@@ -139,6 +143,21 @@ export interface UpdatePetWeightClassConfigurationPayload {
   m_min_kg?: number;
   l_min_kg?: number;
   xl_min_kg?: number;
+  min_weight_kg?: number;
+  max_weight_kg?: number;
+}
+
+/** Custom change (pet age limit): mirrors the server PetAgeConfiguration -
+ * the oldest a pet may be when registered, 1-38 years. */
+export interface PetAgeConfiguration {
+  id: string;
+  max_age_years: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+export interface UpdatePetAgeConfigurationPayload {
+  max_age_years: number;
 }
 
 export interface ServiceBranchAvailability {
@@ -318,6 +337,9 @@ export interface Branch {
    * day's full operating hours. */
   grooming_hours: OperatingHours;
   timezone: string;
+  /** Custom change (booking date limit): how many days ahead a booking can
+   * be made here, 1-365. Superadmin-set in Branches > Configure. */
+  max_advance_booking_days: number;
   is_active: boolean;
   archived_at: string | null;
   created_at: string;

@@ -70,7 +70,18 @@ export interface StaffProfile {
   role: StaffRole;
   username: string;
   registered_email: string;
+  /** The name shown around the app - DERIVED by the database
+   * (staff_profiles_sync_display_name, 20261030290): the nickname, else
+   * "first_name last_name", else the legacy free-text name. Never written
+   * directly any more. */
   display_name: string;
+  /** Legal name (Staff Management) - null for staff created before names
+   * were split, until an Admin records it. first/last are set together. */
+  first_name: string | null;
+  middle_name: string | null;
+  last_name: string | null;
+  /** Optional name shown instead of "First Last". Staff can set their own. */
+  nickname: string | null;
   profile_photo_url: string | null;
   phone_number: string | null;
   emergency_contact_name: string | null;

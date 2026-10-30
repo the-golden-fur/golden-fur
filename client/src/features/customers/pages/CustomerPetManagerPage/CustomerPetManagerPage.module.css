@@ -186,17 +186,17 @@
 /* Table's trailing Delete action - labelled and in the error colour so
    it reads as a destructive button at a glance, outlined (not filled) so
    it doesn't compete with the pet's name. */
-.deleteButton {
+.archiveButton {
   display: flex;
   align-items: center;
   justify-content: center;
   /* Centred in its cell (the shared table right-aligns action cells). */
   width: fit-content;
   margin-inline: auto;
-  border: 1px solid var(--color-error-border);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--color-error-text);
+  color: var(--color-text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-xs);
@@ -209,32 +209,32 @@
     color 150ms ease;
 }
 
-.deleteButton:hover,
-.deleteButton:focus-visible {
-  background: var(--color-error-bg);
-  color: var(--color-error-text);
+.archiveButton:hover,
+.archiveButton:focus-visible {
+  border-color: var(--color-text-secondary);
+  color: var(--color-text-primary);
 }
 
-.deleteButton:focus-visible {
-  outline: 2px solid var(--color-error-text);
+.archiveButton:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
   outline-offset: 2px;
 }
 
-.deleteWarning {
+.archiveNotice {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
   margin: 0;
 }
 
-.deleteWarningIcon {
+.archiveNoticeIcon {
   flex: none;
   width: 1.25rem;
   height: 1.25rem;
-  color: var(--color-error-text);
+  color: var(--color-text-secondary);
 }
 
-/* Delete dialog's "why" question - plain stacked radios under the
+/* Archive dialog's "why" question - plain stacked radios under the
    warning, no extra box, so the warning stays the first thing read. */
 .reasonGroup {
   display: grid;
@@ -294,4 +294,96 @@
 .successBanner {
   background: var(--color-success-bg);
   color: var(--color-success-text);
+}
+
+/* Archived pets: a collapsed list under the roster, each restorable. */
+.archivedSection {
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+
+.archivedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: fit-content;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: 0;
+}
+
+.archivedToggle:hover {
+  color: var(--color-text-primary);
+}
+
+.archivedToggle:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.archivedList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.archivedRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.archivedRow:last-child {
+  border-bottom: 0;
+}
+
+.archivedInfo {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.archivedName {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.restoreButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-2);
+}
+
+.restoreButton:hover:not(:disabled) {
+  border-color: var(--color-accent-gold-primary);
+  color: var(--color-accent-gold-primary);
+}
+
+.restoreButton:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.restoreButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }

@@ -115,6 +115,23 @@ export interface PetWeightClassConfiguration {
   m_min_kg: number;
   l_min_kg: number;
   xl_min_kg: number;
+  /** Custom change (pet weight limits, 20261030288): the lightest/heaviest
+   * weight staff may record. min < m_min_kg and xl_min_kg < max <= 499. */
+  min_weight_kg: number;
+  max_weight_kg: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+/**
+ * Custom change (pet age limit): the singleton oldest age, in years, a pet's
+ * date of birth may imply when it's registered (1-38, see
+ * RECORD_MAX_PET_AGE_YEARS). Checked by pet.controller.ts on create and on a
+ * changed date of birth.
+ */
+export interface PetAgeConfiguration {
+  id: string;
+  max_age_years: number;
   updated_by_staff_id: string | null;
   updated_at: string;
 }

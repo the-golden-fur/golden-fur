@@ -8,6 +8,10 @@ import {
 } from '../../maintenance.types';
 import styles from './BranchDetailsForm.module.css';
 
+/** Booking date limit: 1 year at most - the server validator and the
+ * branches CHECK constraint enforce the same ceiling. */
+const MAX_ADVANCE_BOOKING_DAYS_LIMIT = 365;
+
 const WEEKDAY_LABELS: Record<Weekday, string> = {
   monday: 'Monday',
   tuesday: 'Tuesday',
@@ -24,6 +28,9 @@ interface BranchFormState {
   contact_number: string;
   is_vet_branch: boolean;
   timezone: string;
+  /** Kept as the raw input text so the field can be cleared while typing;
+   * converted (and range-checked) on submit. */
+  max_advance_booking_days: string;
   operating_hours: OperatingHours;
   grooming_hours: OperatingHours;
 }
@@ -34,6 +41,7 @@ const EMPTY_FORM: BranchFormState = {
   contact_number: '',
   is_vet_branch: false,
   timezone: 'Asia/Manila',
+  max_advance_booking_days: String(MAX_ADVANCE_BOOKING_DAYS_LIMIT),
   operating_hours: {},
   grooming_hours: {},
 };
@@ -45,6 +53,9 @@ function formStateFromBranch(branch: Branch): BranchFormState {
     contact_number: branch.contact_number ?? '',
     is_vet_branch: branch.is_vet_branch,
     timezone: branch.timezone,
+    max_advance_booking_days: String(
+      branch.max_advance_booking_days ?? MAX_ADVANCE_BOOKING_DAYS_LIMIT
+    ),
     operating_hours: branch.operating_hours,
     grooming_hours: branch.grooming_hours ?? {},
   };
@@ -105,6 +116,7 @@ export interface BranchDetailsPayload {
   contact_number: string | null;
   is_vet_branch: boolean;
   timezone: string;
+  max_advance_booking_days: number;
   operating_hours: OperatingHours;
   grooming_hours: OperatingHours;
 }
@@ -269,6 +281,19 @@ export function BranchDetailsForm({
       return;
     }
 
+    const maxAdvanceDays = Number(form.max_advance_booking_days);
+
+    if (
+      !Number.isInteger(maxAdvanceDays) ||
+      maxAdvanceDays < 1 ||
+      maxAdvanceDays > MAX_ADVANCE_BOOKING_DAYS_LIMIT
+    ) {
+      setFormError(
+        `Booking window must be a whole number of days from 1 to ${MAX_ADVANCE_BOOKING_DAYS_LIMIT}.`
+      );
+      return;
+    }
+
     const groomingHoursError = findGroomingHoursError(form);
 
     if (groomingHoursError) {
@@ -287,6 +312,7 @@ export function BranchDetailsForm({
         : null,
       is_vet_branch: form.is_vet_branch,
       timezone: form.timezone.trim(),
+      max_advance_booking_days: maxAdvanceDays,
       operating_hours: form.operating_hours,
       grooming_hours: form.grooming_hours,
     });
@@ -366,6 +392,33 @@ export function BranchDetailsForm({
           }
         />
         <span>Veterinary services offered at this branch</span>
+      </label>
+
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>
+          Furthest a booking can be made (days ahead)
+        </span>
+        <input
+          className={styles.input}
+          type="number"
+          min={1}
+          max={MAX_ADVANCE_BOOKING_DAYS_LIMIT}
+          step={1}
+          inputMode="numeric"
+          aria-describedby="max-advance-booking-days-hint"
+          value={form.max_advance_booking_days}
+          onChange={(event) =>
+            setForm((prev) => ({
+              ...prev,
+              max_advance_booking_days: event.target.value,
+            }))
+          }
+          required
+        />
+        <span className={styles.sectionHint} id="max-advance-booking-days-hint">
+          Customers and staff can&apos;t pick a booking date further out than
+          this. Up to {MAX_ADVANCE_BOOKING_DAYS_LIMIT} days (1 year).
+        </span>
       </label>
 
       <section aria-labelledby="operating-hours-heading">

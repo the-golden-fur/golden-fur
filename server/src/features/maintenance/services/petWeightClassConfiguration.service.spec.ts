@@ -35,6 +35,8 @@ const CONFIGURATION = {
   m_min_kg: 9.5,
   l_min_kg: 22,
   xl_min_kg: 41,
+  min_weight_kg: 0.1,
+  max_weight_kg: 156,
   updated_by_staff_id: null,
   updated_at: '2026-01-01T00:00:00.000Z',
 };
@@ -86,6 +88,44 @@ describe('petWeightClassConfiguration.service', () => {
           updates: { l_min_kg: 50 }, // would land above xl_min_kg (41)
         })
       ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('rejects weight limits that would cut off a class (min must be below M, max above XL)', async () => {
+      queueFromResults({ data: CONFIGURATION, error: null });
+      await expect(
+        updatePetWeightClassConfiguration({
+          requesterId: 'admin-1',
+          updates: { min_weight_kg: 10 }, // above the M cut-off (9.5)
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Lightest weight must be below the M cut-off',
+      });
+
+      queueFromResults({ data: CONFIGURATION, error: null });
+      await expect(
+        updatePetWeightClassConfiguration({
+          requesterId: 'admin-1',
+          updates: { max_weight_kg: 40 }, // below the XL cut-off (41)
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Heaviest weight must be above the XL cut-off',
+      });
+    });
+
+    it('saves new weight limits that wrap the cut-offs', async () => {
+      queueFromResults(
+        { data: CONFIGURATION, error: null },
+        { data: { ...CONFIGURATION, max_weight_kg: 100 }, error: null }
+      );
+
+      const result = await updatePetWeightClassConfiguration({
+        requesterId: 'superadmin-1',
+        updates: { max_weight_kg: 100 },
+      });
+
+      expect(result.max_weight_kg).toBe(100);
     });
   });
 });

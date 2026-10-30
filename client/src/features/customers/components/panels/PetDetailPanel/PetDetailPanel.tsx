@@ -79,6 +79,9 @@ export function PetDetailPanel({
   );
   const [weightKg, setWeightKg] = useState<number | null>(pet.weight_kg);
   const [weightClassOverridden, setWeightClassOverridden] = useState(false);
+  // Pet weight limits: set by PetWeightAssessmentFields while the typed
+  // weight is out of range.
+  const [weightLimitError, setWeightLimitError] = useState<string | null>(null);
   const [weightFieldsKey, setWeightFieldsKey] = useState(0);
   const [coatType, setCoatType] = useState<PetCoatType | ''>(
     pet.coat_type ?? ''
@@ -148,6 +151,14 @@ export function PetDetailPanel({
 
     if (dateOfBirth && isFutureDate(dateOfBirth)) {
       setError('Date of birth cannot be in the future.');
+      return;
+    }
+
+    // Only a weight being changed is blocked - matching the server, a pet
+    // weighed before the limits existed can still be edited (the inline
+    // warning still shows).
+    if (isStaff && weightLimitError && weightKg !== pet.weight_kg) {
+      setError(weightLimitError);
       return;
     }
 
@@ -279,6 +290,7 @@ export function PetDetailPanel({
                     onWeightClassChange={setWeightClass}
                     overridden={weightClassOverridden}
                     onOverriddenChange={setWeightClassOverridden}
+                    onWeightLimitErrorChange={setWeightLimitError}
                     fieldClassName={styles.field}
                     labelClassName={styles.label}
                     inputClassName={styles.input}

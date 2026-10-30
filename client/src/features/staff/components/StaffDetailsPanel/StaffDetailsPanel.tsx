@@ -1,6 +1,7 @@
 import { UnavailabilityBlockBadge } from '../badges/UnavailabilityBlockBadge/UnavailabilityBlockBadge';
 import type { StaffProfile } from '../../staff.types';
 import styles from './StaffDetailsPanel.module.css';
+import { staffLegalName } from '../../utils/staffName';
 
 interface StaffDetailsPanelProps {
   profile: StaffProfile;
@@ -56,7 +57,13 @@ export function StaffDetailsPanel({
     .join(' · ');
 
   const details: Array<{ label: string; value: string }> = [
-    { label: 'Full name', value: profile.display_name },
+    // Staff names (20261030290): the recorded legal name, and the nickname
+    // shown around the app (display_name, in the header above, is derived).
+    {
+      label: 'Legal name',
+      value: staffLegalName(profile) ?? 'Not recorded yet',
+    },
+    { label: 'Nickname', value: profile.nickname ?? EMPTY_VALUE },
     { label: 'Email', value: profile.registered_email },
     { label: 'Username', value: profile.username },
     { label: 'Role', value: profile.role },

@@ -434,7 +434,10 @@ export async function createStaffAccountController(
       requesterBranchId,
       username: parsed.data.username,
       registeredEmail: parsed.data.registered_email,
-      displayName: parsed.data.display_name,
+      firstName: parsed.data.first_name,
+      middleName: parsed.data.middle_name,
+      lastName: parsed.data.last_name,
+      nickname: parsed.data.nickname,
       role: parsed.data.role,
       branchId: parsed.data.branch_id,
     });
@@ -484,6 +487,10 @@ export async function manageStaffAccountController(
       role: parsed.data.role,
       branchId: parsed.data.branch_id,
       isActive: parsed.data.is_active,
+      firstName: parsed.data.first_name,
+      middleName: parsed.data.middle_name,
+      lastName: parsed.data.last_name,
+      nickname: parsed.data.nickname,
     });
 
     return res.status(200).json({ staff });

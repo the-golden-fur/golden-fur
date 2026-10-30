@@ -32,6 +32,12 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
 }));
 
+// PetForm has its own spec - stubbed here so the staff "Add a pet" pop-up
+// can be opened without mocking every API the real form loads.
+vi.mock('../../../customers/components/forms/PetForm/PetForm', () => ({
+  PetForm: () => createElement('div', null, 'Pet form'),
+}));
+
 vi.mock('../../../catalog/api/catalog.api', () => ({
   listCustomerCatalog: vi.fn(),
   listCustomerCatalogForStaff: vi.fn(),
@@ -262,7 +268,11 @@ const PET = {
   updated_at: '',
 };
 
-const BRANCH = { id: 'branch-1', name: 'Makati', is_vet_branch: true };
+const BRANCH = {
+  id: 'branch-1',
+  name: 'Makati',
+  is_vet_branch: true,
+};
 
 const GOLDEN_PACKAGE = {
   id: 'package-golden-1',
@@ -565,6 +575,17 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     expect(rewardsApi.getMyCoupons).not.toHaveBeenCalled();
+  });
+
+  it('shows each branch as a photo card', async () => {
+    renderPage();
+
+    const name = await screen.findByText('Makati');
+    const card = name.closest('button') as HTMLButtonElement;
+    expect(card.querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringMatching(/makatigodenfur/)
+    );
   });
 
   it('Custom change (duplicate-booking prevention): a pet with an unresolved booking (any category) stays on the Pet step and never advances', async () => {
@@ -3503,6 +3524,37 @@ describe('CustomerBookingFlowPage', () => {
           expect.objectContaining({ branch_id: 'branch-1' })
         )
       );
+    });
+
+    it('Pet step: staff "Add a pet" opens the form in a pop-up over the pet list', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [staffSelf('Receptionist')],
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderStaffPage();
+
+      await waitFor(() =>
+        expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Jamie Cruz'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+      expect(screen.queryByText('Pet form')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '+ Add a pet' }));
+
+      const dialog = screen.getByRole('dialog', { name: 'Add a pet' });
+      expect(dialog).toHaveTextContent('Pet form');
+      // The pet list stays put behind it.
+      expect(screen.getByText('Max')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Close' }));
+      expect(
+        screen.queryByRole('dialog', { name: 'Add a pet' })
+      ).not.toBeInTheDocument();
     });
 
     it('an Admin also never sees the Branch step', async () => {
