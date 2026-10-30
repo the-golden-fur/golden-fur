@@ -11,6 +11,7 @@ import {
 } from './capacity.service.ts';
 import {
   bookingLeadDays,
+  DEFAULT_MAX_ADVANCE_BOOKING_DAYS,
   listAvailableStaff,
   noticeLeadDays,
   resolveEffectivePolicy,
@@ -87,6 +88,9 @@ interface BranchRow {
    * Grooming follows that day's full operating hours. */
   grooming_hours?: WeeklyHours | null;
   timezone: string;
+  /** Custom change (booking date limit, 20261030287) - only selected by
+   * getDaySlots. */
+  max_advance_booking_days?: number | null;
 }
 
 /**
@@ -381,7 +385,9 @@ export async function getDaySlots({
 }: GetDaySlotsParams): Promise<SlotAvailability[]> {
   const { data: branch, error: branchError } = await supabase
     .from('branches')
-    .select('operating_hours, grooming_hours, timezone')
+    .select(
+      'operating_hours, grooming_hours, timezone, max_advance_booking_days'
+    )
     .eq('id', branchId)
     .maybeSingle();
 
@@ -425,6 +431,17 @@ export async function getDaySlots({
     minLeadDays > 0 &&
     date < addDaysToDateString(todayInBranchTz, minLeadDays)
   ) {
+    return [];
+  }
+
+  // Booking date limit (Superadmin-set per branch, 1 year at most): every day
+  // past today + max_advance_booking_days comes back empty, same as a closed
+  // day, for new bookings and reschedules alike. The Slot Picker also caps
+  // its calendar there (max_advance_days on the availability response).
+  const maxAdvanceDays =
+    branchRow.max_advance_booking_days ?? DEFAULT_MAX_ADVANCE_BOOKING_DAYS;
+
+  if (date > addDaysToDateString(todayInBranchTz, maxAdvanceDays)) {
     return [];
   }
 

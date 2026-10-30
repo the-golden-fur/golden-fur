@@ -35,6 +35,7 @@ import {
 } from './capacity.service.ts';
 import {
   assertMeetsBookingLeadTime,
+  assertWithinAdvanceBookingWindow,
   resolveEffectivePolicy,
 } from './staffPicker.service.ts';
 import {
@@ -809,6 +810,7 @@ async function resolveSubBooking({
       subInput.scheduled_start,
       branchId
     );
+    await assertWithinAdvanceBookingWindow(subInput.scheduled_start, branchId);
   }
 
   const staffResolution = await resolveStaffAssignment({

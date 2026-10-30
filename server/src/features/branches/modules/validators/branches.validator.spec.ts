@@ -136,3 +136,29 @@ describe('createBranchValidator', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('max_advance_booking_days', () => {
+  it('accepts 1 to 365 whole days on update and create', () => {
+    for (const max_advance_booking_days of [1, 30, 365]) {
+      expect(
+        updateBranchValidator.safeParse({ max_advance_booking_days }).success
+      ).toBe(true);
+    }
+    expect(
+      createBranchValidator.safeParse({
+        name: 'Alabang',
+        address: 'Alabang, Muntinlupa',
+        timezone: 'Asia/Manila',
+        max_advance_booking_days: 90,
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects anything over 1 year, under 1 day, or fractional', () => {
+    for (const max_advance_booking_days of [366, 0, 12.5]) {
+      expect(
+        updateBranchValidator.safeParse({ max_advance_booking_days }).success
+      ).toBe(false);
+    }
+  });
+});

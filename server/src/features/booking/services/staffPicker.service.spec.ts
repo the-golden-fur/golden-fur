@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   assertMeetsBookingLeadTime,
+  assertWithinAdvanceBookingWindow,
   autoAssignStaff,
   bookingLeadDays,
   getStaffPickerOptions,
@@ -172,6 +173,40 @@ describe('staffPicker.service (#52)', () => {
           booking_notice_period_days: 2,
         } as never)
       ).toBe(2);
+    });
+
+    it('assertWithinAdvanceBookingWindow allows the last day of the window and rejects the day after (branch-tz calendar days)', async () => {
+      vi.useFakeTimers();
+      // 10:00 Asia/Manila on 2026-10-30.
+      vi.setSystemTime(new Date('2026-10-30T02:00:00.000Z'));
+      const branch = {
+        data: { timezone: 'Asia/Manila', max_advance_booking_days: 30 },
+        error: null,
+      };
+
+      // 2026-11-29 09:00 Manila = today + 30 days - allowed.
+      queueFromResults(branch);
+      await expect(
+        assertWithinAdvanceBookingWindow('2026-11-29T01:00:00.000Z', 'branch-1')
+      ).resolves.toBeUndefined();
+
+      // 2026-11-30 Manila - one day past the window.
+      queueFromResults(branch);
+      await expect(
+        assertWithinAdvanceBookingWindow('2026-11-30T01:00:00.000Z', 'branch-1')
+      ).rejects.toMatchObject({ statusCode: 422 });
+
+      vi.useRealTimers();
+    });
+
+    it('assertWithinAdvanceBookingWindow falls back to 1 year when the branch has no value', async () => {
+      queueFromResults({ data: { timezone: 'Asia/Manila' }, error: null });
+      await expect(
+        assertWithinAdvanceBookingWindow(
+          new Date(Date.now() + 400 * 864e5).toISOString(),
+          'branch-1'
+        )
+      ).rejects.toMatchObject({ statusCode: 422 });
     });
 
     it('assertMeetsBookingLeadTime is a no-op at the default floor of 0 (no branch lookup)', async () => {

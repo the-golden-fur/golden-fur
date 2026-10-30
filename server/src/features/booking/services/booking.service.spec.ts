@@ -26,6 +26,14 @@ import {
   assertWithinGroomingHours,
 } from './availability.service.ts';
 
+// Booking date limit: assertWithinAdvanceBookingWindow is covered by
+// staffPicker.service.spec.ts - stubbed here so its branch lookup stays out of
+// these tests' sequential mock queues. Everything else in the module is real.
+vi.mock('./staffPicker.service.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./staffPicker.service.ts')>()),
+  assertWithinAdvanceBookingWindow: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
 }));

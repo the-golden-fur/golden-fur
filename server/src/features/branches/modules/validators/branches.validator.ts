@@ -3,6 +3,18 @@ import { WEEKDAYS, type OperatingHours } from '../../branches.types.ts';
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+/** Custom change (booking date limit): whole days ahead a booking may be
+ * made, 1 year at most. The branches CHECK constraint is the backstop. */
+const MAX_ADVANCE_BOOKING_DAYS_LIMIT = 365;
+const maxAdvanceBookingDaysValidator = z
+  .number()
+  .int('Booking window must be a whole number of days')
+  .min(1, 'Booking window must be at least 1 day')
+  .max(
+    MAX_ADVANCE_BOOKING_DAYS_LIMIT,
+    `Booking window cannot be more than ${MAX_ADVANCE_BOOKING_DAYS_LIMIT} days (1 year)`
+  );
+
 const operatingHoursEntryValidator = z
   .object({
     open: z.string().regex(TIME_PATTERN, 'Use HH:MM (24h)'),
@@ -73,6 +85,7 @@ export const updateBranchValidator = z
     timezone: z.string().trim().min(1).optional(),
     operating_hours: operatingHoursValidator.optional(),
     grooming_hours: operatingHoursValidator.optional(),
+    max_advance_booking_days: maxAdvanceBookingDaysValidator.optional(),
     /** Deactivate/reactivate - a plain field update, same as promos'
      * updatePromo, not a dedicated endpoint. */
     is_active: z.boolean().optional(),
@@ -91,6 +104,7 @@ export const createBranchValidator = z
     timezone: z.string().trim().min(1),
     operating_hours: operatingHoursValidator.optional().default({}),
     grooming_hours: operatingHoursValidator.optional().default({}),
+    max_advance_booking_days: maxAdvanceBookingDaysValidator.optional(),
   })
   .strict()
   .superRefine(refineGroomingWithinOperatingHours);

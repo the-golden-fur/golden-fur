@@ -103,6 +103,9 @@ export function SlotPicker({
   // Minimum-notice lead time, reported by the availability endpoint. Until
   // the first fetch resolves it stays 0 (no floor), matching prior behavior.
   const [minNoticeDays, setMinNoticeDays] = useState(0);
+  // Booking date limit (Superadmin-set per branch, 1 year at most), also
+  // reported by the availability endpoint. 365 until the first fetch lands.
+  const [maxAdvanceDays, setMaxAdvanceDays] = useState(365);
 
   useEffect(() => {
     // Walk-in: nothing to fetch - the slot is "now", not something browsed
@@ -150,6 +153,15 @@ export function SlotPicker({
       const earliest = shiftDate(todayIso(), leadDays);
       if (date < earliest) {
         setDate(earliest);
+      }
+
+      // Same at the far end: past the branch's booking window every day is
+      // empty, so pull the calendar back to its last bookable day.
+      const windowDays = result.data.maxAdvanceDays ?? 365;
+      setMaxAdvanceDays(windowDays);
+      const latest = shiftDate(todayIso(), windowDays);
+      if (date > latest) {
+        setDate(latest);
       }
     });
 
@@ -245,6 +257,10 @@ export function SlotPicker({
   // dates that would always come back empty.
   const minDate = shiftDate(todayIso(), minNoticeDays);
   const isAtMinDate = date <= minDate;
+  // The latest bookable date (booking date limit) - Next day / the date
+  // input stop here, matching getDaySlots' cutoff.
+  const maxDate = shiftDate(todayIso(), maxAdvanceDays);
+  const isAtMaxDate = date >= maxDate;
 
   return (
     <div className={styles.wrapper}>
@@ -281,17 +297,24 @@ export function SlotPicker({
               className={styles.dateInput}
               type="date"
               min={minDate}
+              max={maxDate}
               value={date}
-              onChange={(event) =>
+              onChange={(event) => {
+                const picked = event.target.value;
                 setDate(
-                  event.target.value < minDate ? minDate : event.target.value
-                )
-              }
+                  picked < minDate
+                    ? minDate
+                    : picked > maxDate
+                      ? maxDate
+                      : picked
+                );
+              }}
             />
           </label>
           <button
             type="button"
             className={styles.secondaryButton}
+            disabled={isAtMaxDate}
             onClick={() => setDate((current) => shiftDate(current, 1))}
           >
             Next day
@@ -305,6 +328,13 @@ export function SlotPicker({
           {minNoticeDays === 1 ? '' : 's'} notice, so the earliest date you can
           pick is {minNoticeDays} day{minNoticeDays === 1 ? '' : 's'} from
           today.
+        </p>
+      ) : null}
+
+      {!lockToNow && isAtMaxDate ? (
+        <p className={styles.copy}>
+          This is the furthest date you can book - this branch takes bookings up
+          to {maxAdvanceDays} day{maxAdvanceDays === 1 ? '' : 's'} ahead.
         </p>
       ) : null}
 

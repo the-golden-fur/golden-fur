@@ -41,6 +41,9 @@ export interface Branch {
    * operating hours. */
   grooming_hours: OperatingHours;
   timezone: string;
+  /** Custom change (booking date limit, migration 20261030287): the latest
+   * bookable date is today + this many days (branch timezone), 1-365. */
+  max_advance_booking_days: number;
   is_active: boolean;
   archived_at: string | null;
   created_at: string;
