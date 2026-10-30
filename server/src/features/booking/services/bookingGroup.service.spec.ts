@@ -6,7 +6,10 @@ import { getServiceById } from '../../maintenance/services/services.service.ts';
 import { getPromoById } from '../../maintenance/services/promos.service.ts';
 import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
-import { assertWithinGroomingHours } from './availability.service.ts';
+import {
+  assertDaycareCareTimesWithinVisit,
+  assertWithinGroomingHours,
+} from './availability.service.ts';
 import {
   sendBookingConfirmedNotification,
   sendCombinedBookingGroupConfirmedEmail,
@@ -66,6 +69,7 @@ vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
 vi.mock('./availability.service.ts', () => ({
   assertWithinGroomingHours: vi.fn(),
   assertDaycareStartsBeforeCutoff: vi.fn(),
+  assertDaycareCareTimesWithinVisit: vi.fn(),
 }));
 
 vi.mock('./bookingNotifications.service.ts', () => ({
@@ -391,6 +395,8 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
     });
 
     expect(result.bookings).toHaveLength(2);
+    // Only the Daycare booking in the group is checked for care times.
+    expect(assertDaycareCareTimesWithinVisit).toHaveBeenCalledTimes(1);
 
     const groupInsert = recordedWrites.find(
       (write) => write.table === 'booking_groups' && write.method === 'insert'

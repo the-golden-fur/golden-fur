@@ -470,6 +470,9 @@ export const createPackageValidator = z
     // Custom change (package cat price, 20261013263): one separate price for
     // a Cat pet. Left out = cats are priced like any other pet type.
     cat_price: z.number().min(0).max(99999999.99).optional(),
+    // Custom change (package fixed price, 20261030292): a typed price instead
+    // of the bundle discount. Left out = the derived price. Superadmin-only.
+    fixed_price: z.number().min(0).max(99999999.99).optional(),
     // Custom change (pricing matrix fix): opt-in weight/coat-derived
     // pricing for this package (sum of included services' own per-pet
     // price, bundle-discounted) instead of the flat bundled_price.
@@ -492,6 +495,8 @@ export const updatePackageValidator = z
     extras: packageExtrasField.optional(),
     /** null clears it - cats go back to the pet type's own pricing. */
     cat_price: z.number().min(0).max(99999999.99).nullable().optional(),
+    /** null clears it - the package goes back to the bundle discount. */
+    fixed_price: z.number().min(0).max(99999999.99).nullable().optional(),
     use_pricing_matrix: z.boolean().optional(),
     has_extra_long_coat: z.boolean().optional(),
     icon: iconField,

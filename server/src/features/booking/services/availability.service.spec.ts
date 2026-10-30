@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   assertCheckInAllowed,
+  assertDaycareCareTimesWithinVisit,
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
   getDaySlots,
@@ -845,6 +846,59 @@ describe('availability.service (#56/#60 supporting infra)', () => {
           statusCode: 422,
           message: expect.stringContaining('7:00 PM'),
         });
+      });
+    });
+
+    describe('assertDaycareCareTimesWithinVisit', () => {
+      const VISIT_START = '2026-08-03T01:00:00.000Z'; // 9:00 AM Manila
+      const VISIT_END = '2026-08-03T05:00:00.000Z'; // 1:00 PM Manila
+
+      it('allows times inside the visit', async () => {
+        queueFromResults({
+          data: { timezone: 'Asia/Manila' },
+          error: null,
+        });
+
+        await expect(
+          assertDaycareCareTimesWithinVisit(
+            'branch-1',
+            VISIT_START,
+            VISIT_END,
+            { feeding: [{ scheduled_time: '12:59' }] }
+          )
+        ).resolves.toBeUndefined();
+      });
+
+      it('rejects a time at the end of the visit with a 422', async () => {
+        queueFromResults({
+          data: { timezone: 'Asia/Manila' },
+          error: null,
+        });
+
+        await expect(
+          assertDaycareCareTimesWithinVisit(
+            'branch-1',
+            VISIT_START,
+            VISIT_END,
+            { feeding: [{ scheduled_time: '13:00' }] }
+          )
+        ).rejects.toMatchObject({
+          statusCode: 422,
+          message: expect.stringContaining('Feeding at 1:00 PM'),
+        });
+      });
+
+      it('does no branch lookup without care instructions', async () => {
+        vi.mocked(supabase.from).mockClear();
+
+        await assertDaycareCareTimesWithinVisit(
+          'branch-1',
+          VISIT_START,
+          VISIT_END,
+          undefined
+        );
+
+        expect(supabase.from).not.toHaveBeenCalled();
       });
     });
   });

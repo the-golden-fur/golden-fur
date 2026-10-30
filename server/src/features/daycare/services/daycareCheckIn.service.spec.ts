@@ -263,6 +263,49 @@ describe('daycareCheckIn.service (#65)', () => {
       vi.useRealTimers();
     });
 
+    it('rejects a care time outside the visit before claiming a cage', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-07-19T01:00:00.000Z'));
+
+      queueFromResults(
+        {
+          data: {
+            id: 'booking-1',
+            pet_id: 'pet-1',
+            branch_id: 'branch-makati',
+            service_category: 'Daycare',
+            status: 'Pending',
+            hotel_preferences: null,
+            // 9:00 AM - 1:00 PM Asia/Manila.
+            scheduled_start: '2026-07-19T01:00:00.000Z',
+            scheduled_end: '2026-07-19T05:00:00.000Z',
+          },
+          error: null,
+        },
+        { data: MAKATI_BRANCH, error: null }
+      );
+
+      await expect(
+        checkInDaycareSession({
+          requesterId: 'staff-1',
+          input: {
+            booking_id: 'booking-1',
+            walking: [{ scheduled_time: '13:00', duration_minutes: 15 }],
+            playing: [],
+            notify_opt_in: false,
+          },
+        })
+      ).rejects.toMatchObject({
+        statusCode: 422,
+        message: expect.stringContaining('Walking at 1:00 PM'),
+      });
+
+      expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(2);
+      expect(recordedWrites).toHaveLength(0);
+
+      vi.useRealTimers();
+    });
+
     it('rejects check-in for a booking that is neither Pending nor In Progress', async () => {
       queueFromResults({
         data: {

@@ -75,6 +75,7 @@ import {
 import { daycareHourlyCharge } from '../../daycare/modules/daycareCharge.util.ts';
 import {
   assertCheckInAllowed,
+  assertDaycareCareTimesWithinVisit,
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
   closingInstantOn,
@@ -1185,6 +1186,12 @@ export async function createBooking({
     await assertDaycareStartsBeforeCutoff(
       input.branch_id,
       input.scheduled_start
+    );
+    await assertDaycareCareTimesWithinVisit(
+      input.branch_id,
+      input.scheduled_start,
+      input.scheduled_end,
+      input.hotel_preferences
     );
   }
 

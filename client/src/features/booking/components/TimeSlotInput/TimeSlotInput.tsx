@@ -2,6 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import type { OperatingWindow, SlotAvailability } from '../../booking.types';
 import styles from './TimeSlotInput.module.css';
 
+type TimeWindow = Pick<SlotAvailability, 'start' | 'end'>;
+
+/** What a typed "HH:MM" that isn't one of the listed slots resolves to. */
+export type CustomTimeResult = { slot: TimeWindow } | { error: string };
+
+const NO_SLOT_MESSAGE =
+  'No appointment slot at that time - choose a suggested time below.';
+
 interface TimeSlotInputProps {
   /** Already fetched for the selected date. All candidates are listed in the
    * dropdown (unavailable ones shown disabled, same "see the whole day's
@@ -15,7 +23,11 @@ interface TimeSlotInputProps {
   operatingWindow: OperatingWindow | null;
   viewerMode: 'customer' | 'staff';
   selectedStart: string | null;
-  onSelect: (slot: SlotAvailability) => void;
+  onSelect: (slot: TimeWindow) => void;
+  /** Staff booking flow: lets a typed time that isn't one of `slots` be used
+   * anyway, subject to whatever this returns. Omitted = typed times must land
+   * on an available slot. */
+  resolveCustomTime?: (time: string) => CustomTimeResult;
 }
 
 /** A real count instead of the coarse Available/Partial/Fully-booked label -
@@ -67,6 +79,8 @@ function formatTime(iso: string): string {
  * resolve to one of the already-fetched `slots` - appointment availability is
  * quantized by service duration server-side, so a typed time that doesn't
  * land on a real, available slot is flagged rather than silently accepted.
+ * The exception is resolveCustomTime (staff booking flow), which can accept a
+ * typed time between slots; a slot listed as unavailable stays unavailable.
  */
 export function TimeSlotInput({
   slots,
@@ -74,6 +88,7 @@ export function TimeSlotInput({
   viewerMode,
   selectedStart,
   onSelect,
+  resolveCustomTime,
 }: TimeSlotInputProps) {
   const slotsByTime = useMemo(() => {
     const map = new Map<string, SlotAvailability>();
@@ -100,21 +115,37 @@ export function TimeSlotInput({
     setTypedValue(selectedStart ? timeKey(selectedStart) : '');
   }
 
+  const typedResult = useMemo<CustomTimeResult | null>(() => {
+    if (!typedValue) return null;
+
+    const match = slotsByTime.get(typedValue);
+    if (match) return { slot: match };
+    if (!resolveCustomTime) return { error: NO_SLOT_MESSAGE };
+
+    const isListedUnavailable = slots.some(
+      (slot) => timeKey(slot.start) === typedValue
+    );
+
+    return isListedUnavailable
+      ? { error: 'That time is unavailable - enter a different time.' }
+      : resolveCustomTime(typedValue);
+  }, [typedValue, slotsByTime, slots, resolveCustomTime]);
+
   // Commits ~450ms after the last change so typing doesn't refetch the staff
   // list (keyed off the committed selection) on every keystroke. Clicking a
   // dropdown option calls onSelect immediately instead - see below.
+  const committableSlot =
+    typedResult && 'slot' in typedResult ? typedResult.slot : null;
+
   useEffect(() => {
-    if (!typedValue) return;
+    if (!committableSlot || committableSlot.start === selectedStart) return;
 
-    const match = slotsByTime.get(typedValue);
-    if (!match || match.start === selectedStart) return;
-
-    const timer = setTimeout(() => onSelect(match), 450);
+    const timer = setTimeout(() => onSelect(committableSlot), 450);
     return () => clearTimeout(timer);
-  }, [typedValue, slotsByTime, selectedStart, onSelect]);
+  }, [committableSlot, selectedStart, onSelect]);
 
-  const showInvalid =
-    touched && typedValue !== '' && !slotsByTime.has(typedValue);
+  const invalidMessage =
+    touched && typedResult && 'error' in typedResult ? typedResult.error : null;
 
   return (
     <div className={styles.wrapper}>
@@ -137,9 +168,9 @@ export function TimeSlotInput({
         }}
       />
 
-      {showInvalid ? (
+      {invalidMessage ? (
         <p className={styles.hint} role="alert">
-          No appointment slot at that time - choose a suggested time below.
+          {invalidMessage}
         </p>
       ) : null}
 

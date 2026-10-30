@@ -257,10 +257,13 @@ export interface Package {
    * costs for a Cat pet - ahead of the pet type's fixed price and the weight
    * x coat grid. NULL = cats are priced like any other pet type. */
   cat_price: number | null;
+  /** Custom change (package fixed price, 20261030292): this package's own
+   * price, replacing the bundle discount. NULL = derive bundled_price. */
+  fixed_price: number | null;
   /**
    * Epic B (#82/#83): derived on read from included services' base_price and
-   * package_pricing_configuration via deriveBundledPrice, no longer a stored
-   * column - the field name/shape is unchanged so existing consumers
+   * package_pricing_configuration via deriveBundledPrice, or fixed_price when
+   * set - the field name/shape is unchanged so existing consumers
    * (booking.service.ts) need no changes.
    */
   bundled_price: number;
