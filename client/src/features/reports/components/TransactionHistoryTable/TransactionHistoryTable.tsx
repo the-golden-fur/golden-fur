@@ -35,6 +35,8 @@ import {
   addBookingPayment,
   payTransactionWithCredit,
   recordTransactionPayment,
+  uploadTransactionReceipt,
+  getTransactionReceiptUrl,
 } from '../../../billing/api/billing.api';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import {
@@ -58,6 +60,8 @@ import {
   transactionTypeLabel,
 } from './transactionDisplay';
 import { receiptPropsFor } from './transactionReceipt';
+import { ReceiptFileField } from './ReceiptFileField';
+import { receiptFileError } from './receiptFile';
 import {
   GROUP_BY_OPTIONS,
   groupTransactions,
@@ -88,6 +92,11 @@ const ALLOWED_VIEWER_ROLES = new Set([
  * on top of the usual counter methods. */
 const PAY_MODAL_METHODS = [...PAYMENT_METHODS, 'Credit'] as const;
 
+/** Payment receipts: a receipt upload is suggested (never required) for any
+ * method that leaves a paper or screenshot trail. */
+const NON_CASH_RECEIPT_HINT =
+  'Recommended for GCash, Maya, Card and Bank Transfer payments - a screenshot or photo of the receipt.';
+
 type ViewMode = 'table' | 'board';
 
 /**
@@ -112,6 +121,19 @@ export function TransactionHistoryTable() {
   const [payAmount, setPayAmount] = useState('');
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  // Payment receipts: the file chosen in "Mark as paid", uploaded right after
+  // the payment succeeds.
+  const [payReceipt, setPayReceipt] = useState<File | null>(null);
+  // "Upload receipt" on an already-paid transaction.
+  const [receiptTarget, setReceiptTarget] = useState<TransactionRecord | null>(
+    null
+  );
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptBusy, setReceiptBusy] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+  // Page-level notice - e.g. a payment that went through but whose receipt
+  // didn't upload, or a receipt that couldn't be opened.
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [balanceTarget, setBalanceTarget] = useState<PayableBalance | null>(
     null
@@ -200,6 +222,7 @@ export function TransactionHistoryTable() {
     // settling the whole thing; a smaller value spawns a balance transaction.
     setPayAmount(String(t.total_amount));
     setPayError(null);
+    setPayReceipt(null);
   };
 
   // 'Credit' is a Transactions-page-only method (routed to the pay-with-credit
@@ -216,6 +239,17 @@ export function TransactionHistoryTable() {
     }
     if (paying > payTarget.total_amount + 0.001) {
       setPayError('Amount paid cannot exceed the transaction total.');
+      return;
+    }
+
+    // Account credit has no outside receipt, so a file is only sent for a
+    // counter method.
+    const receiptToUpload = payIsCredit ? null : payReceipt;
+    const fileError = receiptToUpload
+      ? receiptFileError(receiptToUpload)
+      : null;
+    if (fileError) {
+      setPayError(fileError);
       return;
     }
 
@@ -237,14 +271,83 @@ export function TransactionHistoryTable() {
           accessToken
         );
 
-    setPayBusy(false);
     if (result.error) {
+      setPayBusy(false);
       setPayError(result.error);
       return;
     }
+
+    // The payment is already recorded - a receipt that fails to upload never
+    // undoes it, it just says so and can be retried with "Upload receipt".
+    if (receiptToUpload) {
+      const upload = await uploadTransactionReceipt(
+        payTarget.id,
+        receiptToUpload,
+        accessToken
+      );
+      if (upload.error) {
+        setNotice(
+          `Payment recorded, but the receipt didn't upload (${upload.error}). Use "Upload receipt" on the transaction to try again.`
+        );
+      }
+    }
+
+    setPayBusy(false);
     setPayTarget(null);
     setReloadKey((k) => k + 1);
   };
+
+  const openReceiptUpload = (t: TransactionRecord) => {
+    setReceiptTarget(t);
+    setReceiptFile(null);
+    setReceiptError(null);
+  };
+
+  const confirmReceiptUpload = async () => {
+    if (!receiptTarget || !accessToken) return;
+    if (!receiptFile) {
+      setReceiptError('Choose a receipt file to upload.');
+      return;
+    }
+    const fileError = receiptFileError(receiptFile);
+    if (fileError) {
+      setReceiptError(fileError);
+      return;
+    }
+
+    setReceiptBusy(true);
+    setReceiptError(null);
+    const result = await uploadTransactionReceipt(
+      receiptTarget.id,
+      receiptFile,
+      accessToken
+    );
+    setReceiptBusy(false);
+    if (result.error) {
+      setReceiptError(result.error);
+      return;
+    }
+    setReceiptTarget(null);
+    setReloadKey((k) => k + 1);
+  };
+
+  async function viewUploadedReceipt(transaction: TransactionRecord) {
+    if (!accessToken) return;
+    // Opened before the request so the browser treats it as a user-initiated
+    // tab (not a blocked pop-up), then pointed at the short-lived link.
+    const tab = window.open('', '_blank');
+    const result = await getTransactionReceiptUrl(transaction.id, accessToken);
+    if (result.error || !result.data) {
+      tab?.close();
+      setNotice(result.error ?? 'Could not open the receipt.');
+      return;
+    }
+    if (tab) {
+      tab.location.href = result.data.url;
+    } else {
+      window.location.assign(result.data.url);
+    }
+  }
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -409,6 +512,14 @@ export function TransactionHistoryTable() {
       transaction.transaction_type === 'booking_payment' &&
       Boolean(transaction.booking_id || transaction.booking_group_id) &&
       !isBookingCancelled(transaction);
+    // Payment receipts: once a payment is recorded its receipt file can be
+    // viewed, or uploaded if there isn't one yet (never for account credit,
+    // which has no outside receipt).
+    const isSettled = transaction.payment_status !== 'Pending';
+    const canUploadReceipt =
+      isSettled &&
+      !transaction.receipt_path &&
+      transaction.payment_method !== 'Credit';
     return (
       <div className={styles.rowActions}>
         {canPay ? (
@@ -438,6 +549,24 @@ export function TransactionHistoryTable() {
         >
           Print receipt
         </button>
+        {isSettled && transaction.receipt_path ? (
+          <button
+            type="button"
+            className={styles.rowActionButton}
+            onClick={() => void viewUploadedReceipt(transaction)}
+          >
+            View uploaded receipt
+          </button>
+        ) : null}
+        {canUploadReceipt ? (
+          <button
+            type="button"
+            className={styles.rowActionButton}
+            onClick={() => openReceiptUpload(transaction)}
+          >
+            Upload receipt
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -453,6 +582,19 @@ export function TransactionHistoryTable() {
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Transactions</h1>
+
+      {notice ? (
+        <p className={styles.errorBanner} role="alert">
+          {notice}{' '}
+          <button
+            type="button"
+            className={styles.linkButton}
+            onClick={() => setNotice(null)}
+          >
+            Dismiss
+          </button>
+        </p>
+      ) : null}
 
       <FilterSortBar
         filterFields={filterFields}
@@ -648,6 +790,17 @@ export function TransactionHistoryTable() {
               methods={PAY_MODAL_METHODS}
               hideCashTendered
             />
+            {payIsCredit ? null : (
+              <ReceiptFileField
+                file={payReceipt}
+                onChange={setPayReceipt}
+                hint={
+                  payFields.payment_method !== 'Cash'
+                    ? NON_CASH_RECEIPT_HINT
+                    : undefined
+                }
+              />
+            )}
             {payError ? (
               <p className={styles.errorBanner} role="alert">
                 {payError}
@@ -668,6 +821,53 @@ export function TransactionHistoryTable() {
                 onClick={() => void confirmPay()}
               >
                 {payBusy ? 'Processing...' : 'Mark as paid'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {receiptTarget ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="upload-receipt-title"
+          >
+            <h2 id="upload-receipt-title" className={styles.modalTitle}>
+              Upload receipt
+            </h2>
+            <p className={styles.copy}>
+              {formatCurrency(receiptTarget.total_amount)} paid by{' '}
+              {receiptTarget.payment_method}. Attach a photo, screenshot or PDF
+              of the payment receipt.
+            </p>
+            <ReceiptFileField
+              file={receiptFile}
+              onChange={setReceiptFile}
+              label="Receipt"
+            />
+            {receiptError ? (
+              <p className={styles.errorBanner} role="alert">
+                {receiptError}
+              </p>
+            ) : null}
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setReceiptTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.payButton}
+                disabled={receiptBusy}
+                onClick={() => void confirmReceiptUpload()}
+              >
+                {receiptBusy ? 'Uploading...' : 'Upload'}
               </button>
             </div>
           </section>

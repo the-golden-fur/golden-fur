@@ -1,4 +1,10 @@
-import { Router } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type Response,
+} from 'express';
+import multer from 'multer';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import { sessionTimeoutMiddleware } from '../../shared/middleware/sessionTimeout/sessionTimeout.middleware.ts';
 import { requireRole } from '../auth/staff/middleware/requireRole/requireRole.middleware.ts';
@@ -20,6 +26,8 @@ import {
   previewGroupCheckoutController,
   previewMiscSaleController,
   recordTransactionPaymentController,
+  attachTransactionReceiptController,
+  getTransactionReceiptController,
   updateMiscSaleController,
 } from './billing.controller.ts';
 import { BILLING_ADMIN_ROLES, BILLING_STAFF_ROLES } from './billing.types.ts';
@@ -145,6 +153,39 @@ router.post(
 
 // jwtMiddleware only - a customer pays their own transaction from credit;
 // ownership (and the staff-on-behalf allowance) is enforced in the service.
+// Custom change (payment receipts): the receipt file for a paid transaction
+// (multipart, field 'receipt'), and a short-lived link to view it. Same
+// money-handling staff as /pay above (Cashier and Front Desk included).
+const receiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+/** multer's own "file too large" error -> the same friendly 400 the service
+ * gives for an oversized file, instead of a raw 500. */
+function singleReceipt(req: Request, res: Response, next: NextFunction) {
+  receiptUpload.single('receipt')(req, res, (error: unknown) => {
+    if (error) {
+      return res
+        .status(400)
+        .json({ error: 'The receipt file must be 5 MB or smaller' });
+    }
+    return next();
+  });
+}
+
+router.post(
+  '/billing/transactions/:id/receipt',
+  ...staffAccess,
+  singleReceipt,
+  attachTransactionReceiptController
+);
+router.get(
+  '/billing/transactions/:id/receipt',
+  ...staffAccess,
+  getTransactionReceiptController
+);
+
 router.post(
   '/billing/transactions/:id/pay-with-credit',
   jwtMiddleware,

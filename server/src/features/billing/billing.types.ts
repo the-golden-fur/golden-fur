@@ -95,6 +95,11 @@ export interface Transaction {
   /** Which portion of the booking this transaction covers - see
    * PAYMENT_CHOICES. Null on misc sales. */
   payment_choice: PaymentChoice | null;
+  /** Custom change (payment receipts, 20261030289): the attached receipt's
+   * path in the private payment-receipts bucket - never a URL. */
+  receipt_path: string | null;
+  receipt_uploaded_by: string | null;
+  receipt_uploaded_at: string | null;
   created_at: string;
   updated_at: string;
 }

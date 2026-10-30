@@ -347,3 +347,49 @@ export async function deleteMiscSale(
 
   return { data: null, error: null };
 }
+
+/** Custom change (payment receipts): attaches a receipt file (photo,
+ * screenshot or PDF) to a paid transaction - right after "Mark as paid", or
+ * later from the Transactions page. */
+export async function uploadTransactionReceipt(
+  transactionId: string,
+  file: File,
+  accessToken: string
+): Promise<
+  BillingApiResult<{ receipt_path: string; receipt_uploaded_at: string }>
+> {
+  const formData = new FormData();
+  formData.append('receipt', file);
+
+  const response = await fetch(
+    `${API_BASE_URL}/billing/transactions/${transactionId}/receipt`,
+    {
+      method: 'POST',
+      headers: authHeaders(accessToken),
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody(response);
+}
+
+/** A short-lived link to view a transaction's uploaded receipt. */
+export async function getTransactionReceiptUrl(
+  transactionId: string,
+  accessToken: string
+): Promise<BillingApiResult<{ url: string }>> {
+  const response = await fetch(
+    `${API_BASE_URL}/billing/transactions/${transactionId}/receipt`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody(response);
+}

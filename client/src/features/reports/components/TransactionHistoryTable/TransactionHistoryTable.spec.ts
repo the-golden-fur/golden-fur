@@ -24,6 +24,8 @@ vi.mock('../../../billing/api/billing.api', () => ({
   recordTransactionPayment: vi.fn(),
   payTransactionWithCredit: vi.fn(),
   addBookingPayment: vi.fn(),
+  uploadTransactionReceipt: vi.fn(),
+  getTransactionReceiptUrl: vi.fn(),
 }));
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranchLetterheads: vi.fn(),
@@ -210,6 +212,153 @@ describe('TransactionHistoryTable', () => {
         'token'
       )
     );
+  });
+
+  describe('payment receipts', () => {
+    const receipt = new File(['png'], 'gcash.png', { type: 'image/png' });
+
+    it('offers an optional receipt upload, nudged for non-cash methods and hidden for Credit', async () => {
+      await openPayModal();
+
+      expect(screen.getByLabelText('Receipt (optional)')).toBeInTheDocument();
+      // Cash: no nudge.
+      expect(
+        screen.queryByText(/Recommended for GCash, Maya, Card/)
+      ).not.toBeInTheDocument();
+
+      await userEvent.selectOptions(screen.getByLabelText('Method'), 'GCash');
+      expect(
+        screen.getByText(/Recommended for GCash, Maya, Card/)
+      ).toBeInTheDocument();
+
+      await userEvent.selectOptions(screen.getByLabelText('Method'), 'Credit');
+      expect(
+        screen.queryByLabelText('Receipt (optional)')
+      ).not.toBeInTheDocument();
+    });
+
+    it('uploads the chosen receipt right after the payment is recorded', async () => {
+      vi.mocked(billingApi.uploadTransactionReceipt).mockResolvedValue({
+        data: { receipt_path: 'txn-1/a.png', receipt_uploaded_at: '' },
+        error: null,
+      });
+      await openPayModal();
+
+      await userEvent.upload(
+        screen.getByLabelText('Receipt (optional)'),
+        receipt
+      );
+      // The "+ Add image" tile becomes the chosen file, with a remove button.
+      expect(screen.getByText('gcash.png')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Remove receipt' })
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Mark as paid' })
+      );
+
+      await waitFor(() =>
+        expect(billingApi.uploadTransactionReceipt).toHaveBeenCalledWith(
+          'txn-1',
+          receipt,
+          'token'
+        )
+      );
+      expect(billingApi.recordTransactionPayment).toHaveBeenCalled();
+    });
+
+    it("keeps the payment and says so when the receipt doesn't upload", async () => {
+      vi.mocked(billingApi.uploadTransactionReceipt).mockResolvedValue({
+        data: null,
+        error: 'Storage is down',
+      });
+      await openPayModal();
+
+      await userEvent.upload(
+        screen.getByLabelText('Receipt (optional)'),
+        receipt
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Mark as paid' })
+      );
+
+      expect(
+        await screen.findByText(
+          /Payment recorded, but the receipt didn't upload \(Storage is down\)/
+        )
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('a paid transaction without a receipt offers "Upload receipt"', async () => {
+      vi.mocked(billingApi.uploadTransactionReceipt).mockResolvedValue({
+        data: { receipt_path: 'txn-1/a.png', receipt_uploaded_at: '' },
+        error: null,
+      });
+      renderTable();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Upload receipt' })
+      );
+      const dialog = screen.getByRole('dialog', { name: 'Upload receipt' });
+      expect(dialog).toBeInTheDocument();
+
+      await userEvent.upload(screen.getByLabelText('Receipt'), receipt);
+      await userEvent.click(screen.getByRole('button', { name: 'Upload' }));
+
+      await waitFor(() =>
+        expect(billingApi.uploadTransactionReceipt).toHaveBeenCalledWith(
+          'txn-1',
+          receipt,
+          'token'
+        )
+      );
+      expect(
+        screen.queryByRole('button', { name: 'View uploaded receipt' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('a transaction with a receipt offers "View uploaded receipt", which opens the signed link', async () => {
+      vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+        data: [buildTransaction({ receipt_path: 'txn-1/a.png' })],
+        error: null,
+      });
+      vi.mocked(billingApi.getTransactionReceiptUrl).mockResolvedValue({
+        data: { url: 'https://signed.example/a.png' },
+        error: null,
+      });
+      const tab = { location: { href: '' }, close: vi.fn() };
+      const openSpy = vi
+        .spyOn(window, 'open')
+        .mockReturnValue(tab as unknown as Window);
+      renderTable();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'View uploaded receipt' })
+      );
+
+      await waitFor(() =>
+        expect(tab.location.href).toBe('https://signed.example/a.png')
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Upload receipt' })
+      ).not.toBeInTheDocument();
+      openSpy.mockRestore();
+    });
+
+    it('never offers a receipt upload on a pending transaction', async () => {
+      vi.mocked(reportsApi.getTransactionHistory).mockResolvedValue({
+        data: [buildTransaction({ payment_status: 'Pending' })],
+        error: null,
+      });
+      renderTable();
+
+      await screen.findByText('Pay');
+      expect(
+        screen.queryByRole('button', { name: 'Upload receipt' })
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('picking Credit routes "Mark as paid" to the pay-with-credit endpoint', async () => {
