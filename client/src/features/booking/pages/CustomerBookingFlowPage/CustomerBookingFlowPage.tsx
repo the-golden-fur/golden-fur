@@ -4563,90 +4563,151 @@ export function CustomerBookingFlowPage() {
 
                 return (
                   <div key={index} className={styles.instructionBlock}>
-                    <div className={styles.inlineFields}>
-                      {category === 'Daycare' ? (
-                        <TimeInput
-                          aria-label="Feeding time"
-                          min={daycareVisitBounds?.min}
-                          max={daycareVisitBounds?.max}
-                          value={row.scheduled_time}
-                          onChange={(value) =>
-                            updateHotelFeeding(index, { scheduled_time: value })
+                    <div className={styles.careFieldGrid}>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          {category === 'Daycare'
+                            ? 'Feeding time'
+                            : 'Meal time'}
+                        </span>
+                        {category === 'Daycare' ? (
+                          <TimeInput
+                            min={daycareVisitBounds?.min}
+                            max={daycareVisitBounds?.max}
+                            value={row.scheduled_time}
+                            onChange={(value) =>
+                              updateHotelFeeding(index, {
+                                scheduled_time: value,
+                              })
+                            }
+                          />
+                        ) : (
+                          <select
+                            className={styles.input}
+                            value={row.meal_time}
+                            onChange={(event) =>
+                              updateHotelFeeding(index, {
+                                meal_time: event.target
+                                  .value as HotelBookingPreferenceFeeding['meal_time'],
+                              })
+                            }
+                          >
+                            {MEAL_TIMES.map((mealTime) => (
+                              <option key={mealTime} value={mealTime}>
+                                {mealTime}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>Food type</span>
+                        <CatalogComboBox
+                          placeholder="Food type"
+                          items={foodCatalog}
+                          hidePrice
+                          value={{
+                            catalogId: row.food_catalog_id,
+                            text: row.food_type,
+                          }}
+                          onChange={(next) =>
+                            updateHotelFeeding(index, {
+                              food_type: next.text,
+                              food_catalog_id: next.catalogId,
+                            })
                           }
                         />
-                      ) : (
-                        <select
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>Quantity</span>
+                        <input
                           className={styles.input}
-                          aria-label="Meal time"
-                          value={row.meal_time}
+                          type="number"
+                          min={1}
+                          value={row.quantity}
                           onChange={(event) =>
                             updateHotelFeeding(index, {
-                              meal_time: event.target
-                                .value as HotelBookingPreferenceFeeding['meal_time'],
+                              quantity: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>Unit</span>
+                        <select
+                          className={styles.input}
+                          value={row.quantity_unit}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              quantity_unit: event.target
+                                .value as FoodQuantityUnit,
                             })
                           }
                         >
-                          {MEAL_TIMES.map((mealTime) => (
-                            <option key={mealTime} value={mealTime}>
-                              {mealTime}
+                          {FOOD_QUANTITY_UNITS.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
                             </option>
                           ))}
                         </select>
-                      )}
-                      <CatalogComboBox
-                        placeholder="Food type"
-                        items={foodCatalog}
-                        hidePrice
-                        value={{
-                          catalogId: row.food_catalog_id,
-                          text: row.food_type,
-                        }}
-                        onChange={(next) =>
-                          updateHotelFeeding(index, {
-                            food_type: next.text,
-                            food_catalog_id: next.catalogId,
-                          })
-                        }
-                      />
-                      <input
-                        className={styles.input}
-                        type="number"
-                        min={1}
-                        placeholder="Quantity"
-                        value={row.quantity}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            quantity: event.target.value,
-                          })
-                        }
-                      />
-                      <select
-                        className={styles.input}
-                        aria-label="Quantity unit"
-                        value={row.quantity_unit}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            quantity_unit: event.target
-                              .value as FoodQuantityUnit,
-                          })
-                        }
-                      >
-                        {FOOD_QUANTITY_UNITS.map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        className={styles.input}
-                        placeholder="Special instructions (optional)"
-                        value={row.special_instructions}
-                        onChange={(event) =>
-                          updateHotelFeeding(index, {
-                            special_instructions: event.target.value,
-                          })
-                        }
-                      />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Special instructions (optional)
+                        </span>
+                        <textarea
+                          className={`${styles.input} ${styles.textarea}`}
+                          rows={3}
+                          value={row.special_instructions}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              special_instructions: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <div className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Photo (optional)
+                        </span>
+                        {row.photo_url ? (
+                          <div className={styles.inlineFields}>
+                            <img
+                              className={styles.carePhotoThumbnail}
+                              src={row.photo_url}
+                              alt="Food item"
+                            />
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() =>
+                                updateHotelFeeding(index, { photo_url: null })
+                              }
+                            >
+                              Remove photo
+                            </button>
+                          </div>
+                        ) : (
+                          <label className={styles.copy}>
+                            {row.photo_uploading
+                              ? 'Uploading photo...'
+                              : 'Attach a photo'}
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              disabled={row.photo_uploading}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) uploadHotelFeedingPhoto(index, file);
+                                event.target.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                        {row.photo_error ? (
+                          <p className={styles.errorText}>{row.photo_error}</p>
+                        ) : null}
+                      </div>
                       <button
                         type="button"
                         className={styles.secondaryButton}
@@ -4654,45 +4715,6 @@ export function CustomerBookingFlowPage() {
                       >
                         Remove
                       </button>
-                    </div>
-                    <div className={styles.inlineFields}>
-                      {row.photo_url ? (
-                        <>
-                          <img
-                            className={styles.carePhotoThumbnail}
-                            src={row.photo_url}
-                            alt="Food item"
-                          />
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() =>
-                              updateHotelFeeding(index, { photo_url: null })
-                            }
-                          >
-                            Remove photo
-                          </button>
-                        </>
-                      ) : (
-                        <label className={styles.copy}>
-                          {row.photo_uploading
-                            ? 'Uploading photo...'
-                            : 'Attach a photo (optional)'}
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            disabled={row.photo_uploading}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) uploadHotelFeedingPhoto(index, file);
-                              event.target.value = '';
-                            }}
-                          />
-                        </label>
-                      )}
-                      {row.photo_error ? (
-                        <p className={styles.errorText}>{row.photo_error}</p>
-                      ) : null}
                     </div>
                     {isReceptionistMode && row.fromLibraryItemId === null ? (
                       <label className={styles.checkboxRow}>
@@ -4747,74 +4769,88 @@ export function CustomerBookingFlowPage() {
 
                 return (
                   <div key={index} className={styles.instructionBlock}>
-                    <div className={styles.inlineFields}>
-                      {category === 'Daycare' ? (
-                        <TimeInput
-                          aria-label="Walk time"
-                          min={daycareVisitBounds?.min}
-                          max={daycareVisitBounds?.max}
-                          value={row.scheduled_time}
-                          onChange={(value) =>
+                    <div className={styles.careFieldGrid}>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          {category === 'Daycare' ? 'Walk time' : 'Time of day'}
+                        </span>
+                        {category === 'Daycare' ? (
+                          <TimeInput
+                            min={daycareVisitBounds?.min}
+                            max={daycareVisitBounds?.max}
+                            value={row.scheduled_time}
+                            onChange={(value) =>
+                              updateHotelWalkBlock(index, {
+                                scheduled_time: value,
+                              })
+                            }
+                          />
+                        ) : (
+                          <select
+                            className={styles.input}
+                            value={row.time_block}
+                            onChange={(event) =>
+                              updateHotelWalkBlock(index, {
+                                time_block: event.target
+                                  .value as HotelBookingPreferenceWalking['time_block'],
+                              })
+                            }
+                          >
+                            {PARTS_OF_DAY.map((part) => (
+                              <option key={part} value={part}>
+                                {part}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Duration (minutes)
+                        </span>
+                        <input
+                          className={styles.input}
+                          type="number"
+                          min={1}
+                          value={row.duration_minutes}
+                          onChange={(event) =>
                             updateHotelWalkBlock(index, {
-                              scheduled_time: value,
+                              duration_minutes: Number(event.target.value),
                             })
                           }
                         />
-                      ) : (
-                        <select
-                          className={styles.input}
-                          aria-label="Walk time of day"
-                          value={row.time_block}
+                        <div className={styles.inlineFields}>
+                          {DURATION_PRESETS_MINUTES.map((minutes) => (
+                            <button
+                              key={minutes}
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() =>
+                                updateHotelWalkBlock(index, {
+                                  duration_minutes: minutes,
+                                })
+                              }
+                            >
+                              {minutes}m
+                            </button>
+                          ))}
+                        </div>
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Notes (optional)
+                        </span>
+                        <textarea
+                          className={`${styles.input} ${styles.textarea}`}
+                          rows={3}
+                          value={row.notes}
                           onChange={(event) =>
                             updateHotelWalkBlock(index, {
-                              time_block: event.target
-                                .value as HotelBookingPreferenceWalking['time_block'],
+                              notes: event.target.value,
                             })
                           }
-                        >
-                          {PARTS_OF_DAY.map((part) => (
-                            <option key={part} value={part}>
-                              {part}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      <input
-                        className={styles.input}
-                        type="number"
-                        min={1}
-                        placeholder="Duration (min)"
-                        value={row.duration_minutes}
-                        onChange={(event) =>
-                          updateHotelWalkBlock(index, {
-                            duration_minutes: Number(event.target.value),
-                          })
-                        }
-                      />
-                      {DURATION_PRESETS_MINUTES.map((minutes) => (
-                        <button
-                          key={minutes}
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={() =>
-                            updateHotelWalkBlock(index, {
-                              duration_minutes: minutes,
-                            })
-                          }
-                        >
-                          {minutes}m
-                        </button>
-                      ))}
-                      <input
-                        className={styles.input}
-                        placeholder="Notes (optional)"
-                        value={row.notes}
-                        onChange={(event) =>
-                          updateHotelWalkBlock(index, {
-                            notes: event.target.value,
-                          })
-                        }
-                      />
+                        />
+                      </label>
                       <button
                         type="button"
                         className={styles.secondaryButton}
@@ -4853,74 +4889,90 @@ export function CustomerBookingFlowPage() {
 
                 return (
                   <div key={index} className={styles.instructionBlock}>
-                    <div className={styles.inlineFields}>
-                      {category === 'Daycare' ? (
-                        <TimeInput
-                          aria-label="Playtime start"
-                          min={daycareVisitBounds?.min}
-                          max={daycareVisitBounds?.max}
-                          value={row.scheduled_time}
-                          onChange={(value) =>
+                    <div className={styles.careFieldGrid}>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          {category === 'Daycare'
+                            ? 'Playtime start'
+                            : 'Time of day'}
+                        </span>
+                        {category === 'Daycare' ? (
+                          <TimeInput
+                            min={daycareVisitBounds?.min}
+                            max={daycareVisitBounds?.max}
+                            value={row.scheduled_time}
+                            onChange={(value) =>
+                              updateHotelPlayBlock(index, {
+                                scheduled_time: value,
+                              })
+                            }
+                          />
+                        ) : (
+                          <select
+                            className={styles.input}
+                            value={row.time_block}
+                            onChange={(event) =>
+                              updateHotelPlayBlock(index, {
+                                time_block: event.target
+                                  .value as HotelBookingPreferenceWalking['time_block'],
+                              })
+                            }
+                          >
+                            {PARTS_OF_DAY.map((part) => (
+                              <option key={part} value={part}>
+                                {part}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Duration (minutes)
+                        </span>
+                        <input
+                          className={styles.input}
+                          type="number"
+                          min={1}
+                          value={row.duration_minutes}
+                          onChange={(event) =>
                             updateHotelPlayBlock(index, {
-                              scheduled_time: value,
+                              duration_minutes: Number(event.target.value),
                             })
                           }
                         />
-                      ) : (
-                        <select
-                          className={styles.input}
-                          aria-label="Playtime time of day"
-                          value={row.time_block}
+                        <div className={styles.inlineFields}>
+                          {DURATION_PRESETS_MINUTES.map((minutes) => (
+                            <button
+                              key={minutes}
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() =>
+                                updateHotelPlayBlock(index, {
+                                  duration_minutes: minutes,
+                                })
+                              }
+                            >
+                              {minutes}m
+                            </button>
+                          ))}
+                        </div>
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Notes (optional)
+                        </span>
+                        <textarea
+                          className={`${styles.input} ${styles.textarea}`}
+                          rows={3}
+                          value={row.notes}
                           onChange={(event) =>
                             updateHotelPlayBlock(index, {
-                              time_block: event.target
-                                .value as HotelBookingPreferenceWalking['time_block'],
+                              notes: event.target.value,
                             })
                           }
-                        >
-                          {PARTS_OF_DAY.map((part) => (
-                            <option key={part} value={part}>
-                              {part}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      <input
-                        className={styles.input}
-                        type="number"
-                        min={1}
-                        placeholder="Duration (min)"
-                        value={row.duration_minutes}
-                        onChange={(event) =>
-                          updateHotelPlayBlock(index, {
-                            duration_minutes: Number(event.target.value),
-                          })
-                        }
-                      />
-                      {DURATION_PRESETS_MINUTES.map((minutes) => (
-                        <button
-                          key={minutes}
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={() =>
-                            updateHotelPlayBlock(index, {
-                              duration_minutes: minutes,
-                            })
-                          }
-                        >
-                          {minutes}m
-                        </button>
-                      ))}
-                      <input
-                        className={styles.input}
-                        placeholder="Notes (optional)"
-                        value={row.notes}
-                        onChange={(event) =>
-                          updateHotelPlayBlock(index, {
-                            notes: event.target.value,
-                          })
-                        }
-                      />
+                        />
+                      </label>
                       <button
                         type="button"
                         className={styles.secondaryButton}
@@ -4959,69 +5011,131 @@ export function CustomerBookingFlowPage() {
 
                 return (
                   <div key={index} className={styles.instructionBlock}>
-                    <div className={styles.inlineFields}>
-                      <CatalogComboBox
-                        placeholder="Medication name"
-                        items={medicationCatalog}
-                        hidePrice
-                        value={{
-                          catalogId: row.medication_catalog_id,
-                          text: row.medication_name,
-                        }}
-                        onChange={(next) =>
-                          updateHotelMedication(index, {
-                            medication_name: next.text,
-                            medication_catalog_id: next.catalogId,
-                          })
-                        }
-                      />
-                      <input
-                        className={styles.input}
-                        placeholder="Dose"
-                        value={row.dose}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            dose: event.target.value,
-                          })
-                        }
-                      />
-                      <select
-                        className={styles.input}
-                        aria-label="Dose unit"
-                        value={row.dose_unit}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            dose_unit: event.target.value as MedicationDoseUnit,
-                          })
-                        }
-                      >
-                        {MEDICATION_DOSE_UNITS.map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
-                        ))}
-                      </select>
-                      <TimeInput
-                        aria-label="Medication time"
-                        min={daycareVisitBounds?.min}
-                        max={daycareVisitBounds?.max}
-                        value={row.scheduled_time}
-                        onChange={(value) =>
-                          updateHotelMedication(index, {
-                            scheduled_time: value,
-                          })
-                        }
-                      />
-                      <input
-                        className={styles.input}
-                        placeholder="Notes (optional)"
-                        value={row.administration_notes}
-                        onChange={(event) =>
-                          updateHotelMedication(index, {
-                            administration_notes: event.target.value,
-                          })
-                        }
-                      />
+                    <div className={styles.careFieldGrid}>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Medication name
+                        </span>
+                        <CatalogComboBox
+                          placeholder="Medication name"
+                          items={medicationCatalog}
+                          hidePrice
+                          value={{
+                            catalogId: row.medication_catalog_id,
+                            text: row.medication_name,
+                          }}
+                          onChange={(next) =>
+                            updateHotelMedication(index, {
+                              medication_name: next.text,
+                              medication_catalog_id: next.catalogId,
+                            })
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>Dose</span>
+                        <input
+                          className={styles.input}
+                          value={row.dose}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              dose: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>Unit</span>
+                        <select
+                          className={styles.input}
+                          value={row.dose_unit}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              dose_unit: event.target
+                                .value as MedicationDoseUnit,
+                            })
+                          }
+                        >
+                          {MEDICATION_DOSE_UNITS.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>Time</span>
+                        <TimeInput
+                          min={daycareVisitBounds?.min}
+                          max={daycareVisitBounds?.max}
+                          value={row.scheduled_time}
+                          onChange={(value) =>
+                            updateHotelMedication(index, {
+                              scheduled_time: value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Administration notes (optional)
+                        </span>
+                        <textarea
+                          className={`${styles.input} ${styles.textarea}`}
+                          rows={3}
+                          value={row.administration_notes}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              administration_notes: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <div className={styles.field}>
+                        <span className={styles.fieldLabel}>
+                          Photo (optional)
+                        </span>
+                        {row.photo_url ? (
+                          <div className={styles.inlineFields}>
+                            <img
+                              className={styles.carePhotoThumbnail}
+                              src={row.photo_url}
+                              alt="Medication"
+                            />
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() =>
+                                updateHotelMedication(index, {
+                                  photo_url: null,
+                                })
+                              }
+                            >
+                              Remove photo
+                            </button>
+                          </div>
+                        ) : (
+                          <label className={styles.copy}>
+                            {row.photo_uploading
+                              ? 'Uploading photo...'
+                              : 'Attach a photo'}
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              disabled={row.photo_uploading}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file)
+                                  uploadHotelMedicationPhoto(index, file);
+                                event.target.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                        {row.photo_error ? (
+                          <p className={styles.errorText}>{row.photo_error}</p>
+                        ) : null}
+                      </div>
                       <button
                         type="button"
                         className={styles.secondaryButton}
@@ -5029,47 +5143,6 @@ export function CustomerBookingFlowPage() {
                       >
                         Remove
                       </button>
-                    </div>
-                    <div className={styles.inlineFields}>
-                      {row.photo_url ? (
-                        <>
-                          <img
-                            className={styles.carePhotoThumbnail}
-                            src={row.photo_url}
-                            alt="Medication"
-                          />
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() =>
-                              updateHotelMedication(index, {
-                                photo_url: null,
-                              })
-                            }
-                          >
-                            Remove photo
-                          </button>
-                        </>
-                      ) : (
-                        <label className={styles.copy}>
-                          {row.photo_uploading
-                            ? 'Uploading photo...'
-                            : 'Attach a photo (optional)'}
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            disabled={row.photo_uploading}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) uploadHotelMedicationPhoto(index, file);
-                              event.target.value = '';
-                            }}
-                          />
-                        </label>
-                      )}
-                      {row.photo_error ? (
-                        <p className={styles.errorText}>{row.photo_error}</p>
-                      ) : null}
                     </div>
                     <p className={styles.copy}>
                       Applies daily - won&apos;t happen before check-in on
@@ -5116,7 +5189,8 @@ export function CustomerBookingFlowPage() {
               <label className={styles.field}>
                 <span className={styles.sectionTitle}>Things brought</span>
                 <textarea
-                  className={styles.input}
+                  className={`${styles.input} ${styles.textarea}`}
+                  rows={3}
                   placeholder="e.g. leash, favorite toy, food bag, bed"
                   maxLength={500}
                   value={hotelThingsBrought}
