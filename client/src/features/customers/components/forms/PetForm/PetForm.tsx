@@ -104,11 +104,16 @@ export function PetForm({
   useEffect(() => {
     let isMounted = true;
 
-    void getPetAgeConfiguration(accessToken).then((result) => {
-      if (isMounted && result.data) {
-        setMaxAgeYears(result.data.max_age_years);
-      }
-    });
+    void getPetAgeConfiguration(accessToken)
+      .then((result) => {
+        if (isMounted && result.data) {
+          setMaxAgeYears(result.data.max_age_years);
+        }
+      })
+      .catch(() => {
+        // Non-fatal: keep the 38-year default - the server re-checks the
+        // real limit on save.
+      });
 
     return () => {
       isMounted = false;

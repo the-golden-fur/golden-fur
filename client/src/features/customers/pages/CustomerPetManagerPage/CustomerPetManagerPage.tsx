@@ -129,11 +129,16 @@ export function CustomerPetManagerPage() {
       }
     });
 
-    void listArchivedPets(accessToken, user.id).then((result) => {
-      if (isMounted && result.data) {
-        setArchivedPets(result.data);
-      }
-    });
+    void listArchivedPets(accessToken, user.id)
+      .then((result) => {
+        if (isMounted && result.data) {
+          setArchivedPets(result.data);
+        }
+      })
+      .catch(() => {
+        // Non-fatal: the roster still works; the Archived pets section just
+        // stays hidden.
+      });
 
     void getPetBookingConflicts(user.id, accessToken).then((result) => {
       if (isMounted && result.data) {
