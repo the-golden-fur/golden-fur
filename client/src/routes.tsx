@@ -11,6 +11,7 @@ import { daycareRoutes } from './features/daycare/daycare.routes';
 import { veterinaryRoutes } from './features/veterinary/veterinary.routes';
 import { hotelRoutes } from './features/hotel/hotel.routes';
 import { catalogRoutes } from './features/catalog/catalog.routes';
+import { staffItemsRoutes } from './features/staffItems/staffItems.routes';
 import { billingRoutes } from './features/billing/billing.routes';
 import { creditsRoutes } from './features/credits/credits.routes';
 import { rewardsRoutes } from './features/rewards/rewards.routes';
@@ -35,6 +36,7 @@ export function AppRoutes() {
       {veterinaryRoutes}
       {hotelRoutes}
       {catalogRoutes}
+      {staffItemsRoutes}
       {billingRoutes}
       {creditsRoutes}
       {rewardsRoutes}

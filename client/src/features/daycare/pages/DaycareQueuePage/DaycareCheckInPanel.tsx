@@ -20,6 +20,17 @@ import type {
   PlayingInstructionPayload,
   WalkingInstructionPayload,
 } from '../../../hotel/hotel.types';
+import {
+  createFoodItem,
+  createMedicationItem,
+  listPickableFoodItems,
+  listPickableMedicationItems,
+} from '../../../staffItems/api/staffItems.api';
+import { StaffItemPicker } from '../../../staffItems/components/StaffItemPicker/StaffItemPicker';
+import type {
+  PickableStaffFoodItem,
+  PickableStaffMedicationItem,
+} from '../../../staffItems/staffItems.types';
 import styles from './DaycareCheckInPanel.module.css';
 
 interface DaycareCheckInPanelProps {
@@ -45,6 +56,11 @@ interface FeedingUiState {
   quantityUnit?: FoodQuantityUnit;
   photoUrl?: string;
   specialInstructions: string;
+  /** Set when this row was populated from a staff library item (see
+   * addFeedingRowFromItem) - the "save to my private library" checkbox
+   * only renders when this is null. */
+  fromLibraryItemId: string | null;
+  saveToLibrary: boolean;
 }
 
 interface CareBlockUiState {
@@ -62,6 +78,8 @@ interface MedicationUiState {
   photoUrl?: string;
   scheduledTimes: string[];
   administrationNotes: string;
+  fromLibraryItemId: string | null;
+  saveToLibrary: boolean;
 }
 
 /** Pre-fills from whatever was entered at booking time
@@ -81,6 +99,8 @@ function initialFeeding(booking: Booking): FeedingUiState[] {
     quantityUnit: item.quantity_unit,
     photoUrl: item.photo_url,
     specialInstructions: item.special_instructions ?? '',
+    fromLibraryItemId: null,
+    saveToLibrary: false,
   }));
 }
 
@@ -104,6 +124,8 @@ function initialMedications(booking: Booking): MedicationUiState[] {
     photoUrl: item.photo_url,
     scheduledTimes: item.scheduled_times,
     administrationNotes: item.administration_notes ?? '',
+    fromLibraryItemId: null,
+    saveToLibrary: false,
   }));
 }
 
@@ -167,6 +189,32 @@ export function DaycareCheckInPanel({
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const [pickableFoodItems, setPickableFoodItems] = useState<
+    PickableStaffFoodItem[]
+  >([]);
+  const [pickableMedicationItems, setPickableMedicationItems] = useState<
+    PickableStaffMedicationItem[]
+  >([]);
+
+  // Staff-owned food/medication item library (first time this panel gets
+  // any catalog picker) - the caller's own items (any visibility) plus
+  // everyone else's public ones, mirrors HotelCheckInPanel's identical
+  // effect.
+  useEffect(() => {
+    let isMounted = true;
+
+    void listPickableFoodItems(accessToken).then((result) => {
+      if (isMounted && result.data) setPickableFoodItems(result.data);
+    });
+    void listPickableMedicationItems(accessToken).then((result) => {
+      if (isMounted && result.data) setPickableMedicationItems(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken]);
+
   // Runs once for this page's one booking - the parent DaycareCheckInFormPage
   // keys this panel by booking.id, so a different booking is a fresh mount,
   // not a re-render of this one (mirrors HotelCheckInPanel's identical
@@ -193,6 +241,26 @@ export function DaycareCheckInPanel({
         foodType: '',
         quantity: '',
         specialInstructions: '',
+        fromLibraryItemId: null,
+        saveToLibrary: false,
+      },
+    ]);
+  }
+
+  /** Picked from the staff library (StaffItemPicker) - copies the item's
+   * field values into a new row, same as typing them. */
+  function addFeedingRowFromItem(item: PickableStaffFoodItem) {
+    setFeeding((prev) => [
+      ...prev,
+      {
+        scheduledTime: '08:00',
+        foodType: item.name,
+        quantity: item.quantity,
+        quantityUnit: item.quantity_unit ?? undefined,
+        photoUrl: item.photo_url ?? undefined,
+        specialInstructions: item.special_instructions ?? '',
+        fromLibraryItemId: item.id,
+        saveToLibrary: false,
       },
     ]);
   }
@@ -234,7 +302,32 @@ export function DaycareCheckInPanel({
   function addMedication() {
     setMedications((prev) => [
       ...prev,
-      { name: '', dose: '', scheduledTimes: [], administrationNotes: '' },
+      {
+        name: '',
+        dose: '',
+        scheduledTimes: [],
+        administrationNotes: '',
+        fromLibraryItemId: null,
+        saveToLibrary: false,
+      },
+    ]);
+  }
+
+  /** Picked from the staff library (StaffItemPicker) - mirrors
+   * addFeedingRowFromItem above. */
+  function addMedicationFromItem(item: PickableStaffMedicationItem) {
+    setMedications((prev) => [
+      ...prev,
+      {
+        name: item.name,
+        dose: item.dose,
+        doseUnit: item.dose_unit ?? undefined,
+        photoUrl: item.photo_url ?? undefined,
+        scheduledTimes: [],
+        administrationNotes: item.administration_notes ?? '',
+        fromLibraryItemId: item.id,
+        saveToLibrary: false,
+      },
     ]);
   }
 
@@ -371,6 +464,38 @@ export function DaycareCheckInPanel({
       })
     );
 
+    // Follow-up: "save to my private library" - fire-and-forget alongside
+    // the real check-in, never blocking or failing it on a library-save
+    // error.
+    for (const state of feeding) {
+      if (state.saveToLibrary) {
+        void createFoodItem(
+          {
+            name: state.foodType,
+            quantity: state.quantity,
+            quantity_unit: state.quantityUnit,
+            special_instructions: state.specialInstructions || undefined,
+            is_public: false,
+          },
+          accessToken
+        );
+      }
+    }
+    for (const medication of medications) {
+      if (medication.saveToLibrary) {
+        void createMedicationItem(
+          {
+            name: medication.name,
+            dose: medication.dose,
+            dose_unit: medication.doseUnit,
+            administration_notes: medication.administrationNotes || undefined,
+            is_public: false,
+          },
+          accessToken
+        );
+      }
+    }
+
     const result = await checkInDaycareSession(accessToken, {
       booking_id: booking.id,
       cage_id: selectedCageId ?? undefined,
@@ -487,18 +612,40 @@ export function DaycareCheckInPanel({
                 Remove
               </button>
             </div>
+            {state.fromLibraryItemId === null ? (
+              <label className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={state.saveToLibrary}
+                  onChange={(event) =>
+                    updateFeeding(index, {
+                      saveToLibrary: event.target.checked,
+                    })
+                  }
+                />
+                Save to my private library
+              </label>
+            ) : null}
           </div>
         ))}
         {feeding.length === 0 ? (
           <p className={styles.copy}>No feeding times added.</p>
         ) : null}
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          onClick={addFeedingRow}
-        >
-          Add feeding time
-        </button>
+        <div className={styles.inlineFields}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={addFeedingRow}
+          >
+            Add feeding time
+          </button>
+          <StaffItemPicker
+            items={pickableFoodItems}
+            onPick={addFeedingRowFromItem}
+            placeholder="Add from my food library..."
+            aria-label="Add feeding time from library"
+          />
+        </div>
       </section>
 
       <section className={styles.section}>
@@ -681,18 +828,40 @@ export function DaycareCheckInPanel({
                 Add time
               </button>
             </div>
+            {medication.fromLibraryItemId === null ? (
+              <label className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={medication.saveToLibrary}
+                  onChange={(event) =>
+                    updateMedication(index, {
+                      saveToLibrary: event.target.checked,
+                    })
+                  }
+                />
+                Save to my private library
+              </label>
+            ) : null}
           </div>
         ))}
         {medications.length === 0 ? (
           <p className={styles.copy}>No medications added.</p>
         ) : null}
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          onClick={addMedication}
-        >
-          Add medication
-        </button>
+        <div className={styles.inlineFields}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={addMedication}
+          >
+            Add medication
+          </button>
+          <StaffItemPicker
+            items={pickableMedicationItems}
+            onPick={addMedicationFromItem}
+            placeholder="Add from my medication library..."
+            aria-label="Add medication from library"
+          />
+        </div>
       </section>
 
       {booking.hotel_preferences?.things_brought ? (
