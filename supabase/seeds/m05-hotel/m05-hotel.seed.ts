@@ -76,6 +76,90 @@ const MEDICATION_CATALOG_PLAN: Array<{ name: string; price: number }> = [
 const HOTEL_SERVICE_SCOPE = 'hotel';
 const CATALOG_SEED_OWNER_EMAIL = 'customer1@goldenfur.com';
 
+/** Shared staff-owned food/medication item library - a mostly-public mix
+ * (4 of 5) so the seed demonstrates both branches of the visibility rule
+ * (own item vs. a public item seen under someone else's name) out of the
+ * box, matching STAFF_FOOD_ITEM_PLAN's own comment below. */
+const STAFF_FOOD_ITEM_PLAN: Array<{
+  name: string;
+  quantity: string;
+  quantity_unit: string;
+  special_instructions?: string;
+  is_public: boolean;
+}> = [
+  {
+    name: 'Dry Kibble - Chicken (staff-stocked)',
+    quantity: '1',
+    quantity_unit: 'cup',
+    is_public: true,
+  },
+  {
+    name: 'Wet Food - Canned (staff-stocked)',
+    quantity: '1',
+    quantity_unit: 'can',
+    is_public: true,
+  },
+  {
+    name: 'Puppy Formula (staff-stocked)',
+    quantity: '0.5',
+    quantity_unit: 'cup',
+    special_instructions: 'Soften with warm water before serving',
+    is_public: true,
+  },
+  {
+    name: 'Senior Formula (staff-stocked)',
+    quantity: '0.5',
+    quantity_unit: 'cup',
+    is_public: true,
+  },
+  {
+    name: 'My own feeding mix',
+    quantity: '2',
+    quantity_unit: 'scoop',
+    is_public: false,
+  },
+];
+
+const STAFF_MEDICATION_ITEM_PLAN: Array<{
+  name: string;
+  dose: string;
+  dose_unit: string;
+  administration_notes?: string;
+  is_public: boolean;
+}> = [
+  {
+    name: 'Amoxicillin 250mg (staff-stocked)',
+    dose: '1',
+    dose_unit: 'tablet',
+    is_public: true,
+  },
+  {
+    name: 'Rimadyl 75mg (staff-stocked)',
+    dose: '1',
+    dose_unit: 'tablet',
+    administration_notes: 'Give with food',
+    is_public: true,
+  },
+  {
+    name: 'Flea & Tick Treatment (staff-stocked)',
+    dose: '1',
+    dose_unit: 'application',
+    is_public: true,
+  },
+  {
+    name: 'Ear Drops (staff-stocked)',
+    dose: '2',
+    dose_unit: 'drop',
+    is_public: true,
+  },
+  {
+    name: 'My own go-to antihistamine',
+    dose: '1',
+    dose_unit: 'tablet',
+    is_public: false,
+  },
+];
+
 function getClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -116,6 +200,30 @@ async function resolveCatalogOwnerId(
   if (!data?.id) {
     console.error(
       `skip: could not find ${CATALOG_SEED_OWNER_EMAIL} in customer_profiles - has m02's seed run?`
+    );
+    return null;
+  }
+
+  return data.id as string;
+}
+
+/** The staff member whose personal food/medication library the seeded
+ * rows belong to - the first seeded Receptionist, mirrors m07-veterinary
+ * .seed.ts's resolveVeterinarianId. */
+async function resolveStaffItemOwnerId(
+  supabase: ReturnType<typeof createClient>
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('staff_profiles')
+    .select('id')
+    .eq('role', 'Receptionist')
+    .order('registered_email', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data?.id) {
+    console.error(
+      'skip: no Receptionist found in staff_profiles - has m01 seeded first?'
     );
     return null;
   }
@@ -325,6 +433,82 @@ export async function seedMedicationCatalog(
   );
 }
 
+/** Seeds public.staff_food_items - one row per (owner_staff_id, name),
+ * same idempotency shape as seedFoodCatalog above. */
+export async function seedStaffFoodItems(
+  supabase: ReturnType<typeof createClient>,
+  ownerStaffId: string
+) {
+  let created = 0;
+
+  for (const item of STAFF_FOOD_ITEM_PLAN) {
+    const { data: existing } = await supabase
+      .from('staff_food_items')
+      .select('id')
+      .eq('owner_staff_id', ownerStaffId)
+      .eq('name', item.name)
+      .maybeSingle();
+
+    if (existing) continue;
+
+    const { error } = await supabase.from('staff_food_items').insert({
+      ...item,
+      owner_staff_id: ownerStaffId,
+    });
+
+    if (error) {
+      console.error(
+        `staff food item insert failed (${item.name}): ${error.message}`
+      );
+      continue;
+    }
+
+    created += 1;
+  }
+
+  console.log(
+    `ensured ${STAFF_FOOD_ITEM_PLAN.length} staff food item(s) exist (${created} row(s) created)`
+  );
+}
+
+/** Seeds public.staff_medication_items - same shape/convention as
+ * seedStaffFoodItems above. */
+export async function seedStaffMedicationItems(
+  supabase: ReturnType<typeof createClient>,
+  ownerStaffId: string
+) {
+  let created = 0;
+
+  for (const item of STAFF_MEDICATION_ITEM_PLAN) {
+    const { data: existing } = await supabase
+      .from('staff_medication_items')
+      .select('id')
+      .eq('owner_staff_id', ownerStaffId)
+      .eq('name', item.name)
+      .maybeSingle();
+
+    if (existing) continue;
+
+    const { error } = await supabase.from('staff_medication_items').insert({
+      ...item,
+      owner_staff_id: ownerStaffId,
+    });
+
+    if (error) {
+      console.error(
+        `staff medication item insert failed (${item.name}): ${error.message}`
+      );
+      continue;
+    }
+
+    created += 1;
+  }
+
+  console.log(
+    `ensured ${STAFF_MEDICATION_ITEM_PLAN.length} staff medication item(s) exist (${created} row(s) created)`
+  );
+}
+
 async function main() {
   const supabase = getClient();
   await seedCages(supabase);
@@ -333,6 +517,12 @@ async function main() {
   if (ownerCustomerId) {
     await seedFoodCatalog(supabase, ownerCustomerId);
     await seedMedicationCatalog(supabase, ownerCustomerId);
+  }
+
+  const staffItemOwnerId = await resolveStaffItemOwnerId(supabase);
+  if (staffItemOwnerId) {
+    await seedStaffFoodItems(supabase, staffItemOwnerId);
+    await seedStaffMedicationItems(supabase, staffItemOwnerId);
   }
 }
 

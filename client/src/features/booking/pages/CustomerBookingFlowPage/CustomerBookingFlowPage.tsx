@@ -117,6 +117,17 @@ import {
   listCustomerCatalogForStaff,
 } from '../../../catalog/api/catalog.api';
 import type { ProductCatalogItem } from '../../../catalog/catalog.types';
+import {
+  createFoodItem,
+  createMedicationItem,
+  listPickableFoodItems,
+  listPickableMedicationItems,
+} from '../../../staffItems/api/staffItems.api';
+import { StaffItemPicker } from '../../../staffItems/components/StaffItemPicker/StaffItemPicker';
+import type {
+  PickableStaffFoodItem,
+  PickableStaffMedicationItem,
+} from '../../../staffItems/staffItems.types';
 import { NightTabs } from '../../components/NightTabs/NightTabs';
 import { getHotelNightDates, formatNightLabel } from '../../utils/hotelNights';
 import { formatDuration } from '../../../../shared/utils/formatDuration';
@@ -408,6 +419,11 @@ interface HotelFeedingRowState {
   /** null = applies to every night of the stay; a specific date scopes the
    * row to that single night (per-night Care Instructions editing). */
   stay_date: string | null;
+  /** Receptionist mode only - set when this row was populated from a
+   * staff library item (see addHotelFeedingFromItem). The "save to my
+   * private library" checkbox only renders when this is null. */
+  fromLibraryItemId: string | null;
+  saveToLibrary: boolean;
 }
 
 const EMPTY_HOTEL_FEEDING_ROW: HotelFeedingRowState = {
@@ -422,6 +438,8 @@ const EMPTY_HOTEL_FEEDING_ROW: HotelFeedingRowState = {
   special_instructions: '',
   food_catalog_id: null,
   stay_date: null,
+  fromLibraryItemId: null,
+  saveToLibrary: false,
 };
 
 const EMPTY_HOTEL_WALKING_ROW = {
@@ -453,6 +471,8 @@ const EMPTY_HOTEL_MEDICATION_ROW = {
   administration_notes: '',
   medication_catalog_id: null as string | null,
   stay_date: null as string | null,
+  fromLibraryItemId: null as string | null,
+  saveToLibrary: false,
 };
 
 /** A care-instruction row's fill state. 'empty' = nothing the user meant to
@@ -1005,6 +1025,41 @@ export function CustomerBookingFlowPage() {
       isMounted = false;
     };
   }, [isReceptionistMode, accessToken, effectiveCustomerId, category]);
+
+  // Staff-owned food/medication item library - receptionist mode only
+  // (never a customer self-booking from home, see isReceptionistMode's own
+  // doc note), the caller's own items (any visibility) plus everyone
+  // else's public ones, mirrors the Hotel/Daycare check-in panels' own
+  // identical effect.
+  const [pickableFoodItems, setPickableFoodItems] = useState<
+    PickableStaffFoodItem[]
+  >([]);
+  const [pickableMedicationItems, setPickableMedicationItems] = useState<
+    PickableStaffMedicationItem[]
+  >([]);
+
+  useEffect(() => {
+    if (
+      !isReceptionistMode ||
+      !accessToken ||
+      (category !== 'Hotel' && category !== 'Daycare')
+    ) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void listPickableFoodItems(accessToken).then((result) => {
+      if (isMounted && result.data) setPickableFoodItems(result.data);
+    });
+    void listPickableMedicationItems(accessToken).then((result) => {
+      if (isMounted && result.data) setPickableMedicationItems(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isReceptionistMode, accessToken, category]);
 
   // Tracked by stable step KEY, not array index - the `steps` array below
   // can shrink out from under the user mid-flow (e.g. Staff Picker turns
@@ -2711,6 +2766,27 @@ export function CustomerBookingFlowPage() {
     ]);
   }
 
+  /** Receptionist mode only - picked from the staff library
+   * (StaffItemPicker), copies the item's field values into a new row the
+   * same way addHotelFeeding's empty row does, leaving food_catalog_id
+   * null (that FK is only for the customer's own catalog). */
+  function addHotelFeedingFromItem(item: PickableStaffFoodItem) {
+    setHotelFeeding((prev) => [
+      ...prev,
+      {
+        ...EMPTY_HOTEL_FEEDING_ROW,
+        food_type: item.name,
+        quantity: item.quantity,
+        quantity_unit:
+          item.quantity_unit ?? EMPTY_HOTEL_FEEDING_ROW.quantity_unit,
+        photo_url: item.photo_url,
+        special_instructions: item.special_instructions ?? '',
+        stay_date: hotelUniformInstructions ? null : activeNightDate,
+        fromLibraryItemId: item.id,
+      },
+    ]);
+  }
+
   function updateHotelFeeding(
     index: number,
     updates: Partial<HotelFeedingRowState>
@@ -2804,6 +2880,23 @@ export function CustomerBookingFlowPage() {
       {
         ...EMPTY_HOTEL_MEDICATION_ROW,
         stay_date: hotelUniformInstructions ? null : activeNightDate,
+      },
+    ]);
+  }
+
+  /** Receptionist mode only - mirrors addHotelFeedingFromItem above. */
+  function addHotelMedicationFromItem(item: PickableStaffMedicationItem) {
+    setHotelMedications((prev) => [
+      ...prev,
+      {
+        ...EMPTY_HOTEL_MEDICATION_ROW,
+        medication_name: item.name,
+        dose: item.dose,
+        dose_unit: item.dose_unit ?? EMPTY_HOTEL_MEDICATION_ROW.dose_unit,
+        photo_url: item.photo_url,
+        administration_notes: item.administration_notes ?? '',
+        stay_date: hotelUniformInstructions ? null : activeNightDate,
+        fromLibraryItemId: item.id,
       },
     ]);
   }
@@ -3121,6 +3214,45 @@ export function CustomerBookingFlowPage() {
 
     setIsSubmitting(true);
     setSubmitError(null);
+
+    // Follow-up: "save to my private library" (receptionist mode only -
+    // see HotelFeedingRowState's doc note) - fire-and-forget alongside the
+    // real booking submission below, never blocking or failing it on a
+    // library-save error.
+    if (isReceptionistMode) {
+      for (const entry of bookingsList) {
+        for (const row of entry.hotelFeeding) {
+          if (row.saveToLibrary) {
+            void createFoodItem(
+              {
+                name: row.food_type,
+                quantity: row.quantity,
+                quantity_unit: row.quantity_unit,
+                special_instructions:
+                  row.special_instructions.trim() || undefined,
+                is_public: false,
+              },
+              accessToken
+            );
+          }
+        }
+        for (const row of entry.hotelMedications) {
+          if (row.saveToLibrary) {
+            void createMedicationItem(
+              {
+                name: row.medication_name,
+                dose: row.dose,
+                dose_unit: row.dose_unit,
+                administration_notes:
+                  row.administration_notes.trim() || undefined,
+                is_public: false,
+              },
+              accessToken
+            );
+          }
+        }
+      }
+    }
 
     // #22 follow-up: try/catch is load-bearing, not defensive boilerplate -
     // without it, a thrown exception here (a network failure, a bad JSON
@@ -4514,6 +4646,20 @@ export function CustomerBookingFlowPage() {
                         <p className={styles.errorText}>{row.photo_error}</p>
                       ) : null}
                     </div>
+                    {isReceptionistMode && row.fromLibraryItemId === null ? (
+                      <label className={styles.checkboxRow}>
+                        <input
+                          type="checkbox"
+                          checked={row.saveToLibrary}
+                          onChange={(event) =>
+                            updateHotelFeeding(index, {
+                              saveToLibrary: event.target.checked,
+                            })
+                          }
+                        />
+                        Save to my private library
+                      </label>
+                    ) : null}
                     {notOnDayOne || notOnLastDay ? (
                       <p className={styles.copy}>
                         {`Not served on ${notOnDayOne ? 'arrival day' : ''}${notOnDayOne && notOnLastDay ? ' or ' : ''}${notOnLastDay ? 'departure day' : ''} due to check-in/checkout time.`}
@@ -4522,13 +4668,23 @@ export function CustomerBookingFlowPage() {
                   </div>
                 );
               })}
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addHotelFeeding}
-              >
-                Add feeding time
-              </button>
+              <div className={styles.inlineFields}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={addHotelFeeding}
+                >
+                  Add feeding time
+                </button>
+                {isReceptionistMode ? (
+                  <StaffItemPicker
+                    items={pickableFoodItems}
+                    onPick={addHotelFeedingFromItem}
+                    placeholder="Add from my food library..."
+                    aria-label="Add feeding time from library"
+                  />
+                ) : null}
+              </div>
             </section>
 
             <section className={styles.hotelDetailsSection}>
@@ -4865,16 +5021,40 @@ export function CustomerBookingFlowPage() {
                       Applies daily - won&apos;t happen before check-in on
                       arrival day or after checkout on departure day.
                     </p>
+                    {isReceptionistMode && row.fromLibraryItemId === null ? (
+                      <label className={styles.checkboxRow}>
+                        <input
+                          type="checkbox"
+                          checked={row.saveToLibrary}
+                          onChange={(event) =>
+                            updateHotelMedication(index, {
+                              saveToLibrary: event.target.checked,
+                            })
+                          }
+                        />
+                        Save to my private library
+                      </label>
+                    ) : null}
                   </div>
                 );
               })}
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={addHotelMedication}
-              >
-                Add medication
-              </button>
+              <div className={styles.inlineFields}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={addHotelMedication}
+                >
+                  Add medication
+                </button>
+                {isReceptionistMode ? (
+                  <StaffItemPicker
+                    items={pickableMedicationItems}
+                    onPick={addHotelMedicationFromItem}
+                    placeholder="Add from my medication library..."
+                    aria-label="Add medication from library"
+                  />
+                ) : null}
+              </div>
             </section>
 
             {/* Per booking, not per night - shown on every night tab. */}

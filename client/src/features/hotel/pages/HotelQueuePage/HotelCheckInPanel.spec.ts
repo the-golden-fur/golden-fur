@@ -8,6 +8,12 @@ import {
   getCurrentPrescriptionForPet,
 } from '../../api/hotel.api';
 import { listCustomerCatalogForStaff } from '../../../catalog/api/catalog.api';
+import {
+  createFoodItem,
+  createMedicationItem,
+  listPickableFoodItems,
+  listPickableMedicationItems,
+} from '../../../staffItems/api/staffItems.api';
 import { HotelCheckInPanel } from './HotelCheckInPanel';
 
 vi.mock('../../api/hotel.api', () => ({
@@ -18,6 +24,13 @@ vi.mock('../../api/hotel.api', () => ({
 
 vi.mock('../../../catalog/api/catalog.api', () => ({
   listCustomerCatalogForStaff: vi.fn(),
+}));
+
+vi.mock('../../../staffItems/api/staffItems.api', () => ({
+  listPickableFoodItems: vi.fn(),
+  listPickableMedicationItems: vi.fn(),
+  createFoodItem: vi.fn(),
+  createMedicationItem: vi.fn(),
 }));
 
 // Isolates this panel's own validation/pricing logic from
@@ -115,6 +128,17 @@ function setupMocks() {
           : { data: [], error: null }
       )
   );
+
+  vi.mocked(listPickableFoodItems).mockResolvedValue({ data: [], error: null });
+  vi.mocked(listPickableMedicationItems).mockResolvedValue({
+    data: [],
+    error: null,
+  });
+  vi.mocked(createFoodItem).mockResolvedValue({ data: null, error: null });
+  vi.mocked(createMedicationItem).mockResolvedValue({
+    data: null,
+    error: null,
+  });
 }
 
 function renderPanel(booking: unknown = BOOKING) {
@@ -294,5 +318,101 @@ describe('HotelCheckInPanel', () => {
 
     await waitFor(() => expect(onCheckedIn).toHaveBeenCalledWith('stay-1'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('picking a staff library food item appends a fully pre-filled row with no catalog id', async () => {
+    setupMocks();
+    vi.mocked(listPickableFoodItems).mockResolvedValue({
+      data: [
+        {
+          id: 'staff-food-1',
+          owner_staff_id: 'staff-1',
+          name: 'Salmon oil',
+          quantity: '2',
+          quantity_unit: 'tablespoon',
+          special_instructions: 'Mix into dinner',
+          photo_url: null,
+          is_public: true,
+          archived_at: null,
+          created_at: '',
+          updated_at: '',
+          owner_display_name: 'Pat Reyes',
+          is_mine: false,
+        },
+      ],
+      error: null,
+    });
+    vi.mocked(checkInHotelStay).mockClear();
+    vi.mocked(checkInHotelStay).mockResolvedValue({
+      data: { stay: { id: 'stay-1' } },
+      error: null,
+    } as never);
+    const { onCheckedIn } = renderPanel();
+
+    await screen.findByText(/Suggested size: S/);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    const picker = await screen.findByRole('combobox', {
+      name: 'Add feeding time from library',
+    });
+    fireEvent.change(picker, { target: { value: 'staff-food-1' } });
+
+    expect(screen.getByDisplayValue('Salmon oil')).toBeInTheDocument();
+    // A row populated from the library has nothing new to save, so the
+    // checkbox doesn't render for it.
+    expect(
+      screen.queryByText('Save to my private library')
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check in' }));
+
+    await waitFor(() => expect(onCheckedIn).toHaveBeenCalledWith('stay-1'));
+    expect(checkInHotelStay).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({
+        feeding: expect.arrayContaining([
+          expect.objectContaining({
+            food_type: 'Salmon oil',
+            quantity: '2',
+            food_catalog_id: undefined,
+          }),
+        ]),
+      })
+    );
+  });
+
+  it('checking "Save to my private library" on a freetext row creates a new private item on submit', async () => {
+    setupMocks();
+    vi.mocked(checkInHotelStay).mockClear();
+    vi.mocked(checkInHotelStay).mockResolvedValue({
+      data: { stay: { id: 'stay-1' } },
+      error: null,
+    } as never);
+    const { onCheckedIn } = renderPanel();
+
+    await screen.findByText(/Suggested size: S/);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add feeding time' }));
+
+    const [foodTypeInput] = screen.getAllByPlaceholderText(
+      'Food type - search or type a custom value...'
+    );
+    fireEvent.focus(foodTypeInput);
+    fireEvent.change(foodTypeInput, { target: { value: 'Grain-free mix' } });
+    const [quantityInput] = screen.getAllByPlaceholderText('Quantity');
+    fireEvent.change(quantityInput, { target: { value: '1' } });
+
+    fireEvent.click(screen.getByText('Save to my private library'));
+    fireEvent.click(screen.getByRole('button', { name: 'Check in' }));
+
+    await waitFor(() => expect(onCheckedIn).toHaveBeenCalledWith('stay-1'));
+    expect(createFoodItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Grain-free mix',
+        quantity: '1',
+        is_public: false,
+      }),
+      'token'
+    );
   });
 });

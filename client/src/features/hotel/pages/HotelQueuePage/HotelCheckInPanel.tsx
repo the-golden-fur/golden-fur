@@ -18,6 +18,17 @@ import {
 } from '../../../catalog/components/CatalogComboBox/CatalogComboBox';
 import { listCustomerCatalogForStaff } from '../../../catalog/api/catalog.api';
 import type { ProductCatalogItem } from '../../../catalog/catalog.types';
+import {
+  createFoodItem,
+  createMedicationItem,
+  listPickableFoodItems,
+  listPickableMedicationItems,
+} from '../../../staffItems/api/staffItems.api';
+import { StaffItemPicker } from '../../../staffItems/components/StaffItemPicker/StaffItemPicker';
+import type {
+  PickableStaffFoodItem,
+  PickableStaffMedicationItem,
+} from '../../../staffItems/staffItems.types';
 import { TimeInput } from '../../components/TimeInput/TimeInput';
 import { formatTimeValue } from '../../components/TimeInput/formatTimeValue';
 import type {
@@ -80,6 +91,8 @@ function initialFeeding(booking: Booking): FeedingUiState[] {
     quantityUnit: item.quantity_unit,
     photoUrl: item.photo_url,
     specialInstructions: item.special_instructions ?? '',
+    fromLibraryItemId: null,
+    saveToLibrary: false,
   }));
 }
 
@@ -119,6 +132,8 @@ function initialMedications(booking: Booking): MedicationUiState[] {
     photoUrl: item.photo_url,
     scheduledTimes: item.scheduled_times,
     administrationNotes: item.administration_notes ?? '',
+    fromLibraryItemId: null,
+    saveToLibrary: false,
   }));
 }
 
@@ -143,6 +158,15 @@ interface FeedingUiState {
   quantityUnit?: FoodQuantityUnit;
   photoUrl?: string;
   specialInstructions: string;
+  /** Set when this row was populated from a staff library item (see
+   * addFeedingRowFromItem) - the "save to my private library" checkbox
+   * only renders when this is null, since a row already from the library
+   * has nothing new to save. */
+  fromLibraryItemId: string | null;
+  /** Follow-up: "save to my private library" - checked rows create a new
+   * private item on submit, not on check (avoids littering the library
+   * with abandoned rows). */
+  saveToLibrary: boolean;
 }
 
 type WalkMode = 'range' | 'duration';
@@ -162,6 +186,8 @@ interface MedicationUiState {
   photoUrl?: string;
   scheduledTimes: string[]; // "HH:MM", 24h, one per chip
   administrationNotes: string;
+  fromLibraryItemId: string | null;
+  saveToLibrary: boolean;
 }
 
 /** Minutes between two "HH:MM" 24h times, wrapping past midnight if end <
@@ -228,6 +254,12 @@ export function HotelCheckInPanel({
   const [medicationCatalog, setMedicationCatalog] = useState<
     ProductCatalogItem[]
   >([]);
+  const [pickableFoodItems, setPickableFoodItems] = useState<
+    PickableStaffFoodItem[]
+  >([]);
+  const [pickableMedicationItems, setPickableMedicationItems] = useState<
+    PickableStaffMedicationItem[]
+  >([]);
 
   const [feeding, setFeeding] = useState<FeedingUiState[]>(() =>
     initialFeeding(booking)
@@ -280,6 +312,24 @@ export function HotelCheckInPanel({
     };
   }, [accessToken, booking.customer_id]);
 
+  // Staff-owned food/medication item library (separate from the customer's
+  // own food/medication catalog above) - the caller's own items (any
+  // visibility) plus everyone else's public ones.
+  useEffect(() => {
+    let isMounted = true;
+
+    void listPickableFoodItems(accessToken).then((result) => {
+      if (isMounted && result.data) setPickableFoodItems(result.data);
+    });
+    void listPickableMedicationItems(accessToken).then((result) => {
+      if (isMounted && result.data) setPickableMedicationItems(result.data);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken]);
+
   // Runs once for this page's one booking (mirrors the old picker
   // onSelect's setup, now triggered by mount/booking-id-change - the parent
   // HotelCheckInFormPage keys this panel by booking.id, so a different
@@ -310,6 +360,8 @@ export function HotelCheckInPanel({
               dose: medication.dose,
               scheduledTimes: [],
               administrationNotes: medication.notes ?? '',
+              fromLibraryItemId: null,
+              saveToLibrary: false,
             })
           );
 
@@ -337,6 +389,27 @@ export function HotelCheckInPanel({
         foodType: { catalogId: null, text: '' },
         quantity: '',
         specialInstructions: '',
+        fromLibraryItemId: null,
+        saveToLibrary: false,
+      },
+    ]);
+  }
+
+  /** Picked from the staff library (StaffItemPicker) - copies the item's
+   * field values into a new row, same as typing them, leaving
+   * food_catalog_id null (that FK is only for the customer's own catalog). */
+  function addFeedingRowFromItem(item: PickableStaffFoodItem) {
+    setFeeding((prev) => [
+      ...prev,
+      {
+        mealTime: 'Morning',
+        foodType: { catalogId: null, text: item.name },
+        quantity: item.quantity,
+        quantityUnit: item.quantity_unit ?? undefined,
+        photoUrl: item.photo_url ?? undefined,
+        specialInstructions: item.special_instructions ?? '',
+        fromLibraryItemId: item.id,
+        saveToLibrary: false,
       },
     ]);
   }
@@ -408,6 +481,26 @@ export function HotelCheckInPanel({
         dose: '',
         scheduledTimes: [],
         administrationNotes: '',
+        fromLibraryItemId: null,
+        saveToLibrary: false,
+      },
+    ]);
+  }
+
+  /** Picked from the staff library (StaffItemPicker) - mirrors
+   * addFeedingRowFromItem above. */
+  function addMedicationFromItem(item: PickableStaffMedicationItem) {
+    setMedications((prev) => [
+      ...prev,
+      {
+        name: { catalogId: null, text: item.name },
+        dose: item.dose,
+        doseUnit: item.dose_unit ?? undefined,
+        photoUrl: item.photo_url ?? undefined,
+        scheduledTimes: [],
+        administrationNotes: item.administration_notes ?? '',
+        fromLibraryItemId: item.id,
+        saveToLibrary: false,
       },
     ]);
   }
@@ -592,6 +685,38 @@ export function HotelCheckInPanel({
       })
     );
 
+    // Follow-up: "save to my private library" - fire-and-forget alongside
+    // the real check-in, never blocking or failing it on a library-save
+    // error.
+    for (const state of feeding) {
+      if (state.saveToLibrary) {
+        void createFoodItem(
+          {
+            name: state.foodType.text,
+            quantity: state.quantity,
+            quantity_unit: state.quantityUnit,
+            special_instructions: state.specialInstructions || undefined,
+            is_public: false,
+          },
+          accessToken
+        );
+      }
+    }
+    for (const medication of medications) {
+      if (medication.saveToLibrary) {
+        void createMedicationItem(
+          {
+            name: medication.name.text,
+            dose: medication.dose,
+            dose_unit: medication.doseUnit,
+            administration_notes: medication.administrationNotes || undefined,
+            is_public: false,
+          },
+          accessToken
+        );
+      }
+    }
+
     const result = await checkInHotelStay(accessToken, {
       booking_id: booking.id,
       cage_id: selectedCageId,
@@ -705,6 +830,21 @@ export function HotelCheckInPanel({
                 }
               />
             </div>
+            {state.fromLibraryItemId === null ? (
+              <label className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  disabled={!isEditing}
+                  checked={state.saveToLibrary}
+                  onChange={(event) =>
+                    updateFeeding(index, {
+                      saveToLibrary: event.target.checked,
+                    })
+                  }
+                />
+                Save to my private library
+              </label>
+            ) : null}
             {isEditing ? (
               <button
                 type="button"
@@ -720,13 +860,21 @@ export function HotelCheckInPanel({
           <p className={styles.copy}>No feeding times were requested.</p>
         ) : null}
         {isEditing ? (
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={addFeedingRow}
-          >
-            Add feeding time
-          </button>
+          <div className={styles.inlineFields}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={addFeedingRow}
+            >
+              Add feeding time
+            </button>
+            <StaffItemPicker
+              items={pickableFoodItems}
+              onPick={addFeedingRowFromItem}
+              placeholder="Add from my food library..."
+              aria-label="Add feeding time from library"
+            />
+          </div>
         ) : null}
       </section>
 
@@ -1006,6 +1154,21 @@ export function HotelCheckInPanel({
                 </button>
               ) : null}
             </div>
+            {medication.fromLibraryItemId === null ? (
+              <label className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  disabled={!isEditing}
+                  checked={medication.saveToLibrary}
+                  onChange={(event) =>
+                    updateMedication(index, {
+                      saveToLibrary: event.target.checked,
+                    })
+                  }
+                />
+                Save to my private library
+              </label>
+            ) : null}
             {isEditing ? (
               <button
                 type="button"
@@ -1021,13 +1184,21 @@ export function HotelCheckInPanel({
           <p className={styles.copy}>No medications were requested.</p>
         ) : null}
         {isEditing ? (
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={addMedication}
-          >
-            Add medication
-          </button>
+          <div className={styles.inlineFields}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={addMedication}
+            >
+              Add medication
+            </button>
+            <StaffItemPicker
+              items={pickableMedicationItems}
+              onPick={addMedicationFromItem}
+              placeholder="Add from my medication library..."
+              aria-label="Add medication from library"
+            />
+          </div>
         ) : null}
       </section>
 

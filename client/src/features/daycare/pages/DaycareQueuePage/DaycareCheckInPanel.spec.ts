@@ -1,9 +1,13 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import * as daycareApi from '../../api/daycare.api';
 import { getCageSuggestion } from '../../../hotel/api/hotel.api';
+import {
+  listPickableFoodItems,
+  listPickableMedicationItems,
+} from '../../../staffItems/api/staffItems.api';
 import type { Booking } from '../../../booking/booking.types';
 import { DaycareCheckInPanel } from './DaycareCheckInPanel';
 
@@ -12,6 +16,12 @@ vi.mock('../../api/daycare.api', () => ({
 }));
 vi.mock('../../../hotel/api/hotel.api', () => ({
   getCageSuggestion: vi.fn(),
+}));
+vi.mock('../../../staffItems/api/staffItems.api', () => ({
+  listPickableFoodItems: vi.fn(),
+  listPickableMedicationItems: vi.fn(),
+  createFoodItem: vi.fn(),
+  createMedicationItem: vi.fn(),
 }));
 // Custom change (Daycare/Hotel parity): DaycareCheckInPanel assigns a cage
 // the same way HotelCheckInPanel does - CageStatusGrid's own fetch behavior
@@ -48,6 +58,12 @@ function setupCageSuggestion() {
     },
     error: null,
   } as never);
+
+  vi.mocked(listPickableFoodItems).mockResolvedValue({ data: [], error: null });
+  vi.mocked(listPickableMedicationItems).mockResolvedValue({
+    data: [],
+    error: null,
+  });
 }
 
 const BOOKING: Booking = {
@@ -284,6 +300,61 @@ describe('DaycareCheckInPanel (#69)', () => {
     expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith(
       'token',
       expect.objectContaining({ cage_id: 'cage-l' })
+    );
+  });
+
+  it('picking a staff library food item appends a fully pre-filled row', async () => {
+    setupCageSuggestion();
+    vi.mocked(listPickableFoodItems).mockResolvedValue({
+      data: [
+        {
+          id: 'staff-food-1',
+          owner_staff_id: 'staff-1',
+          name: 'Salmon oil',
+          quantity: '2',
+          quantity_unit: 'tablespoon',
+          special_instructions: 'Mix into dinner',
+          photo_url: null,
+          is_public: true,
+          archived_at: null,
+          created_at: '',
+          updated_at: '',
+          owner_display_name: 'Pat Reyes',
+          is_mine: false,
+        },
+      ],
+      error: null,
+    });
+    vi.mocked(daycareApi.checkInDaycareSession).mockResolvedValue({
+      data: { id: 'session-1' },
+      error: null,
+    } as never);
+
+    renderPanel();
+
+    await screen.findByText(/Suggested size: M/);
+    const picker = await screen.findByRole('combobox', {
+      name: 'Add feeding time from library',
+    });
+    fireEvent.change(picker, { target: { value: 'staff-food-1' } });
+
+    expect(screen.getByDisplayValue('Salmon oil')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Save to my private library')
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+
+    expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({
+        feeding: expect.arrayContaining([
+          expect.objectContaining({
+            food_type: 'Salmon oil',
+            quantity: '2',
+          }),
+        ]),
+      })
     );
   });
 });

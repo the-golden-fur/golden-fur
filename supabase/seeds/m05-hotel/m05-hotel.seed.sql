@@ -125,3 +125,39 @@ cross join (
   select id from public.customer_profiles where account_email = 'customer1@goldenfur.com'
 ) as c
 on conflict (owner_customer_id, name, category) where owner_customer_id is not null do nothing;
+
+-- Shared staff-owned food/medication item library - seeded under the first
+-- Receptionist (ordered by registered_email), mirrors m05-hotel.seed.ts's
+-- resolveStaffItemOwnerId. Mostly public (4 of 5 each) so both branches of
+-- the visibility rule show up out of the box.
+insert into public.staff_food_items (owner_staff_id, name, quantity, quantity_unit, special_instructions, is_public)
+select s.id, v.name, v.quantity, v.quantity_unit, v.special_instructions, v.is_public
+from (
+  values
+    ('Dry Kibble - Chicken (staff-stocked)', '1', 'cup', null::text, true),
+    ('Wet Food - Canned (staff-stocked)', '1', 'can', null::text, true),
+    ('Puppy Formula (staff-stocked)', '0.5', 'cup', 'Soften with warm water before serving', true),
+    ('Senior Formula (staff-stocked)', '0.5', 'cup', null::text, true),
+    ('My own feeding mix', '2', 'scoop', null::text, false)
+) as v(name, quantity, quantity_unit, special_instructions, is_public)
+cross join (
+  select id from public.staff_profiles where role = 'Receptionist'
+  order by registered_email asc limit 1
+) as s
+on conflict (owner_staff_id, name) do nothing;
+
+insert into public.staff_medication_items (owner_staff_id, name, dose, dose_unit, administration_notes, is_public)
+select s.id, v.name, v.dose, v.dose_unit, v.administration_notes, v.is_public
+from (
+  values
+    ('Amoxicillin 250mg (staff-stocked)', '1', 'tablet', null::text, true),
+    ('Rimadyl 75mg (staff-stocked)', '1', 'tablet', 'Give with food', true),
+    ('Flea & Tick Treatment (staff-stocked)', '1', 'application', null::text, true),
+    ('Ear Drops (staff-stocked)', '2', 'drop', null::text, true),
+    ('My own go-to antihistamine', '1', 'tablet', null::text, false)
+) as v(name, dose, dose_unit, administration_notes, is_public)
+cross join (
+  select id from public.staff_profiles where role = 'Receptionist'
+  order by registered_email asc limit 1
+) as s
+on conflict (owner_staff_id, name) do nothing;

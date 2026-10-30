@@ -20,6 +20,7 @@ import * as staffApi from '../../../staff/api/staff.api';
 import * as discountsApi from '../../../discounts/api/discounts.api';
 import * as veterinaryApi from '../../../veterinary/api/veterinary.api';
 import * as rewardsApi from '../../../rewards/api/rewards.api';
+import * as staffItemsApi from '../../../staffItems/api/staffItems.api';
 import { CustomerBookingFlowPage } from './CustomerBookingFlowPage';
 
 vi.mock('../../../customers/api/customer.api', () => ({
@@ -41,6 +42,13 @@ vi.mock('../../../customers/components/forms/PetForm/PetForm', () => ({
 vi.mock('../../../catalog/api/catalog.api', () => ({
   listCustomerCatalog: vi.fn(),
   listCustomerCatalogForStaff: vi.fn(),
+}));
+
+vi.mock('../../../staffItems/api/staffItems.api', () => ({
+  listPickableFoodItems: vi.fn(),
+  listPickableMedicationItems: vi.fn(),
+  createFoodItem: vi.fn(),
+  createMedicationItem: vi.fn(),
 }));
 
 vi.mock('../../api/booking.api', () => ({
@@ -554,6 +562,22 @@ describe('CustomerBookingFlowPage', () => {
     vi.mocked(catalogApi.listCustomerCatalogForStaff).mockImplementation(
       (_customerId, _accessToken, category) => catalogByCategory(category)
     );
+    vi.mocked(staffItemsApi.listPickableFoodItems).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(staffItemsApi.listPickableMedicationItems).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(staffItemsApi.createFoodItem).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    vi.mocked(staffItemsApi.createMedicationItem).mockResolvedValue({
+      data: null,
+      error: null,
+    });
     vi.mocked(staffApi.listStaff).mockResolvedValue({ data: [], error: null });
     vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
       data: [],
@@ -3351,6 +3375,104 @@ describe('CustomerBookingFlowPage', () => {
         expect(
           screen.queryByLabelText(/^Pay at checkout/)
         ).not.toBeInTheDocument();
+      });
+
+      it('picking a staff library food item at Care Instructions appends a fully pre-filled row with no catalog id', async () => {
+        vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+          data: {
+            downpayment_enabled: false,
+            downpayment_type: null,
+            downpayment_amount: null,
+            pay_at_checkout_enabled: false,
+          },
+          error: null,
+        });
+        vi.mocked(bookingApi.createBooking).mockResolvedValue({
+          data: {
+            id: 'booking-1',
+            status: 'Confirmed',
+            scheduled_start: '2026-08-03T01:00:00.000Z',
+          } as never,
+          error: null,
+        });
+        vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+          data: {
+            services: [GROOMING_SERVICE, DAYCARE_SERVICE],
+            packages: [],
+            promos: [],
+          },
+          error: null,
+        });
+        vi.mocked(staffItemsApi.listPickableFoodItems).mockResolvedValue({
+          data: [
+            {
+              id: 'staff-food-1',
+              owner_staff_id: 'staff-1',
+              name: 'Salmon oil',
+              quantity: '2',
+              quantity_unit: 'tablespoon',
+              special_instructions: 'Mix into dinner',
+              photo_url: null,
+              is_public: true,
+              archived_at: null,
+              created_at: '',
+              updated_at: '',
+              owner_display_name: 'Pat Reyes',
+              is_mine: false,
+            },
+          ],
+          error: null,
+        });
+
+        const user = userEvent.setup();
+        renderStaffPage();
+
+        await user.click(await screen.findByText('Makati'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Jamie Cruz'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Max'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Daycare'));
+        await user.click(await screen.findByText('Daycare (per hour)'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Walk-in'));
+        await user.click(screen.getByText('Next'));
+
+        await user.click(await screen.findByText('Select slot'));
+        await user.click(screen.getByText('Next'));
+
+        const picker = await screen.findByRole('combobox', {
+          name: 'Add feeding time from library',
+        });
+        fireEvent.change(picker, { target: { value: 'staff-food-1' } });
+
+        expect(screen.getByDisplayValue('Salmon oil')).toBeInTheDocument();
+        expect(
+          screen.queryByText('Save to my private library')
+        ).not.toBeInTheDocument();
+
+        await user.click(screen.getByText('Next'));
+        await screen.findByText('Add another booking');
+        await user.click(screen.getByText('Next'));
+        await screen.findByText('Confirm booking');
+        await user.click(screen.getByText('Confirm booking'));
+
+        await waitFor(() =>
+          expect(bookingApi.createBooking).toHaveBeenCalledWith(
+            'token',
+            expect.objectContaining({
+              hotel_preferences: expect.objectContaining({
+                feeding: expect.arrayContaining([
+                  expect.objectContaining({
+                    food_type: 'Salmon oil',
+                    quantity: '2',
+                  }),
+                ]),
+              }),
+            })
+          )
+        );
       });
 
       it('is not offered for an Online Daycare booking', async () => {
