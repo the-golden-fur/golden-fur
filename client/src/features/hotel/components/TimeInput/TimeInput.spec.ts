@@ -18,6 +18,31 @@ describe('formatTimeValue', () => {
 });
 
 describe('TimeInput', () => {
+  it.each([
+    ['05:00', true],
+    ['13:00', true],
+    ['09:00', false],
+    ['12:59', false],
+    ['', false],
+  ])('range message for %s: %s', (value, shown) => {
+    render(
+      createElement(TimeInput, {
+        value,
+        onChange: vi.fn(),
+        min: '09:00',
+        max: '12:59',
+      })
+    );
+
+    expect(screen.queryAllByRole('alert')).toHaveLength(shown ? 1 : 0);
+  });
+
+  it('shows no range message without bounds', () => {
+    render(createElement(TimeInput, { value: '05:00', onChange: vi.fn() }));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('typing in the native time input calls onChange with the raw HH:MM value', () => {
     const onChange = vi.fn();
     render(

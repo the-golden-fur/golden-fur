@@ -75,8 +75,9 @@ const BOOKING: Booking = {
   service_category: 'Daycare',
   service_id: 'service-1',
   package_id: null,
-  scheduled_start: '2026-07-19T02:00:00.000Z',
-  scheduled_end: '2026-07-19T03:00:00.000Z',
+  // Local times, so the 9:00 AM - 1:00 PM visit holds in any test timezone.
+  scheduled_start: new Date(2026, 6, 19, 9).toISOString(),
+  scheduled_end: new Date(2026, 6, 19, 13).toISOString(),
   assigned_staff_id: null,
   status: 'Pending',
   total_price: 300,
@@ -265,6 +266,79 @@ describe('DaycareCheckInPanel (#69)', () => {
     const walkingPayload = vi.mocked(daycareApi.checkInDaycareSession).mock
       .calls[0][1].walking?.[0] as Record<string, unknown>;
     expect(walkingPayload).not.toHaveProperty('time_block');
+  });
+
+  it('a new care row starts inside the visit, not at the old 8:00 AM default', async () => {
+    setupCageSuggestion();
+    renderPanel();
+
+    await screen.findByText(/Suggested size: M/);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Add walk time' })
+    );
+
+    expect(screen.getByLabelText('Walk time')).toHaveValue('09:00');
+  });
+
+  it.each([
+    ['5:00 AM', '05:00'],
+    ['the end of the visit', '13:00'],
+  ])('blocks a care time at %s', async (_label, time) => {
+    setupCageSuggestion();
+    vi.mocked(daycareApi.checkInDaycareSession).mockClear();
+    renderPanel();
+
+    await screen.findByText(/Suggested size: M/);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Add walk time' })
+    );
+    fireEvent.change(screen.getByLabelText('Walk time'), {
+      target: { value: time },
+    });
+
+    expect(
+      screen.getByText('Must be between 9:00 AM and 12:59 PM.')
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+
+    expect(
+      await screen.findByText(
+        'Walk time #1 must be between 9:00 AM and 12:59 PM.'
+      )
+    ).toBeInTheDocument();
+    expect(daycareApi.checkInDaycareSession).not.toHaveBeenCalled();
+  });
+
+  it('flags a saved medication time that no longer fits the visit, such as after a reschedule', async () => {
+    setupCageSuggestion();
+    vi.mocked(daycareApi.checkInDaycareSession).mockClear();
+    renderPanel({
+      ...BOOKING,
+      hotel_preferences: {
+        uniform_instructions: true,
+        feeding: [],
+        walking: [],
+        playing: [],
+        medications: [
+          {
+            medication_name: 'Antibiotic',
+            dose: '1',
+            scheduled_times: ['15:00'],
+          },
+        ],
+      },
+    } as unknown as Booking);
+
+    await screen.findByText(/Suggested size: M/);
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+
+    expect(
+      await screen.findByText(
+        'Medication #1 times must be between 9:00 AM and 12:59 PM.'
+      )
+    ).toBeInTheDocument();
+    expect(daycareApi.checkInDaycareSession).not.toHaveBeenCalled();
   });
 
   it('warns before checking in to a cage of a different size; "Check in anyway" proceeds', async () => {

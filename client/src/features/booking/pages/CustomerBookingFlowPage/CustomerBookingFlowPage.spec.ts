@@ -1372,8 +1372,9 @@ describe('CustomerBookingFlowPage', () => {
                 food_catalog_id: 'food-1',
                 // Custom change (Daycare-only clock-time scheduling): a
                 // Daycare feeding row sends a literal scheduled_time, never
-                // Hotel's meal_time day-period enum.
-                scheduled_time: '08:00',
+                // Hotel's meal_time day-period enum. Which time depends on
+                // the test timezone: new rows default inside the visit.
+                scheduled_time: expect.stringMatching(/^\d{2}:\d{2}$/),
               }),
             ],
           }),
@@ -1453,6 +1454,81 @@ describe('CustomerBookingFlowPage', () => {
 
     // Restore the quantity - Next proceeds and the row is submitted.
     await user.type(screen.getByPlaceholderText('Quantity'), '2');
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+  });
+
+  it('Care Instructions: a Daycare care time outside the visit blocks Next until it is changed', async () => {
+    const DAYCARE_SERVICE = {
+      id: 'service-daycare-1',
+      category: 'Daycare' as const,
+      name: 'Daycare (per hour)',
+      base_price: 100,
+      duration_minutes: 60,
+      is_active: true,
+      requires_assessed_pet: true,
+      created_by: null,
+      updated_by: null,
+      created_at: '',
+      updated_at: '',
+      first_hour_fee: 100,
+      succeeding_hour_fee: 50,
+      daycare_overnight_fee: 850,
+    };
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, DAYCARE_SERVICE],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToServicesStep(user);
+
+    await user.click(screen.getByText('Daycare'));
+    await waitFor(() =>
+      expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Daycare (per hour)'));
+    await advanceThroughAvailability(user, { staff: false });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Add walk time' })
+    );
+
+    // The mocked slot's local time depends on the test timezone, so read the
+    // window off the input rather than hard-coding it. A new row starts
+    // inside it, not at the old 8:00 AM default.
+    const walkTime = screen.getByLabelText('Walk time') as HTMLInputElement;
+    expect(walkTime.value >= walkTime.min).toBe(true);
+    expect(walkTime.value <= walkTime.max).toBe(true);
+    const validTime = walkTime.value;
+
+    // One minute before the visit starts.
+    const [hour, minute] = walkTime.min.split(':').map(Number);
+    const beforeVisit = new Date(2026, 0, 1, hour, minute - 1);
+    fireEvent.change(walkTime, {
+      target: {
+        value: `${String(beforeVisit.getHours()).padStart(2, '0')}:${String(
+          beforeVisit.getMinutes()
+        ).padStart(2, '0')}`,
+      },
+    });
+
+    await user.click(screen.getByText('Next'));
+
+    expect(
+      screen.getByText(/Every care time must be between/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Add another booking')).not.toBeInTheDocument();
+
+    fireEvent.change(walkTime, { target: { value: validTime } });
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>

@@ -1,6 +1,18 @@
+.field {
+  display: grid;
+  gap: var(--space-0-5);
+  width: 100%;
+}
+
 .wrapper {
   display: flex;
   width: 100%;
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-error-text);
+  font-size: var(--text-xs);
 }
 
 .input,

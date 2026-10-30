@@ -44,6 +44,7 @@ import {
 } from './cagePicker.service.ts';
 import { markCouponsRedeemed } from '../../rewards/services/customerCoupons.service.ts';
 import {
+  assertDaycareCareTimesWithinVisit,
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
 } from './availability.service.ts';
@@ -789,6 +790,12 @@ async function resolveSubBooking({
   // Daycare check-in cutoff - mirrors createBooking.
   if (subInput.service_category === 'Daycare') {
     await assertDaycareStartsBeforeCutoff(branchId, subInput.scheduled_start);
+    await assertDaycareCareTimesWithinVisit(
+      branchId,
+      subInput.scheduled_start,
+      subInput.scheduled_end,
+      subInput.hotel_preferences
+    );
   }
 
   if (bookingSource === 'Online') {

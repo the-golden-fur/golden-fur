@@ -20,6 +20,7 @@ import {
   formatDaycareCutoff,
   resolveDaycareCutoffTime,
 } from '../modules/daycareCutoff.util.ts';
+import { findCareTimeOutsideVisit } from '../modules/daycareCareTimes.util.ts';
 
 function throwWithStatus(statusCode: number, message: string): never {
   const error = new Error(message);
@@ -162,12 +163,15 @@ export async function checkInDaycareSession({
   // customer-authored source to defer to, so it keeps using the request body
   // for those two fields below.
   let hotelPreferences: HotelBookingPreferences | null | undefined;
+  // The booking's own visit, which care times must fall inside. A true
+  // walk-in session (no booking) has none to check against.
+  let visit: { scheduledStart: string; scheduledEnd: string } | null = null;
 
   if (input.booking_id) {
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(
-        'id, pet_id, branch_id, service_category, status, hotel_preferences'
+        'id, pet_id, branch_id, service_category, status, hotel_preferences, scheduled_start, scheduled_end'
       )
       .eq('id', input.booking_id)
       .maybeSingle();
@@ -196,6 +200,10 @@ export async function checkInDaycareSession({
     bookingId = booking.id;
     bookingStatus = booking.status;
     hotelPreferences = booking.hotel_preferences;
+    visit = {
+      scheduledStart: booking.scheduled_start,
+      scheduledEnd: booking.scheduled_end,
+    };
   } else {
     petId = input.pet_id!;
     branchId = input.branch_id!;
@@ -238,6 +246,23 @@ export async function checkInDaycareSession({
         `Check-in unavailable after ${formatDaycareCutoff(cutoffTime)}`
       );
     }
+  }
+
+  // Before the cage claim below, so a rejected check-in changes nothing.
+  if (visit?.scheduledStart && visit.scheduledEnd) {
+    const careTimeError = findCareTimeOutsideVisit({
+      care: {
+        feeding: input.feeding ?? hotelPreferences?.feeding,
+        walking: input.walking,
+        playing: input.playing,
+        medications: input.medications ?? hotelPreferences?.medications,
+      },
+      scheduledStart: visit.scheduledStart,
+      scheduledEnd: visit.scheduledEnd,
+      timezone: branch.timezone,
+    });
+
+    if (careTimeError) throwWithStatus(422, careTimeError);
   }
 
   // Custom change (Daycare/Hotel parity): Daycare now claims a real cage the

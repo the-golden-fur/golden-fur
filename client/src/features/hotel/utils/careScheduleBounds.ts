@@ -31,6 +31,44 @@ export function getLastDayMaxTime(scheduledEnd: string): string {
   return toTimeOfDay(scheduledEnd);
 }
 
+export interface VisitTimeBounds {
+  /** "HH:MM", the earliest allowed start. */
+  min: string;
+  /** "HH:MM", the latest allowed start. */
+  max: string;
+}
+
+/** Which care times fit a Daycare visit: from its start up to, but not
+ * including, its end - the pet is leaving at the end time. A late walk-in can
+ * run past midnight, where a same-day max would fall before min, so that case
+ * has no real upper limit. */
+export function getVisitTimeBounds(
+  scheduledStart: string,
+  scheduledEnd: string
+): VisitTimeBounds {
+  const lastMinute = new Date(new Date(scheduledEnd).getTime() - 60000);
+  const endsSameDay =
+    new Date(scheduledStart).toDateString() === lastMinute.toDateString();
+
+  return {
+    min: toTimeOfDay(scheduledStart),
+    max: endsSameDay ? toTimeOfDay(lastMinute.toISOString()) : '23:59',
+  };
+}
+
+/** "HH:MM" strings compare correctly as plain strings. */
+export function isTimeWithinBounds(
+  time: string,
+  { min, max }: VisitTimeBounds
+): boolean {
+  return time >= min && time <= max;
+}
+
+export function clampTime(time: string, { min, max }: VisitTimeBounds): string {
+  if (time < min) return min;
+  return time > max ? max : time;
+}
+
 /** A meal is "not applicable on day 1" if its window has already ended by
  * the time the pet checks in (e.g. checking in at 11am means Morning
  * feeding has already passed). */

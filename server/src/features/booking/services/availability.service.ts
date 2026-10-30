@@ -21,6 +21,10 @@ import {
   formatDaycareCutoff,
   resolveDaycareCutoffTime,
 } from '../../daycare/modules/daycareCutoff.util.ts';
+import {
+  findCareTimeOutsideVisit,
+  type DaycareCareTimes,
+} from '../../daycare/modules/daycareCareTimes.util.ts';
 
 /** Which notice-period floor getDaySlots applies: a new booking uses
  * booking_notice_period_days (default 0); a reschedule keeps the stricter
@@ -303,6 +307,38 @@ export async function assertDaycareStartsBeforeCutoff(
       `Daycare check-in closes at ${formatDaycareCutoff(cutoff.time)} at this branch - please choose an earlier start time`
     );
   }
+}
+
+/**
+ * Throws a 422 when a Daycare booking's care instructions start outside the
+ * visit - the hard gate behind the booking step's own check. No branch lookup
+ * when there are no care instructions to judge.
+ */
+export async function assertDaycareCareTimesWithinVisit(
+  branchId: string,
+  scheduledStart: string,
+  scheduledEnd: string,
+  care: DaycareCareTimes | null | undefined
+): Promise<void> {
+  if (!care) return;
+
+  const { data: branch, error } = await supabase
+    .from('branches')
+    .select('timezone')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!branch) return;
+
+  const message = findCareTimeOutsideVisit({
+    care,
+    scheduledStart,
+    scheduledEnd,
+    timezone: (branch as { timezone: string }).timezone,
+  });
+
+  if (message) throwWithStatus(422, message);
 }
 
 /** "HH:MM" (24h) as a 12-hour clock label, e.g. "15:00" -> "3:00 PM". */

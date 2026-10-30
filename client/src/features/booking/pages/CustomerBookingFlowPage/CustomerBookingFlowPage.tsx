@@ -105,9 +105,13 @@ import { PromoCouponMultiSelect } from '../../components/PromoCouponMultiSelect/
 import { promoMinSpendShortfall } from '../../utils/promoMinSpend';
 import { useFeatureFlag } from '../../../../shared/providers/FeatureFlagsProvider/FeatureFlagsContext';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
+import { formatTimeValue } from '../../../hotel/components/TimeInput/formatTimeValue';
 import {
+  clampTime,
   getDayOneMinTime,
   getLastDayMaxTime,
+  getVisitTimeBounds,
+  isTimeWithinBounds,
   isMealApplicableOnDayOne,
   isMealApplicableOnLastDay,
 } from '../../../hotel/utils/careScheduleBounds';
@@ -1947,6 +1951,30 @@ export function CustomerBookingFlowPage() {
     ? getLastDayMaxTime(finalScheduledEnd)
     : null;
 
+  // Daycare care times must fall inside the visit itself - Hotel's rows use
+  // day periods, and a multi-night stay has no single day's bound to apply.
+  const daycareVisitBounds =
+    category === 'Daycare' && selectedSlot && finalScheduledEnd
+      ? getVisitTimeBounds(selectedSlot.start, finalScheduledEnd)
+      : null;
+  const newCareRowTime = daycareVisitBounds
+    ? clampTime(EMPTY_HOTEL_FEEDING_ROW.scheduled_time, daycareVisitBounds)
+    : EMPTY_HOTEL_FEEDING_ROW.scheduled_time;
+  // Rows that won't be sent don't count. Also catches a row added before the
+  // user went back and moved the start time.
+  const daycareCareTimesOutsideVisit =
+    daycareVisitBounds !== null &&
+    [
+      ...hotelFeeding.filter((row) => hotelFeedingRowStatus(row) !== 'empty'),
+      ...hotelWalking,
+      ...hotelPlaying,
+      ...hotelMedications.filter(
+        (row) => hotelMedicationRowStatus(row) !== 'empty'
+      ),
+    ].some(
+      (row) => !isTimeWithinBounds(row.scheduled_time, daycareVisitBounds)
+    );
+
   // Hotel is priced per night - base_price/bundled_price is the per-night
   // rate, multiplied by however many nights were set on the Service step
   // (mirrors the server's own resolveQuantity in booking.service.ts).
@@ -2475,7 +2503,9 @@ export function CustomerBookingFlowPage() {
         // Optional step - but a row the user half-filled would fail the
         // server's hotelPreferencesValidator, so block Next until it's
         // completed or removed (the step's own banner points at it).
-        return hotelCareIncompleteRows.length === 0;
+        return (
+          hotelCareIncompleteRows.length === 0 && !daycareCareTimesOutsideVisit
+        );
       case 'bookingsList':
         // Same pattern as 'items' above - at least one booking must be
         // committed before moving on to the shared Review step. In
@@ -2761,6 +2791,7 @@ export function CustomerBookingFlowPage() {
       ...prev,
       {
         ...EMPTY_HOTEL_FEEDING_ROW,
+        scheduled_time: newCareRowTime,
         stay_date: hotelUniformInstructions ? null : activeNightDate,
       },
     ]);
@@ -2775,6 +2806,7 @@ export function CustomerBookingFlowPage() {
       ...prev,
       {
         ...EMPTY_HOTEL_FEEDING_ROW,
+        scheduled_time: newCareRowTime,
         food_type: item.name,
         quantity: item.quantity,
         quantity_unit:
@@ -2833,6 +2865,7 @@ export function CustomerBookingFlowPage() {
       ...prev,
       {
         ...EMPTY_HOTEL_WALKING_ROW,
+        scheduled_time: newCareRowTime,
         stay_date: hotelUniformInstructions ? null : activeNightDate,
       },
     ]);
@@ -2856,6 +2889,7 @@ export function CustomerBookingFlowPage() {
       ...prev,
       {
         ...EMPTY_HOTEL_PLAYING_ROW,
+        scheduled_time: newCareRowTime,
         stay_date: hotelUniformInstructions ? null : activeNightDate,
       },
     ]);
@@ -2879,6 +2913,7 @@ export function CustomerBookingFlowPage() {
       ...prev,
       {
         ...EMPTY_HOTEL_MEDICATION_ROW,
+        scheduled_time: newCareRowTime,
         stay_date: hotelUniformInstructions ? null : activeNightDate,
       },
     ]);
@@ -2890,6 +2925,7 @@ export function CustomerBookingFlowPage() {
       ...prev,
       {
         ...EMPTY_HOTEL_MEDICATION_ROW,
+        scheduled_time: newCareRowTime,
         medication_name: item.name,
         dose: item.dose,
         dose_unit: item.dose_unit ?? EMPTY_HOTEL_MEDICATION_ROW.dose_unit,
@@ -3850,6 +3886,7 @@ export function CustomerBookingFlowPage() {
               onSelect={(slot) => setSelectedSlot(slot)}
               lockToNow={isReceptionistMode && bookingSource === 'Walk-in'}
               excludedWindows={samePetBundleWindows}
+              allowCustomTime={isReceptionistMode}
             />
 
             {/* Derived end of the booking for the picked start - the task
@@ -4453,6 +4490,15 @@ export function CustomerBookingFlowPage() {
               </>
             ) : null}
 
+            {daycareCareTimesOutsideVisit && daycareVisitBounds ? (
+              <div className={styles.errorBanner} role="alert">
+                Every care time must be between{' '}
+                {formatTimeValue(daycareVisitBounds.min)} and{' '}
+                {formatTimeValue(daycareVisitBounds.max)}, during the visit.
+                Change or remove the others before continuing.
+              </div>
+            ) : null}
+
             {hotelCareIncompleteRows.length > 0
               ? (() => {
                   const first = hotelCareIncompleteRows[0];
@@ -4521,6 +4567,8 @@ export function CustomerBookingFlowPage() {
                       {category === 'Daycare' ? (
                         <TimeInput
                           aria-label="Feeding time"
+                          min={daycareVisitBounds?.min}
+                          max={daycareVisitBounds?.max}
                           value={row.scheduled_time}
                           onChange={(value) =>
                             updateHotelFeeding(index, { scheduled_time: value })
@@ -4703,6 +4751,8 @@ export function CustomerBookingFlowPage() {
                       {category === 'Daycare' ? (
                         <TimeInput
                           aria-label="Walk time"
+                          min={daycareVisitBounds?.min}
+                          max={daycareVisitBounds?.max}
                           value={row.scheduled_time}
                           onChange={(value) =>
                             updateHotelWalkBlock(index, {
@@ -4807,6 +4857,8 @@ export function CustomerBookingFlowPage() {
                       {category === 'Daycare' ? (
                         <TimeInput
                           aria-label="Playtime start"
+                          min={daycareVisitBounds?.min}
+                          max={daycareVisitBounds?.max}
                           value={row.scheduled_time}
                           onChange={(value) =>
                             updateHotelPlayBlock(index, {
@@ -4951,6 +5003,8 @@ export function CustomerBookingFlowPage() {
                       </select>
                       <TimeInput
                         aria-label="Medication time"
+                        min={daycareVisitBounds?.min}
+                        max={daycareVisitBounds?.max}
                         value={row.scheduled_time}
                         onChange={(value) =>
                           updateHotelMedication(index, {

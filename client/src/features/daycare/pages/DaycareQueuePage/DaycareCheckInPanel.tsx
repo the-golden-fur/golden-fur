@@ -11,6 +11,11 @@ import {
 } from '../../../../shared/utils/cageSizeFit';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
 import { formatTimeValue } from '../../../hotel/components/TimeInput/formatTimeValue';
+import {
+  clampTime,
+  getVisitTimeBounds,
+  isTimeWithinBounds,
+} from '../../../hotel/utils/careScheduleBounds';
 import type {
   Cage,
   FeedingInstructionPayload,
@@ -88,9 +93,18 @@ interface MedicationUiState {
  * Mirrors HotelCheckInPanel's own initialFeeding/initialWalking/etc, minus
  * the CatalogComboBox/prescription-prefill parts this simpler panel never
  * had (see the file-level comment below). */
+function bookingVisitBounds(booking: Booking) {
+  return getVisitTimeBounds(booking.scheduled_start, booking.scheduled_end);
+}
+
+/** The time a row with none of its own starts at: inside the visit. */
+function defaultCareTime(booking: Booking): string {
+  return clampTime('08:00', bookingVisitBounds(booking));
+}
+
 function initialFeeding(booking: Booking): FeedingUiState[] {
   return (booking.hotel_preferences?.feeding ?? []).map((item) => ({
-    scheduledTime: item.scheduled_time ?? '08:00',
+    scheduledTime: item.scheduled_time ?? defaultCareTime(booking),
     foodType: item.food_type,
     quantity: item.quantity,
     // Custom change (care instruction units + photos): no unit-picker/photo
@@ -105,10 +119,15 @@ function initialFeeding(booking: Booking): FeedingUiState[] {
 }
 
 function initialCareBlocks(
-  items: { scheduled_time?: string; duration_minutes: number; notes?: string }[]
+  items: {
+    scheduled_time?: string;
+    duration_minutes: number;
+    notes?: string;
+  }[],
+  defaultTime: string
 ): CareBlockUiState[] {
   return items.map((item) => ({
-    scheduledTime: item.scheduled_time ?? '08:00',
+    scheduledTime: item.scheduled_time ?? defaultTime,
     durationMinutes: item.duration_minutes,
     notes: item.notes ?? '',
   }));
@@ -175,15 +194,25 @@ export function DaycareCheckInPanel({
     initialFeeding(booking)
   );
   const [walking, setWalking] = useState<CareBlockUiState[]>(() =>
-    initialCareBlocks(booking.hotel_preferences?.walking ?? [])
+    initialCareBlocks(
+      booking.hotel_preferences?.walking ?? [],
+      defaultCareTime(booking)
+    )
   );
   const [playing, setPlaying] = useState<CareBlockUiState[]>(() =>
-    initialCareBlocks(booking.hotel_preferences?.playing ?? [])
+    initialCareBlocks(
+      booking.hotel_preferences?.playing ?? [],
+      defaultCareTime(booking)
+    )
   );
   const [medications, setMedications] = useState<MedicationUiState[]>(() =>
     initialMedications(booking)
   );
   const [notifyOptIn, setNotifyOptIn] = useState(false);
+
+  // Care times must fall inside the visit, and new rows start inside it.
+  const visitBounds = bookingVisitBounds(booking);
+  const newCareRowTime = defaultCareTime(booking);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
@@ -237,7 +266,7 @@ export function DaycareCheckInPanel({
     setFeeding((prev) => [
       ...prev,
       {
-        scheduledTime: '08:00',
+        scheduledTime: newCareRowTime,
         foodType: '',
         quantity: '',
         specialInstructions: '',
@@ -253,7 +282,7 @@ export function DaycareCheckInPanel({
     setFeeding((prev) => [
       ...prev,
       {
-        scheduledTime: '08:00',
+        scheduledTime: newCareRowTime,
         foodType: item.name,
         quantity: item.quantity,
         quantityUnit: item.quantity_unit ?? undefined,
@@ -278,7 +307,7 @@ export function DaycareCheckInPanel({
   function addCareBlock(setter: typeof setWalking) {
     setter((prev) => [
       ...prev,
-      { scheduledTime: '08:00', durationMinutes: 15, notes: '' },
+      { scheduledTime: newCareRowTime, durationMinutes: 15, notes: '' },
     ]);
   }
 
@@ -352,7 +381,10 @@ export function DaycareCheckInPanel({
         i === medicationIndex
           ? {
               ...medication,
-              scheduledTimes: [...medication.scheduledTimes, '07:00'],
+              scheduledTimes: [
+                ...medication.scheduledTimes,
+                clampTime('07:00', visitBounds),
+              ],
             }
           : medication
       )
@@ -394,12 +426,29 @@ export function DaycareCheckInPanel({
   }
 
   function validateForm(): string | null {
+    const visitLabel = `between ${formatTimeValue(visitBounds.min)} and ${formatTimeValue(visitBounds.max)}`;
+
     for (const [index, state] of feeding.entries()) {
       if (!state.foodType.trim()) {
         return `Feeding time #${index + 1} is missing a food type.`;
       }
       if (!state.quantity.trim()) {
         return `Feeding time #${index + 1} is missing a quantity.`;
+      }
+      if (!isTimeWithinBounds(state.scheduledTime, visitBounds)) {
+        return `Feeding time #${index + 1} must be ${visitLabel}.`;
+      }
+    }
+
+    for (const [index, block] of walking.entries()) {
+      if (!isTimeWithinBounds(block.scheduledTime, visitBounds)) {
+        return `Walk time #${index + 1} must be ${visitLabel}.`;
+      }
+    }
+
+    for (const [index, block] of playing.entries()) {
+      if (!isTimeWithinBounds(block.scheduledTime, visitBounds)) {
+        return `Playtime #${index + 1} must be ${visitLabel}.`;
       }
     }
 
@@ -409,6 +458,13 @@ export function DaycareCheckInPanel({
       }
       if (!medication.dose.trim()) {
         return `Medication #${index + 1} is missing a dose.`;
+      }
+      if (
+        medication.scheduledTimes.some(
+          (time) => !isTimeWithinBounds(time, visitBounds)
+        )
+      ) {
+        return `Medication #${index + 1} times must be ${visitLabel}.`;
       }
     }
 
@@ -573,6 +629,8 @@ export function DaycareCheckInPanel({
             <div className={styles.inlineFields}>
               <TimeInput
                 aria-label="Feeding time"
+                min={visitBounds.min}
+                max={visitBounds.max}
                 value={state.scheduledTime}
                 onChange={(value) =>
                   updateFeeding(index, { scheduledTime: value })
@@ -655,6 +713,8 @@ export function DaycareCheckInPanel({
             <div className={styles.inlineFields}>
               <TimeInput
                 aria-label="Walk time"
+                min={visitBounds.min}
+                max={visitBounds.max}
                 value={block.scheduledTime}
                 onChange={(value) =>
                   updateCareBlock(setWalking, index, { scheduledTime: value })
@@ -711,6 +771,8 @@ export function DaycareCheckInPanel({
             <div className={styles.inlineFields}>
               <TimeInput
                 aria-label="Playtime start"
+                min={visitBounds.min}
+                max={visitBounds.max}
                 value={block.scheduledTime}
                 onChange={(value) =>
                   updateCareBlock(setPlaying, index, { scheduledTime: value })
@@ -806,6 +868,8 @@ export function DaycareCheckInPanel({
                 <div key={timeIndex} className={styles.timeChip}>
                   <TimeInput
                     aria-label={`Medication time ${timeIndex + 1}`}
+                    min={visitBounds.min}
+                    max={visitBounds.max}
                     value={time}
                     onChange={(value) =>
                       updateMedicationTime(index, timeIndex, value)

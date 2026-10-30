@@ -31,6 +31,7 @@ vi.mock('../../../shared/auth/api/supabaseAuth.api.ts', () => ({
 vi.mock('./availability.service.ts', () => ({
   assertWithinGroomingHours: vi.fn(),
   assertDaycareStartsBeforeCutoff: vi.fn(),
+  assertDaycareCareTimesWithinVisit: vi.fn(),
 }));
 
 vi.mock('./bookingNotifications.service.ts', () => ({
