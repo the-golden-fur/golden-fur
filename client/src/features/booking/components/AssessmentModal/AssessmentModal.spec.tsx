@@ -8,7 +8,13 @@ import type {
 } from '../../../customers/customer.types';
 import { AssessmentModal } from './AssessmentModal';
 
-const CUTOFFS = { m_min_kg: 9.5, l_min_kg: 22, xl_min_kg: 41 };
+const CUTOFFS = {
+  m_min_kg: 9.5,
+  l_min_kg: 22,
+  xl_min_kg: 41,
+  min_weight_kg: 0.1,
+  max_weight_kg: 156,
+};
 
 function Harness({
   onConfirm,
@@ -62,6 +68,69 @@ describe('AssessmentModal', () => {
       })
     );
     expect(classSelect).not.toBeDisabled();
+  });
+
+  it('pet weight limits: flags an out-of-range weight inline and blocks Confirm until it is fixed', async () => {
+    const user = userEvent.setup();
+    render(createElement(Harness, { onConfirm: vi.fn() }));
+
+    const weightInput = screen.getByLabelText(/Weight \(kg\)/);
+    await user.selectOptions(screen.getByLabelText('Coat type'), 'SC');
+    await user.type(weightInput, '200');
+
+    expect(
+      screen.getByText(/Invalid weight - enter between 0.1 kg and 156 kg/)
+    ).toBeInTheDocument();
+    expect(weightInput).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+
+    await user.clear(weightInput);
+    await user.type(weightInput, '15');
+
+    expect(screen.queryByText(/Invalid weight/)).not.toBeInTheDocument();
+    expect(weightInput).not.toHaveAttribute('aria-invalid');
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled();
+  });
+
+  it('highlights a huge typo as invalid even before the config loads', () => {
+    render(
+      createElement(AssessmentModal, {
+        pet: null,
+        weightKg: 9998678,
+        onWeightKgChange: vi.fn(),
+        entryUnit: 'kg',
+        onEntryUnitChange: vi.fn(),
+        cutoffs: null, // not loaded / database without the limit columns
+        weightClass: 'XL',
+        onWeightClassChange: vi.fn(),
+        weightClassOverridden: false,
+        onWeightClassOverriddenChange: vi.fn(),
+        coatType: 'SC',
+        onCoatTypeChange: vi.fn(),
+        isSaving: false,
+        error: null,
+        onCancel: vi.fn(),
+        onConfirm: vi.fn(),
+      })
+    );
+
+    expect(
+      screen.getByText('Invalid weight - enter between 0.1 kg and 156 kg.')
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Weight \(kg\)/)).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+  });
+
+  it('flags 0 as an invalid weight as it is typed', async () => {
+    const user = userEvent.setup();
+    render(createElement(Harness, { onConfirm: vi.fn() }));
+
+    await user.type(screen.getByLabelText(/Weight \(kg\)/), '0');
+
+    expect(screen.getByText(/^Invalid weight/)).toBeInTheDocument();
   });
 
   it('keeps Confirm disabled until a positive weight and a coat type are set', async () => {

@@ -23,7 +23,14 @@ interface FormState {
   mMinKg: string;
   lMinKg: string;
   xlMinKg: string;
+  /** Custom change (pet weight limits): the recordable weight range. */
+  minWeightKg: string;
+  maxWeightKg: string;
 }
+
+/** The API's absolute ceiling (pet.validator.ts) - the heaviest allowed
+ * weight can't be set above it. */
+const ABSOLUTE_MAX_WEIGHT_KG = 499;
 
 function formStateFromConfiguration(
   config: PetWeightClassConfiguration
@@ -32,6 +39,8 @@ function formStateFromConfiguration(
     mMinKg: String(config.m_min_kg),
     lMinKg: String(config.l_min_kg),
     xlMinKg: String(config.xl_min_kg),
+    minWeightKg: String(config.min_weight_kg),
+    maxWeightKg: String(config.max_weight_kg),
   };
 }
 
@@ -44,6 +53,7 @@ function bandLabel(form: FormState): string[] {
     `M — ${m} kg up to (but not including) ${l} kg`,
     `L — ${l} kg up to (but not including) ${xl} kg`,
     `XL — ${xl} kg and over`,
+    `Weights below ${form.minWeightKg} kg or above ${form.maxWeightKg} kg can't be recorded.`,
   ];
 }
 
@@ -152,6 +162,27 @@ export function WeightClassConfigurationPage() {
       throw new Error(message);
     }
 
+    const minWeight = Number(form.minWeightKg);
+    const maxWeight = Number(form.maxWeightKg);
+
+    if (!(Number.isFinite(minWeight) && minWeight > 0 && minWeight < m)) {
+      const message =
+        'The lightest allowed weight must be above 0 and below the M cut-off.';
+      setFormError(message);
+      throw new Error(message);
+    }
+    if (
+      !(
+        Number.isFinite(maxWeight) &&
+        maxWeight > xl &&
+        maxWeight <= ABSOLUTE_MAX_WEIGHT_KG
+      )
+    ) {
+      const message = `The heaviest allowed weight must be above the XL cut-off and at most ${ABSOLUTE_MAX_WEIGHT_KG} kg.`;
+      setFormError(message);
+      throw new Error(message);
+    }
+
     setIsSubmitting(true);
     setFormError(null);
     setMessage(null);
@@ -160,6 +191,8 @@ export function WeightClassConfigurationPage() {
       m_min_kg: m,
       l_min_kg: l,
       xl_min_kg: xl,
+      min_weight_kg: minWeight,
+      max_weight_kg: maxWeight,
     });
 
     setIsSubmitting(false);
@@ -328,6 +361,51 @@ export function WeightClassConfigurationPage() {
               required
             />
           </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Lightest allowed weight (kg)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0.01"
+              step="0.01"
+              inputMode="decimal"
+              value={form.minWeightKg}
+              onChange={(event) =>
+                setForm(
+                  (prev) => prev && { ...prev, minWeightKg: event.target.value }
+                )
+              }
+              required
+            />
+          </label>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Heaviest allowed weight (kg)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0.01"
+              max={ABSOLUTE_MAX_WEIGHT_KG}
+              step="0.01"
+              inputMode="decimal"
+              value={form.maxWeightKg}
+              onChange={(event) =>
+                setForm(
+                  (prev) => prev && { ...prev, maxWeightKg: event.target.value }
+                )
+              }
+              required
+            />
+          </label>
+          <p className={styles.copy}>
+            Staff can&apos;t record a weight outside this range when assessing
+            or editing a pet - it catches typos like 1500 instead of 15.00. The
+            heaviest dog on record weighed about 156 kg.
+          </p>
 
           {formError ? (
             <p className={styles.errorBanner} role="alert">
