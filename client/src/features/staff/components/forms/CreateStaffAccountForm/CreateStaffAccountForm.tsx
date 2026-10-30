@@ -1,4 +1,9 @@
 import { useState, type FormEvent } from 'react';
+import { StaffNameFields } from '../StaffNameFields/StaffNameFields';
+import {
+  EMPTY_STAFF_NAME,
+  type StaffNameValues,
+} from '../../../utils/staffName';
 import { createStaffAccount } from '../../../api/staff.api';
 import type { BranchSummary } from '../../../../maintenance/maintenance.types';
 import type { CreateStaffAccountResult, StaffRole } from '../../../staff.types';
@@ -45,7 +50,9 @@ export function CreateStaffAccountForm({
 }: CreateStaffAccountFormProps) {
   const [username, setUsername] = useState('');
   const [registeredEmail, setRegisteredEmail] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  // Staff names (20261030290): legal name + optional nickname - the name
+  // shown around the app is derived from them.
+  const [name, setName] = useState<StaffNameValues>(EMPTY_STAFF_NAME);
   const [role, setRole] = useState<StaffRole>(ALL_ROLES[3]);
   const [branchId, setBranchId] = useState(viewerBranchId);
   const [error, setError] = useState<string | null>(null);
@@ -60,8 +67,15 @@ export function CreateStaffAccountForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!username.trim() || !registeredEmail.trim() || !displayName.trim()) {
-      setError('Username, registered email, and display name are required.');
+    if (
+      !username.trim() ||
+      !registeredEmail.trim() ||
+      !name.first_name.trim() ||
+      !name.last_name.trim()
+    ) {
+      setError(
+        'Username, registered email, first name and last name are required.'
+      );
       return;
     }
 
@@ -72,7 +86,10 @@ export function CreateStaffAccountForm({
     const result = await createStaffAccount(accessToken, {
       username: username.trim(),
       registered_email: registeredEmail.trim(),
-      display_name: displayName.trim(),
+      first_name: name.first_name.trim(),
+      middle_name: name.middle_name.trim() || null,
+      last_name: name.last_name.trim(),
+      nickname: name.nickname.trim() || null,
       role,
       branch_id: canPickBranch ? branchId : viewerBranchId,
     });
@@ -87,7 +104,7 @@ export function CreateStaffAccountForm({
     setCreatedAccount(result.data);
     setUsername('');
     setRegisteredEmail('');
-    setDisplayName('');
+    setName(EMPTY_STAFF_NAME);
     setRole(ALL_ROLES[3]);
     onCreated(result.data);
   };
@@ -115,14 +132,14 @@ export function CreateStaffAccountForm({
             onChange={(event) => setRegisteredEmail(event.target.value)}
           />
         </label>
-        <label className={styles.field}>
-          <span className={styles.label}>Display name</span>
-          <input
-            className={styles.input}
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-          />
-        </label>
+        <StaffNameFields
+          value={name}
+          onChange={setName}
+          fieldClassName={styles.field}
+          labelClassName={styles.label}
+          inputClassName={styles.input}
+          hintClassName={styles.hint}
+        />
         <label className={styles.field}>
           <span className={styles.label}>New hire role</span>
           <select

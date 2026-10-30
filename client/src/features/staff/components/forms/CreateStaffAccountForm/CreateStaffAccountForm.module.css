@@ -83,3 +83,9 @@
   cursor: wait;
   opacity: 0.72;
 }
+
+/* Staff names: the nickname hint and "Shown as" preview. */
+.hint {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}

@@ -36,7 +36,11 @@ interface CreateStaffAccountParams {
   requesterBranchId: string;
   username: string;
   registeredEmail: string;
-  displayName: string;
+  /** Staff names (20261030290) - display_name is derived from these. */
+  firstName: string;
+  middleName?: string | null;
+  lastName: string;
+  nickname?: string | null;
   role: StaffRole;
   branchId: string;
 }
@@ -59,7 +63,10 @@ export interface CreateStaffAccountResult {
 export async function createStaffAccount({
   username,
   registeredEmail,
-  displayName,
+  firstName,
+  middleName,
+  lastName,
+  nickname,
   role,
   branchId,
 }: CreateStaffAccountParams): Promise<CreateStaffAccountResult> {
@@ -100,7 +107,11 @@ export async function createStaffAccount({
       role,
       username,
       registered_email: registeredEmail,
-      display_name: displayName,
+      // display_name is filled by trg_staff_profiles_sync_display_name.
+      first_name: firstName,
+      middle_name: middleName ?? null,
+      last_name: lastName,
+      nickname: nickname ?? null,
     })
     .select('*')
     .maybeSingle();
@@ -170,6 +181,12 @@ interface ManageStaffAccountParams {
   role?: StaffRole;
   branchId?: string;
   isActive?: boolean;
+  /** Staff names (20261030290) - undefined leaves a part unchanged; null
+   * clears middle name / nickname. */
+  firstName?: string;
+  middleName?: string | null;
+  lastName?: string;
+  nickname?: string | null;
 }
 
 export async function manageStaffAccount({
@@ -179,10 +196,14 @@ export async function manageStaffAccount({
   role,
   branchId,
   isActive,
+  firstName,
+  middleName,
+  lastName,
+  nickname,
 }: ManageStaffAccountParams): Promise<StaffProfile> {
   const { data: target, error: lookupError } = await supabase
     .from('staff_profiles')
-    .select('id, branch_id')
+    .select('id, branch_id, first_name, last_name')
     .eq('id', targetStaffId)
     .maybeSingle();
 
@@ -206,10 +227,23 @@ export async function manageStaffAccount({
     throwWithStatus(403, 'Only a Superadmin can change staff role or branch');
   }
 
+  // A legal name is recorded whole: recording one for the first time needs
+  // both parts (the staff_profiles_first_last_name_together CHECK is the
+  // backstop). Name changes follow is_active's Admin-or-Superadmin rule.
+  const finalFirst = firstName ?? target.first_name;
+  const finalLast = lastName ?? target.last_name;
+  if (Boolean(finalFirst) !== Boolean(finalLast)) {
+    throwWithStatus(400, 'Enter both a first name and a last name');
+  }
+
   const update: Record<string, unknown> = {};
   if (role !== undefined) update.role = role;
   if (branchId !== undefined) update.branch_id = branchId;
   if (isActive !== undefined) update.is_active = isActive;
+  if (firstName !== undefined) update.first_name = firstName;
+  if (middleName !== undefined) update.middle_name = middleName;
+  if (lastName !== undefined) update.last_name = lastName;
+  if (nickname !== undefined) update.nickname = nickname;
 
   const { data, error } = await supabase
     .from('staff_profiles')

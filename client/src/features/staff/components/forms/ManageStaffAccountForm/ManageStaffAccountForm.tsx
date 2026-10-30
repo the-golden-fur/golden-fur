@@ -6,6 +6,8 @@ import {
 import type { BranchSummary } from '../../../../maintenance/maintenance.types';
 import type { StaffProfile, StaffRole } from '../../../staff.types';
 import { ResendEmailButton } from '../../buttons/ResendEmailButton/ResendEmailButton';
+import { StaffNameFields } from '../StaffNameFields/StaffNameFields';
+import type { StaffNameValues } from '../../../utils/staffName';
 import styles from './ManageStaffAccountForm.module.css';
 
 const ALL_ROLES: StaffRole[] = [
@@ -44,6 +46,15 @@ export function ManageStaffAccountForm({
   onArchived,
 }: ManageStaffAccountFormProps) {
   const [role, setRole] = useState<StaffRole>(profile.role);
+  // Staff names (20261030290) - same Admin-or-Superadmin permission as
+  // deactivating, so every viewer of this form can edit them.
+  const [name, setName] = useState<StaffNameValues>({
+    first_name: profile.first_name ?? '',
+    middle_name: profile.middle_name ?? '',
+    last_name: profile.last_name ?? '',
+    nickname: profile.nickname ?? '',
+  });
+  const hasLegalName = Boolean(profile.first_name && profile.last_name);
   const [branchId, setBranchId] = useState(profile.branch_id);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -90,6 +101,24 @@ export function ManageStaffAccountForm({
     void applyUpdate(payload, 'Role/branch updated.');
   };
 
+  const handleSaveName = () => {
+    if (!name.first_name.trim() || !name.last_name.trim()) {
+      setError('Enter both a first name and a last name.');
+      setMessage(null);
+      return;
+    }
+
+    void applyUpdate(
+      {
+        first_name: name.first_name.trim(),
+        middle_name: name.middle_name.trim() || null,
+        last_name: name.last_name.trim(),
+        nickname: name.nickname.trim() || null,
+      },
+      'Name updated.'
+    );
+  };
+
   const handleToggleActive = () => {
     void applyUpdate(
       { is_active: !profile.is_active },
@@ -120,6 +149,38 @@ export function ManageStaffAccountForm({
           Gallery cards - "Manage account" is already the "..." destination
           for account-level actions on this page. */}
       <ResendEmailButton staffId={staffId} accessToken={accessToken} />
+
+      <section
+        className={styles.nameSection}
+        aria-labelledby="staff-name-heading"
+      >
+        <h3 className={styles.sectionTitle} id="staff-name-heading">
+          Name
+        </h3>
+        {hasLegalName ? null : (
+          <p className={styles.hint}>
+            Their legal name isn&apos;t recorded yet - add it here.
+          </p>
+        )}
+        <div className={styles.nameFields}>
+          <StaffNameFields
+            value={name}
+            onChange={setName}
+            fieldClassName={styles.field}
+            labelClassName={styles.label}
+            inputClassName={styles.select}
+            hintClassName={styles.hint}
+          />
+        </div>
+        <button
+          type="button"
+          className={styles.button}
+          disabled={isSubmitting}
+          onClick={handleSaveName}
+        >
+          {isSubmitting ? 'Saving...' : 'Save name'}
+        </button>
+      </section>
 
       {canChangeRoleOrBranch ? (
         <div className={styles.roleBranchFields}>

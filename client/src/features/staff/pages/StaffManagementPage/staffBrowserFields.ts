@@ -115,6 +115,11 @@ export function deriveStaffSortKey(sortTile: SortTile | null): StaffSortKey {
 export function matchesStaffQuery(staff: StaffProfile, query: string): boolean {
   return (
     staff.display_name.toLowerCase().includes(query) ||
+    // Staff names: a search for someone's legal name finds them even when
+    // they're shown by nickname.
+    [staff.first_name, staff.middle_name, staff.last_name, staff.nickname].some(
+      (part) => part?.toLowerCase().includes(query)
+    ) ||
     staff.username.toLowerCase().includes(query) ||
     staff.registered_email.toLowerCase().includes(query)
   );
