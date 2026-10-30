@@ -6,7 +6,7 @@ import {
   within,
 } from '@testing-library/react';
 import { createElement } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SlotPicker } from './SlotPicker';
 import * as bookingApi from '../../api/booking.api';
 
@@ -489,6 +489,190 @@ describe('SlotPicker', () => {
     expect(
       await screen.findByText(/Cage availability for this size: 3 of 8 free/)
     ).toBeInTheDocument();
+  });
+
+  // Staff booking flow: a typed time doesn't have to be one of the listed
+  // slots. Only Date is faked, so the 450ms commit debounce still runs on
+  // real timers and waitFor keeps working. 07:00 local on the picker's date,
+  // before the branch opens, so no time below counts as already past.
+  describe('allowCustomTime (staff booking flow)', () => {
+    const localIso = (hour: number, minute = 0) =>
+      new Date(2026, 7, 3, hour, minute).toISOString();
+
+    // Built per test, not at collection time: the Asia/Manila regression test
+    // above changes process.env.TZ for the rest of the file.
+    const localSlots = () => [
+      {
+        start: localIso(9),
+        end: localIso(10),
+        available: true,
+        level: 'available' as const,
+        eligible_staff_count: 2,
+      },
+      {
+        start: localIso(11),
+        end: localIso(12),
+        available: false,
+        level: 'full' as const,
+        eligible_staff_count: 0,
+      },
+    ];
+
+    const renderPicker = async (
+      overrides: Record<string, unknown> = {},
+      slots: unknown[] = localSlots()
+    ) => {
+      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+        data: { slots, window: WINDOW },
+        error: null,
+      } as Awaited<ReturnType<typeof bookingApi.getDayAvailability>>);
+      const onSelect = vi.fn();
+
+      render(
+        createElement(SlotPicker, {
+          accessToken: 'token',
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          slotDurationMinutes: 60,
+          viewerMode: 'staff',
+          selectedSlot: null,
+          onSelect,
+          allowCustomTime: true,
+          ...overrides,
+        })
+      );
+
+      await screen.findByLabelText('Appointment time');
+      return onSelect;
+    };
+
+    const typeTime = (value: string) =>
+      fireEvent.change(screen.getByLabelText('Appointment time'), {
+        target: { value },
+      });
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(2026, 7, 3, 7, 0));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('commits a time between listed slots, running for the service duration', async () => {
+      const onSelect = await renderPicker();
+
+      typeTime('10:15');
+
+      await waitFor(() =>
+        expect(onSelect).toHaveBeenCalledWith({
+          start: localIso(10, 15),
+          end: localIso(11, 15),
+        })
+      );
+    });
+
+    it('keeps the slots-only rule without the prop', async () => {
+      const onSelect = await renderPicker({ allowCustomTime: false });
+
+      typeTime('10:15');
+
+      expect(
+        await screen.findByText(/No appointment slot at that time/)
+      ).toBeInTheDocument();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['before opening', '07:30', /enter a time within those hours/],
+      ['at closing', '18:00', /enter a time within those hours/],
+      ['running past closing', '17:30', /would run past closing/],
+      ['on a slot listed unavailable', '11:00', /That time is unavailable/],
+    ])('rejects a time %s', async (_label, time, message) => {
+      const onSelect = await renderPicker();
+
+      typeTime(time);
+
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('rejects a time overlapping the same pet', async () => {
+      const onSelect = await renderPicker({
+        excludedWindows: [{ start: localIso(10), end: localIso(10, 30) }],
+      });
+
+      typeTime('10:15');
+
+      expect(
+        await screen.findByText(/already has a booking at that time/)
+      ).toBeInTheDocument();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('rejects a time already past today', async () => {
+      vi.setSystemTime(new Date(2026, 7, 3, 14, 0));
+      const onSelect = await renderPicker();
+
+      typeTime('10:15');
+
+      expect(await screen.findByText(/already passed/)).toBeInTheDocument();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('lets a Hotel stay run past closing', async () => {
+      const onSelect = await renderPicker({
+        serviceCategory: 'Hotel',
+        slotDurationMinutes: 1440,
+      });
+
+      typeTime('17:30');
+
+      await waitFor(() =>
+        expect(onSelect).toHaveBeenCalledWith({
+          start: localIso(17, 30),
+          end: new Date(2026, 7, 4, 17, 30).toISOString(),
+        })
+      );
+    });
+
+    it('still takes a typed time on a day with no listed slots', async () => {
+      const onSelect = await renderPicker({}, []);
+
+      expect(
+        screen.getByText(/You can still enter a time below/)
+      ).toBeInTheDocument();
+
+      typeTime('10:15');
+
+      await waitFor(() => expect(onSelect).toHaveBeenCalled());
+    });
+
+    it('stays hidden on a closed day', async () => {
+      vi.mocked(bookingApi.getDayAvailability).mockResolvedValue({
+        data: { slots: [], window: null },
+        error: null,
+      });
+
+      render(
+        createElement(SlotPicker, {
+          accessToken: 'token',
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          slotDurationMinutes: 60,
+          viewerMode: 'staff',
+          selectedSlot: null,
+          onSelect: vi.fn(),
+          allowCustomTime: true,
+        })
+      );
+
+      expect(await screen.findByText(/no availability/i)).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText('Appointment time')
+      ).not.toBeInTheDocument();
+    });
   });
 
   // Walk-in booking flow (custom change): lockToNow selects a slot that
