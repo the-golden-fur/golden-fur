@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RECORD_MAX_PET_AGE_YEARS } from '../../utils/petAgeLimit.ts';
 
 const CATEGORIES = [
   'Grooming',
@@ -279,6 +280,23 @@ export const updatePricingConfigurationValidator = z
   });
 
 /**
+ * Custom change (pet age limit): a whole number of years, never above the
+ * oldest pet on record. The pet_age_configuration CHECK is the backstop.
+ */
+export const updatePetAgeConfigurationValidator = z
+  .object({
+    max_age_years: z
+      .number()
+      .int('Age limit must be a whole number of years')
+      .min(1, 'Age limit must be at least 1 year')
+      .max(
+        RECORD_MAX_PET_AGE_YEARS,
+        `Age limit cannot be more than ${RECORD_MAX_PET_AGE_YEARS} years (the oldest pet on record)`
+      ),
+  })
+  .strict();
+
+/**
  * Architectural-Change-History: the S/M/L/XL kg cut-offs. Every field
  * optional (PATCH semantics for the singleton). Ordering among the fields
  * present in this request is checked here; the full m < l < xl invariant
@@ -292,9 +310,25 @@ export const updatePetWeightClassConfigurationValidator = z
     m_min_kg: z.number().positive().max(499).optional(),
     l_min_kg: z.number().positive().max(499).optional(),
     xl_min_kg: z.number().positive().max(499).optional(),
+    // Custom change (pet weight limits): the recordable weight range. Its
+    // position relative to the cut-offs (min < M, XL < max) is checked in
+    // the service against the merged row, like the cut-off ordering.
+    min_weight_kg: z.number().positive().max(499).optional(),
+    max_weight_kg: z.number().positive().max(499).optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
+    if (
+      input.min_weight_kg !== undefined &&
+      input.max_weight_kg !== undefined &&
+      input.min_weight_kg >= input.max_weight_kg
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['max_weight_kg'],
+        message: 'Heaviest weight must be greater than the lightest weight',
+      });
+    }
     if (
       input.m_min_kg !== undefined &&
       input.l_min_kg !== undefined &&
@@ -948,6 +982,9 @@ export type UpdatePricingConfigurationInput = z.infer<
 >;
 export type UpdatePackagePricingConfigurationInput = z.infer<
   typeof updatePackagePricingConfigurationValidator
+>;
+export type UpdatePetAgeConfigurationInput = z.infer<
+  typeof updatePetAgeConfigurationValidator
 >;
 export type UpdatePetWeightClassConfigurationInput = z.infer<
   typeof updatePetWeightClassConfigurationValidator

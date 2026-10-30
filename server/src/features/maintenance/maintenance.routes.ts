@@ -21,6 +21,8 @@ import {
   getPackageController,
   getPackagePricingConfigurationController,
   getPetWeightClassConfigurationController,
+  getPetAgeConfigurationController,
+  updatePetAgeConfigurationController,
   getPricingConfigurationController,
   getPromoController,
   getServiceController,
@@ -260,6 +262,20 @@ router.patch(
   '/maintenance/pet-weight-class-configuration',
   superadminWrite,
   updatePetWeightClassConfigurationController
+);
+
+// Pet age configuration (custom change: pet age limit). Read by any signed-in
+// user, not just staff - a customer adding their own pet needs the limit for
+// the date-of-birth field (pet routes likewise only require jwtMiddleware).
+router.get(
+  '/maintenance/pet-age-configuration',
+  jwtMiddleware,
+  getPetAgeConfigurationController
+);
+router.patch(
+  '/maintenance/pet-age-configuration',
+  adminWrite,
+  updatePetAgeConfigurationController
 );
 
 // Package pricing configuration (Epic B #82/#83)

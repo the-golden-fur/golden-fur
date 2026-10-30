@@ -95,7 +95,7 @@ export const CONFIG_TILES: ConfigTileConfig[] = [
   {
     title: 'Pets',
     description:
-      'Pet types (plus a per-branch fixed price override) and breed management.',
+      'Pet types (plus a per-branch fixed price override), breed management, and the pet age limit.',
     to: '/staff/admin/maintenance/pets',
     icon: PawPrint,
     Component: AdminPetsPage,

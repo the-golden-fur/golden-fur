@@ -75,6 +75,17 @@ const VALID_PET_PAYLOAD = {
   pet_type: 'Dog',
   gender: 'Male',
 };
+// pet_weight_class_configuration singleton - cut-offs plus the recordable
+// weight range (pet weight limits, 20261030288).
+const WEIGHT_CONFIG = {
+  id: 'wcc-1',
+  m_min_kg: 9.5,
+  l_min_kg: 22,
+  xl_min_kg: 41,
+  min_weight_kg: 0.1,
+  max_weight_kg: 156,
+};
+
 const VALID_STAFF_PET_PAYLOAD = {
   ...VALID_PET_PAYLOAD,
   weight_class: 'M',
@@ -117,6 +128,39 @@ describe('pet CRUD (Issue #32)', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.details).toBeDefined();
+    });
+
+    it('rejects a date of birth older than the configured age limit', async () => {
+      mockCaller('customer-1');
+      // pet_age_configuration singleton
+      queueFromResults({
+        data: { id: 'pac-1', max_age_years: 20 },
+        error: null,
+      });
+
+      const res = await request(app)
+        .post('/customers/customer-1/pets')
+        .set('Authorization', 'Bearer token')
+        .send({ ...VALID_PET_PAYLOAD, date_of_birth: '2000-01-01' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/older than 20 years/);
+      expect(recordedWrites).toHaveLength(0);
+    });
+
+    it('creates a pet whose date of birth is within the configured age limit', async () => {
+      mockCaller('customer-1');
+      queueFromResults(
+        { data: { id: 'pac-1', max_age_years: 20 }, error: null },
+        { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null }
+      );
+
+      const res = await request(app)
+        .post('/customers/customer-1/pets')
+        .set('Authorization', 'Bearer token')
+        .send({ ...VALID_PET_PAYLOAD, date_of_birth: '2020-01-01' });
+
+      expect(res.status).toBe(201);
     });
 
     it('rejects weight_class/coat_type from a customer self-service create (staff-only, client interview finding)', async () => {
@@ -207,6 +251,109 @@ describe('pet CRUD (Issue #32)', () => {
         .set('Authorization', 'Bearer token');
 
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe('archived pets (Pet Manager: archive + customer restore)', () => {
+    const ARCHIVED = {
+      id: 'pet-1',
+      customer_id: 'customer-1',
+      name: 'Buddy',
+      is_active: false,
+      archived_at: '2026-10-01T00:00:00.000Z',
+    };
+
+    it('lets a customer list their own archived pets', async () => {
+      mockCaller('customer-1');
+      queueFromResults({ data: [ARCHIVED], error: null });
+
+      const res = await request(app)
+        .get('/customers/customer-1/pets/archived')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(200);
+      expect(res.body.pets).toHaveLength(1);
+    });
+
+    it("refuses another customer's archived pets", async () => {
+      mockCaller('customer-2');
+      queueFromResults(NOT_STAFF);
+
+      const res = await request(app)
+        .get('/customers/customer-1/pets/archived')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('keeps the all-customers archive list staff-only', async () => {
+      mockCaller('customer-1');
+      queueFromResults(NOT_STAFF);
+
+      const res = await request(app)
+        .get('/pets/archived')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(403);
+    });
+
+    it('lets the owner restore their pet, reactivating it', async () => {
+      mockCaller('customer-1');
+      queueFromResults(
+        { data: ARCHIVED, error: null }, // resolvePet
+        { data: ARCHIVED, error: null }, // restorePet's lookup
+        { data: null, error: null } // update
+      );
+
+      const res = await request(app)
+        .post('/pets/pet-1/restore')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(204);
+      expect(recordedWrites[0]?.payload).toMatchObject({
+        is_active: true,
+        archived_at: null,
+        archive_reason: null,
+      });
+    });
+
+    it("refuses to restore someone else's pet for a non-staff caller", async () => {
+      mockCaller('customer-2');
+      queueFromResults({ data: ARCHIVED, error: null }, NOT_STAFF);
+
+      const res = await request(app)
+        .post('/pets/pet-1/restore')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(403);
+      expect(recordedWrites).toHaveLength(0);
+    });
+
+    it('still lets archive staff restore any pet', async () => {
+      mockCaller('admin-1');
+      queueFromResults(
+        { data: ARCHIVED, error: null },
+        { data: { role: 'Admin' }, error: null },
+        { data: ARCHIVED, error: null },
+        { data: null, error: null }
+      );
+
+      const res = await request(app)
+        .post('/pets/pet-1/restore')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(204);
+    });
+
+    it('404s restoring a pet that does not exist', async () => {
+      mockCaller('customer-1');
+      queueFromResults({ data: null, error: null });
+
+      const res = await request(app)
+        .post('/pets/missing/restore')
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(404);
     });
   });
 
@@ -399,16 +546,133 @@ describe('pet CRUD (Issue #32)', () => {
       });
     });
 
+    it('does not re-check the age limit when the date of birth is unchanged', async () => {
+      mockCaller('customer-1');
+      queueFromResults(
+        {
+          data: {
+            id: 'pet-1',
+            customer_id: 'customer-1',
+            date_of_birth: '2000-01-01',
+          },
+          error: null,
+        },
+        // No pet_age_configuration read - this is the update's own result.
+        { data: { id: 'pet-1', name: 'Rex' }, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ name: 'Rex', date_of_birth: '2000-01-01' });
+
+      expect(res.status).toBe(200);
+      expect(recordedWrites[0]?.payload).toMatchObject({ name: 'Rex' });
+    });
+
+    it('rejects a changed date of birth older than the configured age limit', async () => {
+      mockCaller('customer-1');
+      queueFromResults(
+        { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+        { data: { id: 'pac-1', max_age_years: 10 }, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ date_of_birth: '2005-06-01' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/older than 10 years/);
+      expect(recordedWrites).toHaveLength(0);
+    });
+
+    it('rejects a new weight outside the configured weight limits', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+        { data: { role: 'Receptionist' }, error: null },
+        { data: WEIGHT_CONFIG, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ weight_kg: 200, coat_type: 'SC' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe(
+        'Invalid weight - enter between 0.1 kg and 156 kg.'
+      );
+      expect(recordedWrites).toHaveLength(0);
+    });
+
+    it('falls back to the default limits when the config row has none (migration not applied yet)', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+        { data: { role: 'Receptionist' }, error: null },
+        // Pre-20261030288 row: cut-offs only, no min/max_weight_kg.
+        {
+          data: { id: 'wcc-1', m_min_kg: 9.5, l_min_kg: 22, xl_min_kg: 41 },
+          error: null,
+        },
+        { data: { id: 'pet-1', weight_kg: 15 }, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ weight_kg: 15 });
+
+      expect(res.status).toBe(200);
+    });
+
+    it('names the weight instead of "Invalid payload" when the validator rejects it', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
+        { data: { role: 'Receptionist' }, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ weight_kg: 9998678 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe(
+        'Invalid weight - please check the weight entered.'
+      );
+    });
+
+    it('does not re-check an unchanged stored weight against the limits', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        {
+          data: { id: 'pet-1', customer_id: 'customer-1', weight_kg: 200 },
+          error: null,
+        },
+        { data: { role: 'Receptionist' }, error: null },
+        // No config read - this is the update's own result.
+        { data: { id: 'pet-1', name: 'Tank' }, error: null }
+      );
+
+      const res = await request(app)
+        .patch('/pets/pet-1')
+        .set('Authorization', 'Bearer token')
+        .send({ name: 'Tank', weight_kg: 200 });
+
+      expect(res.status).toBe(200);
+    });
+
     it('derives weight_class from a submitted weight_kg and stamps the assessment', async () => {
       mockCaller('staff-1');
       queueFromResults(
         { data: { id: 'pet-1', customer_id: 'customer-1' }, error: null },
         { data: { role: 'Receptionist' }, error: null },
         // pet_weight_class_configuration singleton
-        {
-          data: { id: 'wcc-1', m_min_kg: 9.5, l_min_kg: 22, xl_min_kg: 41 },
-          error: null,
-        },
+        { data: WEIGHT_CONFIG, error: null },
         {
           data: { id: 'pet-1', weight_kg: 14, weight_class: 'M' },
           error: null,
@@ -442,6 +706,9 @@ describe('pet CRUD (Issue #32)', () => {
           error: null,
         },
         { data: { role: 'Admin' }, error: null },
+        // Still read - a new weight is range-checked even when the class is
+        // overridden (pet weight limits).
+        { data: WEIGHT_CONFIG, error: null },
         { data: { id: 'pet-1', weight_class: 'S' }, error: null }
       );
 
@@ -451,8 +718,7 @@ describe('pet CRUD (Issue #32)', () => {
         .send({ weight_kg: 40, weight_class: 'S' });
 
       expect(res.status).toBe(200);
-      // Explicit override wins - no config lookup, class is 'S' not the
-      // derived 'XL'.
+      // Explicit override wins - class is 'S', not the derived 'XL'.
       expect(recordedWrites[0]?.payload).toMatchObject({
         weight_kg: 40,
         weight_class: 'S',

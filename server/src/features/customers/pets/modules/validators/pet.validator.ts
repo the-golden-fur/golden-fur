@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { manilaDateString } from '../../../../../shared/services/promoEligibility/promoEligibility.service.ts';
+import {
+  isOlderThanAgeLimit,
+  RECORD_MAX_PET_AGE_YEARS,
+} from '../../../../maintenance/utils/petAgeLimit.ts';
 
 const GENDERS = ['Male', 'Female'] as const;
 const WEIGHT_CLASSES = ['S', 'M', 'L', 'XL'] as const;
@@ -10,13 +14,24 @@ const COAT_TYPES = ['SC', 'LC', 'XLC'] as const;
  * server's UTC date, so a Manila customer entering today's date before 08:00
  * isn't rejected as a day early. Plain string comparison is correct for the
  * zero-padded YYYY-MM-DD shape.
+ *
+ * Nor can it be older than the oldest pet on record - a fixed ceiling,
+ * whatever the Admin-configured limit. That configurable (lower) limit needs
+ * a DB read, so pet.controller.ts checks it after this schema passes.
  */
 const dateOfBirthSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of birth must be YYYY-MM-DD')
   .refine((value) => value <= manilaDateString(), {
     message: 'Date of birth cannot be in the future',
-  });
+  })
+  .refine(
+    (value) =>
+      !isOlderThanAgeLimit(value, manilaDateString(), RECORD_MAX_PET_AGE_YEARS),
+    {
+      message: `A pet cannot be older than ${RECORD_MAX_PET_AGE_YEARS} years (the oldest pet on record)`,
+    }
+  );
 
 /**
  * Required fields per Modules-Features M02 Process 4's flowchart: name,
