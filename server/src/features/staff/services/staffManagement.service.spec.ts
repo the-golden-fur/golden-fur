@@ -52,7 +52,8 @@ describe('staffManagement.service', () => {
       requesterBranchId: 'branch-a',
       username: 'new.hire',
       registeredEmail: 'new.hire@goldenfur.com',
-      displayName: 'New Hire',
+      firstName: 'New',
+      lastName: 'Hire',
       role: 'Receptionist' as const,
       branchId: 'branch-a',
     };
@@ -189,6 +190,90 @@ describe('staffManagement.service', () => {
   });
 
   describe('manageStaffAccount', () => {
+    it('staff names: an Admin can record a legal name and nickname for staff at their branch', async () => {
+      queueFromResults(
+        {
+          data: {
+            id: 'staff-2',
+            branch_id: 'branch-a',
+            first_name: null,
+            last_name: null,
+          },
+          error: null,
+        },
+        {
+          data: { id: 'staff-2', display_name: 'Clara' },
+          error: null,
+        }
+      );
+
+      const result = await manageStaffAccount({
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        targetStaffId: 'staff-2',
+        firstName: 'Maria',
+        middleName: 'Clara',
+        lastName: 'Dela Cruz',
+        nickname: 'Clara',
+      });
+
+      expect(result.display_name).toBe('Clara');
+      const updateBuilder = vi.mocked(supabase.from).mock.results[1].value as {
+        update: ReturnType<typeof vi.fn>;
+      };
+      expect(updateBuilder.update).toHaveBeenCalledWith({
+        first_name: 'Maria',
+        middle_name: 'Clara',
+        last_name: 'Dela Cruz',
+        nickname: 'Clara',
+      });
+    });
+
+    it('staff names: a first name alone on staff with no legal name yet is a 400', async () => {
+      queueFromResults({
+        data: {
+          id: 'staff-2',
+          branch_id: 'branch-a',
+          first_name: null,
+          last_name: null,
+        },
+        error: null,
+      });
+
+      await expect(
+        manageStaffAccount({
+          requesterRole: 'Superadmin',
+          requesterBranchId: 'branch-a',
+          targetStaffId: 'staff-2',
+          firstName: 'Maria',
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Enter both a first name and a last name',
+      });
+    });
+
+    it('staff names: an Admin cannot rename staff at another branch', async () => {
+      queueFromResults({
+        data: {
+          id: 'staff-2',
+          branch_id: 'branch-b',
+          first_name: 'Ana',
+          last_name: 'Reyes',
+        },
+        error: null,
+      });
+
+      await expect(
+        manageStaffAccount({
+          requesterRole: 'Admin',
+          requesterBranchId: 'branch-a',
+          targetStaffId: 'staff-2',
+          nickname: 'Annie',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
     it('rejects an unknown target staff id with 404', async () => {
       queueFromResults({ data: null, error: null });
 

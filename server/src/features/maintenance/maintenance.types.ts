@@ -115,6 +115,23 @@ export interface PetWeightClassConfiguration {
   m_min_kg: number;
   l_min_kg: number;
   xl_min_kg: number;
+  /** Custom change (pet weight limits, 20261030288): the lightest/heaviest
+   * weight staff may record. min < m_min_kg and xl_min_kg < max <= 499. */
+  min_weight_kg: number;
+  max_weight_kg: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+/**
+ * Custom change (pet age limit): the singleton oldest age, in years, a pet's
+ * date of birth may imply when it's registered (1-38, see
+ * RECORD_MAX_PET_AGE_YEARS). Checked by pet.controller.ts on create and on a
+ * changed date of birth.
+ */
+export interface PetAgeConfiguration {
+  id: string;
+  max_age_years: number;
   updated_by_staff_id: string | null;
   updated_at: string;
 }
@@ -240,10 +257,13 @@ export interface Package {
    * costs for a Cat pet - ahead of the pet type's fixed price and the weight
    * x coat grid. NULL = cats are priced like any other pet type. */
   cat_price: number | null;
+  /** Custom change (package fixed price, 20261030292): this package's own
+   * price, replacing the bundle discount. NULL = derive bundled_price. */
+  fixed_price: number | null;
   /**
    * Epic B (#82/#83): derived on read from included services' base_price and
-   * package_pricing_configuration via deriveBundledPrice, no longer a stored
-   * column - the field name/shape is unchanged so existing consumers
+   * package_pricing_configuration via deriveBundledPrice, or fixed_price when
+   * set - the field name/shape is unchanged so existing consumers
    * (booking.service.ts) need no changes.
    */
   bundled_price: number;

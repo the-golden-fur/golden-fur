@@ -88,9 +88,12 @@ checks both 3000 and 5173; `node scripts/free-ports.mjs 3000` checks just
 one. It kills only the process **LISTENING** on that exact port —
 `TIME_WAIT` sockets (the `[::1]:3000 ... TIME_WAIT` lines) are not
 processes and clear on their own; leave them. If the port is actually
-answering requests, it leaves it running and exits non-zero instead of
-killing it — pass `--force` (`node scripts/free-ports.mjs 3000 --force`)
-if you're certain you want it killed anyway. Then re-run the dev script.
+answering requests and it's **this repo's** dev server, it stops that old
+copy (with its `tsx watch`/npm wrappers) so the new run restarts it — so
+re-running a dev script/task replaces the running one rather than dying.
+Anything else answering on the port is left running and the script exits
+non-zero — pass `--force` (`node scripts/free-ports.mjs 3000 --force`) if
+you're certain you want it killed anyway. Then re-run the dev script.
 
 ## A proxy error right at startup is not necessarily a bug
 

@@ -343,15 +343,16 @@ describe('StaffManagementPage (#75)', () => {
     expect(
       screen.getByRole('dialog', { name: 'Set day(s) off - Jamie Cruz' })
     ).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('Entire day'));
     await userEvent.click(
-      screen.getByRole('button', { name: /take the rest of today off/i })
+      screen.getByRole('button', { name: /request day\(s\) off/i })
     );
 
     await waitFor(() =>
       expect(staffApi.createUnavailabilityBlock).toHaveBeenCalledWith(
         'staff-1',
         'token',
-        { quick_action: true }
+        expect.objectContaining({ is_full_day: true })
       )
     );
     expect(

@@ -62,6 +62,7 @@ import {
 } from './capacity.service.ts';
 import {
   assertMeetsBookingLeadTime,
+  assertWithinAdvanceBookingWindow,
   autoAssignStaff,
   isStaffPickerEnabled,
   listAvailableStaff,
@@ -74,6 +75,7 @@ import {
 import { daycareHourlyCharge } from '../../daycare/modules/daycareCharge.util.ts';
 import {
   assertCheckInAllowed,
+  assertDaycareCareTimesWithinVisit,
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
   closingInstantOn,
@@ -1185,6 +1187,12 @@ export async function createBooking({
       input.branch_id,
       input.scheduled_start
     );
+    await assertDaycareCareTimesWithinVisit(
+      input.branch_id,
+      input.scheduled_start,
+      input.scheduled_end,
+      input.hotel_preferences
+    );
   }
 
   if (bookingSource === 'Online') {
@@ -1214,6 +1222,11 @@ export async function createBooking({
 
     await assertMeetsBookingLeadTime(
       policy,
+      input.scheduled_start,
+      input.branch_id
+    );
+    // ...and no further out than the branch's booking window (1 year max).
+    await assertWithinAdvanceBookingWindow(
       input.scheduled_start,
       input.branch_id
     );

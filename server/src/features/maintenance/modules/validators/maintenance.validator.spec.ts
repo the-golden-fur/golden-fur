@@ -10,6 +10,8 @@ import {
   updateBreedValidator,
   updatePackagePricingConfigurationValidator,
   updatePackageValidator,
+  updatePetAgeConfigurationValidator,
+  updatePetWeightClassConfigurationValidator,
   updatePricingConfigurationValidator,
   updatePromoValidator,
   updateServiceTypeValidator,
@@ -929,5 +931,55 @@ describe('pricingCellsValidator (per-item weight x coat pricing)', () => {
 
   it('needs at least one cell', () => {
     expect(pricingCellsValidator.safeParse({ cells: [] }).success).toBe(false);
+  });
+});
+
+describe('updatePetAgeConfigurationValidator', () => {
+  it('accepts a whole number of years from 1 to 38', () => {
+    for (const max_age_years of [1, 20, 38]) {
+      expect(
+        updatePetAgeConfigurationValidator.safeParse({ max_age_years }).success
+      ).toBe(true);
+    }
+  });
+
+  it('rejects anything above the 38-year record, below 1, or fractional', () => {
+    for (const max_age_years of [39, 0, 12.5]) {
+      expect(
+        updatePetAgeConfigurationValidator.safeParse({ max_age_years }).success
+      ).toBe(false);
+    }
+  });
+
+  it('rejects unknown fields', () => {
+    expect(
+      updatePetAgeConfigurationValidator.safeParse({
+        max_age_years: 20,
+        extra: true,
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe('updatePetWeightClassConfigurationValidator - weight limits', () => {
+  it('accepts a positive range up to 499 kg', () => {
+    expect(
+      updatePetWeightClassConfigurationValidator.safeParse({
+        min_weight_kg: 0.1,
+        max_weight_kg: 156,
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects min >= max, zero, or anything over 499 kg', () => {
+    for (const payload of [
+      { min_weight_kg: 50, max_weight_kg: 40 },
+      { min_weight_kg: 0 },
+      { max_weight_kg: 500 },
+    ]) {
+      expect(
+        updatePetWeightClassConfigurationValidator.safeParse(payload).success
+      ).toBe(false);
+    }
   });
 });

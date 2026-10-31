@@ -16,6 +16,7 @@ import {
   getStaffPickerOptions,
   listPolicyConfigurations,
   resolveBookingLeadDays,
+  resolveMaxAdvanceBookingDays,
   resolveDownpaymentPolicy,
   resolveNoticeLeadDays,
   updatePolicyConfiguration,
@@ -257,7 +258,7 @@ export async function availabilityController(
   const intent = parsed.data.intent ?? 'new_booking';
 
   try {
-    const [slots, window, minNoticeDays] = await Promise.all([
+    const [slots, window, minNoticeDays, maxAdvanceDays] = await Promise.all([
       getDaySlots({
         branchId: parsed.data.branch_id,
         serviceCategory: parsed.data.service_category,
@@ -275,14 +276,20 @@ export async function availabilityController(
       intent === 'reschedule'
         ? resolveNoticeLeadDays(parsed.data.branch_id)
         : resolveBookingLeadDays(parsed.data.branch_id),
+      resolveMaxAdvanceBookingDays(parsed.data.branch_id),
     ]);
 
     // min_notice_days lets the Slot Picker floor its own calendar to the
     // same date range getDaySlots enforces, so the browsable window opens
     // on the first bookable day instead of a run of empty near-term days.
-    return res
-      .status(200)
-      .json({ slots, window, min_notice_days: minNoticeDays });
+    // max_advance_days caps it the same way at the far end (booking date
+    // limit, Superadmin-set per branch).
+    return res.status(200).json({
+      slots,
+      window,
+      min_notice_days: minNoticeDays,
+      max_advance_days: maxAdvanceDays,
+    });
   } catch (error) {
     return sendServiceError(res, error);
   }

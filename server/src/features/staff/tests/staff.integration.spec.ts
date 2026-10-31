@@ -212,7 +212,8 @@ describe('staff profile CRUD (Issue #22)', () => {
             id: 'staff-1',
             branch_id: 'branch-a',
             role: 'Receptionist',
-            display_name: 'New Name',
+            nickname: 'Newbie',
+            display_name: 'Newbie',
           },
           error: null,
         }
@@ -221,12 +222,12 @@ describe('staff profile CRUD (Issue #22)', () => {
       const res = await request(app)
         .patch('/staff/staff-1')
         .set('Authorization', 'Bearer token')
-        .send({ display_name: 'New Name' });
+        .send({ nickname: 'Newbie' });
 
       expect(res.status).toBe(200);
-      expect(res.body.staff.display_name).toBe('New Name');
+      expect(res.body.staff.display_name).toBe('Newbie');
       expect(builders[2].update).toHaveBeenCalledWith({
-        display_name: 'New Name',
+        nickname: 'Newbie',
       });
     });
 
@@ -374,6 +375,25 @@ describe('staff profile CRUD (Issue #22)', () => {
         .send({ decision: 'approved' });
 
       expect(res.status).toBe(403);
+    });
+
+    it('GET /staff/:id/unavailability rejects history=true combined with a from/to range', async () => {
+      mockCaller('staff-1');
+      queueFromResults(
+        { data: { role: 'Groomer' }, error: null },
+        { data: { role: 'Groomer', branch_id: 'branch-a' }, error: null }
+      );
+
+      const res = await request(app)
+        .get('/staff/staff-1/unavailability')
+        .query({
+          history: 'true',
+          from: '2026-06-01T00:00:00.000Z',
+          to: '2026-07-01T00:00:00.000Z',
+        })
+        .set('Authorization', 'Bearer token');
+
+      expect(res.status).toBe(400);
     });
 
     it('GET /staff/unavailability/pending rejects a non-manager role at the requireRole layer', async () => {

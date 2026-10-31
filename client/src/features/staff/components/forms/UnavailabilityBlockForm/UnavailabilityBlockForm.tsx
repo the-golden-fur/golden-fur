@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { createUnavailabilityBlock, listStaff } from '../../../api/staff.api';
+import {
+  createUnavailabilityBlock,
+  listStaff,
+  updateUnavailabilityBlock,
+} from '../../../api/staff.api';
 import { createUnavailabilityBlockValidator } from '../../../modules/validators/staff.validator';
 import {
   SELF_SERVICE_LEAVE_TYPES,
@@ -37,10 +41,32 @@ interface UnavailabilityBlockFormProps {
    * auto-approves immediately, so there's no reviewer to address it to;
    * that call site leaves this false (default). */
   showReviewerPicker?: boolean;
+  /** Edit mode (Day Off Requests' "Edit request"): prefills from this
+   * still-pending request and saves over it instead of creating a new one.
+   * onCreated then receives the updated row. */
+  editingBlock?: UnavailabilityBlock;
 }
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Tomorrow as a browser-local YYYY-MM-DD - the earliest date a staff
+ * member may request an entire day off for themselves (today is already
+ * under way; the server enforces the same rule branch-locally). */
+function tomorrowIso(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** ISO timestamp -> the browser-local 'YYYY-MM-DDTHH:mm' a datetime-local
+ * input expects. */
+function toLocalInput(iso: string): string {
+  const date = new Date(iso);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /** Keeps the date portion of a datetime-local value (or defaults to today)
@@ -55,19 +81,45 @@ export function UnavailabilityBlockForm({
   accessToken,
   onCreated,
   showReviewerPicker = false,
+  editingBlock,
 }: UnavailabilityBlockFormProps) {
-  const [isFullDay, setIsFullDay] = useState(false);
-  const [fullDayDate, setFullDayDate] = useState(todayIso);
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [reason, setReason] = useState('');
-  const [leaveType, setLeaveType] =
-    useState<UnavailabilityLeaveType>('Vacation Leave');
+  // Self-service requests (the reviewer picker is only shown for those) can't
+  // take today off as an entire day; a manager setting a day for someone
+  // else still can.
+  const earliestFullDay = showReviewerPicker ? tomorrowIso() : todayIso();
+  const [isFullDay, setIsFullDay] = useState(
+    editingBlock?.is_full_day ?? false
+  );
+  const [fullDayDate, setFullDayDate] = useState(() =>
+    editingBlock?.is_full_day
+      ? toLocalInput(editingBlock.start_time).slice(0, 10)
+      : showReviewerPicker
+        ? tomorrowIso()
+        : todayIso()
+  );
+  const [startTime, setStartTime] = useState(() =>
+    editingBlock && !editingBlock.is_full_day
+      ? toLocalInput(editingBlock.start_time)
+      : ''
+  );
+  const [endTime, setEndTime] = useState(() =>
+    editingBlock && !editingBlock.is_full_day
+      ? toLocalInput(editingBlock.end_time)
+      : ''
+  );
+  const [reason, setReason] = useState(editingBlock?.reason ?? '');
+  const [leaveType, setLeaveType] = useState<UnavailabilityLeaveType>(
+    editingBlock && SELF_SERVICE_LEAVE_TYPES.includes(editingBlock.leave_type)
+      ? editingBlock.leave_type
+      : 'Vacation Leave'
+  );
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [reviewers, setReviewers] = useState<StaffProfile[]>([]);
-  const [requestedReviewerId, setRequestedReviewerId] = useState('');
+  const [requestedReviewerId, setRequestedReviewerId] = useState(
+    editingBlock?.requested_reviewer_id ?? ''
+  );
 
   useEffect(() => {
     if (!showReviewerPicker) {
@@ -104,7 +156,6 @@ export function UnavailabilityBlockForm({
   );
 
   const submitBlock = async (payload: {
-    quick_action?: boolean;
     is_full_day?: boolean;
     date?: string;
     start_time?: string;
@@ -115,17 +166,26 @@ export function UnavailabilityBlockForm({
   }) => {
     setError(null);
     setIsSubmitting(true);
-    const result = await createUnavailabilityBlock(
-      staffId,
-      accessToken,
-      requestedReviewerId
-        ? { ...payload, requested_reviewer_id: requestedReviewerId }
-        : payload
-    );
+    const body = requestedReviewerId
+      ? { ...payload, requested_reviewer_id: requestedReviewerId }
+      : payload;
+    const result = editingBlock
+      ? await updateUnavailabilityBlock(
+          staffId,
+          accessToken,
+          editingBlock.id,
+          body
+        )
+      : await createUnavailabilityBlock(staffId, accessToken, body);
     setIsSubmitting(false);
 
     if (result.error || !result.data) {
-      setError(result.error ?? 'Could not create the day-off request.');
+      setError(
+        result.error ??
+          (editingBlock
+            ? 'Could not save the day-off request.'
+            : 'Could not create the day-off request.')
+      );
       return;
     }
 
@@ -135,14 +195,17 @@ export function UnavailabilityBlockForm({
     onCreated(result.data);
   };
 
-  const handleQuickAction = () => {
-    void submitBlock({ quick_action: true });
-  };
-
   const handleCustomRange = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const trimmedReason = reason.trim();
+
+    if (isFullDay && fullDayDate < earliestFullDay) {
+      setError(
+        "You can't request today off as an entire day - pick a later date."
+      );
+      return;
+    }
 
     if (isFullDay) {
       const parsed = createUnavailabilityBlockValidator.safeParse({
@@ -195,7 +258,7 @@ export function UnavailabilityBlockForm({
             onChange={(event) => setRequestedReviewerId(event.target.value)}
             aria-label="Send to"
           >
-            <option value="">Any manager</option>
+            <option value="">Any manager (picked at random)</option>
             {sortedReviewers.map((candidate) => (
               <option key={candidate.id} value={candidate.id}>
                 {candidate.display_name} - {candidate.role}
@@ -204,15 +267,6 @@ export function UnavailabilityBlockForm({
           </select>
         </label>
       ) : null}
-
-      <button
-        type="button"
-        className={styles.quickButton}
-        disabled={isSubmitting}
-        onClick={handleQuickAction}
-      >
-        Take the rest of today off
-      </button>
 
       <form
         className={styles.form}
@@ -250,7 +304,7 @@ export function UnavailabilityBlockForm({
             <input
               className={styles.input}
               type="date"
-              min={todayIso()}
+              min={earliestFullDay}
               value={fullDayDate}
               onChange={(event) => setFullDayDate(event.target.value)}
             />
@@ -321,7 +375,13 @@ export function UnavailabilityBlockForm({
           </p>
         ) : null}
         <button className={styles.button} type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Requesting...' : 'Request day(s) off'}
+          {editingBlock
+            ? isSubmitting
+              ? 'Saving...'
+              : 'Save changes'
+            : isSubmitting
+              ? 'Requesting...'
+              : 'Request day(s) off'}
         </button>
       </form>
     </div>

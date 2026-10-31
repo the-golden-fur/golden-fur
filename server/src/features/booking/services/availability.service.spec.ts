@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   assertCheckInAllowed,
+  assertDaycareCareTimesWithinVisit,
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
   getDaySlots,
@@ -541,6 +542,51 @@ describe('availability.service (#56/#60 supporting infra)', () => {
       expect(slots).toHaveLength(6);
     });
 
+    it('booking date limit: a day past today + max_advance_booking_days returns [], the last allowed day does not', async () => {
+      vi.useFakeTimers();
+      // Mon 2026-08-03 08:00 Asia/Manila.
+      vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
+
+      // 6-day window => latest bookable date is 2026-08-09, so next Monday
+      // (2026-08-10, open) is out of range.
+      queueFromResults(
+        {
+          data: { ...WIDE_BRANCH_ROW.data, max_advance_booking_days: 6 },
+          error: null,
+        },
+        policyRow({ booking_notice_period_days: 0 })
+      );
+
+      expect(
+        await getDaySlots({
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          date: '2026-08-10',
+          slotDurationMinutes: 60,
+        })
+      ).toEqual([]);
+
+      // A 7-day window reaches 2026-08-10 exactly - full slot set.
+      queueFromResults(
+        {
+          data: { ...WIDE_BRANCH_ROW.data, max_advance_booking_days: 7 },
+          error: null,
+        },
+        policyRow({ booking_notice_period_days: 0 }),
+        { data: null, error: null, count: 1 } // roster count
+      );
+      openRpc();
+
+      expect(
+        await getDaySlots({
+          branchId: 'branch-1',
+          serviceCategory: 'Grooming',
+          date: '2026-08-10',
+          slotDurationMinutes: 60,
+        })
+      ).toHaveLength(6);
+    });
+
     it('new_booking: ignores notice_period_days (that is the reschedule knob)', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-08-03T00:00:00.000Z'));
@@ -800,6 +846,59 @@ describe('availability.service (#56/#60 supporting infra)', () => {
           statusCode: 422,
           message: expect.stringContaining('7:00 PM'),
         });
+      });
+    });
+
+    describe('assertDaycareCareTimesWithinVisit', () => {
+      const VISIT_START = '2026-08-03T01:00:00.000Z'; // 9:00 AM Manila
+      const VISIT_END = '2026-08-03T05:00:00.000Z'; // 1:00 PM Manila
+
+      it('allows times inside the visit', async () => {
+        queueFromResults({
+          data: { timezone: 'Asia/Manila' },
+          error: null,
+        });
+
+        await expect(
+          assertDaycareCareTimesWithinVisit(
+            'branch-1',
+            VISIT_START,
+            VISIT_END,
+            { feeding: [{ scheduled_time: '12:59' }] }
+          )
+        ).resolves.toBeUndefined();
+      });
+
+      it('rejects a time at the end of the visit with a 422', async () => {
+        queueFromResults({
+          data: { timezone: 'Asia/Manila' },
+          error: null,
+        });
+
+        await expect(
+          assertDaycareCareTimesWithinVisit(
+            'branch-1',
+            VISIT_START,
+            VISIT_END,
+            { feeding: [{ scheduled_time: '13:00' }] }
+          )
+        ).rejects.toMatchObject({
+          statusCode: 422,
+          message: expect.stringContaining('Feeding at 1:00 PM'),
+        });
+      });
+
+      it('does no branch lookup without care instructions', async () => {
+        vi.mocked(supabase.from).mockClear();
+
+        await assertDaycareCareTimesWithinVisit(
+          'branch-1',
+          VISIT_START,
+          VISIT_END,
+          undefined
+        );
+
+        expect(supabase.from).not.toHaveBeenCalled();
       });
     });
   });

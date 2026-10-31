@@ -205,6 +205,10 @@ export interface DayAvailability {
    * enforcement is on, else 0): the Slot Picker floors its calendar this many
    * days out so the browsable range opens on the first bookable day. */
   minNoticeDays: number;
+  /** Booking date limit: the latest bookable date is today + this many days
+   * (Superadmin-set per branch, 1 year at most). The Slot Picker caps its
+   * calendar here, matching getDaySlots. */
+  maxAdvanceDays: number;
 }
 
 export async function getDayAvailability(
@@ -239,6 +243,7 @@ export async function getDayAvailability(
     slots: SlotAvailability[];
     window: OperatingWindow | null;
     min_notice_days?: number;
+    max_advance_days?: number;
   }>(response);
   return {
     data: result.data
@@ -246,6 +251,7 @@ export async function getDayAvailability(
           slots: result.data.slots,
           window: result.data.window,
           minNoticeDays: result.data.min_notice_days ?? 0,
+          maxAdvanceDays: result.data.max_advance_days ?? 365,
         }
       : null,
     error: result.error,

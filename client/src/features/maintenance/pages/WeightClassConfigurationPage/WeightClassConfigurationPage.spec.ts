@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,6 +24,8 @@ const CONFIGURATION: PetWeightClassConfiguration = {
   m_min_kg: 5,
   l_min_kg: 15,
   xl_min_kg: 30,
+  min_weight_kg: 0.1,
+  max_weight_kg: 156,
   updated_by_staff_id: null,
   updated_at: '2026-07-26T00:00:00.000Z',
 };
@@ -114,5 +116,67 @@ describe('WeightClassConfigurationPage', () => {
     renderPage();
 
     expect(await screen.findByText('Weight Classes')).toBeInTheDocument();
+  });
+
+  it('pet weight limits: a Superadmin can set the allowed weight range', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
+      error: null,
+    });
+    vi.mocked(
+      maintenanceApi.updatePetWeightClassConfiguration
+    ).mockResolvedValue({
+      data: { ...CONFIGURATION, max_weight_kg: 100 },
+      error: null,
+    });
+
+    renderPage();
+
+    const maxInput = await screen.findByLabelText(
+      'Heaviest allowed weight (kg)'
+    );
+    expect(screen.getByLabelText('Lightest allowed weight (kg)')).toHaveValue(
+      0.1
+    );
+    expect(maxInput).toHaveValue(156);
+
+    fireEvent.change(maxInput, { target: { value: '100' } });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save weight classes' })
+    );
+
+    expect(
+      await screen.findByText('Weight class configuration updated.')
+    ).toBeInTheDocument();
+    expect(
+      maintenanceApi.updatePetWeightClassConfiguration
+    ).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({ min_weight_kg: 0.1, max_weight_kg: 100 })
+    );
+  });
+
+  it('pet weight limits: refuses a heaviest weight at or below the XL cut-off', async () => {
+    vi.mocked(staffApi.listStaff).mockResolvedValue({
+      data: [buildViewer('Superadmin')],
+      error: null,
+    });
+
+    renderPage();
+
+    const maxInput = await screen.findByLabelText(
+      'Heaviest allowed weight (kg)'
+    );
+    fireEvent.change(maxInput, { target: { value: '25' } }); // XL is 30
+    fireEvent.submit(maxInput.closest('form') as HTMLFormElement);
+
+    expect(
+      await screen.findByText(
+        /heaviest allowed weight must be above the XL cut-off/
+      )
+    ).toBeInTheDocument();
+    expect(
+      maintenanceApi.updatePetWeightClassConfiguration
+    ).not.toHaveBeenCalled();
   });
 });

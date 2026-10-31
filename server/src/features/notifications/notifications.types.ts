@@ -55,6 +55,13 @@ export const NOTIFICATION_EVENT_TYPES = [
    * the pet's owner added - see vaccinationRecord.service.ts's
    * reviewVaccinationRecord. */
   'vaccination_reviewed',
+  /** Custom change (Day Off Requests queue, migration 20261029284): to the
+   * approver(s) when a staff member submits a day-off request - see
+   * dayOffNotifications.service.ts. */
+  'day_off_requested',
+  /** Same migration: back to the requester once their day-off request is
+   * approved or denied. */
+  'day_off_reviewed',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];

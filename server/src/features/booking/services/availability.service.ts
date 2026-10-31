@@ -11,6 +11,7 @@ import {
 } from './capacity.service.ts';
 import {
   bookingLeadDays,
+  DEFAULT_MAX_ADVANCE_BOOKING_DAYS,
   listAvailableStaff,
   noticeLeadDays,
   resolveEffectivePolicy,
@@ -20,6 +21,10 @@ import {
   formatDaycareCutoff,
   resolveDaycareCutoffTime,
 } from '../../daycare/modules/daycareCutoff.util.ts';
+import {
+  findCareTimeOutsideVisit,
+  type DaycareCareTimes,
+} from '../../daycare/modules/daycareCareTimes.util.ts';
 
 /** Which notice-period floor getDaySlots applies: a new booking uses
  * booking_notice_period_days (default 0); a reschedule keeps the stricter
@@ -87,6 +92,9 @@ interface BranchRow {
    * Grooming follows that day's full operating hours. */
   grooming_hours?: WeeklyHours | null;
   timezone: string;
+  /** Custom change (booking date limit, 20261030287) - only selected by
+   * getDaySlots. */
+  max_advance_booking_days?: number | null;
 }
 
 /**
@@ -301,6 +309,38 @@ export async function assertDaycareStartsBeforeCutoff(
   }
 }
 
+/**
+ * Throws a 422 when a Daycare booking's care instructions start outside the
+ * visit - the hard gate behind the booking step's own check. No branch lookup
+ * when there are no care instructions to judge.
+ */
+export async function assertDaycareCareTimesWithinVisit(
+  branchId: string,
+  scheduledStart: string,
+  scheduledEnd: string,
+  care: DaycareCareTimes | null | undefined
+): Promise<void> {
+  if (!care) return;
+
+  const { data: branch, error } = await supabase
+    .from('branches')
+    .select('timezone')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!branch) return;
+
+  const message = findCareTimeOutsideVisit({
+    care,
+    scheduledStart,
+    scheduledEnd,
+    timezone: (branch as { timezone: string }).timezone,
+  });
+
+  if (message) throwWithStatus(422, message);
+}
+
 /** "HH:MM" (24h) as a 12-hour clock label, e.g. "15:00" -> "3:00 PM". */
 function formatClockTime(time: string): string {
   const [hour, minute] = time.split(':').map(Number);
@@ -381,7 +421,9 @@ export async function getDaySlots({
 }: GetDaySlotsParams): Promise<SlotAvailability[]> {
   const { data: branch, error: branchError } = await supabase
     .from('branches')
-    .select('operating_hours, grooming_hours, timezone')
+    .select(
+      'operating_hours, grooming_hours, timezone, max_advance_booking_days'
+    )
     .eq('id', branchId)
     .maybeSingle();
 
@@ -425,6 +467,17 @@ export async function getDaySlots({
     minLeadDays > 0 &&
     date < addDaysToDateString(todayInBranchTz, minLeadDays)
   ) {
+    return [];
+  }
+
+  // Booking date limit (Superadmin-set per branch, 1 year at most): every day
+  // past today + max_advance_booking_days comes back empty, same as a closed
+  // day, for new bookings and reschedules alike. The Slot Picker also caps
+  // its calendar there (max_advance_days on the availability response).
+  const maxAdvanceDays =
+    branchRow.max_advance_booking_days ?? DEFAULT_MAX_ADVANCE_BOOKING_DAYS;
+
+  if (date > addDaysToDateString(todayInBranchTz, maxAdvanceDays)) {
     return [];
   }
 

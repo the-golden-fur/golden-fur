@@ -253,3 +253,114 @@
   font-size: var(--text-sm);
   padding: 6px 14px;
 }
+
+/* Payment receipts: the "Remove" link beside an attached file's name. */
+.linkButton {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--color-accent-gold-primary);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+/* Payment receipts: the "+ Add image" tile that replaces the browser's own
+ * file control, and the thumbnail it becomes once a file is chosen. */
+.receiptTile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 6.5rem;
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+}
+
+.receiptAdd {
+  gap: var(--space-0-5);
+  align-content: center;
+  border: 1.5px dashed var(--color-border);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.receiptAdd:hover,
+.receiptAdd:focus-within {
+  border-color: var(--color-accent-gold-primary);
+  color: var(--color-accent-gold-primary);
+  background: color-mix(
+    in srgb,
+    var(--color-accent-gold-primary) 6%,
+    var(--color-surface)
+  );
+}
+
+.receiptAdd:focus-within {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
+}
+
+.receiptAddText {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.receiptPreview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.receiptThumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.receiptName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.receiptRemove {
+  position: absolute;
+  top: var(--space-0-5);
+  right: var(--space-0-5);
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-text-primary) 70%, transparent);
+  color: var(--color-bg-primary);
+  cursor: pointer;
+}
+
+.receiptRemove:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 1px;
+}
+
+/* Hidden from view but still focusable and announced - keeps the real file
+ * input keyboard-reachable inside the custom tile. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

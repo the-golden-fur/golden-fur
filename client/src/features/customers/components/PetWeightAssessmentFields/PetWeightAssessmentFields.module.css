@@ -22,3 +22,15 @@
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
 }
+
+/* Pet weight limits: an out-of-range weight. */
+.inputInvalid,
+.inputInvalid:focus {
+  border-color: var(--color-error-text);
+  outline-color: var(--color-error-text);
+}
+
+.fieldError {
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+}

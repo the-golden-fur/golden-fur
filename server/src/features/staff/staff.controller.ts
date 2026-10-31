@@ -31,8 +31,10 @@ import {
   listBranchSchedule,
   listPendingUnavailabilityBlocks,
   listUnavailabilityBlocks,
+  listUnavailabilityHistory,
   previewAutoBuildSchedule,
   reviewUnavailabilityBlock,
+  updateUnavailabilityBlock,
 } from './services/unavailabilityBlock.service.ts';
 import { ADMIN_ROLES, UNAVAILABILITY_LEAVE_TYPES } from './staff.types.ts';
 
@@ -51,6 +53,12 @@ const createUnavailabilityBlockValidator = z
      * pre-existing ad-hoc/quick-action entry. */
     leave_type: z.enum(UNAVAILABILITY_LEAVE_TYPES).optional(),
   })
+  .strict();
+
+/** Editing a pending request - same fields as creating one, minus the
+ * quick action (an edit always names its own window). */
+const updateUnavailabilityBlockValidator = createUnavailabilityBlockValidator
+  .omit({ quick_action: true })
   .strict();
 
 const reviewUnavailabilityBlockValidator = z
@@ -94,14 +102,20 @@ const autoBuildClearQueryValidator = z.object({
 /** Custom change (My Schedule): both optional and required together - a
  * staff member's own calendar view passes them to see a specific month
  * (past or future); the self-service Days Off badge omits both and keeps
- * the original not-yet-ended-blocks behavior. */
+ * the original not-yet-ended-blocks behavior. `history=true` (Day Off
+ * Requests page) returns every block instead, past or future, with names
+ * resolved - it can't be combined with a range. */
 const listUnavailabilityBlocksQueryValidator = z
   .object({
     from: z.iso.datetime({ offset: true }).optional(),
     to: z.iso.datetime({ offset: true }).optional(),
+    history: z.enum(['true', 'false']).optional(),
   })
   .refine((input) => Boolean(input.from) === Boolean(input.to), {
     message: 'from and to must be provided together',
+  })
+  .refine((input) => !(input.history === 'true' && input.from), {
+    message: 'history cannot be combined with from/to',
   });
 
 function sendServiceError(res: Response, error: unknown) {
@@ -420,7 +434,10 @@ export async function createStaffAccountController(
       requesterBranchId,
       username: parsed.data.username,
       registeredEmail: parsed.data.registered_email,
-      displayName: parsed.data.display_name,
+      firstName: parsed.data.first_name,
+      middleName: parsed.data.middle_name,
+      lastName: parsed.data.last_name,
+      nickname: parsed.data.nickname,
       role: parsed.data.role,
       branchId: parsed.data.branch_id,
     });
@@ -470,6 +487,10 @@ export async function manageStaffAccountController(
       role: parsed.data.role,
       branchId: parsed.data.branch_id,
       isActive: parsed.data.is_active,
+      firstName: parsed.data.first_name,
+      middleName: parsed.data.middle_name,
+      lastName: parsed.data.last_name,
+      nickname: parsed.data.nickname,
     });
 
     return res.status(200).json({ staff });
@@ -649,6 +670,50 @@ export async function createUnavailabilityBlockController(
   }
 }
 
+export async function updateUnavailabilityBlockController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = Array.isArray(req.params.id)
+    ? req.params.id[0]
+    : req.params.id;
+  const blockId = Array.isArray(req.params.blockId)
+    ? req.params.blockId[0]
+    : req.params.blockId;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = updateUnavailabilityBlockValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const block = await updateUnavailabilityBlock({
+      requesterId,
+      targetStaffId: targetId as string,
+      blockId: blockId as string,
+      isFullDay: parsed.data.is_full_day,
+      date: parsed.data.date,
+      startTime: parsed.data.start_time,
+      endTime: parsed.data.end_time,
+      reason: parsed.data.reason,
+      requestedReviewerId: parsed.data.requested_reviewer_id,
+      leaveType: parsed.data.leave_type,
+    });
+
+    return res.status(200).json({ block });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
 export async function cancelUnavailabilityBlockController(
   req: AuthenticatedRequest,
   res: Response
@@ -705,13 +770,20 @@ export async function listUnavailabilityBlocksController(
   }
 
   try {
-    const blocks = await listUnavailabilityBlocks({
-      requesterId,
-      requesterRole,
-      targetStaffId: targetId as string,
-      rangeStart: parsed.data.from,
-      rangeEnd: parsed.data.to,
-    });
+    const blocks =
+      parsed.data.history === 'true'
+        ? await listUnavailabilityHistory({
+            requesterId,
+            requesterRole,
+            targetStaffId: targetId as string,
+          })
+        : await listUnavailabilityBlocks({
+            requesterId,
+            requesterRole,
+            targetStaffId: targetId as string,
+            rangeStart: parsed.data.from,
+            rangeEnd: parsed.data.to,
+          });
 
     return res.status(200).json({ blocks });
   } catch (error) {

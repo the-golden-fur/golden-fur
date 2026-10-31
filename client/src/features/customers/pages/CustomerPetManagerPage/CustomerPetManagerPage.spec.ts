@@ -9,7 +9,9 @@ import { getPetBookingConflicts } from '../../../booking/api/booking.api';
 import {
   archivePet,
   deactivatePet,
+  listArchivedPets,
   listCustomerPets,
+  restorePet,
 } from '../../api/customer.api';
 import type { Pet } from '../../customer.types';
 import { CustomerPetManagerPage } from './CustomerPetManagerPage';
@@ -18,6 +20,8 @@ vi.mock('../../api/customer.api', () => ({
   listCustomerPets: vi.fn(),
   deactivatePet: vi.fn(),
   archivePet: vi.fn(),
+  listArchivedPets: vi.fn(),
+  restorePet: vi.fn(),
   createPet: vi.fn(),
   uploadPetPhoto: vi.fn(),
   listPetTypes: vi.fn(() => Promise.resolve({ data: [], error: null })),
@@ -90,6 +94,114 @@ describe('CustomerPetManagerPage', () => {
     });
     vi.mocked(deactivatePet).mockResolvedValue({ data: null, error: null });
     vi.mocked(archivePet).mockResolvedValue({ data: null, error: null });
+    vi.mocked(listArchivedPets).mockResolvedValue({ data: [], error: null });
+    vi.mocked(restorePet).mockResolvedValue({ data: null, error: null });
+  });
+
+  describe('archived pets', () => {
+    const archived = () =>
+      buildPet({
+        id: 'pet-9',
+        name: 'Mingming',
+        is_active: false,
+        archived_at: '2026-10-01T00:00:00.000Z',
+        archive_reason: 'rehomed',
+      } as Partial<Pet>);
+
+    it('hides the section when nothing is archived', async () => {
+      vi.mocked(listCustomerPets).mockResolvedValue({
+        data: [buildPet({ id: 'pet-1', name: 'Bantay' })],
+        error: null,
+      });
+
+      renderPage();
+
+      await screen.findByText('Bantay');
+      expect(
+        screen.queryByRole('button', { name: /Archived pets/ })
+      ).not.toBeInTheDocument();
+    });
+
+    it('lists archived pets behind a collapsed toggle, with why they were archived', async () => {
+      vi.mocked(listCustomerPets).mockResolvedValue({ data: [], error: null });
+      vi.mocked(listArchivedPets).mockResolvedValue({
+        data: [archived()],
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderPage();
+
+      const toggle = await screen.findByRole('button', {
+        name: /Archived pets \(1\)/,
+      });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByText('Mingming')).not.toBeInTheDocument();
+      expect(listArchivedPets).toHaveBeenCalledWith('token', 'customer-1');
+
+      await user.click(toggle);
+
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('Mingming')).toBeInTheDocument();
+      expect(screen.getByText(/Rehomed \/ given away/)).toBeInTheDocument();
+    });
+
+    it('Restore brings the pet back onto the roster', async () => {
+      vi.mocked(listCustomerPets).mockResolvedValue({
+        data: [buildPet({ id: 'pet-1', name: 'Bantay' })],
+        error: null,
+      });
+      vi.mocked(listArchivedPets).mockResolvedValue({
+        data: [archived()],
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(
+        await screen.findByRole('button', { name: /Archived pets \(1\)/ })
+      );
+      await user.click(
+        screen.getByRole('button', { name: 'Restore Mingming' })
+      );
+
+      expect(restorePet).toHaveBeenCalledWith('pet-9', 'token');
+      expect(await screen.findByText('Mingming restored.')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Archived pets/ })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Archive Mingming' })
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the pet archived and shows the error when restoring fails', async () => {
+      vi.mocked(listCustomerPets).mockResolvedValue({ data: [], error: null });
+      vi.mocked(listArchivedPets).mockResolvedValue({
+        data: [archived()],
+        error: null,
+      });
+      vi.mocked(restorePet).mockResolvedValue({
+        data: null,
+        error: 'Something went wrong',
+      });
+
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(
+        await screen.findByRole('button', { name: /Archived pets \(1\)/ })
+      );
+      await user.click(
+        screen.getByRole('button', { name: 'Restore Mingming' })
+      );
+
+      expect(
+        await screen.findByText('Something went wrong')
+      ).toBeInTheDocument();
+      expect(screen.getByText('Mingming')).toBeInTheDocument();
+    });
   });
 
   it('shows an empty state when the customer has no pets', async () => {
@@ -242,7 +354,7 @@ describe('CustomerPetManagerPage', () => {
     expect(within(whiskersRow).queryByText(/yr|mo|day/)).toBeNull();
   });
 
-  it('Delete warns first, then archives the pet and removes it from the list', async () => {
+  it('Archive asks first, then archives the pet and moves it to Archived pets', async () => {
     vi.mocked(listCustomerPets).mockResolvedValue({
       data: [
         buildPet({ id: 'pet-1', name: 'Bantay' }),
@@ -255,18 +367,18 @@ describe('CustomerPetManagerPage', () => {
     renderPage();
 
     await user.click(
-      await screen.findByRole('button', { name: 'Delete Bantay' })
+      await screen.findByRole('button', { name: 'Archive Bantay' })
     );
 
     // Nothing happens until the warning is confirmed.
     const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent('Delete Bantay?');
-    expect(dialog).toHaveTextContent(/Warning/);
+    expect(dialog).toHaveTextContent('Archive Bantay?');
+    expect(dialog).toHaveTextContent(/will move to Archived pets/);
     expect(deactivatePet).not.toHaveBeenCalled();
 
-    // A reason has to be picked before the delete can be confirmed.
+    // A reason has to be picked before the archive can be confirmed.
     const confirmButton = within(dialog).getByRole('button', {
-      name: 'Delete pet',
+      name: 'Archive pet',
     });
     expect(confirmButton).toBeDisabled();
     await user.click(
@@ -274,7 +386,11 @@ describe('CustomerPetManagerPage', () => {
     );
     await user.click(confirmButton);
 
-    expect(await screen.findByText('Pet deleted.')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'Bantay archived. You can restore it from Archived pets below.'
+      )
+    ).toBeInTheDocument();
     // The server only archives an inactive pet, so deactivate goes first.
     expect(deactivatePet).toHaveBeenCalledWith('pet-1', 'token');
     expect(archivePet).toHaveBeenCalledWith('pet-1', 'token', {
@@ -284,12 +400,18 @@ describe('CustomerPetManagerPage', () => {
     expect(vi.mocked(deactivatePet).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(archivePet).mock.invocationCallOrder[0]
     );
-    expect(screen.queryByText('Bantay')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /Bantay/ })
+    ).not.toBeInTheDocument();
     expect(screen.getByText('Whiskers')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // ...and it is now under Archived pets.
+    expect(
+      screen.getByRole('button', { name: /Archived pets \(1\)/ })
+    ).toBeInTheDocument();
   });
 
-  it('cancelling the delete warning leaves the pet alone', async () => {
+  it('cancelling the archive dialog leaves the pet alone', async () => {
     vi.mocked(listCustomerPets).mockResolvedValue({
       data: [buildPet({ id: 'pet-1', name: 'Bantay' })],
       error: null,
@@ -299,7 +421,7 @@ describe('CustomerPetManagerPage', () => {
     renderPage();
 
     await user.click(
-      await screen.findByRole('button', { name: 'Delete Bantay' })
+      await screen.findByRole('button', { name: 'Archive Bantay' })
     );
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' })
@@ -311,7 +433,7 @@ describe('CustomerPetManagerPage', () => {
     expect(screen.getByText('Bantay')).toBeInTheDocument();
   });
 
-  it('"Other" asks for a custom reason and sends it with the delete', async () => {
+  it('"Other" asks for a custom reason and sends it with the archive', async () => {
     vi.mocked(listCustomerPets).mockResolvedValue({
       data: [buildPet({ id: 'pet-1', name: 'Bantay' })],
       error: null,
@@ -321,11 +443,11 @@ describe('CustomerPetManagerPage', () => {
     renderPage();
 
     await user.click(
-      await screen.findByRole('button', { name: 'Delete Bantay' })
+      await screen.findByRole('button', { name: 'Archive Bantay' })
     );
     const dialog = screen.getByRole('dialog');
     const confirmButton = within(dialog).getByRole('button', {
-      name: 'Delete pet',
+      name: 'Archive pet',
     });
 
     expect(
@@ -345,14 +467,14 @@ describe('CustomerPetManagerPage', () => {
     expect(confirmButton).toBeEnabled();
     await user.click(confirmButton);
 
-    expect(await screen.findByText('Pet deleted.')).toBeInTheDocument();
+    expect(await screen.findByText(/^Bantay archived\./)).toBeInTheDocument();
     expect(archivePet).toHaveBeenCalledWith('pet-1', 'token', {
       reason: 'other',
       reasonOther: 'Moving abroad',
     });
   });
 
-  it('a pet with a booking that is not finished cannot be deleted', async () => {
+  it('a pet with a booking that is not finished cannot be archived', async () => {
     vi.mocked(listCustomerPets).mockResolvedValue({
       data: [buildPet({ id: 'pet-1', name: 'Bantay' })],
       error: null,
@@ -373,11 +495,11 @@ describe('CustomerPetManagerPage', () => {
     renderPage();
 
     await user.click(
-      await screen.findByRole('button', { name: 'Delete Bantay' })
+      await screen.findByRole('button', { name: 'Archive Bantay' })
     );
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      "Bantay has a booking that isn't finished yet. Cancel or complete it before deleting this pet."
+      "Bantay has a booking that isn't finished yet. Cancel or complete it before archiving this pet."
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(deactivatePet).not.toHaveBeenCalled();
@@ -421,7 +543,7 @@ describe('CustomerPetManagerPage', () => {
     );
   });
 
-  it('keeps the pet and shows the error when the delete fails', async () => {
+  it('keeps the pet and shows the error when the archive fails', async () => {
     vi.mocked(listCustomerPets).mockResolvedValue({
       data: [buildPet({ id: 'pet-1', name: 'Bantay' })],
       error: null,
@@ -435,7 +557,7 @@ describe('CustomerPetManagerPage', () => {
     renderPage();
 
     await user.click(
-      await screen.findByRole('button', { name: 'Delete Bantay' })
+      await screen.findByRole('button', { name: 'Archive Bantay' })
     );
     await user.click(
       within(screen.getByRole('dialog')).getByRole('radio', {
@@ -444,7 +566,7 @@ describe('CustomerPetManagerPage', () => {
     );
     await user.click(
       within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Delete pet',
+        name: 'Archive pet',
       })
     );
 
@@ -452,6 +574,8 @@ describe('CustomerPetManagerPage', () => {
       'Something went wrong'
     );
     expect(screen.getByText('Bantay')).toBeInTheDocument();
-    expect(screen.queryByText('Pet deleted.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/archived\. You can restore/)
+    ).not.toBeInTheDocument();
   });
 });

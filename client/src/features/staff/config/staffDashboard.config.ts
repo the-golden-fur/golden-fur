@@ -26,6 +26,7 @@ import {
   UserCog,
   Users,
   UserSearch,
+  Utensils,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -106,6 +107,16 @@ const VACCINATION_REVIEW_TILE: DashboardTileConfig = {
   to: '/staff/vaccinations/review',
 };
 
+/** Shared staff-owned food/medication item library - every one of the 7
+ * Hotel/Daycare check-in roles gets it (mirrors HOTEL_ADVANCE_ROLES/
+ * DAYCARE_ADVANCE_ROLES). */
+const STAFF_ITEMS_TILE: DashboardTileConfig = {
+  title: 'Food & Medication Items',
+  description:
+    'Your saved food and medication items, picked from a dropdown at check-in or when booking for a customer - mark one public to share it.',
+  to: '/staff/food-medication-items',
+};
+
 /**
  * Admin/Superadmin already pass the `ALLOWED_VIEWER_ROLES` gate (and the
  * server's `requireRole`) on every one of these routes - confirmed by
@@ -165,6 +176,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/reports/cage-occupancy',
           },
           VACCINATION_REVIEW_TILE,
+          STAFF_ITEMS_TILE,
         ],
       },
       {
@@ -198,6 +210,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Timestamped history of check-ins, checkouts, and boarding checklist changes.',
             to: '/staff/hotel/activity-log',
           },
+          STAFF_ITEMS_TILE,
         ],
       },
       {
@@ -268,6 +281,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Check pets in and out of daycare sessions.',
             to: '/staff/daycare/queue',
           },
+          STAFF_ITEMS_TILE,
         ],
       },
       {
@@ -327,6 +341,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/reports/goals',
             roles: ['Superadmin'],
           },
+          STAFF_ITEMS_TILE,
         ],
       },
     ],
@@ -407,6 +422,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/reports/trends',
           },
           VACCINATION_REVIEW_TILE,
+          STAFF_ITEMS_TILE,
         ],
       },
     ],
@@ -418,7 +434,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -451,6 +467,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             to: '/staff/reports/cage-occupancy',
           },
           VACCINATION_REVIEW_TILE,
+          STAFF_ITEMS_TILE,
         ],
       },
     ],
@@ -462,7 +479,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -500,6 +517,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Timestamped history of check-ins, checkouts, and boarding checklist changes.',
             to: '/staff/hotel/activity-log',
           },
+          STAFF_ITEMS_TILE,
         ],
       },
     ],
@@ -511,7 +529,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -557,7 +575,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -606,7 +624,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -661,6 +679,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Approve or deny returning a downpayment as credit for a Manual-review cancellation.',
             to: '/staff/bookings/credit-review-queue',
           },
+          STAFF_ITEMS_TILE,
         ],
       },
     ],
@@ -672,7 +691,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
         label: null,
         tiles: [
           {
-            title: 'Days Off',
+            title: 'Day Off Requests',
             description: 'Request a day off, or take the rest of today off.',
             to: '/staff/days-off',
           },
@@ -705,6 +724,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Check pets in and out of daycare sessions.',
             to: '/staff/daycare/queue',
           },
+          STAFF_ITEMS_TILE,
         ],
       },
     ],
@@ -725,10 +745,10 @@ const ADMIN_SECTION_ICONS: Record<string, LucideIcon> = {
 };
 
 /** Per-tile icon, keyed by title so every dashboard config sharing a tile
- * (e.g. every role has its own "Days Off") gets the same icon without
+ * (e.g. every role has its own "Day Off Requests") gets the same icon without
  * repeating it on each tile definition above. */
 const TILE_ICONS: Record<string, LucideIcon> = {
-  'Days Off': CalendarOff,
+  'Day Off Requests': CalendarOff,
   'My Schedule': CalendarDays,
   'Staff Management': UserCog,
   'Customer Management': UserSearch,
@@ -756,6 +776,7 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   Goals: Target,
   Trends: TrendingUp,
   'Vaccination Review': Syringe,
+  'Food & Medication Items': Utensils,
 };
 
 export interface SidebarReadySection {

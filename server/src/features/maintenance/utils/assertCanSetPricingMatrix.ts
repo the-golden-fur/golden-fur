@@ -14,7 +14,7 @@ function throwWithStatus(statusCode: number, message: string): never {
  * `requesterRole` undefined = an internal caller (no request behind it),
  * which isn't checked.
  */
-export function assertCanSetPricingMatrix({
+export function assertCanSetPricingMatrix<T = boolean>({
   requesterRole,
   next,
   current,
@@ -22,10 +22,11 @@ export function assertCanSetPricingMatrix({
 }: {
   requesterRole: string | undefined;
   /** The value being saved; undefined = not being changed. */
-  next: boolean | undefined;
-  current: boolean;
-  /** The 403 message - also reused for has_extra_long_coat (20261014265),
-   * another per-item pricing switch with the same Superadmin-only rule. */
+  next: T | undefined;
+  current: T;
+  /** The 403 message - also reused for has_extra_long_coat (20261014265) and
+   * a package's fixed_price (20261030292), other per-item pricing settings
+   * with the same Superadmin-only rule. */
   message?: string;
 }): void {
   if (requesterRole === undefined || requesterRole === 'Superadmin') return;
@@ -36,3 +37,6 @@ export function assertCanSetPricingMatrix({
 
 export const EXTRA_LONG_COAT_SUPERADMIN_ONLY =
   'Only a Superadmin can change whether a price has Extra Long Coat prices';
+
+export const FIXED_PRICE_SUPERADMIN_ONLY =
+  "Only a Superadmin can change a package's fixed price";

@@ -44,11 +44,22 @@ export async function updatePetWeightClassConfiguration({
     m_min_kg: updates.m_min_kg ?? existing.m_min_kg,
     l_min_kg: updates.l_min_kg ?? existing.l_min_kg,
     xl_min_kg: updates.xl_min_kg ?? existing.xl_min_kg,
+    min_weight_kg: updates.min_weight_kg ?? existing.min_weight_kg,
+    max_weight_kg: updates.max_weight_kg ?? existing.max_weight_kg,
   };
   if (
     !(merged.m_min_kg < merged.l_min_kg && merged.l_min_kg < merged.xl_min_kg)
   ) {
     throwWithStatus(400, 'Weight class cut-offs must increase: M < L < XL');
+  }
+  // Custom change (pet weight limits): the recordable range must wrap the
+  // cut-offs, or a weight class could become impossible to reach. Same rule
+  // as pet_weight_class_configuration_weight_limits_check.
+  if (!(merged.min_weight_kg < merged.m_min_kg)) {
+    throwWithStatus(400, 'Lightest weight must be below the M cut-off');
+  }
+  if (!(merged.xl_min_kg < merged.max_weight_kg)) {
+    throwWithStatus(400, 'Heaviest weight must be above the XL cut-off');
   }
 
   const { data, error } = await supabase

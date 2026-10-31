@@ -30,6 +30,7 @@ import { CreditReviewQueueWidget } from '../../components/dashboard/CreditReview
 import { CageOccupancyWidget } from '../../components/dashboard/CageOccupancyWidget/CageOccupancyWidget';
 import { BoardingChecklistWidget } from '../../components/dashboard/BoardingChecklistWidget/BoardingChecklistWidget';
 import { TransactionsWidget } from '../../components/dashboard/TransactionsWidget/TransactionsWidget';
+import { PendingPaymentsWidget } from '../../components/dashboard/PendingPaymentsWidget/PendingPaymentsWidget';
 import { MyScheduleWidget } from '../../components/dashboard/MyScheduleWidget/MyScheduleWidget';
 import {
   ROLE_TO_DASHBOARD_SLUG,
@@ -328,6 +329,8 @@ export function StaffDashboardPage() {
                 />
               )}
               <CreditReviewQueueWidget accessToken={accessToken} />
+              {/* Sits directly under New Booking in the 2-column grid. */}
+              <PendingPaymentsWidget accessToken={accessToken} />
             </div>
           </div>
 

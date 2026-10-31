@@ -24,6 +24,14 @@ import {
 import { getPetWeightClassConfiguration } from '../../maintenance/services/petWeightClassConfiguration.service.ts';
 import { deriveWeightClass } from '../../maintenance/utils/deriveWeightClass.ts';
 import {
+  isWithinWeightLimits,
+  weightLimitsFrom,
+} from '../../maintenance/utils/petWeightLimits.ts';
+import type { PetWeightClassConfiguration } from '../../maintenance/maintenance.types.ts';
+import { getPetAgeConfiguration } from '../../maintenance/services/petAgeConfiguration.service.ts';
+import { isOlderThanAgeLimit } from '../../maintenance/utils/petAgeLimit.ts';
+import { manilaDateString } from '../../../shared/services/promoEligibility/promoEligibility.service.ts';
+import {
   archivePet,
   deactivatePet,
   hardDeletePet,
@@ -179,16 +187,73 @@ function resolveAssessmentStamp(
  */
 async function resolveFinalWeightClass(
   submitted: { weight_class?: string; weight_kg?: number | null },
-  storedWeightKg?: number | null
+  storedWeightKg?: number | null,
+  preloadedConfig?: PetWeightClassConfiguration | null
 ): Promise<PetWeightClass | undefined> {
   if (submitted.weight_class !== undefined) {
     return submitted.weight_class as PetWeightClass;
   }
   if (submitted.weight_kg != null && submitted.weight_kg !== storedWeightKg) {
-    const cutoffs = await getPetWeightClassConfiguration();
+    const cutoffs = preloadedConfig ?? (await getPetWeightClassConfiguration());
     return deriveWeightClass(submitted.weight_kg, cutoffs);
   }
   return undefined;
+}
+
+/**
+ * Custom change (pet weight limits): the weight-class config row, loaded only
+ * when a NEW weight is being recorded (submitted and different from what's
+ * stored) - the staff edit form re-sends the stored weight on every save, and
+ * a pet weighed before the limits changed must stay editable. Shared with
+ * resolveFinalWeightClass so the row is read at most once per request.
+ */
+async function loadConfigForNewWeight(
+  submittedWeightKg: number | null | undefined,
+  storedWeightKg?: number | null
+): Promise<PetWeightClassConfiguration | null> {
+  if (submittedWeightKg == null || submittedWeightKg === storedWeightKg) {
+    return null;
+  }
+  return getPetWeightClassConfiguration();
+}
+
+/** The error message for a weight outside the Superadmin-configured range
+ * (pet_weight_class_configuration min/max_weight_kg), or null. */
+function petWeightLimitError(
+  kg: number,
+  config: PetWeightClassConfiguration
+): string | null {
+  if (isWithinWeightLimits(kg, config)) return null;
+  const { min_weight_kg, max_weight_kg } = weightLimitsFrom(config);
+  return `Invalid weight - enter between ${min_weight_kg} kg and ${max_weight_kg} kg.`;
+}
+
+/** Zod's own rejection of weight_kg (not a positive number, or over the
+ * 499 kg ceiling) reads as a generic "Invalid payload" - name the field
+ * instead, the same wording the limit check uses. */
+function invalidPayloadError(issues: { path: PropertyKey[] }[]): string {
+  return issues.some((issue) => issue.path[0] === 'weight_kg')
+    ? 'Invalid weight - please check the weight entered.'
+    : 'Invalid payload';
+}
+
+/**
+ * The Admin-configured age limit (pet_age_configuration) for a submitted
+ * date of birth - returns the error message to send, or null when it's
+ * within the limit. pet.validator.ts already rejects anything past the fixed
+ * 38-year record; this is the (possibly lower) configured limit, which needs
+ * a DB read so can't live in the Zod schema.
+ */
+async function petAgeLimitError(dateOfBirth: string): Promise<string | null> {
+  const { max_age_years } = await getPetAgeConfiguration();
+
+  if (!isOlderThanAgeLimit(dateOfBirth, manilaDateString(), max_age_years)) {
+    return null;
+  }
+
+  return `A pet cannot be older than ${max_age_years} ${
+    max_age_years === 1 ? 'year' : 'years'
+  }. Please check the date of birth.`;
 }
 
 export async function listCustomerPetsController(
@@ -257,18 +322,41 @@ export async function createPetController(
   const parsed = validator.safeParse(req.body);
 
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'Invalid payload', details: parsed.error.issues });
+    return res.status(400).json({
+      error: invalidPayloadError(parsed.error.issues),
+      details: parsed.error.issues,
+    });
   }
 
   try {
+    if (parsed.data.date_of_birth) {
+      const ageError = await petAgeLimitError(parsed.data.date_of_birth);
+      if (ageError) {
+        return res.status(400).json({ error: ageError });
+      }
+    }
+
     const submitted = parsed.data as {
       weight_class?: string;
       weight_kg?: number;
       coat_type?: string;
     };
-    const finalWeightClass = await resolveFinalWeightClass(submitted);
+    const weightConfig = await loadConfigForNewWeight(submitted.weight_kg);
+    if (weightConfig && submitted.weight_kg != null) {
+      const weightError = petWeightLimitError(
+        submitted.weight_kg,
+        weightConfig
+      );
+      if (weightError) {
+        return res.status(400).json({ error: weightError });
+      }
+    }
+
+    const finalWeightClass = await resolveFinalWeightClass(
+      submitted,
+      undefined,
+      weightConfig
+    );
     const stamp = resolveAssessmentStamp(
       isStaff,
       requesterId,
@@ -375,9 +463,23 @@ export async function updatePetController(
     const parsed = validator.safeParse(req.body);
 
     if (!parsed.success) {
-      return res
-        .status(400)
-        .json({ error: 'Invalid payload', details: parsed.error.issues });
+      return res.status(400).json({
+        error: invalidPayloadError(parsed.error.issues),
+        details: parsed.error.issues,
+      });
+    }
+
+    // Only a date of birth that actually changes is checked against the age
+    // limit - the edit form re-sends the stored one on every save, and a pet
+    // registered before the limit was lowered must stay editable.
+    if (
+      parsed.data.date_of_birth &&
+      parsed.data.date_of_birth !== pet.date_of_birth
+    ) {
+      const ageError = await petAgeLimitError(parsed.data.date_of_birth);
+      if (ageError) {
+        return res.status(400).json({ error: ageError });
+      }
     }
 
     const submitted = parsed.data as {
@@ -390,9 +492,24 @@ export async function updatePetController(
     // explicit override) - see resolveFinalWeightClass. undefined means the
     // payload carried neither a new weight nor an override, so the stored
     // class stands (an existing manual override is not clobbered).
+    const weightConfig = await loadConfigForNewWeight(
+      submitted.weight_kg,
+      pet.weight_kg
+    );
+    if (weightConfig && submitted.weight_kg != null) {
+      const weightError = petWeightLimitError(
+        submitted.weight_kg,
+        weightConfig
+      );
+      if (weightError) {
+        return res.status(400).json({ error: weightError });
+      }
+    }
+
     const finalWeightClass = await resolveFinalWeightClass(
       submitted,
-      pet.weight_kg
+      pet.weight_kg,
+      weightConfig
     );
     const effectiveWeightClass =
       finalWeightClass !== undefined ? finalWeightClass : pet.weight_class;
@@ -558,11 +675,25 @@ export async function restorePetController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!(await isAuthorizedForPetArchive(requesterId))) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
   try {
+    // Pet Manager: an owner can restore their own archived pet; anyone else
+    // needs the staff archive roles (Admin > Archive).
+    const { data: pet, error: lookupError } = await resolvePet(petId as string);
+
+    if (lookupError) {
+      return res.status(400).json({ error: lookupError.message });
+    }
+
+    if (!pet) {
+      return res.status(404).json({ error: 'Pet not found' });
+    }
+
+    const isOwner = pet.customer_id === requesterId;
+
+    if (!isOwner && !(await isAuthorizedForPetArchive(requesterId))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     await restorePet(petId as string);
     return res.status(204).send();
   } catch (error) {
@@ -581,7 +712,12 @@ export async function listArchivedPetsController(
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!(await isAuthorizedForPetArchive(requesterId))) {
+  // Pet Manager: a customer can list their own archived pets
+  // (/customers/:customerId/pets/archived); every other list - including
+  // the all-customers /pets/archived - needs the staff archive roles.
+  const isOwnList = Boolean(customerId) && customerId === requesterId;
+
+  if (!isOwnList && !(await isAuthorizedForPetArchive(requesterId))) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 

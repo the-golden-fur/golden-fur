@@ -55,6 +55,9 @@ export function UnavailabilityBlockBadge({
         .from('staff_unavailability_blocks')
         .select('id, end_time, is_full_day')
         .eq('staff_id', staffId)
+        // A pending request isn't time off yet - only an approved block
+        // makes someone unavailable.
+        .eq('status', 'approved')
         .lte('start_time', now)
         .gt('end_time', now)
         .order('end_time', { ascending: true })

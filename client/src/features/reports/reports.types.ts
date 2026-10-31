@@ -123,6 +123,10 @@ export interface TransactionRecord {
   payment_choice: string | null;
   total_amount: number;
   misc_sale_description: string | null;
+  /** Custom change (payment receipts): set once a receipt file has been
+   * uploaded for this payment - a storage path, not a URL (view it via
+   * getTransactionReceiptUrl). Optional so older fixtures stay valid. */
+  receipt_path?: string | null;
   created_at: string;
   /** The bill's itemized lines - printed on a Daycare receipt. Optional so
    * older fixtures/callers stay valid. */

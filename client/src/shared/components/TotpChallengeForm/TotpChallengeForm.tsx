@@ -194,6 +194,13 @@ export function TotpChallengeForm({
       {method === 'email' && emailCodeSent ? (
         <p className={styles.copy}>We emailed you a 6-digit code.</p>
       ) : null}
+      {method === 'authenticator' ? (
+        <p className={styles.copy}>
+          Open the Google Authenticator app on your phone, find{' '}
+          <strong>Golden Fur</strong>, and type the 6-digit number shown (ignore
+          the space in the middle).
+        </p>
+      ) : null}
       <div className={styles.field}>
         <span className={styles.label}>6-digit code</span>
         <OtpInput

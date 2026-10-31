@@ -23,8 +23,17 @@ import { getDiscountById } from '../../discounts/services/discounts.service.ts';
 import { getFixedPrice } from '../../maintenance/services/petTypePriceOverrides.service.ts';
 import {
   assertCheckInAllowed,
+  assertDaycareCareTimesWithinVisit,
   assertWithinGroomingHours,
 } from './availability.service.ts';
+
+// Booking date limit: assertWithinAdvanceBookingWindow is covered by
+// staffPicker.service.spec.ts - stubbed here so its branch lookup stays out of
+// these tests' sequential mock queues. Everything else in the module is real.
+vi.mock('./staffPicker.service.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./staffPicker.service.ts')>()),
+  assertWithinAdvanceBookingWindow: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
@@ -74,6 +83,7 @@ vi.mock('../../maintenance/services/petTypePriceOverrides.service.ts', () => ({
 vi.mock('./availability.service.ts', () => ({
   assertWithinGroomingHours: vi.fn(),
   assertDaycareStartsBeforeCutoff: vi.fn(),
+  assertDaycareCareTimesWithinVisit: vi.fn(),
   assertCheckInAllowed: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -744,6 +754,12 @@ describe('booking.service (#51)', () => {
     );
 
     expect(insert?.payload).toMatchObject({ status: 'Pending' });
+    expect(assertDaycareCareTimesWithinVisit).toHaveBeenCalledWith(
+      BASE_INPUT.branch_id,
+      BASE_INPUT.scheduled_start,
+      BASE_INPUT.scheduled_end,
+      undefined
+    );
   });
 
   it('AC-4: a Veterinary booking is created Pending regardless of payment_confirmed input', async () => {

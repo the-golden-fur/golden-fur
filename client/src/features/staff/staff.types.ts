@@ -32,7 +32,16 @@ export interface StaffProfile {
   role: StaffRole;
   username: string;
   registered_email: string;
+  /** The name shown around the app - derived by the database from the
+   * nickname, else "first_name last_name" (staff names, 20261030290). */
   display_name: string;
+  /** Legal name - null for staff created before names were split, until an
+   * Admin records it. Optional so older fixtures/callers stay valid. */
+  first_name?: string | null;
+  middle_name?: string | null;
+  last_name?: string | null;
+  /** Optional name shown instead of "First Last". */
+  nickname?: string | null;
   profile_photo_url: string | null;
   phone_number: string | null;
   emergency_contact_name: string | null;
@@ -45,14 +54,21 @@ export interface StaffProfile {
 }
 
 export interface StaffProfileUpdatePayload {
-  display_name?: string;
+  /** Staff choose their own nickname; null clears it. */
+  nickname?: string | null;
   phone_number?: string;
   emergency_contact_name?: string;
   emergency_contact_number?: string;
   preferred_communication_channel?: CommunicationChannel;
 }
 
-export type UnavailabilityBlockStatus = 'pending' | 'approved' | 'denied';
+/** 'cancelled' = the requester withdrew it (kept for their history, never
+ * counts as time off). */
+export type UnavailabilityBlockStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'cancelled';
 
 /** 'Rest Day' is fixed/manager-set only - never self-service (server-
  * enforced). The rest are self-requestable or manager-added. */
@@ -154,6 +170,15 @@ export interface BranchScheduleEntry extends UnavailabilityBlock {
   created_by_name: string | null;
 }
 
+/** Day Off Requests history row - every block the staff member has, past
+ * or future, with reviewer / requested reviewer / creator names resolved
+ * server-side (GET /staff/:id/unavailability?history=true). */
+export interface UnavailabilityHistoryEntry extends UnavailabilityBlock {
+  reviewer_name: string | null;
+  requested_reviewer_name: string | null;
+  created_by_name: string | null;
+}
+
 export interface ReviewUnavailabilityBlockPayload {
   decision: 'approved' | 'denied';
   denial_reason?: string;
@@ -164,13 +189,20 @@ export interface ManageStaffAccountPayload {
   role?: StaffRole;
   branch_id?: string;
   is_active?: boolean;
+  first_name?: string;
+  middle_name?: string | null;
+  last_name?: string;
+  nickname?: string | null;
 }
 
 /** M01 Process 1: admin creates a staff account. */
 export interface CreateStaffAccountPayload {
   username: string;
   registered_email: string;
-  display_name: string;
+  first_name: string;
+  middle_name?: string | null;
+  last_name: string;
+  nickname?: string | null;
   role: StaffRole;
   branch_id: string;
 }

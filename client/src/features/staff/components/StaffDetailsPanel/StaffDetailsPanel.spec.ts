@@ -53,15 +53,28 @@ function detailValue(label: string) {
 }
 
 describe('StaffDetailsPanel', () => {
-  it('shows full name, email, username, role, branch and account status', () => {
-    renderPanel();
+  it('shows legal name, nickname, email, username, role, branch and account status', () => {
+    renderPanel({
+      first_name: 'Jamie',
+      middle_name: 'Rose',
+      last_name: 'Cruz',
+      nickname: 'Jam',
+    });
 
-    expect(detailValue('Full name')).toHaveTextContent('Jamie Cruz');
+    expect(detailValue('Legal name')).toHaveTextContent('Jamie Rose Cruz');
+    expect(detailValue('Nickname')).toHaveTextContent('Jam');
     expect(detailValue('Email')).toHaveTextContent('jcruz@example.com');
     expect(detailValue('Username')).toHaveTextContent('jcruz');
     expect(detailValue('Role')).toHaveTextContent('Groomer');
     expect(detailValue('Branch')).toHaveTextContent('Makati');
     expect(detailValue('Account status')).toHaveTextContent('Active');
+  });
+
+  it('staff names: says the legal name is not recorded yet for staff created before names were split', () => {
+    renderPanel();
+
+    expect(detailValue('Legal name')).toHaveTextContent('Not recorded yet');
+    expect(detailValue('Nickname')).toHaveTextContent('—');
   });
 
   it('shows a dash for contact details that were never filled in', () => {

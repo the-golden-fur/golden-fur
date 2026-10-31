@@ -20,6 +20,7 @@ import * as staffApi from '../../../staff/api/staff.api';
 import * as discountsApi from '../../../discounts/api/discounts.api';
 import * as veterinaryApi from '../../../veterinary/api/veterinary.api';
 import * as rewardsApi from '../../../rewards/api/rewards.api';
+import * as staffItemsApi from '../../../staffItems/api/staffItems.api';
 import { CustomerBookingFlowPage } from './CustomerBookingFlowPage';
 
 vi.mock('../../../customers/api/customer.api', () => ({
@@ -32,9 +33,22 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
   listBranches: vi.fn(),
 }));
 
+// PetForm has its own spec - stubbed here so the staff "Add a pet" pop-up
+// can be opened without mocking every API the real form loads.
+vi.mock('../../../customers/components/forms/PetForm/PetForm', () => ({
+  PetForm: () => createElement('div', null, 'Pet form'),
+}));
+
 vi.mock('../../../catalog/api/catalog.api', () => ({
   listCustomerCatalog: vi.fn(),
   listCustomerCatalogForStaff: vi.fn(),
+}));
+
+vi.mock('../../../staffItems/api/staffItems.api', () => ({
+  listPickableFoodItems: vi.fn(),
+  listPickableMedicationItems: vi.fn(),
+  createFoodItem: vi.fn(),
+  createMedicationItem: vi.fn(),
 }));
 
 vi.mock('../../api/booking.api', () => ({
@@ -262,7 +276,11 @@ const PET = {
   updated_at: '',
 };
 
-const BRANCH = { id: 'branch-1', name: 'Makati', is_vet_branch: true };
+const BRANCH = {
+  id: 'branch-1',
+  name: 'Makati',
+  is_vet_branch: true,
+};
 
 const GOLDEN_PACKAGE = {
   id: 'package-golden-1',
@@ -544,6 +562,22 @@ describe('CustomerBookingFlowPage', () => {
     vi.mocked(catalogApi.listCustomerCatalogForStaff).mockImplementation(
       (_customerId, _accessToken, category) => catalogByCategory(category)
     );
+    vi.mocked(staffItemsApi.listPickableFoodItems).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(staffItemsApi.listPickableMedicationItems).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(staffItemsApi.createFoodItem).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    vi.mocked(staffItemsApi.createMedicationItem).mockResolvedValue({
+      data: null,
+      error: null,
+    });
     vi.mocked(staffApi.listStaff).mockResolvedValue({ data: [], error: null });
     vi.mocked(discountsApi.listDiscounts).mockResolvedValue({
       data: [],
@@ -565,6 +599,17 @@ describe('CustomerBookingFlowPage', () => {
 
     await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
     expect(rewardsApi.getMyCoupons).not.toHaveBeenCalled();
+  });
+
+  it('shows each branch as a photo card', async () => {
+    renderPage();
+
+    const name = await screen.findByText('Makati');
+    const card = name.closest('button') as HTMLButtonElement;
+    expect(card.querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringMatching(/makatigodenfur/)
+    );
   });
 
   it('Custom change (duplicate-booking prevention): a pet with an unresolved booking (any category) stays on the Pet step and never advances', async () => {
@@ -1327,8 +1372,9 @@ describe('CustomerBookingFlowPage', () => {
                 food_catalog_id: 'food-1',
                 // Custom change (Daycare-only clock-time scheduling): a
                 // Daycare feeding row sends a literal scheduled_time, never
-                // Hotel's meal_time day-period enum.
-                scheduled_time: '08:00',
+                // Hotel's meal_time day-period enum. Which time depends on
+                // the test timezone: new rows default inside the visit.
+                scheduled_time: expect.stringMatching(/^\d{2}:\d{2}$/),
               }),
             ],
           }),
@@ -1398,7 +1444,7 @@ describe('CustomerBookingFlowPage', () => {
     const foodInput = await screen.findByPlaceholderText('Food type');
     await user.click(foodInput);
     await user.click(await screen.findByText('Premium Kibble'));
-    await user.clear(screen.getByPlaceholderText('Quantity'));
+    await user.clear(screen.getByLabelText('Quantity'));
     await user.click(screen.getByText('Next'));
 
     expect(
@@ -1407,7 +1453,82 @@ describe('CustomerBookingFlowPage', () => {
     expect(bookingApi.createBooking).not.toHaveBeenCalled();
 
     // Restore the quantity - Next proceeds and the row is submitted.
-    await user.type(screen.getByPlaceholderText('Quantity'), '2');
+    await user.type(screen.getByLabelText('Quantity'), '2');
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+  });
+
+  it('Care Instructions: a Daycare care time outside the visit blocks Next until it is changed', async () => {
+    const DAYCARE_SERVICE = {
+      id: 'service-daycare-1',
+      category: 'Daycare' as const,
+      name: 'Daycare (per hour)',
+      base_price: 100,
+      duration_minutes: 60,
+      is_active: true,
+      requires_assessed_pet: true,
+      created_by: null,
+      updated_by: null,
+      created_at: '',
+      updated_at: '',
+      first_hour_fee: 100,
+      succeeding_hour_fee: 50,
+      daycare_overnight_fee: 850,
+    };
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, DAYCARE_SERVICE],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToServicesStep(user);
+
+    await user.click(screen.getByText('Daycare'));
+    await waitFor(() =>
+      expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Daycare (per hour)'));
+    await advanceThroughAvailability(user, { staff: false });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Add walk time' })
+    );
+
+    // The mocked slot's local time depends on the test timezone, so read the
+    // window off the input rather than hard-coding it. A new row starts
+    // inside it, not at the old 8:00 AM default.
+    const walkTime = screen.getByLabelText('Walk time') as HTMLInputElement;
+    expect(walkTime.value >= walkTime.min).toBe(true);
+    expect(walkTime.value <= walkTime.max).toBe(true);
+    const validTime = walkTime.value;
+
+    // One minute before the visit starts.
+    const [hour, minute] = walkTime.min.split(':').map(Number);
+    const beforeVisit = new Date(2026, 0, 1, hour, minute - 1);
+    fireEvent.change(walkTime, {
+      target: {
+        value: `${String(beforeVisit.getHours()).padStart(2, '0')}:${String(
+          beforeVisit.getMinutes()
+        ).padStart(2, '0')}`,
+      },
+    });
+
+    await user.click(screen.getByText('Next'));
+
+    expect(
+      screen.getByText(/Every care time must be between/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Add another booking')).not.toBeInTheDocument();
+
+    fireEvent.change(walkTime, { target: { value: validTime } });
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
@@ -3332,6 +3453,104 @@ describe('CustomerBookingFlowPage', () => {
         ).not.toBeInTheDocument();
       });
 
+      it('picking a staff library food item at Care Instructions appends a fully pre-filled row with no catalog id', async () => {
+        vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
+          data: {
+            downpayment_enabled: false,
+            downpayment_type: null,
+            downpayment_amount: null,
+            pay_at_checkout_enabled: false,
+          },
+          error: null,
+        });
+        vi.mocked(bookingApi.createBooking).mockResolvedValue({
+          data: {
+            id: 'booking-1',
+            status: 'Confirmed',
+            scheduled_start: '2026-08-03T01:00:00.000Z',
+          } as never,
+          error: null,
+        });
+        vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+          data: {
+            services: [GROOMING_SERVICE, DAYCARE_SERVICE],
+            packages: [],
+            promos: [],
+          },
+          error: null,
+        });
+        vi.mocked(staffItemsApi.listPickableFoodItems).mockResolvedValue({
+          data: [
+            {
+              id: 'staff-food-1',
+              owner_staff_id: 'staff-1',
+              name: 'Salmon oil',
+              quantity: '2',
+              quantity_unit: 'tablespoon',
+              special_instructions: 'Mix into dinner',
+              photo_url: null,
+              is_public: true,
+              archived_at: null,
+              created_at: '',
+              updated_at: '',
+              owner_display_name: 'Pat Reyes',
+              is_mine: false,
+            },
+          ],
+          error: null,
+        });
+
+        const user = userEvent.setup();
+        renderStaffPage();
+
+        await user.click(await screen.findByText('Makati'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Jamie Cruz'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Max'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Daycare'));
+        await user.click(await screen.findByText('Daycare (per hour)'));
+        await user.click(screen.getByText('Next'));
+        await user.click(await screen.findByText('Walk-in'));
+        await user.click(screen.getByText('Next'));
+
+        await user.click(await screen.findByText('Select slot'));
+        await user.click(screen.getByText('Next'));
+
+        const picker = await screen.findByRole('combobox', {
+          name: 'Add feeding time from library',
+        });
+        fireEvent.change(picker, { target: { value: 'staff-food-1' } });
+
+        expect(screen.getByDisplayValue('Salmon oil')).toBeInTheDocument();
+        expect(
+          screen.queryByText('Save to my private library')
+        ).not.toBeInTheDocument();
+
+        await user.click(screen.getByText('Next'));
+        await screen.findByText('Add another booking');
+        await user.click(screen.getByText('Next'));
+        await screen.findByText('Confirm booking');
+        await user.click(screen.getByText('Confirm booking'));
+
+        await waitFor(() =>
+          expect(bookingApi.createBooking).toHaveBeenCalledWith(
+            'token',
+            expect.objectContaining({
+              hotel_preferences: expect.objectContaining({
+                feeding: expect.arrayContaining([
+                  expect.objectContaining({
+                    food_type: 'Salmon oil',
+                    quantity: '2',
+                  }),
+                ]),
+              }),
+            })
+          )
+        );
+      });
+
       it('is not offered for an Online Daycare booking', async () => {
         vi.mocked(bookingApi.getDownpaymentStatus).mockResolvedValue({
           data: {
@@ -3503,6 +3722,37 @@ describe('CustomerBookingFlowPage', () => {
           expect.objectContaining({ branch_id: 'branch-1' })
         )
       );
+    });
+
+    it('Pet step: staff "Add a pet" opens the form in a pop-up over the pet list', async () => {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [staffSelf('Receptionist')],
+        error: null,
+      });
+
+      const user = userEvent.setup();
+      renderStaffPage();
+
+      await waitFor(() =>
+        expect(screen.getByText('Jamie Cruz')).toBeInTheDocument()
+      );
+      await user.click(screen.getByText('Jamie Cruz'));
+      await user.click(screen.getByText('Next'));
+
+      await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+      expect(screen.queryByText('Pet form')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '+ Add a pet' }));
+
+      const dialog = screen.getByRole('dialog', { name: 'Add a pet' });
+      expect(dialog).toHaveTextContent('Pet form');
+      // The pet list stays put behind it.
+      expect(screen.getByText('Max')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Close' }));
+      expect(
+        screen.queryByRole('dialog', { name: 'Add a pet' })
+      ).not.toBeInTheDocument();
     });
 
     it('an Admin also never sees the Branch step', async () => {

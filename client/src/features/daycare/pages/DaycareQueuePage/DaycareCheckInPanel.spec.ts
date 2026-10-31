@@ -1,9 +1,13 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import * as daycareApi from '../../api/daycare.api';
 import { getCageSuggestion } from '../../../hotel/api/hotel.api';
+import {
+  listPickableFoodItems,
+  listPickableMedicationItems,
+} from '../../../staffItems/api/staffItems.api';
 import type { Booking } from '../../../booking/booking.types';
 import { DaycareCheckInPanel } from './DaycareCheckInPanel';
 
@@ -12,6 +16,12 @@ vi.mock('../../api/daycare.api', () => ({
 }));
 vi.mock('../../../hotel/api/hotel.api', () => ({
   getCageSuggestion: vi.fn(),
+}));
+vi.mock('../../../staffItems/api/staffItems.api', () => ({
+  listPickableFoodItems: vi.fn(),
+  listPickableMedicationItems: vi.fn(),
+  createFoodItem: vi.fn(),
+  createMedicationItem: vi.fn(),
 }));
 // Custom change (Daycare/Hotel parity): DaycareCheckInPanel assigns a cage
 // the same way HotelCheckInPanel does - CageStatusGrid's own fetch behavior
@@ -48,6 +58,12 @@ function setupCageSuggestion() {
     },
     error: null,
   } as never);
+
+  vi.mocked(listPickableFoodItems).mockResolvedValue({ data: [], error: null });
+  vi.mocked(listPickableMedicationItems).mockResolvedValue({
+    data: [],
+    error: null,
+  });
 }
 
 const BOOKING: Booking = {
@@ -59,8 +75,9 @@ const BOOKING: Booking = {
   service_category: 'Daycare',
   service_id: 'service-1',
   package_id: null,
-  scheduled_start: '2026-07-19T02:00:00.000Z',
-  scheduled_end: '2026-07-19T03:00:00.000Z',
+  // Local times, so the 9:00 AM - 1:00 PM visit holds in any test timezone.
+  scheduled_start: new Date(2026, 6, 19, 9).toISOString(),
+  scheduled_end: new Date(2026, 6, 19, 13).toISOString(),
   assigned_staff_id: null,
   status: 'Pending',
   total_price: 300,
@@ -251,6 +268,79 @@ describe('DaycareCheckInPanel (#69)', () => {
     expect(walkingPayload).not.toHaveProperty('time_block');
   });
 
+  it('a new care row starts inside the visit, not at the old 8:00 AM default', async () => {
+    setupCageSuggestion();
+    renderPanel();
+
+    await screen.findByText(/Suggested size: M/);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Add walk time' })
+    );
+
+    expect(screen.getByLabelText('Walk time')).toHaveValue('09:00');
+  });
+
+  it.each([
+    ['5:00 AM', '05:00'],
+    ['the end of the visit', '13:00'],
+  ])('blocks a care time at %s', async (_label, time) => {
+    setupCageSuggestion();
+    vi.mocked(daycareApi.checkInDaycareSession).mockClear();
+    renderPanel();
+
+    await screen.findByText(/Suggested size: M/);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Add walk time' })
+    );
+    fireEvent.change(screen.getByLabelText('Walk time'), {
+      target: { value: time },
+    });
+
+    expect(
+      screen.getByText('Must be between 9:00 AM and 12:59 PM.')
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+
+    expect(
+      await screen.findByText(
+        'Walk time #1 must be between 9:00 AM and 12:59 PM.'
+      )
+    ).toBeInTheDocument();
+    expect(daycareApi.checkInDaycareSession).not.toHaveBeenCalled();
+  });
+
+  it('flags a saved medication time that no longer fits the visit, such as after a reschedule', async () => {
+    setupCageSuggestion();
+    vi.mocked(daycareApi.checkInDaycareSession).mockClear();
+    renderPanel({
+      ...BOOKING,
+      hotel_preferences: {
+        uniform_instructions: true,
+        feeding: [],
+        walking: [],
+        playing: [],
+        medications: [
+          {
+            medication_name: 'Antibiotic',
+            dose: '1',
+            scheduled_times: ['15:00'],
+          },
+        ],
+      },
+    } as unknown as Booking);
+
+    await screen.findByText(/Suggested size: M/);
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+
+    expect(
+      await screen.findByText(
+        'Medication #1 times must be between 9:00 AM and 12:59 PM.'
+      )
+    ).toBeInTheDocument();
+    expect(daycareApi.checkInDaycareSession).not.toHaveBeenCalled();
+  });
+
   it('warns before checking in to a cage of a different size; "Check in anyway" proceeds', async () => {
     setupCageSuggestion();
     vi.mocked(daycareApi.checkInDaycareSession).mockClear();
@@ -284,6 +374,61 @@ describe('DaycareCheckInPanel (#69)', () => {
     expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith(
       'token',
       expect.objectContaining({ cage_id: 'cage-l' })
+    );
+  });
+
+  it('picking a staff library food item appends a fully pre-filled row', async () => {
+    setupCageSuggestion();
+    vi.mocked(listPickableFoodItems).mockResolvedValue({
+      data: [
+        {
+          id: 'staff-food-1',
+          owner_staff_id: 'staff-1',
+          name: 'Salmon oil',
+          quantity: '2',
+          quantity_unit: 'tablespoon',
+          special_instructions: 'Mix into dinner',
+          photo_url: null,
+          is_public: true,
+          archived_at: null,
+          created_at: '',
+          updated_at: '',
+          owner_display_name: 'Pat Reyes',
+          is_mine: false,
+        },
+      ],
+      error: null,
+    });
+    vi.mocked(daycareApi.checkInDaycareSession).mockResolvedValue({
+      data: { id: 'session-1' },
+      error: null,
+    } as never);
+
+    renderPanel();
+
+    await screen.findByText(/Suggested size: M/);
+    const picker = await screen.findByRole('combobox', {
+      name: 'Add feeding time from library',
+    });
+    fireEvent.change(picker, { target: { value: 'staff-food-1' } });
+
+    expect(screen.getByDisplayValue('Salmon oil')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Save to my private library')
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^check in$/i }));
+
+    expect(daycareApi.checkInDaycareSession).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({
+        feeding: expect.arrayContaining([
+          expect.objectContaining({
+            food_type: 'Salmon oil',
+            quantity: '2',
+          }),
+        ]),
+      })
     );
   });
 });

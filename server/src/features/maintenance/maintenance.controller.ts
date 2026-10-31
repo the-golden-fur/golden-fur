@@ -61,6 +61,10 @@ import {
   updatePetWeightClassConfiguration,
 } from './services/petWeightClassConfiguration.service.ts';
 import {
+  getPetAgeConfiguration,
+  updatePetAgeConfiguration,
+} from './services/petAgeConfiguration.service.ts';
+import {
   archiveServiceType,
   createServiceType,
   hardDeleteServiceType,
@@ -82,6 +86,7 @@ import {
   updateBreedValidator,
   updatePackagePricingConfigurationValidator,
   updatePackageValidator,
+  updatePetAgeConfigurationValidator,
   updatePetWeightClassConfigurationValidator,
   updatePricingConfigurationValidator,
   updatePromoValidator,
@@ -845,6 +850,52 @@ export async function updatePetWeightClassConfigurationController(
 
   try {
     const configuration = await updatePetWeightClassConfiguration({
+      requesterId,
+      updates: parsed.data,
+    });
+
+    return res.status(200).json({ configuration });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pet age configuration (custom change: pet age limit)
+// ---------------------------------------------------------------------------
+
+export async function getPetAgeConfigurationController(
+  _req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const configuration = await getPetAgeConfiguration();
+    return res.status(200).json({ configuration });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function updatePetAgeConfigurationController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = updatePetAgeConfigurationValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const configuration = await updatePetAgeConfiguration({
       requesterId,
       updates: parsed.data,
     });

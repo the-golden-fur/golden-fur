@@ -7,10 +7,21 @@ import {
   listBranchSchedule,
   listPendingUnavailabilityBlocks,
   listUnavailabilityBlocks,
+  listUnavailabilityHistory,
   previewAutoBuildSchedule,
   reviewUnavailabilityBlock,
+  updateUnavailabilityBlock,
 } from './unavailabilityBlock.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
+import {
+  notifyDayOffRequested,
+  notifyDayOffReviewed,
+} from './dayOffNotifications.service.ts';
+
+vi.mock('./dayOffNotifications.service.ts', () => ({
+  notifyDayOffRequested: vi.fn(),
+  notifyDayOffReviewed: vi.fn(),
+}));
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -571,9 +582,9 @@ describe('unavailabilityBlock.service', () => {
   });
 
   describe('cancelUnavailabilityBlock', () => {
-    it('AC-4: cancels an active block owned by the requester', async () => {
+    it("the requester cancelling their own pending request marks it 'cancelled' instead of deleting it", async () => {
       queueFromResults(
-        { data: { id: 'block-1' }, error: null },
+        { data: { id: 'block-1', status: 'pending' }, error: null },
         { data: null, error: null }
       );
 
@@ -585,6 +596,29 @@ describe('unavailabilityBlock.service', () => {
           blockId: 'block-1',
         })
       ).resolves.toBeUndefined();
+
+      const write = vi.mocked(supabase.from).mock.results[1]?.value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(write.update).toHaveBeenCalledWith({ status: 'cancelled' });
+      expect(write.delete).not.toHaveBeenCalled();
+    });
+
+    it('the requester cannot cancel a request that was already decided', async () => {
+      queueFromResults({
+        data: { id: 'block-1', status: 'approved' },
+        error: null,
+      });
+
+      await expect(
+        cancelUnavailabilityBlock({
+          requesterId: 'staff-1',
+          requesterRole: 'Groomer',
+          targetStaffId: 'staff-1',
+          blockId: 'block-1',
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
     });
 
     it("AC-4: rejects cancelling another staff member's block when the requester is not Admin/Superadmin", async () => {
@@ -777,6 +811,382 @@ describe('unavailabilityBlock.service', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({ id: 'block-past' });
+    });
+  });
+
+  describe('listUnavailabilityBlocks (My Schedule range)', () => {
+    it('includes part-day entries and leaves denied requests off the calendar', async () => {
+      queueFromResults({ data: [], error: null });
+
+      await listUnavailabilityBlocks({
+        requesterId: 'staff-1',
+        requesterRole: 'Groomer',
+        targetStaffId: 'staff-1',
+        rangeStart: '2026-10-01T00:00:00.000Z',
+        rangeEnd: '2026-11-01T00:00:00.000Z',
+      });
+
+      const query = vi.mocked(supabase.from).mock.results[0]?.value as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      expect(query.eq).not.toHaveBeenCalledWith('is_full_day', true);
+      expect(query.in).toHaveBeenCalledWith('status', ['approved', 'pending']);
+    });
+  });
+
+  describe('day-off notifications', () => {
+    const PENDING_ROW = {
+      id: 'block-1',
+      staff_id: 'staff-1',
+      start_time: '2030-07-14T01:00:00.000Z',
+      end_time: '2030-07-14T09:00:00.000Z',
+      status: 'pending',
+      created_by: 'staff-1',
+    };
+
+    it('a self-request that lands as pending notifies the approver(s)', async () => {
+      queueFromResults(
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        { data: [], error: null },
+        { data: PENDING_ROW, error: null }
+      );
+
+      await createUnavailabilityBlock({
+        requesterId: 'staff-1',
+        requesterRole: 'Groomer',
+        targetStaffId: 'staff-1',
+        startTime: PENDING_ROW.start_time,
+        endTime: PENDING_ROW.end_time,
+        now: new Date('2030-07-01T00:00:00.000Z'),
+      });
+
+      expect(notifyDayOffRequested).toHaveBeenCalledWith(PENDING_ROW);
+    });
+
+    it('"Any manager" assigns the request to a random active manager at the branch', async () => {
+      const assigned = { ...PENDING_ROW, requested_reviewer_id: 'admin-1' };
+      queueFromResults(
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        { data: [], error: null },
+        { data: PENDING_ROW, error: null },
+        { data: [{ id: 'sup-1' }, { id: 'admin-1' }], error: null },
+        { data: assigned, error: null }
+      );
+      // Picks the second of the two managers.
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0.75);
+
+      const result = await createUnavailabilityBlock({
+        requesterId: 'staff-1',
+        requesterRole: 'Groomer',
+        targetStaffId: 'staff-1',
+        startTime: PENDING_ROW.start_time,
+        endTime: PENDING_ROW.end_time,
+        now: new Date('2030-07-01T00:00:00.000Z'),
+      });
+
+      random.mockRestore();
+
+      const managersQuery = vi.mocked(supabase.from).mock.results[3]
+        ?.value as Record<string, ReturnType<typeof vi.fn>>;
+      expect(managersQuery.eq).toHaveBeenCalledWith('branch_id', 'branch-a');
+      expect(managersQuery.eq).toHaveBeenCalledWith('is_active', true);
+      const assignQuery = vi.mocked(supabase.from).mock.results[4]
+        ?.value as Record<string, ReturnType<typeof vi.fn>>;
+      expect(assignQuery.update).toHaveBeenCalledWith({
+        requested_reviewer_id: 'admin-1',
+      });
+      expect(result).toEqual(assigned);
+      expect(notifyDayOffRequested).toHaveBeenCalledWith(assigned);
+    });
+
+    it('a chosen reviewer is kept - no random assignment', async () => {
+      const chosen = { ...PENDING_ROW, requested_reviewer_id: 'sup-1' };
+      queueFromResults(
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        {
+          data: { id: 'sup-1', role: 'Supervisor', branch_id: 'branch-a' },
+          error: null,
+        },
+        { data: [], error: null },
+        { data: chosen, error: null }
+      );
+
+      const result = await createUnavailabilityBlock({
+        requesterId: 'staff-1',
+        requesterRole: 'Groomer',
+        targetStaffId: 'staff-1',
+        requestedReviewerId: 'sup-1',
+        startTime: PENDING_ROW.start_time,
+        endTime: PENDING_ROW.end_time,
+        now: new Date('2030-07-01T00:00:00.000Z'),
+      });
+
+      expect(result).toEqual(chosen);
+      expect(supabase.from).toHaveBeenCalledTimes(4);
+    });
+
+    it('an auto-approved on-behalf entry notifies nobody', async () => {
+      queueFromResults(
+        { data: { id: 'staff-2', branch_id: 'branch-a' }, error: null },
+        { data: [], error: null },
+        { data: { ...PENDING_ROW, status: 'approved' }, error: null }
+      );
+
+      await createUnavailabilityBlock({
+        requesterId: 'admin-1',
+        requesterRole: 'Admin',
+        requesterBranchId: 'branch-a',
+        targetStaffId: 'staff-2',
+        startTime: PENDING_ROW.start_time,
+        endTime: PENDING_ROW.end_time,
+        now: new Date('2030-07-01T00:00:00.000Z'),
+      });
+
+      expect(notifyDayOffRequested).not.toHaveBeenCalled();
+    });
+
+    it('a review notifies the requester of the decision', async () => {
+      const reviewed = { ...PENDING_ROW, status: 'approved' };
+      queueFromResults(
+        { data: { id: 'block-1', status: 'pending' }, error: null },
+        { data: reviewed, error: null }
+      );
+
+      await reviewUnavailabilityBlock({
+        requesterId: 'admin-1',
+        requesterRole: 'Admin',
+        targetStaffId: 'staff-1',
+        blockId: 'block-1',
+        decision: 'approved',
+      });
+
+      expect(notifyDayOffReviewed).toHaveBeenCalledWith(reviewed);
+    });
+  });
+
+  describe('entire-day requests for today', () => {
+    // 2030-07-14 10:00 in Asia/Manila.
+    const NOW = new Date('2030-07-14T02:00:00.000Z');
+    const BRANCH = {
+      timezone: 'Asia/Manila',
+      operating_hours: { sunday: { open: '09:00', close: '18:00' } },
+    };
+
+    it("rejects a staff member's own entire-day request for today", async () => {
+      queueFromResults(
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        { data: BRANCH, error: null }
+      );
+
+      await expect(
+        createUnavailabilityBlock({
+          requesterId: 'staff-1',
+          requesterRole: 'Groomer',
+          targetStaffId: 'staff-1',
+          isFullDay: true,
+          date: '2030-07-14',
+          now: NOW,
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'An entire-day request must be for a date after today',
+      });
+    });
+
+    it('still lets a manager set an entire day for today on behalf of staff', async () => {
+      queueFromResults(
+        { data: { id: 'staff-2', branch_id: 'branch-a' }, error: null },
+        { data: BRANCH, error: null }
+      );
+
+      // Today's window has already started at 09:00, so it fails the
+      // existing past-start check - but not the new today rule.
+      await expect(
+        createUnavailabilityBlock({
+          requesterId: 'admin-1',
+          requesterRole: 'Admin',
+          requesterBranchId: 'branch-a',
+          targetStaffId: 'staff-2',
+          isFullDay: true,
+          date: '2030-07-14',
+          now: NOW,
+        })
+      ).rejects.not.toMatchObject({
+        message: 'An entire-day request must be for a date after today',
+      });
+    });
+  });
+
+  describe('updateUnavailabilityBlock', () => {
+    const NOW = new Date('2030-07-01T00:00:00.000Z');
+    const EDIT = {
+      requesterId: 'staff-1',
+      targetStaffId: 'staff-1',
+      blockId: 'block-1',
+      startTime: '2030-07-20T01:00:00.000Z',
+      endTime: '2030-07-20T05:00:00.000Z',
+      reason: 'Dentist',
+      leaveType: 'Other' as const,
+      now: NOW,
+    };
+
+    it('updates your own pending request and re-notifies the approver(s)', async () => {
+      const updated = { id: 'block-1', status: 'pending', reason: 'Dentist' };
+      queueFromResults(
+        {
+          data: { id: 'block-1', status: 'pending', created_by: 'staff-1' },
+          error: null,
+        },
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        // The request itself overlaps its own old window - not a conflict.
+        { data: [{ id: 'block-1' }], error: null },
+        { data: updated, error: null }
+      );
+
+      const result = await updateUnavailabilityBlock(EDIT);
+
+      expect(result).toEqual(updated);
+      const updateQuery = vi.mocked(supabase.from).mock.results[3]
+        ?.value as Record<string, ReturnType<typeof vi.fn>>;
+      expect(updateQuery.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start_time: EDIT.startTime,
+          end_time: EDIT.endTime,
+          reason: 'Dentist',
+          leave_type: 'Other',
+          is_full_day: false,
+        })
+      );
+      expect(notifyDayOffRequested).toHaveBeenCalledWith(updated);
+    });
+
+    it("rejects editing someone else's request", async () => {
+      await expect(
+        updateUnavailabilityBlock({ ...EDIT, requesterId: 'admin-1' })
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+
+    it('rejects editing a request that was already reviewed', async () => {
+      queueFromResults({
+        data: { id: 'block-1', status: 'approved', created_by: 'staff-1' },
+        error: null,
+      });
+
+      await expect(updateUnavailabilityBlock(EDIT)).rejects.toMatchObject({
+        statusCode: 409,
+      });
+    });
+
+    it('rejects a new window that overlaps another block', async () => {
+      queueFromResults(
+        {
+          data: { id: 'block-1', status: 'pending', created_by: 'staff-1' },
+          error: null,
+        },
+        { data: { id: 'staff-1', branch_id: 'branch-a' }, error: null },
+        { data: [{ id: 'block-other' }], error: null }
+      );
+
+      await expect(updateUnavailabilityBlock(EDIT)).rejects.toMatchObject({
+        statusCode: 409,
+      });
+    });
+  });
+
+  describe('listUnavailabilityHistory', () => {
+    it('returns every block, past or future, with reviewer, requested reviewer and creator names resolved', async () => {
+      queueFromResults(
+        {
+          data: [
+            {
+              id: 'block-denied',
+              staff_id: 'staff-1',
+              start_time: '2026-06-05T00:00:00.000Z',
+              end_time: '2026-06-06T00:00:00.000Z',
+              status: 'denied',
+              reviewed_by: 'supervisor-1',
+              requested_reviewer_id: 'admin-1',
+              created_by: 'staff-1',
+              created_at: '2026-06-01T00:00:00.000Z',
+            },
+            {
+              id: 'block-pending',
+              staff_id: 'staff-1',
+              start_time: '2026-11-05T00:00:00.000Z',
+              end_time: '2026-11-06T00:00:00.000Z',
+              status: 'pending',
+              reviewed_by: null,
+              requested_reviewer_id: null,
+              created_by: 'staff-1',
+              created_at: '2026-10-01T00:00:00.000Z',
+            },
+          ],
+          error: null,
+        },
+        {
+          data: [
+            { id: 'staff-1', display_name: 'Gina Groomer' },
+            { id: 'supervisor-1', display_name: 'Sam Supervisor' },
+            { id: 'admin-1', display_name: 'Ada Admin' },
+          ],
+          error: null,
+        }
+      );
+
+      const result = await listUnavailabilityHistory({
+        requesterId: 'staff-1',
+        requesterRole: 'Groomer',
+        targetStaffId: 'staff-1',
+      });
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          id: 'block-denied',
+          reviewer_name: 'Sam Supervisor',
+          requested_reviewer_name: 'Ada Admin',
+          created_by_name: 'Gina Groomer',
+        }),
+        expect.objectContaining({
+          id: 'block-pending',
+          reviewer_name: null,
+          requested_reviewer_name: null,
+          created_by_name: 'Gina Groomer',
+        }),
+      ]);
+
+      const blocksQuery = vi.mocked(supabase.from).mock.results[0]
+        ?.value as Record<string, ReturnType<typeof vi.fn>>;
+      expect(blocksQuery.gt).not.toHaveBeenCalled();
+      expect(blocksQuery.order).toHaveBeenCalledWith('created_at', {
+        ascending: false,
+      });
+    });
+
+    it('skips the name lookup when there are no blocks', async () => {
+      queueFromResults({ data: [], error: null });
+
+      const result = await listUnavailabilityHistory({
+        requesterId: 'staff-1',
+        requesterRole: 'Groomer',
+        targetStaffId: 'staff-1',
+      });
+
+      expect(result).toEqual([]);
+      expect(supabase.from).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a non-admin reading another staff member's history with 403", async () => {
+      await expect(
+        listUnavailabilityHistory({
+          requesterId: 'staff-1',
+          requesterRole: 'Groomer',
+          targetStaffId: 'staff-2',
+        })
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      expect(supabase.from).not.toHaveBeenCalled();
     });
   });
 

@@ -289,6 +289,68 @@ export async function assertMeetsBookingLeadTime(
   }
 }
 
+/** Custom change (booking date limit): the branches column's default and
+ * ceiling (1 year) - only used if a branch row somehow lacks the value. */
+export const DEFAULT_MAX_ADVANCE_BOOKING_DAYS = 365;
+
+async function readBookingWindowBranch(
+  branchId: string
+): Promise<{ timeZone: string; maxAdvanceDays: number }> {
+  const { data: branch, error } = await supabase
+    .from('branches')
+    .select('timezone, max_advance_booking_days')
+    .eq('id', branchId)
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+
+  const row = branch as {
+    timezone?: string;
+    max_advance_booking_days?: number | null;
+  } | null;
+
+  return {
+    timeZone: row?.timezone ?? 'UTC',
+    maxAdvanceDays:
+      row?.max_advance_booking_days ?? DEFAULT_MAX_ADVANCE_BOOKING_DAYS,
+  };
+}
+
+/**
+ * Throws a 422 when `scheduledStart` falls after `today +
+ * max_advance_booking_days` (Superadmin-set per branch, 1 year at most), both
+ * as calendar dates in the branch's own timezone - day N is still allowed.
+ * The hard gate behind getDaySlots' day-level cutoff that a direct API call
+ * still has to clear. Used by new bookings and reschedules; walk-ins are
+ * "now" and can never exceed it.
+ */
+export async function assertWithinAdvanceBookingWindow(
+  scheduledStart: string,
+  branchId: string
+): Promise<void> {
+  const { timeZone, maxAdvanceDays } = await readBookingWindowBranch(branchId);
+
+  const asDate = (instant: Date): string =>
+    new Intl.DateTimeFormat('en-CA', { timeZone }).format(instant);
+
+  const latestDate = shiftDateString(asDate(new Date()), maxAdvanceDays);
+
+  if (asDate(new Date(scheduledStart)) > latestDate) {
+    throwWithStatus(
+      422,
+      `Bookings can only be made up to ${maxAdvanceDays} day(s) ahead at this branch — please choose an earlier date`
+    );
+  }
+}
+
+/** The availability endpoint's copy of the booking window, so the Slot
+ * Picker can cap its calendar at the same date getDaySlots does. */
+export async function resolveMaxAdvanceBookingDays(
+  branchId: string
+): Promise<number> {
+  return (await readBookingWindowBranch(branchId)).maxAdvanceDays;
+}
+
 /** Convenience for the availability endpoint / findNextAvailableSlot, which
  * don't otherwise need the policy - one resolve, the day count out. */
 export async function resolveNoticeLeadDays(branchId: string): Promise<number> {

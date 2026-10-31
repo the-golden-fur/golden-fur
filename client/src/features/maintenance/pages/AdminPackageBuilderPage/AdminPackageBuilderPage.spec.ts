@@ -668,6 +668,147 @@ describe('AdminPackageBuilderPage', () => {
     });
   });
 
+  // Custom change (package fixed price): a typed price instead of the shared
+  // bundle discount, Superadmin-only.
+  describe('fixed price', () => {
+    const FIXED_PRICE_SWITCH =
+      'Use a fixed price instead of the bundle discount';
+    const FIXED_PRICE_BOX = 'Fixed price (PHP)';
+
+    async function openConfigure(user: ReturnType<typeof userEvent.setup>) {
+      const row = (await screen.findByText('Golden Package')).closest(
+        'tr'
+      ) as HTMLElement;
+      await user.click(
+        within(row).getByRole('button', { name: 'Actions for Golden Package' })
+      );
+      await user.click(screen.getByRole('menuitem', { name: 'Configure' }));
+    }
+
+    function viewAs(role: string) {
+      vi.mocked(staffApi.listStaff).mockResolvedValue({
+        data: [buildViewer(role)],
+        error: null,
+      });
+    }
+
+    it('swaps the discount for a price box, saves the price, and leaves the shared discount alone', async () => {
+      viewAs('Superadmin');
+      vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+        data: buildPackage({ fixed_price: 599 }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      const discountInput = screen.getByLabelText('Bundle discount (%)');
+      await user.clear(discountInput);
+      await user.type(discountInput, '20');
+
+      await user.click(
+        screen.getByRole('switch', { name: FIXED_PRICE_SWITCH })
+      );
+
+      expect(
+        screen.queryByLabelText('Bundle discount (%)')
+      ).not.toBeInTheDocument();
+
+      await user.type(screen.getByLabelText(FIXED_PRICE_BOX), '599');
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() => {
+        expect(maintenanceApi.updatePackage).toHaveBeenCalledWith(
+          'package-1',
+          'token',
+          expect.objectContaining({ fixed_price: 599 })
+        );
+      });
+      expect(
+        maintenanceApi.updatePackagePricingConfiguration
+      ).not.toHaveBeenCalled();
+    });
+
+    it('requires a price once the switch is on', async () => {
+      viewAs('Superadmin');
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      await user.click(
+        screen.getByRole('switch', { name: FIXED_PRICE_SWITCH })
+      );
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      expect(
+        await screen.findByText('Enter a fixed price of 0 or more.')
+      ).toBeInTheDocument();
+      expect(maintenanceApi.updatePackage).not.toHaveBeenCalled();
+    });
+
+    it('switching back to the bundle discount clears the price with null', async () => {
+      viewAs('Superadmin');
+      vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+        data: [buildPackage({ fixed_price: 599 })],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+        data: buildPackage({ fixed_price: null }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      expect(screen.getByLabelText(FIXED_PRICE_BOX)).toHaveValue(599);
+
+      await user.click(
+        screen.getByRole('switch', { name: FIXED_PRICE_SWITCH })
+      );
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() => {
+        expect(maintenanceApi.updatePackage).toHaveBeenCalledWith(
+          'package-1',
+          'token',
+          expect.objectContaining({ fixed_price: null })
+        );
+      });
+    });
+
+    it('is read-only for an Admin, whose save leaves it out entirely', async () => {
+      vi.mocked(maintenanceApi.listPackages).mockResolvedValue({
+        data: [buildPackage({ fixed_price: 599 })],
+        error: null,
+      });
+      vi.mocked(maintenanceApi.updatePackage).mockResolvedValue({
+        data: buildPackage({ fixed_price: 599 }),
+        error: null,
+      });
+
+      renderPage();
+      const user = userEvent.setup();
+      await openConfigure(user);
+
+      expect(
+        screen.getByRole('switch', { name: FIXED_PRICE_SWITCH })
+      ).toBeDisabled();
+      expect(screen.getByLabelText(FIXED_PRICE_BOX)).toBeDisabled();
+
+      await user.click(screen.getByRole('button', { name: 'Save package' }));
+
+      await waitFor(() => {
+        expect(maintenanceApi.updatePackage).toHaveBeenCalled();
+      });
+      expect(
+        vi.mocked(maintenanceApi.updatePackage).mock.calls[0][2]
+      ).not.toHaveProperty('fixed_price');
+    });
+  });
+
   it('custom change: the bundle discount % has no separate "read-only"/Save button - it saves together with the package via the main Save button', async () => {
     vi.mocked(
       maintenanceApi.updatePackagePricingConfiguration

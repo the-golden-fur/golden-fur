@@ -35,6 +35,7 @@ import {
 } from './capacity.service.ts';
 import {
   assertMeetsBookingLeadTime,
+  assertWithinAdvanceBookingWindow,
   resolveEffectivePolicy,
 } from './staffPicker.service.ts';
 import {
@@ -43,6 +44,7 @@ import {
 } from './cagePicker.service.ts';
 import { markCouponsRedeemed } from '../../rewards/services/customerCoupons.service.ts';
 import {
+  assertDaycareCareTimesWithinVisit,
   assertDaycareStartsBeforeCutoff,
   assertWithinGroomingHours,
 } from './availability.service.ts';
@@ -788,6 +790,12 @@ async function resolveSubBooking({
   // Daycare check-in cutoff - mirrors createBooking.
   if (subInput.service_category === 'Daycare') {
     await assertDaycareStartsBeforeCutoff(branchId, subInput.scheduled_start);
+    await assertDaycareCareTimesWithinVisit(
+      branchId,
+      subInput.scheduled_start,
+      subInput.scheduled_end,
+      subInput.hotel_preferences
+    );
   }
 
   if (bookingSource === 'Online') {
@@ -809,6 +817,7 @@ async function resolveSubBooking({
       subInput.scheduled_start,
       branchId
     );
+    await assertWithinAdvanceBookingWindow(subInput.scheduled_start, branchId);
   }
 
   const staffResolution = await resolveStaffAssignment({

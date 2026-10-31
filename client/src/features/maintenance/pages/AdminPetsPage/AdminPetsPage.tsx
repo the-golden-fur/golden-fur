@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { AdminPetTypesPage } from '../AdminPetTypesPage/AdminPetTypesPage';
 import { AdminBreedsPage } from '../AdminBreedsPage/AdminBreedsPage';
+import { PetAgeLimitPage } from '../PetAgeLimitPage/PetAgeLimitPage';
 import styles from './AdminPetsPage.module.css';
 
-type Section = 'pet-types' | 'breeds';
+type Section = 'pet-types' | 'breeds' | 'age-limit';
 
-const SECTIONS: Section[] = ['pet-types', 'breeds'];
+const SECTIONS: Section[] = ['pet-types', 'breeds', 'age-limit'];
 
 const SECTION_LABELS: Record<Section, string> = {
   'pet-types': 'Pet Types',
   breeds: 'Breeds',
+  'age-limit': 'Age Limit',
 };
 
 /**
@@ -52,6 +54,7 @@ export function AdminPetsPage() {
 
       {activeSection === 'pet-types' ? <AdminPetTypesPage /> : null}
       {activeSection === 'breeds' ? <AdminBreedsPage /> : null}
+      {activeSection === 'age-limit' ? <PetAgeLimitPage /> : null}
     </main>
   );
 }

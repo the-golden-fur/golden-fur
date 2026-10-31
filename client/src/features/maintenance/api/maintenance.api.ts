@@ -18,6 +18,7 @@ import type {
   PetType,
   PetTypePriceOverride,
   PetTypeRow,
+  PetAgeConfiguration,
   PetWeightClassConfiguration,
   PricingConfiguration,
   Promo,
@@ -30,6 +31,7 @@ import type {
   UpdatePackagePayload,
   UpdatePackagePricingConfigurationPayload,
   UpdatePetTypePayload,
+  UpdatePetAgeConfigurationPayload,
   UpdatePetWeightClassConfigurationPayload,
   UpdatePricingConfigurationPayload,
   UpdatePromoPayload,
@@ -788,6 +790,50 @@ export async function updatePetWeightClassConfiguration(
 
   const result = await parseBody<{
     configuration: PetWeightClassConfiguration;
+  }>(response);
+  return { data: result.data?.configuration ?? null, error: result.error };
+}
+
+/** Custom change (pet age limit): the oldest a pet may be when registered.
+ * Readable by any signed-in user (the customer pet form needs it), written
+ * from Settings > Config > Pets > Age Limit. */
+export async function getPetAgeConfiguration(
+  accessToken: string
+): Promise<MaintenanceApiResult<PetAgeConfiguration>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pet-age-configuration`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{
+    configuration: PetAgeConfiguration;
+  }>(response);
+  return { data: result.data?.configuration ?? null, error: result.error };
+}
+
+export async function updatePetAgeConfiguration(
+  accessToken: string,
+  payload: UpdatePetAgeConfigurationPayload
+): Promise<MaintenanceApiResult<PetAgeConfiguration>> {
+  const response = await fetch(
+    `${API_BASE_URL}/maintenance/pet-age-configuration`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(accessToken),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{
+    configuration: PetAgeConfiguration;
   }>(response);
   return { data: result.data?.configuration ?? null, error: result.error };
 }

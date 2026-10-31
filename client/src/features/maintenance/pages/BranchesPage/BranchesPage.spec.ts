@@ -184,6 +184,8 @@ describe('BranchesPage', () => {
         contact_number: null,
         is_vet_branch: false,
         timezone: 'Asia/Manila',
+        // A new branch defaults to the full 1-year booking window.
+        max_advance_booking_days: 365,
         operating_hours: {},
         grooming_hours: {},
       })

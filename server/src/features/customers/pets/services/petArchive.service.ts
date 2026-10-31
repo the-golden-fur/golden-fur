@@ -68,13 +68,16 @@ export async function archivePet(
 }
 
 /** Clears the archive reason too, so a restored pet doesn't count in the
- * delete-reason trends. */
+ * delete-reason trends. Also reactivates it: archiving always deactivates
+ * first, so restoring undoes both - otherwise a restored pet stays hidden
+ * wherever only active pets show (e.g. the customer portal's pets widget). */
 export async function restorePet(petId: string): Promise<void> {
   await getPetOrThrow(petId);
 
   const { error } = await supabase
     .from('pets')
     .update({
+      is_active: true,
       archived_at: null,
       archive_reason: null,
       archive_reason_other: null,

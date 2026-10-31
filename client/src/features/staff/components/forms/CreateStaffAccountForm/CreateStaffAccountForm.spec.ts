@@ -61,7 +61,10 @@ describe('CreateStaffAccountForm', () => {
       screen.getByLabelText(/registered email/i),
       'new.hire@goldenfur.com'
     );
-    await userEvent.type(screen.getByLabelText(/display name/i), 'New Hire');
+    await userEvent.type(screen.getByLabelText(/^first name$/i), 'New');
+    await userEvent.type(screen.getByLabelText(/^last name$/i), 'Hire');
+    await userEvent.type(screen.getByLabelText(/^nickname/i), 'Newbie');
+    expect(screen.getByText(/Shown as: Newbie/)).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('button', { name: /create staff account/i })
     );
@@ -71,7 +74,10 @@ describe('CreateStaffAccountForm', () => {
       expect.objectContaining({
         username: 'new.hire',
         registered_email: 'new.hire@goldenfur.com',
-        display_name: 'New Hire',
+        first_name: 'New',
+        middle_name: null,
+        last_name: 'Hire',
+        nickname: 'Newbie',
         branch_id: 'branch-a',
       })
     );
@@ -97,7 +103,7 @@ describe('CreateStaffAccountForm', () => {
 
     expect(
       await screen.findByText(
-        /username, registered email, and display name are required/i
+        /username, registered email, first name and last name are required/i
       )
     ).toBeInTheDocument();
     expect(staffApi.createStaffAccount).not.toHaveBeenCalled();
@@ -115,7 +121,8 @@ describe('CreateStaffAccountForm', () => {
       screen.getByLabelText(/registered email/i),
       'taken@goldenfur.com'
     );
-    await userEvent.type(screen.getByLabelText(/display name/i), 'Taken');
+    await userEvent.type(screen.getByLabelText(/^first name$/i), 'Tak');
+    await userEvent.type(screen.getByLabelText(/^last name$/i), 'En');
     await userEvent.click(
       screen.getByRole('button', { name: /create staff account/i })
     );

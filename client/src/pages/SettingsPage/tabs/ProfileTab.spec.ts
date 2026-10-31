@@ -61,7 +61,7 @@ function buildCustomerProfile() {
 }
 
 describe('ProfileTab', () => {
-  it('staff: renders the avatar, display name, contact fields, and comms preference', async () => {
+  it('staff: renders the avatar, nickname, contact fields, and comms preference', async () => {
     vi.mocked(getSupabaseClient).mockReturnValue(null);
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
       data: buildStaffProfile(),
@@ -79,7 +79,8 @@ describe('ProfileTab', () => {
     expect(
       await screen.findByRole('heading', { name: 'Jamie Cruz' })
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/display name/i)).toHaveValue('Jamie Cruz');
+    // Staff names: no nickname set yet - the field starts empty.
+    expect(screen.getByLabelText(/^nickname$/i)).toHaveValue('');
     expect(screen.getByLabelText(/phone number/i)).toHaveValue('555-0100');
     expect(screen.getByLabelText(/preferred communication/i)).toHaveValue(
       'Text'
@@ -93,7 +94,7 @@ describe('ProfileTab', () => {
       error: null,
     });
     vi.mocked(staffApi.updateStaffProfile).mockResolvedValue({
-      data: buildStaffProfile({ display_name: 'Jamie R. Cruz' }),
+      data: buildStaffProfile({ nickname: 'Jam', display_name: 'Jam' }),
       error: null,
     });
 
@@ -107,9 +108,8 @@ describe('ProfileTab', () => {
 
     await screen.findByRole('heading', { name: 'Jamie Cruz' });
 
-    const nameInput = screen.getByLabelText(/display name/i);
-    await userEvent.clear(nameInput);
-    await userEvent.type(nameInput, 'Jamie R. Cruz');
+    const nameInput = screen.getByLabelText(/^nickname$/i);
+    await userEvent.type(nameInput, 'Jam');
     await userEvent.click(
       screen.getByRole('button', { name: /save profile/i })
     );
@@ -118,11 +118,11 @@ describe('ProfileTab', () => {
       expect(staffApi.updateStaffProfile).toHaveBeenCalledWith(
         'staff-1',
         'token',
-        expect.objectContaining({ display_name: 'Jamie R. Cruz' })
+        expect.objectContaining({ nickname: 'Jam' })
       )
     );
     expect(
-      await screen.findByRole('heading', { name: 'Jamie R. Cruz' })
+      await screen.findByRole('heading', { name: 'Jam' })
     ).toBeInTheDocument();
     expect(screen.getByText('Profile saved.')).toBeInTheDocument();
   });

@@ -17,6 +17,11 @@ import {
   toDisplayValue,
   weightUnitLabel,
 } from '../../../../shared/utils/petWeight';
+import {
+  weightLimitMessage,
+  weightLimitsFrom,
+  type PetWeightLimits,
+} from '../../../maintenance/utils/petWeightLimits';
 import styles from './AssessmentModal.module.css';
 
 // Same option lists as PetDetailPanel's/PetForm's staff-only assessment
@@ -47,8 +52,9 @@ export interface AssessmentModalProps {
    * preference, not persisted. */
   entryUnit: WeightUnitPreference;
   onEntryUnitChange: (unit: WeightUnitPreference) => void;
-  /** The admin-configured S/M/L/XL cut-offs; null until loaded. */
-  cutoffs: WeightClassCutoffs | null;
+  /** The admin-configured S/M/L/XL cut-offs - and, from the same config row,
+   * the recordable weight range (pet weight limits); null until loaded. */
+  cutoffs: (WeightClassCutoffs & Partial<PetWeightLimits>) | null;
   /** Only used when `weightClassOverridden` - the manual class choice. */
   weightClass: PetWeightClass | '';
   onWeightClassChange: (value: PetWeightClass | '') => void;
@@ -107,6 +113,20 @@ export function AssessmentModal({
   const classSelectValue =
     weightClassOverridden || !canDerive ? weightClass : derivedClass;
 
+  // Pet weight limits: any entered weight that can't be recorded (out of
+  // range, zero or negative) is highlighted with an "Invalid weight" message
+  // as it's typed and can't be saved. Falls back to the default range until
+  // the config loads; the server re-checks on save.
+  const weightLimits = weightLimitsFrom(cutoffs);
+  const limitMessage =
+    weightKg === ''
+      ? null
+      : weightLimitMessage(
+          toCanonicalKg(weightKg, entryUnit),
+          weightLimits,
+          entryUnit
+        );
+
   // Switching kg<->lb reinterprets the number already typed so the real
   // weight the receptionist is recording doesn't silently change.
   const changeEntryUnit = (unit: WeightUnitPreference) => {
@@ -140,11 +160,18 @@ export function AssessmentModal({
             Weight ({weightUnitLabel(entryUnit)})
           </span>
           <input
-            className={styles.filterSelect}
+            className={`${styles.filterSelect} ${
+              limitMessage ? styles.inputInvalid : ''
+            }`}
             type="number"
-            min="0"
+            min={toDisplayValue(weightLimits.min_weight_kg, entryUnit)}
+            max={toDisplayValue(weightLimits.max_weight_kg, entryUnit)}
             step="0.01"
             inputMode="decimal"
+            aria-invalid={limitMessage ? true : undefined}
+            aria-describedby={
+              limitMessage ? 'assessment-weight-error' : undefined
+            }
             value={weightKg}
             onChange={(event) =>
               onWeightKgChange(
@@ -152,6 +179,15 @@ export function AssessmentModal({
               )
             }
           />
+          {limitMessage ? (
+            <span
+              className={styles.fieldError}
+              id="assessment-weight-error"
+              role="alert"
+            >
+              {limitMessage}
+            </span>
+          ) : null}
         </label>
 
         <div
@@ -247,7 +283,13 @@ export function AssessmentModal({
           <button
             type="button"
             className={styles.primaryButton}
-            disabled={!hasWeight || !classSelectValue || !coatType || isSaving}
+            disabled={
+              !hasWeight ||
+              limitMessage !== null ||
+              !classSelectValue ||
+              !coatType ||
+              isSaving
+            }
             onClick={onConfirm}
           >
             {isSaving ? 'Saving...' : completesBooking ? 'Confirm' : 'Save'}

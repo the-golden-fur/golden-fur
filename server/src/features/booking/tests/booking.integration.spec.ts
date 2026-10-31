@@ -4,6 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../../app.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 
+// Booking date limit: assertWithinAdvanceBookingWindow is covered by
+// staffPicker.service.spec.ts - stubbed here so its branch lookup stays out of
+// these tests' sequential mock queues. Everything else in the module is real.
+vi.mock('../services/staffPicker.service.ts', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../services/staffPicker.service.ts')
+  >()),
+  assertWithinAdvanceBookingWindow: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: {
     auth: { getUser: vi.fn() },

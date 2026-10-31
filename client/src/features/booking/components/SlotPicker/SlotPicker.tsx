@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getDayAvailability } from '../../api/booking.api';
 import type {
   OperatingWindow,
   ServiceCategory,
   SlotAvailability,
 } from '../../booking.types';
-import { TimeSlotInput } from '../TimeSlotInput/TimeSlotInput';
+import {
+  TimeSlotInput,
+  type CustomTimeResult,
+} from '../TimeSlotInput/TimeSlotInput';
 import styles from './SlotPicker.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 
@@ -54,6 +57,10 @@ interface SlotPickerProps {
    * slot. Only meaningful when there's more than one booking for this pet
    * in the cart; the caller passes undefined/empty otherwise. */
   excludedWindows?: SelectedSlot[];
+  /** Staff booking flow: a typed time doesn't have to land on a listed slot -
+   * any minute inside the branch's hours for the date can be used. Availability
+   * of that exact time is still decided by the staff list and at submit. */
+  allowCustomTime?: boolean;
 }
 
 /** Browser-LOCAL calendar date, not UTC - `.toISOString()` reports the UTC
@@ -75,6 +82,19 @@ function shiftDate(date: string, days: number): string {
   return next.toISOString().slice(0, 10);
 }
 
+/** Browser-local instant for a date + "HH:MM", the same clock TimeSlotInput
+ * shows the listed slots on. */
+function localInstant(date: string, time: string): Date {
+  return new Date(`${date}T${time}:00`);
+}
+
+function formatClock(instant: Date): string {
+  return instant.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 /**
  * One SlotPicker, two render modes gated by viewerMode (#56 dev notes) -
  * data comes from the same capacity + get_staff_availability() read path
@@ -93,6 +113,7 @@ export function SlotPicker({
   intent = 'new_booking',
   lockToNow = false,
   excludedWindows,
+  allowCustomTime = false,
 }: SlotPickerProps) {
   const [date, setDate] = useState(todayIso);
   const [slots, setSlots] = useState<SlotAvailability[]>([]);
@@ -103,6 +124,9 @@ export function SlotPicker({
   // Minimum-notice lead time, reported by the availability endpoint. Until
   // the first fetch resolves it stays 0 (no floor), matching prior behavior.
   const [minNoticeDays, setMinNoticeDays] = useState(0);
+  // Booking date limit (Superadmin-set per branch, 1 year at most), also
+  // reported by the availability endpoint. 365 until the first fetch lands.
+  const [maxAdvanceDays, setMaxAdvanceDays] = useState(365);
 
   useEffect(() => {
     // Walk-in: nothing to fetch - the slot is "now", not something browsed
@@ -150,6 +174,15 @@ export function SlotPicker({
       const earliest = shiftDate(todayIso(), leadDays);
       if (date < earliest) {
         setDate(earliest);
+      }
+
+      // Same at the far end: past the branch's booking window every day is
+      // empty, so pull the calendar back to its last bookable day.
+      const windowDays = result.data.maxAdvanceDays ?? 365;
+      setMaxAdvanceDays(windowDays);
+      const latest = shiftDate(todayIso(), windowDays);
+      if (date > latest) {
+        setDate(latest);
       }
     });
 
@@ -207,6 +240,61 @@ export function SlotPicker({
     [visibleSlots]
   );
 
+  // Staff booking flow: turns a typed time into a window, or the reason it
+  // can't be used. Only the rules that don't need a server round-trip live
+  // here - staff, cage, lunch and Daycare cutoff checks stay server-side.
+  const resolveCustomTime = useCallback(
+    (time: string): CustomTimeResult => {
+      if (!operatingWindow) {
+        return { error: 'This branch is closed on this date.' };
+      }
+
+      const start = localInstant(date, time);
+      const end = new Date(start.getTime() + slotDurationMinutes * 60_000);
+      const opensAt = localInstant(date, operatingWindow.open);
+      const closesAt = localInstant(date, operatingWindow.close);
+
+      if (start < opensAt || start >= closesAt) {
+        return {
+          error: `This branch is open ${formatClock(opensAt)} to ${formatClock(closesAt)} on this date - enter a time within those hours.`,
+        };
+      }
+
+      if (start.getTime() <= Date.now()) {
+        return { error: 'That time has already passed - enter a later time.' };
+      }
+
+      // A Hotel stay runs past closing by design (see getDaySlots).
+      if (serviceCategory !== 'Hotel' && end > closesAt) {
+        return {
+          error: `This booking would run past closing at ${formatClock(closesAt)} - enter an earlier time.`,
+        };
+      }
+
+      const conflictsWithOwnPet = (excludedWindows ?? []).some(
+        (window) =>
+          start.getTime() < new Date(window.end).getTime() &&
+          new Date(window.start).getTime() < end.getTime()
+      );
+
+      if (conflictsWithOwnPet) {
+        return {
+          error:
+            'This pet already has a booking at that time - enter a different time.',
+        };
+      }
+
+      return { slot: { start: start.toISOString(), end: end.toISOString() } };
+    },
+    [
+      date,
+      excludedWindows,
+      operatingWindow,
+      serviceCategory,
+      slotDurationMinutes,
+    ]
+  );
+
   // Walk-in booking flow: the slot IS the current moment - start at now
   // (seconds/ms zeroed for a clean scheduled_start) and run for the
   // service's own duration. Computed once per lock so it stays stable while
@@ -245,6 +333,13 @@ export function SlotPicker({
   // dates that would always come back empty.
   const minDate = shiftDate(todayIso(), minNoticeDays);
   const isAtMinDate = date <= minDate;
+  // The latest bookable date (booking date limit) - Next day / the date
+  // input stop here, matching getDaySlots' cutoff.
+  const maxDate = shiftDate(todayIso(), maxAdvanceDays);
+  const isAtMaxDate = date >= maxDate;
+  // A day with no presets left (or none at all) can still take a typed time,
+  // as long as the branch is actually open.
+  const canTypeTime = allowCustomTime && operatingWindow !== null;
 
   return (
     <div className={styles.wrapper}>
@@ -281,17 +376,24 @@ export function SlotPicker({
               className={styles.dateInput}
               type="date"
               min={minDate}
+              max={maxDate}
               value={date}
-              onChange={(event) =>
+              onChange={(event) => {
+                const picked = event.target.value;
                 setDate(
-                  event.target.value < minDate ? minDate : event.target.value
-                )
-              }
+                  picked < minDate
+                    ? minDate
+                    : picked > maxDate
+                      ? maxDate
+                      : picked
+                );
+              }}
             />
           </label>
           <button
             type="button"
             className={styles.secondaryButton}
+            disabled={isAtMaxDate}
             onClick={() => setDate((current) => shiftDate(current, 1))}
           >
             Next day
@@ -305,6 +407,13 @@ export function SlotPicker({
           {minNoticeDays === 1 ? '' : 's'} notice, so the earliest date you can
           pick is {minNoticeDays} day{minNoticeDays === 1 ? '' : 's'} from
           today.
+        </p>
+      ) : null}
+
+      {!lockToNow && isAtMaxDate ? (
+        <p className={styles.copy}>
+          This is the furthest date you can book - this branch takes bookings up
+          to {maxAdvanceDays} day{maxAdvanceDays === 1 ? '' : 's'} ahead.
         </p>
       ) : null}
 
@@ -326,7 +435,9 @@ export function SlotPicker({
 
       {!isLoading && !error && !lockToNow && slots.length === 0 ? (
         <p className={styles.copy}>
-          No availability on this date. Try another date above.
+          {canTypeTime
+            ? 'No suggested times on this date. You can still enter a time below.'
+            : 'No availability on this date. Try another date above.'}
         </p>
       ) : null}
 
@@ -336,7 +447,9 @@ export function SlotPicker({
       slots.length > 0 &&
       availableCount === 0 ? (
         <p className={styles.copy}>
-          No open slots on this date. Try another date above.
+          {canTypeTime
+            ? 'No open suggested times on this date. You can still enter a time below.'
+            : 'No open slots on this date. Try another date above.'}
         </p>
       ) : null}
 
@@ -354,13 +467,17 @@ export function SlotPicker({
         </p>
       ) : null}
 
-      {!lockToNow && !isLoading && !error && slots.length > 0 ? (
+      {!lockToNow &&
+      !isLoading &&
+      !error &&
+      (slots.length > 0 || canTypeTime) ? (
         <TimeSlotInput
           slots={visibleSlots}
           operatingWindow={operatingWindow}
           viewerMode={viewerMode}
           selectedStart={selectedSlot?.start ?? null}
           onSelect={(slot) => onSelect({ start: slot.start, end: slot.end })}
+          resolveCustomTime={allowCustomTime ? resolveCustomTime : undefined}
         />
       ) : null}
     </div>

@@ -3,6 +3,8 @@ import {
   seedCages,
   seedFoodCatalog,
   seedMedicationCatalog,
+  seedStaffFoodItems,
+  seedStaffMedicationItems,
 } from './m05-hotel.seed.ts';
 
 interface ProductCatalogRow {
@@ -13,7 +15,24 @@ interface ProductCatalogRow {
   owner_customer_id: string;
 }
 
+interface StaffFoodItemRow {
+  name: string;
+  quantity: string;
+  quantity_unit: string;
+  is_public: boolean;
+  owner_staff_id: string;
+}
+
+interface StaffMedicationItemRow {
+  name: string;
+  dose: string;
+  dose_unit: string;
+  is_public: boolean;
+  owner_staff_id: string;
+}
+
 const OWNER_CUSTOMER_ID = 'customer-1';
+const OWNER_STAFF_ID = 'staff-1';
 
 function createMockSupabase() {
   const state = {
@@ -39,6 +58,11 @@ function createMockSupabase() {
     // mirror the table's real (owner_customer_id, name, category) partial
     // uniqueness (20260803085).
     productCatalog: new Map<string, ProductCatalogRow>(),
+    // Shared staff-owned food/medication item library, keyed by
+    // `${owner_staff_id}:${name}` to mirror the tables' real
+    // unique(owner_staff_id, name) constraint.
+    staffFoodItems: new Map<string, StaffFoodItemRow>(),
+    staffMedicationItems: new Map<string, StaffMedicationItemRow>(),
   };
 
   let nextCageId = 1;
@@ -139,6 +163,54 @@ function createMockSupabase() {
           insert: (row: ProductCatalogRow) => {
             state.productCatalog.set(
               `${row.owner_customer_id}:${row.category}:${row.name}`,
+              row
+            );
+            return Promise.resolve({ error: null });
+          },
+        };
+      }
+
+      if (table === 'staff_food_items') {
+        return {
+          select: () => ({
+            eq: (_c1: string, ownerStaffId: string) => ({
+              eq: (_c2: string, name: string) => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data:
+                      state.staffFoodItems.get(`${ownerStaffId}:${name}`) ??
+                      null,
+                    error: null,
+                  }),
+              }),
+            }),
+          }),
+          insert: (row: StaffFoodItemRow) => {
+            state.staffFoodItems.set(`${row.owner_staff_id}:${row.name}`, row);
+            return Promise.resolve({ error: null });
+          },
+        };
+      }
+
+      if (table === 'staff_medication_items') {
+        return {
+          select: () => ({
+            eq: (_c1: string, ownerStaffId: string) => ({
+              eq: (_c2: string, name: string) => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data:
+                      state.staffMedicationItems.get(
+                        `${ownerStaffId}:${name}`
+                      ) ?? null,
+                    error: null,
+                  }),
+              }),
+            }),
+          }),
+          insert: (row: StaffMedicationItemRow) => {
+            state.staffMedicationItems.set(
+              `${row.owner_staff_id}:${row.name}`,
               row
             );
             return Promise.resolve({ error: null });
@@ -272,6 +344,50 @@ describe('m05-hotel seed', () => {
       expect(catalogSize(supabase.state.productCatalog, 'medication')).toBe(
         firstCount
       );
+    });
+  });
+
+  describe('seedStaffFoodItems', () => {
+    it('creates every planned food item owned by the given staff member, with a mix of public and private', async () => {
+      await seedStaffFoodItems(supabase as never, OWNER_STAFF_ID);
+
+      const rows = Array.from(supabase.state.staffFoodItems.values());
+      expect(rows.length).toBeGreaterThan(0);
+      for (const item of rows) {
+        expect(item.owner_staff_id).toBe(OWNER_STAFF_ID);
+      }
+      expect(rows.some((item) => item.is_public)).toBe(true);
+      expect(rows.some((item) => !item.is_public)).toBe(true);
+    });
+
+    it('is idempotent: re-running does not duplicate rows', async () => {
+      await seedStaffFoodItems(supabase as never, OWNER_STAFF_ID);
+      const firstCount = supabase.state.staffFoodItems.size;
+      await seedStaffFoodItems(supabase as never, OWNER_STAFF_ID);
+
+      expect(supabase.state.staffFoodItems.size).toBe(firstCount);
+    });
+  });
+
+  describe('seedStaffMedicationItems', () => {
+    it('creates every planned medication item owned by the given staff member, with a mix of public and private', async () => {
+      await seedStaffMedicationItems(supabase as never, OWNER_STAFF_ID);
+
+      const rows = Array.from(supabase.state.staffMedicationItems.values());
+      expect(rows.length).toBeGreaterThan(0);
+      for (const item of rows) {
+        expect(item.owner_staff_id).toBe(OWNER_STAFF_ID);
+      }
+      expect(rows.some((item) => item.is_public)).toBe(true);
+      expect(rows.some((item) => !item.is_public)).toBe(true);
+    });
+
+    it('is idempotent: re-running does not duplicate rows', async () => {
+      await seedStaffMedicationItems(supabase as never, OWNER_STAFF_ID);
+      const firstCount = supabase.state.staffMedicationItems.size;
+      await seedStaffMedicationItems(supabase as never, OWNER_STAFF_ID);
+
+      expect(supabase.state.staffMedicationItems.size).toBe(firstCount);
     });
   });
 });

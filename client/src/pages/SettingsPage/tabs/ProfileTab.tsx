@@ -19,6 +19,7 @@ import { useUnsavedChanges } from '../../../shared/providers/UnsavedChangesProvi
 import { AvatarPicker } from '../../../shared/components/AvatarPicker/AvatarPicker';
 import { notifyIdentityChanged } from '../../../shared/events/identityEvents';
 import styles from '../SettingsPage.module.css';
+import { staffLegalName } from '../../../features/staff/utils/staffName';
 import { LoadingState } from '../../../shared/components/LoadingState/LoadingState';
 
 const COMMUNICATION_CHANNELS = ['Call', 'Text', 'Viber', 'Messenger'] as const;
@@ -55,7 +56,7 @@ function StaffProfileForm({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [displayName, setDisplayName] = useState('');
+  const [nickname, setNickname] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [emergencyContactName, setEmergencyContactName] = useState('');
   const [emergencyContactNumber, setEmergencyContactNumber] = useState('');
@@ -83,7 +84,7 @@ function StaffProfileForm({
       }
 
       setProfile(result.data);
-      setDisplayName(result.data.display_name);
+      setNickname(result.data.nickname ?? '');
       setPhoneNumber(result.data.phone_number ?? '');
       setEmergencyContactName(result.data.emergency_contact_name ?? '');
       setEmergencyContactNumber(result.data.emergency_contact_number ?? '');
@@ -122,7 +123,9 @@ function StaffProfileForm({
     // never got exercised until the Save/Discard bar made it easy to save
     // after touching just one field on an otherwise-blank profile.
     const result = await updateStaffProfile(profile.id, accessToken, {
-      display_name: displayName,
+      // Staff names (20261030290): staff set their own nickname (blank
+      // clears it); their legal name is managed by an Admin.
+      nickname: nickname.trim() || null,
       ...(phoneNumber.trim() ? { phone_number: phoneNumber } : {}),
       ...(emergencyContactName.trim()
         ? { emergency_contact_name: emergencyContactName }
@@ -148,7 +151,7 @@ function StaffProfileForm({
   }, [
     profile,
     accessToken,
-    displayName,
+    nickname,
     phoneNumber,
     emergencyContactName,
     emergencyContactNumber,
@@ -160,7 +163,7 @@ function StaffProfileForm({
       return;
     }
     setSaveError(null);
-    setDisplayName(profile.display_name);
+    setNickname(profile.nickname ?? '');
     setPhoneNumber(profile.phone_number ?? '');
     setEmergencyContactName(profile.emergency_contact_name ?? '');
     setEmergencyContactNumber(profile.emergency_contact_number ?? '');
@@ -172,7 +175,7 @@ function StaffProfileForm({
       return false;
     }
     return (
-      displayName !== profile.display_name ||
+      nickname !== (profile.nickname ?? '') ||
       phoneNumber !== (profile.phone_number ?? '') ||
       emergencyContactName !== (profile.emergency_contact_name ?? '') ||
       emergencyContactNumber !== (profile.emergency_contact_number ?? '') ||
@@ -180,7 +183,7 @@ function StaffProfileForm({
     );
   }, [
     profile,
-    displayName,
+    nickname,
     phoneNumber,
     emergencyContactName,
     emergencyContactNumber,
@@ -237,14 +240,25 @@ function StaffProfileForm({
           });
         }}
       >
-        <label className={styles.field}>
-          <span className={styles.label}>Display name</span>
-          <input
-            className={styles.input}
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-          />
-        </label>
+        <div className={styles.field}>
+          <label className={styles.field}>
+            <span className={styles.label}>Nickname</span>
+            <input
+              className={styles.input}
+              value={nickname}
+              placeholder={staffLegalName(profile) ?? undefined}
+              aria-describedby="profile-nickname-hint"
+              onChange={(event) => setNickname(event.target.value)}
+            />
+          </label>
+          <p className={styles.copy} id="profile-nickname-hint">
+            {staffLegalName(profile)
+              ? `Legal name: ${staffLegalName(profile)}. `
+              : ''}
+            Shown around the app instead of your full name. Ask an Admin to
+            change your legal name.
+          </p>
+        </div>
         <label className={styles.field}>
           <span className={styles.label}>Phone number</span>
           <input

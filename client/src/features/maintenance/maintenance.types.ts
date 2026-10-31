@@ -131,6 +131,10 @@ export interface PetWeightClassConfiguration {
   m_min_kg: number;
   l_min_kg: number;
   xl_min_kg: number;
+  /** Custom change (pet weight limits): the lightest/heaviest weight staff
+   * may record. min < m_min_kg and xl_min_kg < max <= 499. */
+  min_weight_kg: number;
+  max_weight_kg: number;
   updated_by_staff_id: string | null;
   updated_at: string;
 }
@@ -139,6 +143,21 @@ export interface UpdatePetWeightClassConfigurationPayload {
   m_min_kg?: number;
   l_min_kg?: number;
   xl_min_kg?: number;
+  min_weight_kg?: number;
+  max_weight_kg?: number;
+}
+
+/** Custom change (pet age limit): mirrors the server PetAgeConfiguration -
+ * the oldest a pet may be when registered, 1-38 years. */
+export interface PetAgeConfiguration {
+  id: string;
+  max_age_years: number;
+  updated_by_staff_id: string | null;
+  updated_at: string;
+}
+
+export interface UpdatePetAgeConfigurationPayload {
+  max_age_years: number;
 }
 
 export interface ServiceBranchAvailability {
@@ -241,6 +260,9 @@ export interface Package {
    * price and the weight x coat grid. null/absent = cats are priced like any
    * other pet type. */
   cat_price?: number | null;
+  /** This package's own price, replacing the bundle discount. null/absent =
+   * bundled_price is derived. Superadmin-only. */
+  fixed_price?: number | null;
   bundled_price: number;
   /** Derived server-side from included services' duration_minutes - used to
    * estimate a package's contribution to a booking's total scheduled time
@@ -318,6 +340,9 @@ export interface Branch {
    * day's full operating hours. */
   grooming_hours: OperatingHours;
   timezone: string;
+  /** Custom change (booking date limit): how many days ahead a booking can
+   * be made here, 1-365. Superadmin-set in Branches > Configure. */
+  max_advance_booking_days: number;
   is_active: boolean;
   archived_at: string | null;
   created_at: string;
@@ -415,6 +440,7 @@ export interface CreatePackagePayload {
   service_ids: string[];
   extras?: string[];
   cat_price?: number;
+  fixed_price?: number;
   use_pricing_matrix?: boolean;
   has_extra_long_coat?: boolean;
   icon?: string | null;
@@ -431,6 +457,8 @@ export interface UpdatePackagePayload {
   extras?: string[];
   /** null clears it - cats go back to the pet type's own pricing. */
   cat_price?: number | null;
+  /** null clears it - the package goes back to the bundle discount. */
+  fixed_price?: number | null;
   use_pricing_matrix?: boolean;
   has_extra_long_coat?: boolean;
   icon?: string | null;

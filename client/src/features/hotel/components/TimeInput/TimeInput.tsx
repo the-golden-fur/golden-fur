@@ -17,7 +17,9 @@ interface TimeInputProps {
    * time-of-day - passed straight to the native input, and used to filter
    * which quick-pick presets are offered. Omit for no bound (e.g. a
    * multi-night stay, where a single day's bound doesn't hold for every
-   * day of the trip - see CustomerBookingFlowPage's hotelDetails step). */
+   * day of the trip - see CustomerBookingFlowPage's hotelDetails step). A
+   * native input still lets a value outside these be typed, so one shows a
+   * message here - the caller decides what that blocks. */
   min?: string;
   max?: string;
 }
@@ -40,37 +42,50 @@ export function TimeInput({
   const boundedPresets = presets.filter(
     (preset) => (!min || preset >= min) && (!max || preset <= max)
   );
+  const isOutOfRange =
+    value !== '' &&
+    min !== undefined &&
+    max !== undefined &&
+    (value < min || value > max);
 
   return (
-    <div className={styles.wrapper}>
-      <input
-        className={styles.input}
-        type="time"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label={ariaLabel}
-        disabled={disabled}
-        min={min}
-        max={max}
-      />
-      <select
-        className={styles.presetSelect}
-        aria-label={
-          ariaLabel ? `${ariaLabel} quick-pick` : 'Quick-pick a common time'
-        }
-        value=""
-        disabled={disabled}
-        onChange={(event) => {
-          if (event.target.value) onChange(event.target.value);
-        }}
-      >
-        <option value="">Quick pick...</option>
-        {boundedPresets.map((preset) => (
-          <option key={preset} value={preset}>
-            {formatTimeValue(preset)}
-          </option>
-        ))}
-      </select>
+    <div className={styles.field}>
+      <div className={styles.wrapper}>
+        <input
+          className={styles.input}
+          type="time"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label={ariaLabel}
+          aria-invalid={isOutOfRange || undefined}
+          disabled={disabled}
+          min={min}
+          max={max}
+        />
+        <select
+          className={styles.presetSelect}
+          aria-label={
+            ariaLabel ? `${ariaLabel} quick-pick` : 'Quick-pick a common time'
+          }
+          value=""
+          disabled={disabled}
+          onChange={(event) => {
+            if (event.target.value) onChange(event.target.value);
+          }}
+        >
+          <option value="">Quick pick...</option>
+          {boundedPresets.map((preset) => (
+            <option key={preset} value={preset}>
+              {formatTimeValue(preset)}
+            </option>
+          ))}
+        </select>
+      </div>
+      {isOutOfRange ? (
+        <p className={styles.hint} role="alert">
+          Must be between {formatTimeValue(min)} and {formatTimeValue(max)}.
+        </p>
+      ) : null}
     </div>
   );
 }

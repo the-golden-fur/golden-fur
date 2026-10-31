@@ -38,6 +38,11 @@ import {
 import { listMiscSaleOptions } from './services/discountPromoEvaluation.service.ts';
 import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
 import { BILLING_STAFF_ROLES } from './billing.types.ts';
+import {
+  attachTransactionReceipt,
+  getTransactionReceiptUrl,
+  type PaymentReceiptFile,
+} from './services/paymentReceipt.service.ts';
 
 function paramId(req: AuthenticatedRequest, name: string): string {
   const value = req.params[name];
@@ -405,6 +410,47 @@ export async function recordTransactionPaymentController(
       amountApplied: parsed.data.amount_applied ?? null,
     });
     return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Custom change (payment receipts): attaches the uploaded 'receipt' file to
+ * a paid transaction (multipart - see billing.routes.ts). */
+export async function attachTransactionReceiptController(
+  req: AuthenticatedRequest & { file?: PaymentReceiptFile },
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'Choose a receipt file to upload' });
+  }
+
+  try {
+    const receipt = await attachTransactionReceipt({
+      requesterId,
+      transactionId: paramId(req, 'id'),
+      file: req.file,
+    });
+    return res.status(200).json(receipt);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Custom change (payment receipts): a short-lived link to view it. */
+export async function getTransactionReceiptController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const url = await getTransactionReceiptUrl(paramId(req, 'id'));
+    return res.status(200).json({ url });
   } catch (error) {
     return sendServiceError(res, error);
   }

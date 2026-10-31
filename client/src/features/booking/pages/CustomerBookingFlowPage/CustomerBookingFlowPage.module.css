@@ -220,6 +220,34 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* Branch step: photo-on-top cards. Both branch photos have very different
+ * source shapes (Makati portrait, Southwoods landscape), so the shared
+ * aspect-ratio + object-fit crop is what keeps them identical. */
+.branchGrid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.optionCard.branchCard {
+  align-content: start;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.branchImage {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  object-position: center;
+}
+
+.branchBody {
+  display: grid;
+  gap: var(--space-0-5);
+  padding: var(--space-2);
+}
+
 .optionCardWrapper {
   display: grid;
   gap: var(--space-1);
@@ -488,6 +516,18 @@
   gap: var(--space-1);
 }
 
+/* Custom change (Care Instructions field alignment): one labeled field per
+   line instead of inlineFields' wrap-whenever-it-runs-out-of-room row -
+   .field/.fieldLabel already existed (see below), this just gives
+   Feeding/Walking/Playtime/Medications rows a vertical stack to put them
+   in. Nested grids (.field is itself display: grid) stretch every child,
+   including CatalogComboBox/TimeInput's own wrapper divs, to the full
+   column width for free - no extra width rules needed. */
+.careFieldGrid {
+  display: grid;
+  gap: var(--space-2);
+}
+
 .instructionBlock {
   display: grid;
   gap: var(--space-1);
@@ -746,6 +786,13 @@
   outline: none;
   box-shadow: 0 0 0 3px
     color-mix(in srgb, var(--color-accent-gold-primary) 25%, transparent);
+}
+
+/* Large text for Special instructions/Notes/Administration notes - combine
+   with .input: className={`${styles.input} ${styles.textarea}`}. */
+.textarea {
+  min-height: 5rem;
+  resize: vertical;
 }
 
 /* Multi-booking checkout: "Your bookings" list step. */
