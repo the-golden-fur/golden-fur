@@ -5,13 +5,21 @@ import { Modal } from '../../../../shared/components/Modal/Modal';
 import type { Booking } from '../../../booking/booking.types';
 import { getStaffProfile } from '../../../staff/api/staff.api';
 import { getCheckInBlock } from '../../../booking/api/booking.api';
-import { checkInHotelStay } from '../../api/hotel.api';
+import { checkInHotelStay, getCareLogEntries } from '../../api/hotel.api';
 import { HotelBookingPicker } from '../../components/HotelBookingPicker/HotelBookingPicker';
+import type { CareLogEntry } from '../../hotel.types';
 import { buildQuickCheckInPayload } from './buildQuickCheckInPayload';
 import { HotelCheckoutPanel } from './HotelCheckoutPanel';
+import { HotelCombinedQueueList } from './HotelCombinedQueueList';
 import { HOTEL_QUEUE_VIEWER_ROLES } from './hotelQueueRoles';
 import styles from './HotelQueuePage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
+
+const ASSISTANT_ROLES = new Set(['Groomer', 'Pet Assistant']);
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 const ALLOWED_VIEWER_ROLES = HOTEL_QUEUE_VIEWER_ROLES;
 
@@ -53,6 +61,13 @@ export function HotelQueuePage() {
     'loading'
   );
   const [branchId, setBranchId] = useState<string | null>(null);
+  const [staffRole, setStaffRole] = useState<string | null>(null);
+  const isAssistantRole = staffRole !== null && ASSISTANT_ROLES.has(staffRole);
+  // Custom change (Groomer/Pet Assistant check-in restriction): today's
+  // CareLogEntry rows, for the "..." menu's "View checklist items"/"Mark as
+  // in progress-done" items - fed to HotelBookingPicker whether it's
+  // rendered via the tabs below or via HotelCombinedQueueList.
+  const [careLogEntries, setCareLogEntries] = useState<CareLogEntry[]>([]);
   // Custom change (clear check-in gate, groomer rest-day indicator): set
   // when the branch is closed today - disables every "Check in" button on
   // this queue with a clear reason, instead of each failing individually.
@@ -96,6 +111,7 @@ export function HotelQueuePage() {
           ALLOWED_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
         );
         setBranchId(result.data.branch_id);
+        setStaffRole(result.data.role);
       } else {
         setRoleStatus('denied');
       }
@@ -120,6 +136,22 @@ export function HotelQueuePage() {
     return () => {
       isMounted = false;
     };
+  }, [accessToken]);
+
+  function fetchCareLogEntries() {
+    if (!accessToken) return;
+    const today = todayIso();
+    void getCareLogEntries(accessToken, {
+      dateFrom: today,
+      dateTo: today,
+    }).then((result) => {
+      if (result.data) setCareLogEntries(result.data);
+    });
+  }
+
+  useEffect(() => {
+    fetchCareLogEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
   async function handleQuickCheckIn(booking: Booking) {
@@ -170,57 +202,81 @@ export function HotelQueuePage() {
     return <Navigate to="/staff/settings" replace />;
   }
 
+  function handleViewChecklist(stayId: string) {
+    navigate(`/staff/hotel/care-log?stayId=${stayId}`);
+  }
+
   return (
     <main className={styles.page}>
       <div className={styles.content}>
         <h1 className={styles.title}>Hotel Queue</h1>
 
-        <div className={styles.tabs} role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'check-in'}
-            className={tab === 'check-in' ? styles.tabActive : styles.tab}
-            onClick={() => setTab('check-in')}
-          >
-            Check In
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'check-out'}
-            className={tab === 'check-out' ? styles.tabActive : styles.tab}
-            onClick={() => setTab('check-out')}
-          >
-            Check Out
-          </button>
-        </div>
-
-        {tab === 'check-in' && branchId ? (
-          <section>
-            <h2 className={styles.sectionTitle}>Select a confirmed booking</h2>
-            <HotelBookingPicker
-              key={pickerReloadKey}
-              accessToken={accessToken}
-              branchId={branchId}
-              onCheckIn={handleQuickCheckIn}
-              onViewDetails={(booking) =>
-                navigate(`/staff/hotel/queue/check-in/${booking.id}`)
-              }
-              checkingInBookingId={checkingInBookingId}
-              selectedBookingId={null}
-              blockedReason={checkInBlockedReason}
-            />
-          </section>
-        ) : null}
-
-        {tab === 'check-out' ? (
-          <HotelCheckoutPanel
-            key={checkoutStayId ?? 'picker'}
+        {isAssistantRole ? (
+          <HotelCombinedQueueList
             accessToken={accessToken}
-            initialStayId={checkoutStayId}
+            branchId={branchId}
+            careLogEntries={careLogEntries}
+            onViewChecklist={handleViewChecklist}
+            onMarkChanged={fetchCareLogEntries}
+            onViewDetails={(booking) =>
+              navigate(`/staff/hotel/queue/check-in/${booking.id}`)
+            }
           />
-        ) : null}
+        ) : (
+          <>
+            <div className={styles.tabs} role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'check-in'}
+                className={tab === 'check-in' ? styles.tabActive : styles.tab}
+                onClick={() => setTab('check-in')}
+              >
+                Check In
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'check-out'}
+                className={tab === 'check-out' ? styles.tabActive : styles.tab}
+                onClick={() => setTab('check-out')}
+              >
+                Check Out
+              </button>
+            </div>
+
+            {tab === 'check-in' && branchId ? (
+              <section>
+                <h2 className={styles.sectionTitle}>
+                  Select a confirmed booking
+                </h2>
+                <HotelBookingPicker
+                  key={pickerReloadKey}
+                  accessToken={accessToken}
+                  branchId={branchId}
+                  onCheckIn={handleQuickCheckIn}
+                  onViewDetails={(booking) =>
+                    navigate(`/staff/hotel/queue/check-in/${booking.id}`)
+                  }
+                  checkingInBookingId={checkingInBookingId}
+                  selectedBookingId={null}
+                  blockedReason={checkInBlockedReason}
+                  careLogEntries={careLogEntries}
+                  onViewChecklist={handleViewChecklist}
+                  onMarkChanged={fetchCareLogEntries}
+                />
+              </section>
+            ) : null}
+
+            {tab === 'check-out' ? (
+              <HotelCheckoutPanel
+                key={checkoutStayId ?? 'picker'}
+                accessToken={accessToken}
+                initialStayId={checkoutStayId}
+              />
+            ) : null}
+          </>
+        )}
       </div>
 
       <Modal
