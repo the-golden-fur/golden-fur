@@ -413,6 +413,20 @@ export function BoardingChecklistKanban({
     [entries, stayTypeTab, petId, stayId]
   );
 
+  // Custom change (Boarding Checklist tab discoverability): a count per tab
+  // so switching to Daycare isn't a shot in the dark when Hotel happens to
+  // be the default - entries is already fetched, this just tallies it by
+  // stay_type the same way scopedEntries filters it.
+  const hotelCount = useMemo(
+    () => entries.filter((entry) => entry.stays?.stay_type === 'Hotel').length,
+    [entries]
+  );
+  const daycareCount = useMemo(
+    () =>
+      entries.filter((entry) => entry.stays?.stay_type === 'Daycare').length,
+    [entries]
+  );
+
   const rows = useMemo<Row[]>(
     () =>
       scopedEntries.map((entry) => ({
@@ -738,7 +752,7 @@ export function BoardingChecklistKanban({
             className={stayTypeTab === 'Hotel' ? styles.tabActive : styles.tab}
             onClick={() => setStayTypeTab('Hotel')}
           >
-            Hotel
+            {`Hotel (${hotelCount})`}
           </button>
           <button
             type="button"
@@ -749,7 +763,7 @@ export function BoardingChecklistKanban({
             }
             onClick={() => setStayTypeTab('Daycare')}
           >
-            Daycare
+            {`Daycare (${daycareCount})`}
           </button>
         </div>
       ) : null}

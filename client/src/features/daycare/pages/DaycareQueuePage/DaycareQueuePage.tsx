@@ -31,10 +31,20 @@ import {
   type BookingStatus,
 } from '../../../booking/booking.types';
 import { listDaycareSessions } from '../../api/daycare.api';
+import { getCareLogEntries } from '../../../hotel/api/hotel.api';
+import type { CareLogEntry } from '../../../hotel/hotel.types';
+import { buildChecklistMenuItems } from '../../../hotel/utils/queueActionMenu';
+import { CardRowWithMenu } from '../../../../shared/components/MoreOptionsMenu/CardRowWithMenu';
 import { DAYCARE_QUEUE_VIEWER_ROLES } from './daycareQueueRoles';
 import styles from './DaycareQueuePage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
 import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
+
+const ASSISTANT_ROLES = new Set(['Groomer', 'Pet Assistant']);
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 type StatusFilter = BookingStatus | 'All';
 const STATUS_OPTIONS: QueueStatusOption[] = [
@@ -104,6 +114,12 @@ export function DaycareQueuePage() {
     'loading'
   );
   const [branchId, setBranchId] = useState<string | null>(null);
+  const [staffRole, setStaffRole] = useState<string | null>(null);
+  const isAssistantRole = staffRole !== null && ASSISTANT_ROLES.has(staffRole);
+  // Custom change (Groomer/Pet Assistant check-in restriction): today's
+  // CareLogEntry rows, for the "..." menu's "View checklist items"/"Mark as
+  // in progress-done" items.
+  const [careLogEntries, setCareLogEntries] = useState<CareLogEntry[]>([]);
 
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
@@ -126,8 +142,10 @@ export function DaycareQueuePage() {
   // through the check-in form. Null until that lookup first succeeds (or if
   // it fails) - an In Progress row is then treated as checked in, the
   // behavior from before walk-ins were told apart.
-  const [checkedInBookingIds, setCheckedInBookingIds] =
-    useState<Set<string> | null>(null);
+  const [checkedInBookingIds, setCheckedInBookingIds] = useState<Record<
+    string,
+    string
+  > | null>(null);
   // Custom change (clear check-in gate, groomer rest-day indicator): set
   // when the branch is closed today - disables check-in row clicks with a
   // clear reason, instead of each one failing individually.
@@ -136,6 +154,17 @@ export function DaycareQueuePage() {
   >(null);
 
   const showCheckedInBanner = searchParams.get('checkedIn') === 'success';
+
+  function refetchCareLogEntries() {
+    if (!accessToken) return;
+    const today = todayIso();
+    void getCareLogEntries(accessToken, {
+      dateFrom: today,
+      dateTo: today,
+    }).then((result) => {
+      if (result.data) setCareLogEntries(result.data);
+    });
+  }
 
   useEffect(() => {
     if (!accessToken || !user?.id) return;
@@ -150,6 +179,7 @@ export function DaycareQueuePage() {
           DAYCARE_QUEUE_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
         );
         setBranchId(result.data.branch_id);
+        setStaffRole(result.data.role);
       } else {
         setRoleStatus('denied');
       }
@@ -244,13 +274,19 @@ export function DaycareQueuePage() {
       void listDaycareSessions(token, { status: 'Active' }).then((result) => {
         if (!isMounted || !result.data) return;
 
-        setCheckedInBookingIds(
-          new Set(
-            result.data
-              .map((session) => session.booking_id)
-              .filter((id): id is string => id !== null)
-          )
-        );
+        const map: Record<string, string> = {};
+        for (const session of result.data) {
+          if (session.booking_id) map[session.booking_id] = session.id;
+        }
+        setCheckedInBookingIds(map);
+      });
+
+      const today = todayIso();
+      void getCareLogEntries(token, {
+        dateFrom: today,
+        dateTo: today,
+      }).then((result) => {
+        if (isMounted && result.data) setCareLogEntries(result.data);
       });
     }
 
@@ -346,7 +382,7 @@ export function DaycareQueuePage() {
     return (
       booking.status === 'In Progress' &&
       checkedInBookingIds !== null &&
-      !checkedInBookingIds.has(booking.id)
+      !(booking.id in checkedInBookingIds)
     );
   }
 
@@ -454,7 +490,9 @@ export function DaycareQueuePage() {
               const isClickable =
                 (isNotStartedStatus(booking.status) ||
                   booking.status === 'In Progress') &&
-                !isBlockedForCheckIn;
+                !isBlockedForCheckIn &&
+                !isAssistantRole;
+              const sessionId = checkedInBookingIds?.[booking.id] ?? null;
 
               const summary = (
                 <>
@@ -501,29 +539,52 @@ export function DaycareQueuePage() {
                 </>
               );
 
-              return (
-                <li key={booking.id} className={styles.bookingRow}>
-                  {isClickable ? (
+              const rowContent = isClickable ? (
+                <button
+                  type="button"
+                  className={styles.rowSummaryButton}
+                  onClick={() => handleRowClick(booking)}
+                >
+                  {summary}
+                </button>
+              ) : (
+                <div className={styles.rowSummary}>
+                  {summary}
+                  {isAssistantRole ? null : (
                     <button
                       type="button"
-                      className={styles.rowSummaryButton}
-                      onClick={() => handleRowClick(booking)}
+                      className={styles.secondaryButton}
+                      onClick={() => navigate(`/staff/bookings/${booking.id}`)}
                     >
-                      {summary}
+                      View details
                     </button>
+                  )}
+                </div>
+              );
+
+              return (
+                <li key={booking.id} className={styles.bookingRow}>
+                  {isAssistantRole ? (
+                    <CardRowWithMenu
+                      label={`Actions for ${pets[booking.pet_id]?.name ?? 'this pet'}`}
+                      items={buildChecklistMenuItems({
+                        entries: careLogEntries,
+                        stayId: sessionId,
+                        accessToken: accessToken ?? '',
+                        onViewDetails: () =>
+                          navigate(`/staff/bookings/${booking.id}`),
+                        onViewChecklist: () =>
+                          navigate(
+                            `/staff/hotel/care-log?petId=${encodeURIComponent(booking.pet_id)}`
+                          ),
+                        onChanged: refetchCareLogEntries,
+                      })}
+                      showMenuButton
+                    >
+                      {rowContent}
+                    </CardRowWithMenu>
                   ) : (
-                    <div className={styles.rowSummary}>
-                      {summary}
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() =>
-                          navigate(`/staff/bookings/${booking.id}`)
-                        }
-                      >
-                        View details
-                      </button>
-                    </div>
+                    rowContent
                   )}
                 </li>
               );

@@ -68,6 +68,26 @@ describe('toSidebarSections', () => {
       expect(titles).not.toContain('Vaccination Review');
     }
   });
+
+  it('hides Food & Medication Items from Groomer (they no longer book customers in) but keeps it for Pet Assistant', () => {
+    const groomerTitles = STAFF_DASHBOARD_CONFIG.groomer.sections.flatMap(
+      (section) => section.tiles.map((tile) => tile.title)
+    );
+    expect(groomerTitles).not.toContain('Food & Medication Items');
+
+    const petAssistantTitles = STAFF_DASHBOARD_CONFIG[
+      'pet-assistant'
+    ].sections.flatMap((section) => section.tiles.map((tile) => tile.title));
+    expect(petAssistantTitles).toContain('Food & Medication Items');
+
+    const adminGroomerTitles = toSidebarSections(
+      STAFF_DASHBOARD_CONFIG.admin,
+      'Admin'
+    )
+      .find((section) => section.label === 'Groomer')
+      ?.items.map((item) => item.title);
+    expect(adminGroomerTitles).not.toContain('Food & Medication Items');
+  });
 });
 
 describe('Front Desk dashboard', () => {

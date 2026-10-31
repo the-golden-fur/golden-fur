@@ -1,9 +1,11 @@
 /**
- * Feature-local role list (mirrors booking.types.ts / staff.types.ts).
- * Daycare check-in/checkout is staff-only - no customer-facing access at all
- * (unlike M03 bookings, which customers can read/write directly).
+ * Feature-local role list (mirrors hotel.types.ts's HOTEL_FRONT_DESK_ROLES -
+ * same membership, same purpose, renamed from DAYCARE_ROLES for naming
+ * parity). Daycare check-in/checkout is staff-only - no customer-facing
+ * access at all (unlike M03 bookings, which customers can read/write
+ * directly).
  */
-export const DAYCARE_ROLES: readonly string[] = [
+export const DAYCARE_FRONT_DESK_ROLES: readonly string[] = [
   'Receptionist',
   'Admin',
   'Supervisor',
@@ -11,11 +13,16 @@ export const DAYCARE_ROLES: readonly string[] = [
   'Front Desk',
 ];
 
-/** Groomer/Pet Assistant advance rights: Daycare has no dedicated assigned-
- * staff role (unlike Grooming/Veterinary), so Groomer and Pet Assistant may
- * also check pets in/out of Daycare - mirrors HOTEL_ADVANCE_ROLES. */
+/**
+ * Custom change (Groomer/Pet Assistant check-in restriction): Groomer and
+ * Pet Assistant keep Daycare queue visibility and care-task marking, but no
+ * longer check pets in/out themselves - DAYCARE_ADVANCE_ROLES now only
+ * backs the read/browse routes and care-log-entry status changes, not
+ * check-in/checkout (which use DAYCARE_FRONT_DESK_ROLES directly, see
+ * daycare.routes.ts). Kept for those still-wide routes rather than removed.
+ */
 export const DAYCARE_ADVANCE_ROLES: readonly string[] = [
-  ...DAYCARE_ROLES,
+  ...DAYCARE_FRONT_DESK_ROLES,
   'Groomer',
   'Pet Assistant',
 ];

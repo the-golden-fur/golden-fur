@@ -11,7 +11,6 @@ import {
 } from '../../../../shared/components/QueueFilterBar/dateRangePreset';
 import { ActiveFilterChips } from '../../../../shared/components/ActiveFilterChips/ActiveFilterChips';
 import { CardContextMenu } from '../../../../shared/components/MoreOptionsMenu/CardContextMenu';
-import type { MoreOptionsMenuItem } from '../../../../shared/components/MoreOptionsMenu/MoreOptionsMenu';
 import { listBookings } from '../../../booking/api/booking.api';
 import { BookingStatusBadge } from '../../../booking/components/shared/BookingStatusBadge/BookingStatusBadge';
 import {
@@ -33,6 +32,8 @@ import { listHotelStays } from '../../api/hotel.api';
 import { SearchSortBar } from '../../../../shared/components/SearchSortBar/SearchSortBar';
 import { useSearchAndSort } from '../../../../shared/hooks/useSearchAndSort/useSearchAndSort';
 import { PetAvatar } from '../../../../shared/components/PetAvatar/PetAvatar';
+import { buildChecklistMenuItems } from '../../utils/queueActionMenu';
+import type { CareLogEntry } from '../../hotel.types';
 import styles from './HotelBookingPicker.module.css';
 
 type SortKey = 'soonest' | 'latest' | 'pet-name' | 'owner-name';
@@ -100,6 +101,23 @@ interface HotelBookingPickerProps {
    * when the branch is closed today - disables every "Check in" button and
    * shows the reason, instead of each one failing individually on click. */
   blockedReason?: string | null;
+  /** Custom change (Groomer/Pet Assistant check-in restriction): today's
+   * CareLogEntry rows, for the "..." menu's "View checklist items"/"Mark as
+   * in progress-done" items. */
+  careLogEntries: CareLogEntry[];
+  /** Row "..." menu -> "View checklist items": navigates to the Boarding
+   * Checklist scoped to this stay. */
+  onViewChecklist: (stayId: string) => void;
+  /** Called after the "..." menu's "Mark as in progress/done" succeeds, so
+   * the caller can refetch careLogEntries. */
+  onMarkChanged: () => void;
+  /** Custom change (Groomer/Pet Assistant check-in restriction): when true,
+   * shows every booking regardless of checked-in status (instead of
+   * defaulting to "Awaiting check-in") and hides the inline "Check in"/"Go
+   * to checkout" buttons - menu-only mode for the combined queue list
+   * Groomer/Pet Assistant now see instead of the Check-In/Check-Out tabs
+   * (they can no longer check pets in/out, server-enforced). */
+  showAllStatuses?: boolean;
 }
 
 /** Whether a booking can still be checked in: Pending, or In Progress with
@@ -152,14 +170,19 @@ export function HotelBookingPicker({
   checkingInBookingId,
   selectedBookingId,
   blockedReason,
+  careLogEntries,
+  onViewChecklist,
+  onMarkChanged,
+  showAllStatuses = false,
 }: HotelBookingPickerProps) {
   const [dateRangePreset, setDateRangePreset] =
     useState<DateRangePreset>('today');
   const [customDate, setCustomDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
-  const [statusFilter, setStatusFilter] =
-    useState<StatusFilter>(AWAITING_CHECK_IN);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    showAllStatuses ? 'All' : AWAITING_CHECK_IN
+  );
 
   const dateRange = useMemo(
     () => resolveDateRangePreset(dateRangePreset, new Date(), customDate),
@@ -352,17 +375,6 @@ export function HotelBookingPicker({
     initialSortKey: 'latest',
   });
 
-  function buildBookingActionItems(
-    item: EnrichedBooking
-  ): MoreOptionsMenuItem[] {
-    return [
-      {
-        label: 'View booking details',
-        onSelect: () => onViewDetails(item.booking),
-      },
-    ];
-  }
-
   const filterChips = useMemo(() => {
     const chips: { id: string; label: string; onClear: () => void }[] = [];
 
@@ -469,7 +481,14 @@ export function HotelBookingPicker({
               <li key={item.booking.id}>
                 <CardContextMenu
                   label={`Actions for ${item.petName}`}
-                  items={buildBookingActionItems(item)}
+                  items={buildChecklistMenuItems({
+                    entries: careLogEntries,
+                    stayId: item.existingStayId,
+                    accessToken,
+                    onViewDetails: () => onViewDetails(item.booking),
+                    onViewChecklist,
+                    onChanged: onMarkChanged,
+                  })}
                 >
                   <div
                     className={`${styles.card} ${
@@ -521,31 +540,33 @@ export function HotelBookingPicker({
                         {item.booking.special_instructions}
                       </span>
                     ) : null}
-                    <div className={styles.cardControls}>
-                      {isCheckinable ? (
-                        <button
-                          type="button"
-                          className={styles.checkInButton}
-                          disabled={
-                            checkingInBookingId === item.booking.id ||
-                            Boolean(blockedReason)
-                          }
-                          onClick={() => onCheckIn(item.booking)}
-                        >
-                          {checkingInBookingId === item.booking.id
-                            ? 'Checking in...'
-                            : 'Check in'}
-                        </button>
-                      ) : null}
-                      {isCheckedIn && item.existingStayId ? (
-                        <Link
-                          className={styles.checkoutLink}
-                          to={`/staff/hotel/checkout/${item.existingStayId}`}
-                        >
-                          Go to checkout &rarr;
-                        </Link>
-                      ) : null}
-                    </div>
+                    {showAllStatuses ? null : (
+                      <div className={styles.cardControls}>
+                        {isCheckinable ? (
+                          <button
+                            type="button"
+                            className={styles.checkInButton}
+                            disabled={
+                              checkingInBookingId === item.booking.id ||
+                              Boolean(blockedReason)
+                            }
+                            onClick={() => onCheckIn(item.booking)}
+                          >
+                            {checkingInBookingId === item.booking.id
+                              ? 'Checking in...'
+                              : 'Check in'}
+                          </button>
+                        ) : null}
+                        {isCheckedIn && item.existingStayId ? (
+                          <Link
+                            className={styles.checkoutLink}
+                            to={`/staff/hotel/checkout/${item.existingStayId}`}
+                          >
+                            Go to checkout &rarr;
+                          </Link>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 </CardContextMenu>
               </li>

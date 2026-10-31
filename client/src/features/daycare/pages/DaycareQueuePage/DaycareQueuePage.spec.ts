@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -31,6 +31,11 @@ vi.mock('../../../booking/api/booking.api', () => ({
 }));
 vi.mock('../../api/daycare.api', () => ({
   listDaycareSessions: vi.fn(),
+}));
+vi.mock('../../../hotel/api/hotel.api', () => ({
+  getCareLogEntries: vi.fn().mockResolvedValue({ data: [], error: null }),
+  startCareLogEntry: vi.fn(),
+  completeCareLogEntry: vi.fn(),
 }));
 
 const navigateMock = vi.fn();
@@ -187,8 +192,12 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
 
   it('lists Daycare bookings with a status badge, not tabs', async () => {
     stubPetAndOwner();
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // click-to-navigate behavior these existing tests exercise is now
+    // Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get their
+    // own menu-only tests in the describe block below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -215,8 +224,12 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
 
   it('sorts by the latest scheduled time by default', async () => {
     stubPetAndOwner();
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // click-to-navigate behavior these existing tests exercise is now
+    // Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get their
+    // own menu-only tests in the describe block below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -234,8 +247,12 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
 
   it('clicking a Pending row navigates to its check-in finalize page', async () => {
     stubPetAndOwner();
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // click-to-navigate behavior these existing tests exercise is now
+    // Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get their
+    // own menu-only tests in the describe block below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -259,8 +276,12 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
   // check-in action) is unaffected.
   it('a check-in block reason stops a Pending row from being clickable but leaves a checked-in row alone', async () => {
     stubPetAndOwner();
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // click-to-navigate behavior these existing tests exercise is now
+    // Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get their
+    // own menu-only tests in the describe block below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -294,8 +315,12 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
 
   it('clicking a checked-in (In Progress) row navigates to the pet-scoped Boarding Checklist', async () => {
     stubPetAndOwner();
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // click-to-navigate behavior these existing tests exercise is now
+    // Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get their
+    // own menu-only tests in the describe block below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -315,8 +340,12 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
 
   it('an In Progress row that has NOT been checked in yet (a walk-in) opens the check-in form instead', async () => {
     stubPetAndOwner();
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // click-to-navigate behavior these existing tests exercise is now
+    // Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get their
+    // own menu-only tests in the describe block below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -353,8 +382,12 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
 
   it('falls back to the Boarding Checklist for an In Progress row when the sessions lookup fails', async () => {
     stubPetAndOwner();
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // click-to-navigate behavior these existing tests exercise is now
+    // Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get their
+    // own menu-only tests in the describe block below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -378,8 +411,12 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
 
   it('a checked-out (Completed) row is not clickable, but offers a View details link', async () => {
     stubPetAndOwner();
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // click-to-navigate behavior these existing tests exercise is now
+    // Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get their
+    // own menu-only tests in the describe block below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -401,8 +438,12 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
 
   it('shows a success banner after a redirect from a completed check-in', async () => {
     stubPetAndOwner();
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // click-to-navigate behavior these existing tests exercise is now
+    // Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get their
+    // own menu-only tests in the describe block below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(bookingApi.listBookings).mockResolvedValue({
@@ -416,4 +457,87 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
       await screen.findByText('Pet checked in successfully.')
     ).toBeInTheDocument();
   });
+
+  // Custom change (Groomer/Pet Assistant check-in restriction): these two
+  // roles can no longer check pets in/out (server now 403s it), so every
+  // row becomes menu-only instead of click-to-navigate.
+  describe.each(['Groomer', 'Pet Assistant'] as const)(
+    '%s (check-in restriction)',
+    (role) => {
+      it('a Pending row is not clickable and does not navigate', async () => {
+        stubPetAndOwner();
+        vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+          data: buildViewerProfile(role),
+          error: null,
+        });
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [buildBooking({ status: 'Pending' })],
+          error: null,
+        });
+
+        const user = userEvent.setup();
+        renderPage();
+
+        await screen.findByText('Buddy');
+        expect(screen.getByText('Buddy').closest('button')).toBeNull();
+
+        await user.click(screen.getByText('Buddy'));
+        expect(navigateMock).not.toHaveBeenCalled();
+      });
+
+      it('offers only "View booking details" via the "..." menu for a not-yet-checked-in row', async () => {
+        stubPetAndOwner();
+        vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+          data: buildViewerProfile(role),
+          error: null,
+        });
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [buildBooking({ status: 'Pending' })],
+          error: null,
+        });
+        // Not checked in yet - no Active session behind this booking
+        // (overrides the file-wide beforeEach default).
+        vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+          data: [],
+          error: null,
+        });
+
+        renderPage();
+
+        await screen.findByText('Buddy');
+        fireEvent.contextMenu(screen.getByText('Buddy'));
+
+        expect(
+          screen.getByRole('menuitem', { name: 'View booking details' })
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole('menuitem', { name: 'View checklist items' })
+        ).not.toBeInTheDocument();
+      });
+
+      it('an In Progress (checked in) row offers "View checklist items", navigating by petId', async () => {
+        stubPetAndOwner();
+        vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+          data: buildViewerProfile(role),
+          error: null,
+        });
+        vi.mocked(bookingApi.listBookings).mockResolvedValue({
+          data: [buildBooking({ status: 'In Progress' })],
+          error: null,
+        });
+
+        renderPage();
+
+        await screen.findByText('Buddy');
+        fireEvent.contextMenu(screen.getByText('Buddy'));
+        fireEvent.click(
+          screen.getByRole('menuitem', { name: 'View checklist items' })
+        );
+
+        expect(navigateMock).toHaveBeenCalledWith(
+          '/staff/hotel/care-log?petId=pet-1'
+        );
+      });
+    }
+  );
 });

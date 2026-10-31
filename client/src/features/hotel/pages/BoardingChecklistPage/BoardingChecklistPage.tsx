@@ -26,6 +26,12 @@ const ALLOWED_VIEWER_ROLES = new Set([
   'Superadmin',
 ]);
 
+// Custom change (Groomer/Pet Assistant check-in restriction): Groomer/Pet
+// Assistant may still view this board, but /daycare/sessions/:id/checkout
+// now 403s for them server-side, so the embedded DaycareCheckoutPanel below
+// must not render for these two roles.
+const ASSISTANT_ROLES = new Set(['Groomer', 'Pet Assistant']);
+
 /** Custom change: renamed from Hotel Care Log - covers Hotel AND Daycare
  * (both share the same `stays`/`care_log_entries` tables) via the Kanban
  * board's own Hotel/Daycare subtabs. Boarding Checklist Kanban redesign:
@@ -66,6 +72,8 @@ export function BoardingChecklistPage() {
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'
   );
+  const [staffRole, setStaffRole] = useState<string | null>(null);
+  const isAssistantRole = staffRole !== null && ASSISTANT_ROLES.has(staffRole);
 
   const [pet, setPet] = useState<Pet | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -83,6 +91,7 @@ export function BoardingChecklistPage() {
         setRoleStatus(
           ALLOWED_VIEWER_ROLES.has(result.data.role) ? 'ok' : 'denied'
         );
+        setStaffRole(result.data.role);
       } else {
         setRoleStatus('denied');
       }
@@ -161,7 +170,7 @@ export function BoardingChecklistPage() {
             : 'Boarding Checklist'}
         </h1>
 
-        {petId && !isResolvingSession && activeSessionId ? (
+        {petId && !isResolvingSession && activeSessionId && !isAssistantRole ? (
           <section className={styles.checkoutSection}>
             <h2 className={styles.sectionTitle}>Check out</h2>
             <DaycareCheckoutPanel

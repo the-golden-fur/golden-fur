@@ -17,6 +17,7 @@ vi.mock('../../../staff/api/staff.api', () => ({
 
 vi.mock('../../api/hotel.api', () => ({
   checkInHotelStay: vi.fn(),
+  getCareLogEntries: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 
 // Custom change (clear check-in gate, groomer rest-day indicator): defaults
@@ -69,6 +70,14 @@ vi.mock('../../components/HotelBookingPicker/HotelBookingPicker', () => ({
 
 vi.mock('./HotelCheckoutPanel', () => ({
   HotelCheckoutPanel: () => createElement('div', null, 'Checkout panel'),
+}));
+
+// Custom change (Groomer/Pet Assistant check-in restriction): its own
+// rendering/menu logic is exercised in HotelCombinedQueueList.spec.tsx -
+// here we only care which branch HotelQueuePage renders for which role.
+vi.mock('./HotelCombinedQueueList', () => ({
+  HotelCombinedQueueList: () =>
+    createElement('div', null, 'Combined queue list'),
 }));
 
 function buildProfile(role: StaffProfile['role']): StaffProfile {
@@ -132,8 +141,17 @@ function renderPage(initialEntry = '/staff/hotel/queue') {
 describe('HotelQueuePage (custom change: one-click check-in)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    // Custom change (Groomer/Pet Assistant check-in restriction): the
+    // tabbed Check-In/Check-Out UI these existing tests exercise is now
+    // only shown to non-assistant roles - Admin here, not Groomer (see the
+    // dedicated "role branch" tests below for the Groomer/Pet Assistant
+    // path).
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildProfile('Groomer'),
+      data: buildProfile('Admin'),
       error: null,
     });
   });
@@ -223,5 +241,46 @@ describe('HotelQueuePage (custom change: one-click check-in)', () => {
       expect(screen.queryByText('Check in Mochi')).not.toBeInTheDocument()
     );
     expect(screen.queryByText('Hotel Queue')).not.toBeInTheDocument();
+  });
+
+  // Custom change (Groomer/Pet Assistant check-in restriction): which UI
+  // HotelQueuePage renders depends on the viewer's role.
+  describe('role branch', () => {
+    it.each(['Groomer', 'Pet Assistant'] as const)(
+      '%s sees the combined queue list, not the Check In/Check Out tabs',
+      async (role) => {
+        vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+          data: buildProfile(role),
+          error: null,
+        });
+
+        renderPage();
+
+        expect(
+          await screen.findByText('Combined queue list')
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Check in Mochi')).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('tab', { name: 'Check In' })
+        ).not.toBeInTheDocument();
+      }
+    );
+
+    it.each(['Admin', 'Supervisor', 'Superadmin'] as const)(
+      '%s keeps the Check In/Check Out tabs, not the combined list',
+      async (role) => {
+        vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+          data: buildProfile(role),
+          error: null,
+        });
+
+        renderPage();
+
+        expect(await screen.findByText('Check in Mochi')).toBeInTheDocument();
+        expect(
+          screen.queryByText('Combined queue list')
+        ).not.toBeInTheDocument();
+      }
+    );
   });
 });

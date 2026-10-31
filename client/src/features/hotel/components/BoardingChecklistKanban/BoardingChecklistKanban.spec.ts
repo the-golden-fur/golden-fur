@@ -77,11 +77,34 @@ describe('BoardingChecklistKanban', () => {
     expect(screen.getByText('Hotel task')).toBeInTheDocument();
     expect(screen.queryByText('Daycare task')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Daycare' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Daycare (1)' }));
     await waitFor(() =>
       expect(screen.getByText('Daycare task')).toBeInTheDocument()
     );
     expect(screen.queryByText('Hotel task')).not.toBeInTheDocument();
+  });
+
+  it('shows a count of entries per tab (Boarding Checklist tab discoverability)', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [
+        buildEntry({ id: 'hotel-1' }),
+        buildEntry({ id: 'hotel-2' }),
+        buildEntry({
+          id: 'daycare-1',
+          stays: { stay_type: 'Daycare', pet_id: 'pet-1' },
+        }),
+      ],
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Hotel (2)' })).toBeInTheDocument()
+    );
+    expect(
+      screen.getByRole('tab', { name: 'Daycare (1)' })
+    ).toBeInTheDocument();
   });
 
   it('renders a 4th Missed column alongside Pending/In Progress/Completed by default (grouped by status)', async () => {
