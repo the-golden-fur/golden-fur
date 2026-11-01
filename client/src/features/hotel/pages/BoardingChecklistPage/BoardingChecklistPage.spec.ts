@@ -134,8 +134,11 @@ describe('BoardingChecklistPage (Daycare Queue redesign: petId scoping + checkou
   });
 
   it('with a petId and an active Daycare session: scopes the board and shows the Check Out section', async () => {
+    // Custom change (Groomer/Pet Assistant check-in restriction): checkout
+    // is now Admin/Supervisor/Superadmin-only - Groomer/Pet Assistant get
+    // their own "checkout hidden" test below.
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
-      data: buildViewerProfile('Groomer'),
+      data: buildViewerProfile('Admin'),
       error: null,
     });
     vi.mocked(customerApi.getPet).mockResolvedValue({
@@ -191,6 +194,62 @@ describe('BoardingChecklistPage (Daycare Queue redesign: petId scoping + checkou
     ).toBeInTheDocument();
     expect(screen.getByText(/Back to Daycare Queue/)).toBeInTheDocument();
   });
+
+  it.each(['Groomer', 'Pet Assistant'] as const)(
+    '%s: with a petId and an active Daycare session, the Check Out section is hidden (server now 403s that checkout)',
+    async (role) => {
+      vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+        data: buildViewerProfile(role),
+        error: null,
+      });
+      vi.mocked(customerApi.getPet).mockResolvedValue({
+        data: {
+          id: 'pet-1',
+          customer_id: 'cust-1',
+          name: 'Buddy',
+          pet_type: 'Dog',
+          breed_id: null,
+          photo_url: null,
+          gender: 'Male',
+          date_of_birth: null,
+          weight_class: 'M',
+          coat_type: 'SC',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:00.000Z',
+        },
+        error: null,
+      });
+      vi.mocked(daycareApi.listDaycareSessions).mockResolvedValue({
+        data: [
+          {
+            id: 'session-1',
+            stay_type: 'Daycare',
+            booking_id: 'booking-1',
+            pet_id: 'pet-1',
+            branch_id: 'branch-makati',
+            cage_id: null,
+            created_by_staff_id: 'staff-1',
+            status: 'Active',
+            check_in_at: '2026-09-12T01:00:00.000Z',
+            scheduled_check_out_date: null,
+            actual_check_out_at: null,
+            downpayment_amount: null,
+            extension_fee: null,
+            computed_charge: null,
+            notify_opt_in: false,
+            created_at: '2026-09-12T01:00:00.000Z',
+            updated_at: '2026-09-12T01:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+
+      renderPage('/staff/hotel/care-log?petId=pet-1');
+
+      expect(await screen.findByText('Scoped to pet-1')).toBeInTheDocument();
+      expect(screen.queryByText(/Checkout panel for/)).not.toBeInTheDocument();
+    }
+  );
 
   it('with a petId but no active session: no Check Out section', async () => {
     vi.mocked(staffApi.getStaffProfile).mockResolvedValue({

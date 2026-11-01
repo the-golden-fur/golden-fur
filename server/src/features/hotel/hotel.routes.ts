@@ -41,12 +41,15 @@ const router = Router();
 // routes that aren't part of the check-in/checkout advance flow itself.
 const frontDeskAndAssistants = [...HOTEL_ADVANCE_ROLES];
 
-// Issue #75
+// Issue #75. Custom change (Groomer/Pet Assistant check-in restriction):
+// narrowed from HOTEL_ADVANCE_ROLES to HOTEL_FRONT_DESK_ROLES -
+// Groomer/Pet Assistant keep queue visibility and care-log-entry status
+// marking (still HOTEL_ADVANCE_ROLES below) but no longer check pets in/out.
 router.post(
   '/hotel/check-in',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_ADVANCE_ROLES]),
+  requireRole([...HOTEL_FRONT_DESK_ROLES]),
   requireBranch,
   checkInController
 );
@@ -255,11 +258,14 @@ router.get(
   listHotelStaysController
 );
 
+// Custom change (Groomer/Pet Assistant check-in restriction): narrowed from
+// HOTEL_ADVANCE_ROLES to HOTEL_FRONT_DESK_ROLES, same rationale as
+// /hotel/check-in above.
 router.post(
   '/hotel/stays/:id/checkout',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_ADVANCE_ROLES]),
+  requireRole([...HOTEL_FRONT_DESK_ROLES]),
   requireBranch,
   checkoutController
 );
@@ -268,7 +274,7 @@ router.get(
   '/hotel/stays/:id/checkout-preview',
   jwtMiddleware,
   sessionTimeoutMiddleware,
-  requireRole([...HOTEL_ADVANCE_ROLES]),
+  requireRole([...HOTEL_FRONT_DESK_ROLES]),
   requireBranch,
   previewCheckoutController
 );

@@ -13,7 +13,12 @@ import {
   listPackages,
   listServices,
 } from '../../../maintenance/api/maintenance.api';
-import { listHotelStays } from '../../api/hotel.api';
+import {
+  completeCareLogEntry,
+  listHotelStays,
+  startCareLogEntry,
+} from '../../api/hotel.api';
+import type { CareLogEntry } from '../../hotel.types';
 import { HotelBookingPicker } from './HotelBookingPicker';
 
 vi.mock('../../../booking/api/booking.api', () => ({
@@ -32,6 +37,8 @@ vi.mock('../../../maintenance/api/maintenance.api', () => ({
 
 vi.mock('../../api/hotel.api', () => ({
   listHotelStays: vi.fn(),
+  startCareLogEntry: vi.fn(),
+  completeCareLogEntry: vi.fn(),
 }));
 
 function renderPicker(
@@ -42,6 +49,9 @@ function renderPicker(
     branchId: 'branch-1',
     onCheckIn: vi.fn(),
     onViewDetails: vi.fn(),
+    careLogEntries: [],
+    onViewChecklist: vi.fn(),
+    onMarkChanged: vi.fn(),
     ...props,
   };
   return {
@@ -431,5 +441,172 @@ describe('HotelBookingPicker', () => {
     expect(
       await screen.findByText(/No Hotel bookings match these filters/)
     ).toBeInTheDocument();
+  });
+
+  // Custom change (Groomer/Pet Assistant check-in restriction): the "..."
+  // menu's checklist-related items.
+  describe('checklist menu items', () => {
+    function careLogEntry(overrides: Partial<CareLogEntry> = {}): CareLogEntry {
+      return {
+        id: 'entry-1',
+        stay_id: 'stay-1',
+        care_type: 'Feeding',
+        scheduled_date: '2026-07-27',
+        description: 'Morning meal',
+        time_block: 'Morning',
+        status: 'Pending',
+        completed_at: null,
+        completed_by: null,
+        created_at: '2026-07-27T00:00:00.000Z',
+        ...overrides,
+      };
+    }
+
+    function renderCheckedInPicker(
+      careLogEntries: CareLogEntry[],
+      props: Partial<Parameters<typeof HotelBookingPicker>[0]> = {}
+    ) {
+      setupMocks([booking({ status: 'In Progress' })]);
+      vi.mocked(listHotelStays).mockResolvedValue({
+        data: [
+          {
+            id: 'stay-1',
+            booking_id: 'booking-1',
+            pet_id: 'pet-1',
+            cage_id: 'cage-1',
+            cage_label: 'Makati-S-01',
+            check_in_at: '2026-07-27T01:00:00.000Z',
+            scheduled_check_out_date: '2026-07-28',
+            actual_check_out_at: null,
+            downpayment_amount: 250,
+            extension_fee: null,
+            supplied_items_charge: null,
+            notify_opt_in: false,
+            created_by_staff_id: 'staff-1',
+            created_at: '2026-07-27T01:00:00.000Z',
+            updated_at: '2026-07-27T01:00:00.000Z',
+          },
+        ],
+        error: null,
+      });
+      return renderPicker({
+        careLogEntries,
+        showAllStatuses: true,
+        ...props,
+      });
+    }
+
+    it('offers no "View checklist items" or Mark item for a booking not checked in yet', async () => {
+      setupMocks([booking()]);
+      renderPicker();
+
+      await screen.findByText('Mochi');
+      fireEvent.contextMenu(screen.getByText('Mochi'));
+
+      expect(
+        screen.getByRole('menuitem', { name: 'View booking details' })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('menuitem', { name: 'View checklist items' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers "View checklist items" once checked in, navigating by stayId', async () => {
+      const { props } = renderCheckedInPicker([]);
+
+      await screen.findByText('Mochi');
+      fireEvent.contextMenu(screen.getByText('Mochi'));
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'View checklist items' })
+      );
+
+      expect(props.onViewChecklist).toHaveBeenCalledWith('stay-1');
+    });
+
+    it('offers no direct Mark item when there are 0 actionable tasks', async () => {
+      renderCheckedInPicker([
+        careLogEntry({ status: 'Completed' }),
+        careLogEntry({
+          id: 'entry-2',
+          stay_id: 'stay-other',
+          status: 'Pending',
+        }),
+      ]);
+
+      await screen.findByText('Mochi');
+      fireEvent.contextMenu(screen.getByText('Mochi'));
+
+      expect(
+        screen.queryByRole('menuitem', { name: 'Mark as in progress' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('menuitem', { name: 'Mark as done' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers no direct Mark item when there are 2+ actionable tasks (ambiguous)', async () => {
+      renderCheckedInPicker([
+        careLogEntry({ id: 'entry-1', status: 'Pending' }),
+        careLogEntry({ id: 'entry-2', status: 'In Progress' }),
+      ]);
+
+      await screen.findByText('Mochi');
+      fireEvent.contextMenu(screen.getByText('Mochi'));
+
+      expect(
+        screen.queryByRole('menuitem', { name: 'Mark as in progress' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('menuitem', { name: 'Mark as done' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('a single Pending task offers "Mark as in progress", calling startCareLogEntry then onMarkChanged', async () => {
+      vi.mocked(startCareLogEntry).mockResolvedValue({
+        data: careLogEntry({ status: 'In Progress' }),
+        error: null,
+      });
+      const { props } = renderCheckedInPicker([
+        careLogEntry({ id: 'entry-1', status: 'Pending' }),
+      ]);
+
+      await screen.findByText('Mochi');
+      fireEvent.contextMenu(screen.getByText('Mochi'));
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'Mark as in progress' })
+      );
+
+      expect(startCareLogEntry).toHaveBeenCalledWith('entry-1', 'token');
+      await screen.findByText('Mochi');
+      expect(props.onMarkChanged).toHaveBeenCalled();
+    });
+
+    it('a single In Progress task offers "Mark as done", calling completeCareLogEntry then onMarkChanged', async () => {
+      vi.mocked(completeCareLogEntry).mockResolvedValue({
+        data: careLogEntry({ status: 'Completed' }),
+        error: null,
+      });
+      const { props } = renderCheckedInPicker([
+        careLogEntry({ id: 'entry-1', status: 'In Progress' }),
+      ]);
+
+      await screen.findByText('Mochi');
+      fireEvent.contextMenu(screen.getByText('Mochi'));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Mark as done' }));
+
+      expect(completeCareLogEntry).toHaveBeenCalledWith('entry-1', 'token');
+      await screen.findByText('Mochi');
+      expect(props.onMarkChanged).toHaveBeenCalled();
+    });
+
+    it('showAllStatuses hides the inline Check in/Go to checkout controls', async () => {
+      renderCheckedInPicker([]);
+
+      await screen.findByText('Mochi');
+      expect(
+        screen.queryByRole('button', { name: 'Check in' })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/Go to checkout/)).not.toBeInTheDocument();
+    });
   });
 });

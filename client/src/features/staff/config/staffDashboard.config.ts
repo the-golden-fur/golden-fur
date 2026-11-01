@@ -210,7 +210,9 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Timestamped history of check-ins, checkouts, and boarding checklist changes.',
             to: '/staff/hotel/activity-log',
           },
-          STAFF_ITEMS_TILE,
+          // Custom change (Groomer/Pet Assistant check-in restriction):
+          // STAFF_ITEMS_TILE removed here - Groomer no longer books
+          // customers in, so has no use for the food/medication library.
         ],
       },
       {
@@ -517,7 +519,9 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Timestamped history of check-ins, checkouts, and boarding checklist changes.',
             to: '/staff/hotel/activity-log',
           },
-          STAFF_ITEMS_TILE,
+          // Custom change (Groomer/Pet Assistant check-in restriction):
+          // STAFF_ITEMS_TILE removed here - Groomer no longer books
+          // customers in, so has no use for the food/medication library.
         ],
       },
     ],
