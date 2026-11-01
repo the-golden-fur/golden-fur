@@ -38,6 +38,11 @@ export const UNAVAILABILITY_MANAGER_ROLES: readonly string[] = [
   'Superadmin',
 ];
 
+export const STAFF_ATTENDANCE_STATUSES = ['Present', 'Absent', 'Late'] as const;
+
+/** Not the booking status of the same name - see 20261101295. */
+export type StaffAttendanceStatus = (typeof STAFF_ATTENDANCE_STATUSES)[number];
+
 /**
  * Roles that may only set Walk time/Playtime (not Feeding/Medications) when
  * creating a Hotel/Daycare booking on a customer's behalf - those two are

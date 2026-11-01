@@ -9,6 +9,7 @@ import { DayOffRequestsPage } from './pages/DayOffRequestsPage/DayOffRequestsPag
 import { MySchedulePage } from './pages/MySchedulePage/MySchedulePage';
 import { UnavailabilityApprovalQueuePage } from './pages/UnavailabilityApprovalQueuePage/UnavailabilityApprovalQueuePage';
 import { MonthlySchedulePage } from './pages/MonthlySchedulePage/MonthlySchedulePage';
+import { AttendancePage } from './pages/AttendancePage/AttendancePage';
 import { AdminArchivePage } from './pages/AdminArchivePage/AdminArchivePage';
 import { VaccinationReviewPage } from './pages/VaccinationReviewPage/VaccinationReviewPage';
 
@@ -45,6 +46,10 @@ export const staffRoutes = createElement(
     createElement(Route, {
       path: '/staff/admin/monthly-schedule',
       element: createElement(MonthlySchedulePage),
+    }),
+    createElement(Route, {
+      path: '/staff/admin/attendance',
+      element: createElement(AttendancePage),
     }),
     createElement(Route, {
       path: '/staff/admin/customers',

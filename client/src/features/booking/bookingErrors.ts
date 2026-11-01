@@ -22,13 +22,5 @@ export function friendlyBookingError(raw: string | undefined | null): string {
     return 'Could not create the booking right now — something went wrong on our end. Please try again, and let an admin know if it keeps happening.';
   }
 
-  const looksLikeSlotConflict =
-    /capacity|slot|no eligible staff|already booked|overlap|fully booked|not available for the requested time/i.test(
-      message
-    );
-  if (looksLikeSlotConflict) {
-    return `${message} This can happen when the actual service or package runs longer than the time you picked — try choosing a different time.`;
-  }
-
   return message;
 }

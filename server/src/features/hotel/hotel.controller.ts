@@ -642,6 +642,7 @@ export async function checkoutController(
       stayId: paramId(req, 'id'),
       branchId,
       requesterId: req.user?.sub,
+      skipOutstandingTasks: req.body?.skip_outstanding_tasks === true,
     });
 
     return res.status(200).json(result);

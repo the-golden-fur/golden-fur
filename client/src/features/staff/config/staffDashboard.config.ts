@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   Coins,
+  ConciergeBell,
   DoorOpen,
   GitCompareArrows,
   Heart,
@@ -23,6 +24,7 @@ import {
   Syringe,
   Target,
   TrendingUp,
+  UserCheck,
   UserCog,
   Users,
   UserSearch,
@@ -107,6 +109,24 @@ const VACCINATION_REVIEW_TILE: DashboardTileConfig = {
   to: '/staff/vaccinations/review',
 };
 
+/** Mark who's in - feeds booking availability. Every role in the server's
+ * UNAVAILABILITY_MANAGER_ROLES gets it. */
+const ATTENDANCE_TILE: DashboardTileConfig = {
+  title: 'Attendance',
+  description:
+    'Mark staff present, absent or late. Absent groomers and vets come out of booking for the day.',
+  to: '/staff/admin/attendance',
+};
+
+/** Every service's bookings in one list - mirrors the server's
+ * FRONT_DESK_QUEUE_ROLES. */
+const FRONT_DESK_QUEUE_TILE: DashboardTileConfig = {
+  title: 'Front Desk Queue',
+  description:
+    'Every service in one list - start, check in, and complete bookings without waiting on other staff.',
+  to: '/staff/front-desk/queue',
+};
+
 /** Shared staff-owned food/medication item library - every one of the 7
  * Hotel/Daycare check-in roles gets it (mirrors HOTEL_ADVANCE_ROLES/
  * DAYCARE_ADVANCE_ROLES). */
@@ -163,6 +183,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Look up customers, pets, and walk-in records.',
             to: '/staff/admin/customers',
           },
+          FRONT_DESK_QUEUE_TILE,
           {
             title: 'Bookings Queue',
             description:
@@ -300,6 +321,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Plot rest days and vacation/sick leave on a branch-wide calendar.',
             to: '/staff/admin/monthly-schedule',
           },
+          ATTENDANCE_TILE,
           {
             title: 'Branch Reports',
             description:
@@ -370,6 +392,8 @@ export const STAFF_DASHBOARD_CONFIG: Record<
               'Plot rest days and vacation/sick leave on a branch-wide calendar.',
             to: '/staff/admin/monthly-schedule',
           },
+          ATTENDANCE_TILE,
+          FRONT_DESK_QUEUE_TILE,
           {
             title: 'Bookings Queue',
             description:
@@ -451,6 +475,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Look up customers, pets, and walk-in records.',
             to: '/staff/admin/customers',
           },
+          FRONT_DESK_QUEUE_TILE,
           {
             title: 'Bookings Queue',
             description: "Today's confirmed bookings for the front desk.",
@@ -643,6 +668,7 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description: 'Look up customers, pets, and walk-in records.',
             to: '/staff/admin/customers',
           },
+          FRONT_DESK_QUEUE_TILE,
           {
             title: 'Bookings Queue',
             description: "Today's confirmed bookings for the front desk.",
@@ -758,6 +784,8 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   'Customer Management': UserSearch,
   'Days Off Approval Queue': ClipboardCheck,
   'Bookings Queue': CalendarCheck,
+  Attendance: UserCheck,
+  'Front Desk Queue': ConciergeBell,
   'Assessment Queue': Scale,
   Archive,
   'Hotel Queue': LogIn,

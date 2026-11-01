@@ -1899,7 +1899,6 @@ export function CustomerBookingFlowPage() {
   const currentBookingAwaitsAssessment =
     Boolean(selectedPet) &&
     !isSelectedPetAssessed &&
-    !isReceptionistMode &&
     (selectedPackageIds.length > 0 ||
       selectedServices.some((service) => service.requires_assessed_pet));
 
@@ -6379,21 +6378,30 @@ export function CustomerBookingFlowPage() {
             {/* Promos & Coupons are picked right here, next to the totals
                 they change - they used to be a step of their own just
                 before this one. */}
-            <PromoCouponMultiSelect
-              promos={applicablePromos}
-              coupons={applicableCoupons}
-              selectedPromoIds={selectedPromoIds}
-              selectedCouponIds={selectedCouponIds}
-              onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
-              onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
-              onClear={() => {
-                setSelectedPromoIds([]);
-                setSelectedCouponIds([]);
-              }}
-              cappedTotal={promoDiscount}
-              groupSubtotal={groupSubtotal}
-              couponsEnabled={spinWheelOn}
-            />
+            {payableBookings.length > 0 ? (
+              <PromoCouponMultiSelect
+                promos={applicablePromos}
+                coupons={applicableCoupons}
+                selectedPromoIds={selectedPromoIds}
+                selectedCouponIds={selectedCouponIds}
+                onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
+                onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
+                onClear={() => {
+                  setSelectedPromoIds([]);
+                  setSelectedCouponIds([]);
+                }}
+                cappedTotal={promoDiscount}
+                groupSubtotal={groupSubtotal}
+                couponsEnabled={spinWheelOn}
+              />
+            ) : null}
+            {awaitingAssessmentBookings.length > 0 ? (
+              <p className={styles.unassessedNotice}>
+                {payableBookings.length > 0
+                  ? 'Bookings for pets not yet assessed can get a promo when you pay at the branch.'
+                  : 'Promos can be added when you pay at the branch.'}
+              </p>
+            ) : null}
 
             {reductionOverLimit ? (
               <p className={styles.errorBanner} role="alert">

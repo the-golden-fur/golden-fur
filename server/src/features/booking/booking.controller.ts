@@ -742,7 +742,10 @@ export async function startBookingController(
   res: Response
 ) {
   try {
-    const booking = await startBooking({ bookingId: paramId(req, 'id') });
+    const booking = await startBooking({
+      bookingId: paramId(req, 'id'),
+      staffId: req.user?.sub,
+    });
     return res.status(200).json({ booking });
   } catch (error) {
     return sendServiceError(res, error);
@@ -754,7 +757,10 @@ export async function completeBookingController(
   res: Response
 ) {
   try {
-    const booking = await completeBooking({ bookingId: paramId(req, 'id') });
+    const booking = await completeBooking({
+      bookingId: paramId(req, 'id'),
+      staffId: req.user?.sub,
+    });
     return res.status(200).json({ booking });
   } catch (error) {
     return sendServiceError(res, error);

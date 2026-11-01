@@ -93,13 +93,17 @@ export async function listDaycareSessions(
 
 export async function checkOutDaycareSession(
   sessionId: string,
-  accessToken: string
+  accessToken: string,
+  skipOutstandingTasks = false
 ): Promise<DaycareApiResult<DaycareCheckoutResult>> {
   const response = await fetch(
     `${API_BASE_URL}/daycare/sessions/${sessionId}/checkout`,
     {
       method: 'POST',
       headers: jsonHeaders(accessToken),
+      ...(skipOutstandingTasks
+        ? { body: JSON.stringify({ skip_outstanding_tasks: true }) }
+        : {}),
     }
   );
 
