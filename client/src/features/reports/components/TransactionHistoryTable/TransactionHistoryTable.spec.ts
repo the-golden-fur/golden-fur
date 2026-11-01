@@ -22,6 +22,9 @@ vi.mock('../../../customers/api/customer.api', () => ({
 vi.mock('../../api/reports.api', () => ({ getTransactionHistory: vi.fn() }));
 vi.mock('../../../billing/api/billing.api', () => ({
   recordTransactionPayment: vi.fn(),
+  listCounterPromoOptions: vi
+    .fn()
+    .mockResolvedValue({ data: { promos: [], reason: null }, error: null }),
   payTransactionWithCredit: vi.fn(),
   addBookingPayment: vi.fn(),
   uploadTransactionReceipt: vi.fn(),
@@ -186,6 +189,48 @@ describe('TransactionHistoryTable', () => {
       )
     );
     // Full amount collected - no amount_applied sent.
+    expect(
+      vi.mocked(billingApi.recordTransactionPayment).mock.calls[0][1]
+        .amount_applied
+    ).toBeUndefined();
+  });
+
+  it('shows no promo picker when the bill cannot take one', async () => {
+    await openPayModal();
+
+    expect(screen.queryByLabelText('Promo')).not.toBeInTheDocument();
+  });
+
+  it('a promo lowers the amount due and is sent with the payment', async () => {
+    vi.mocked(billingApi.listCounterPromoOptions).mockResolvedValueOnce({
+      data: {
+        promos: [{ id: 'promo-1', name: 'Summer', amount: 93 }],
+        reason: null,
+      },
+      error: null,
+    });
+    await openPayModal();
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText('Promo'),
+      'promo-1'
+    );
+
+    expect(screen.getByLabelText(/amount paid/i)).toHaveValue(600);
+    expect(
+      screen.getByRole('heading', { name: /PHP 600\.00/ })
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as paid' }));
+
+    await waitFor(() =>
+      expect(billingApi.recordTransactionPayment).toHaveBeenCalledWith(
+        'txn-1',
+        expect.objectContaining({ promo_id: 'promo-1' }),
+        'token'
+      )
+    );
+    // The whole new total is being paid, so this isn't a partial payment.
     expect(
       vi.mocked(billingApi.recordTransactionPayment).mock.calls[0][1]
         .amount_applied
@@ -371,6 +416,7 @@ describe('TransactionHistoryTable', () => {
       expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
         'txn-1',
         'token',
+        undefined,
         undefined
       )
     );
@@ -390,7 +436,8 @@ describe('TransactionHistoryTable', () => {
       expect(billingApi.payTransactionWithCredit).toHaveBeenCalledWith(
         'txn-1',
         'token',
-        200
+        200,
+        undefined
       )
     );
   });

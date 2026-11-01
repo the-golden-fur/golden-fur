@@ -18,6 +18,10 @@ interface HotelCheckoutPanelProps {
    * HotelQueuePage right after HotelCheckInPanel checks a pet in, or by the
    * legacy /staff/hotel/checkout/:stayId redirect. Null shows the picker. */
   initialStayId: string | null;
+  /** Front Desk Queue: unfinished care tasks on this stay. Above zero, the
+   * confirm step warns and checking out marks them Missed. */
+  skippableTaskCount?: number;
+  onCheckedOut?: () => void;
 }
 
 function formatDate(iso: string): string {
@@ -40,6 +44,8 @@ function formatDate(iso: string): string {
 export function HotelCheckoutPanel({
   accessToken,
   initialStayId,
+  skippableTaskCount = 0,
+  onCheckedOut,
 }: HotelCheckoutPanelProps) {
   const [selectedStay, setSelectedStay] = useState<HotelStayWithCage | null>(
     null
@@ -78,10 +84,20 @@ export function HotelCheckoutPanel({
     confirmStayId !== null && preview?.stayId !== confirmStayId;
   const currentPreview = isPreviewLoading ? null : (preview?.data ?? null);
 
+  const skipWarning =
+    skippableTaskCount > 0 ? (
+      <p className={styles.errorBanner} role="alert">
+        {skippableTaskCount} care task
+        {skippableTaskCount === 1 ? " isn't" : "s aren't"} done.{' '}
+        {skippableTaskCount === 1 ? "It'll" : "They'll"} be marked Missed.
+      </p>
+    ) : null;
+
   const previewBlock = isPreviewLoading ? (
     <p className={styles.copy}>Working out the bill…</p>
   ) : currentPreview ? (
     <>
+      {skipWarning}
       <p className={styles.copy}>
         If checked out now (as of{' '}
         {new Date(currentPreview.as_of).toLocaleTimeString(undefined, {
@@ -96,13 +112,18 @@ export function HotelCheckoutPanel({
         amountDue={currentPreview.amount_due}
       />
     </>
-  ) : null;
+  ) : (
+    skipWarning
+  );
 
   async function submitCheckout(stayId: string) {
     setIsSubmitting(true);
     setError(null);
 
-    const checkoutResult = await checkOutHotelStay(stayId, accessToken);
+    const checkoutResult =
+      skippableTaskCount > 0
+        ? await checkOutHotelStay(stayId, accessToken, true)
+        : await checkOutHotelStay(stayId, accessToken);
 
     setIsSubmitting(false);
 
@@ -112,6 +133,7 @@ export function HotelCheckoutPanel({
     }
 
     setResult(checkoutResult.data);
+    onCheckedOut?.();
   }
 
   // Pay at checkout: nothing was collected up front and no extension fee

@@ -80,6 +80,7 @@ per flag, `spin_wheel` off by default).
 `care_log_entries`, `credit_balances`, `credit_transactions`,
 `cancellation_logs`, `notifications`, `activity_log`, `message_threads` /
 messages / drafts / attachments, `staff_unavailability_blocks`,
+`staff_attendance`,
 `pet_vaccination_records`, `pet_medical_notes`, `pet_health_conditions`,
 `service_pricing_cell_overrides` / `package_pricing_cell_overrides` (a
 Superadmin's own weight x coat prices; no rows = every cell follows the

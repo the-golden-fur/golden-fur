@@ -19,14 +19,11 @@ describe('friendlyBookingError', () => {
     ).toMatch(/something went wrong/i);
   });
 
-  it('passes a server-authored message through, and adds the slot hint only for a slot conflict', () => {
+  it('passes a server-authored message through unchanged', () => {
     expect(
-      friendlyBookingError(
-        'No eligible staff available for a Grooming booking at the requested time'
-      )
-    ).toMatch(/try choosing a different time/i);
+      friendlyBookingError('That time was just taken. Please pick another one.')
+    ).toBe('That time was just taken. Please pick another one.');
 
-    // A plain domain error is shown verbatim, no hint bolted on.
     expect(
       friendlyBookingError('Only staff may create a walk-in booking')
     ).toBe('Only staff may create a walk-in booking');

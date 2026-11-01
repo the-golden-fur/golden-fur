@@ -24,6 +24,7 @@ import faqRoutes from '../features/faq/faq.routes.ts';
 import landingRoutes from '../features/landing/landing.routes.ts';
 import jobsRoutes from '../features/jobs/jobs.routes.ts';
 import featureFlagsRoutes from '../features/featureFlags/featureFlags.routes.ts';
+import frontDeskRoutes from '../features/frontDesk/frontDesk.routes.ts';
 
 const router = Router();
 
@@ -52,5 +53,6 @@ router.use(faqRoutes);
 router.use(landingRoutes);
 router.use(jobsRoutes);
 router.use(featureFlagsRoutes);
+router.use(frontDeskRoutes);
 
 export default router;

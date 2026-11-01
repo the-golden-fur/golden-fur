@@ -228,3 +228,37 @@ export interface DeletedRecordArchiveEntry {
   restored_at: string | null;
   restored_by: string | null;
 }
+
+/** Not the booking status of the same name. */
+export type StaffAttendanceStatus = 'Present' | 'Absent' | 'Late';
+
+export interface AttendanceRow {
+  staff_id: string;
+  display_name: string;
+  role: string;
+  /** null when a Rest Day/Other block means they aren't expected in. */
+  status: StaffAttendanceStatus | null;
+  leave_type: string | null;
+  locked: boolean;
+  /** Unstarted Grooming/Veterinary bookings that day. */
+  booking_count: number;
+}
+
+export interface AttendanceDay {
+  date: string;
+  today: string;
+  rows: AttendanceRow[];
+}
+
+export interface MovedBooking {
+  booking_id: string;
+  pet_name: string | null;
+  service_category: string;
+  scheduled_start: string;
+  assigned_to: string | null;
+}
+
+export interface AttendanceResult {
+  reassigned: MovedBooking[];
+  needs_rescheduling: MovedBooking[];
+}

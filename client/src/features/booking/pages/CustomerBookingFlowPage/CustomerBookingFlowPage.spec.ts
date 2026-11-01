@@ -980,6 +980,13 @@ describe('CustomerBookingFlowPage', () => {
       expect(
         screen.getByText('Pay at the counter after assessment')
       ).toBeInTheDocument();
+      // Its price is only an estimate, so promos wait for the counter.
+      expect(
+        screen.getByText('Promos can be added when you pay at the branch.')
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/^Promos/, { selector: 'h2, h3, h4, legend' })
+      ).toBeNull();
 
       await user.click(screen.getByText('Confirm booking'));
 

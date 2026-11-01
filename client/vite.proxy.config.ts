@@ -24,6 +24,7 @@ export const API_ROUTE_PREFIXES = [
   '/customers',
   '/daycare',
   '/discounts',
+  '/front-desk',
   '/grooming',
   '/hotel',
   // POST /jobs/tick - called by Supabase pg_cron, never by the client;
