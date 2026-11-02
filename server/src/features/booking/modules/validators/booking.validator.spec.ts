@@ -718,16 +718,19 @@ describe('updatePolicyValidator', () => {
     ).toBe(true);
   });
 
-  it('accepts the Late -> No-show threshold presets and rejects anything else', () => {
-    for (const minutes of [15, 30, 60, 120]) {
+  it('accepts the Late -> No-show grace period from 0 to a day and rejects anything outside', () => {
+    for (const minutes of [0, 15, 45, 90, 1440]) {
       expect(
         updatePolicyValidator.safeParse({ no_show_after_minutes: minutes })
           .success
       ).toBe(true);
     }
-    expect(
-      updatePolicyValidator.safeParse({ no_show_after_minutes: 45 }).success
-    ).toBe(false);
+    for (const minutes of [-1, 1441, 1.5]) {
+      expect(
+        updatePolicyValidator.safeParse({ no_show_after_minutes: minutes })
+          .success
+      ).toBe(false);
+    }
     expect(
       updatePolicyValidator.safeParse({ no_show_at_closing: true }).success
     ).toBe(true);
