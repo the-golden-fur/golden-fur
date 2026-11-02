@@ -24,6 +24,7 @@ import type {
   RescheduleFeeType,
 } from '../../booking.types';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
+import { InfoPopover } from '../../../../shared/components/InfoPopover/InfoPopover';
 import { useUnsavedChanges } from '../../../../shared/providers/UnsavedChangesProvider/useUnsavedChanges';
 import { useUnsavedChangesContext } from '../../../../shared/providers/UnsavedChangesProvider/UnsavedChangesContext';
 import styles from './PolicyConfigurationPage.module.css';
@@ -494,9 +495,17 @@ export function PolicyConfigurationPage({
           </p>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Branch</span>
+            <span className={styles.fieldLabel}>
+              Branch
+              <InfoPopover label="About the Branch selector" align="left">
+                Pick a branch to set rules just for that location, or leave it
+                on &quot;System default&quot; to set the fallback rules every
+                branch uses unless it has its own override saved here.
+              </InfoPopover>
+            </span>
             <select
               className={styles.input}
+              aria-label="Branch"
               value={selectedBranchId}
               onChange={(event) => handleBranchSelect(event.target.value)}
               disabled={lockBranchSelector}
@@ -532,11 +541,18 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="notice-heading">
           <h2 className={styles.sectionTitle} id="notice-heading">
             Reschedule notice period
+            <InfoPopover label="About reschedule notice period" align="left">
+              How far ahead of their appointment a customer must cancel or
+              reschedule for it to count as "on time". Rules in this section
+              only govern that - they don't stop a booking from being made in
+              the first place.
+            </InfoPopover>
           </h2>
 
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
+              aria-label="Enforce a minimum notice period"
               checked={form.notice_enforcement_enabled}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -545,14 +561,33 @@ export function PolicyConfigurationPage({
                 }))
               }
             />
-            <span>Enforce a minimum notice period</span>
+            <span>
+              Enforce a minimum notice period
+              <InfoPopover
+                label="About enforcing the notice period"
+                align="left"
+              >
+                Turn this off to let customers reschedule or cancel at any time
+                with no penalty, no matter how last-minute. Turn it on to apply
+                the minimum-notice rule below.
+              </InfoPopover>
+            </span>
           </label>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Minimum notice (days)</span>
+            <span className={styles.fieldLabel}>
+              Minimum notice (days)
+              <InfoPopover label="About minimum notice days" align="left">
+                How many full days before the appointment a customer needs to
+                cancel or reschedule to avoid being flagged as late. For
+                example, 3 means a Monday appointment needs to be changed by the
+                Friday before.
+              </InfoPopover>
+            </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Minimum notice (days)"
               min={0}
               value={form.notice_period_days}
               onChange={(event) =>
@@ -565,9 +600,17 @@ export function PolicyConfigurationPage({
           </label>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Enforcement mode</span>
+            <span className={styles.fieldLabel}>
+              Enforcement mode
+              <InfoPopover label="About enforcement mode" align="left">
+                Strict stops a late reschedule or cancellation from going
+                through at all. Soft still allows it, but marks it as a policy
+                violation staff can see - nothing is blocked.
+              </InfoPopover>
+            </span>
             <select
               className={styles.input}
+              aria-label="Enforcement mode"
               value={form.notice_enforcement_mode}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -590,15 +633,33 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="booking-notice-heading">
           <h2 className={styles.sectionTitle} id="booking-notice-heading">
             New online booking notice period
+            <InfoPopover
+              label="About new online booking notice period"
+              align="left"
+            >
+              Separate from the reschedule rule above - this controls how soon a
+              customer can book a brand-new appointment online, so staff aren't
+              blindsided by same-day bookings they have no time to prepare for.
+            </InfoPopover>
           </h2>
 
           <label className={styles.field}>
             <span className={styles.fieldLabel}>
               Minimum days before a new online booking (0 = same-day allowed)
+              <InfoPopover
+                label="About minimum days before a new booking"
+                align="left"
+              >
+                How many days ahead a customer must book online. 0 lets them
+                book for today; 1 means the earliest they can pick is tomorrow,
+                and so on. This only applies to customers booking themselves and
+                staff using New Booking - never to walk-ins.
+              </InfoPopover>
             </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Minimum days before a new online booking"
               min={0}
               value={form.booking_notice_period_days}
               onChange={(event) =>
@@ -619,10 +680,23 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="no-show-heading">
           <h2 className={styles.sectionTitle} id="no-show-heading">
             Late arrivals and no-shows
+            <InfoPopover label="About late arrivals and no-shows" align="left">
+              What happens when a customer doesn't turn up on time. A booking
+              first shows as Late once its start time passes, then automatically
+              becomes a No-show once the grace period below runs out.
+            </InfoPopover>
           </h2>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Mark as no-show after</span>
+            <span className={styles.fieldLabel}>
+              Mark as no-show after
+              <InfoPopover label="About the no-show grace period" align="left">
+                How long a Late booking is still held before it's given up on
+                and marked No-show. Pick a number and a unit - for example, "30
+                minutes" or "2 hours" after the appointment was supposed to
+                start.
+              </InfoPopover>
+            </span>
             <div className={styles.hoursRow}>
               <input
                 className={styles.input}
@@ -679,6 +753,7 @@ export function PolicyConfigurationPage({
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
+              aria-label="Auto-convert to no-show at the branch's closing hours"
               checked={form.no_show_at_closing}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -687,7 +762,18 @@ export function PolicyConfigurationPage({
                 }))
               }
             />
-            <span>Auto-convert to no-show at the branch's closing hours</span>
+            <span>
+              Auto-convert to no-show at the branch's closing hours
+              <InfoPopover
+                label="About converting at closing hours"
+                align="left"
+              >
+                Instead of (or alongside) the grace period above, wait until the
+                branch closes for the day before marking a no-show. If the
+                branch isn't open that day, it falls back to the grace period
+                instead.
+              </InfoPopover>
+            </span>
           </label>
 
           <p className={styles.copy}>
@@ -703,15 +789,29 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="staff-concurrency-heading">
           <h2 className={styles.sectionTitle} id="staff-concurrency-heading">
             Staff concurrency
+            <InfoPopover label="About staff concurrency" align="left">
+              Controls how many appointments one groomer or vet can be assigned
+              to at the exact same time slot.
+            </InfoPopover>
           </h2>
 
           <label className={styles.field}>
             <span className={styles.fieldLabel}>
               Max concurrent bookings per staff member (1 = one pet at a time)
+              <InfoPopover
+                label="About max concurrent bookings per staff"
+                align="left"
+              >
+                Raise this above 1 to let one staff member handle more than one
+                pet at once - for example, bathing two small dogs side by side.
+                The booking system won't let them be double-booked past this
+                number.
+              </InfoPopover>
             </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Max concurrent bookings per staff member"
               min={1}
               value={form.max_concurrent_bookings_per_staff}
               onChange={(event) =>
@@ -733,11 +833,17 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="lunch-heading">
           <h2 className={styles.sectionTitle} id="lunch-heading">
             Lunch break
+            <InfoPopover label="About lunch break" align="left">
+              Blocks off a fixed daily window where nothing can be booked, the
+              same way a closed time slot works - so staff always get an
+              uninterrupted break.
+            </InfoPopover>
           </h2>
 
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
+              aria-label="No bookings during this window"
               checked={form.lunch_break_enabled}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -746,7 +852,14 @@ export function PolicyConfigurationPage({
                 }))
               }
             />
-            <span>No bookings during this window</span>
+            <span>
+              No bookings during this window
+              <InfoPopover label="About the lunch break window" align="left">
+                When this is on, the start and end times below become a
+                no-booking window every day. Turn it off to allow bookings
+                straight through the day with no fixed break.
+              </InfoPopover>
+            </span>
           </label>
 
           <div className={styles.hoursRow}>
@@ -771,11 +884,16 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="reschedule-fee-heading">
           <h2 className={styles.sectionTitle} id="reschedule-fee-heading">
             Reschedule fee
+            <InfoPopover label="About reschedule fee" align="left">
+              Lets a customer reschedule for free a limited number of times,
+              then charges a fee for every reschedule after that.
+            </InfoPopover>
           </h2>
 
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
+              aria-label="Charge a fee once the free allowance is used up"
               checked={form.reschedule_fee_enabled}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -784,13 +902,28 @@ export function PolicyConfigurationPage({
                 }))
               }
             />
-            <span>Charge a fee once the free allowance is used up</span>
+            <span>
+              Charge a fee once the free allowance is used up
+              <InfoPopover label="About charging a reschedule fee" align="left">
+                Turn this on to start charging once a customer has used up their
+                free reschedules, set further down. Leave it off and
+                rescheduling always stays free, however many times they do it.
+              </InfoPopover>
+            </span>
           </label>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Fee type</span>
+            <span className={styles.fieldLabel}>
+              Fee type
+              <InfoPopover label="About reschedule fee type" align="left">
+                Flat charges the same peso amount every time. Percentage charges
+                a share of that booking's total price instead, so the fee scales
+                with how much the booking costs.
+              </InfoPopover>
+            </span>
             <select
               className={styles.input}
+              aria-label="Fee type"
               value={form.reschedule_fee_type}
               disabled={!form.reschedule_fee_enabled}
               onChange={(event) =>
@@ -810,10 +943,16 @@ export function PolicyConfigurationPage({
               {form.reschedule_fee_type === 'Flat'
                 ? 'Fee amount (PHP)'
                 : 'Fee (%)'}
+              <InfoPopover label="About the reschedule fee amount" align="left">
+                How much to charge once the fee kicks in - a peso amount, or a
+                percentage of the booking's total, depending on the fee type
+                chosen above.
+              </InfoPopover>
             </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Reschedule fee amount"
               min={0}
               max={form.reschedule_fee_type === 'Percentage' ? 100 : undefined}
               value={form.reschedule_fee_value}
@@ -830,6 +969,7 @@ export function PolicyConfigurationPage({
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
+              aria-label="Unlimited free reschedules"
               checked={form.reschedule_free_allowance_unlimited}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -838,17 +978,36 @@ export function PolicyConfigurationPage({
                 }))
               }
             />
-            <span>Unlimited free reschedules</span>
+            <span>
+              Unlimited free reschedules
+              <InfoPopover
+                label="About unlimited free reschedules"
+                align="left"
+              >
+                When this is on, a customer can reschedule as many times as they
+                like at no charge - the fee above never applies. Turn it off to
+                set a specific free-reschedule limit below.
+              </InfoPopover>
+            </span>
           </label>
 
           {!form.reschedule_free_allowance_unlimited ? (
             <label className={styles.field}>
               <span className={styles.fieldLabel}>
                 Free reschedules allowed
+                <InfoPopover
+                  label="About free reschedules allowed"
+                  align="left"
+                >
+                  How many times a customer can reschedule one booking before
+                  the fee above starts applying. For example, 1 means their
+                  first reschedule is free and every one after that is charged.
+                </InfoPopover>
               </span>
               <input
                 className={styles.input}
                 type="number"
+                aria-label="Free reschedules allowed"
                 min={0}
                 value={form.reschedule_free_allowance}
                 onChange={(event) =>
@@ -865,11 +1024,17 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="downpayment-heading">
           <h2 className={styles.sectionTitle} id="downpayment-heading">
             Downpayment
+            <InfoPopover label="About downpayment" align="left">
+              Requires a customer to pay part of their booking upfront, online,
+              to secure the reservation - the rest is settled later. Walk-ins
+              always pay in full, so this never applies to them.
+            </InfoPopover>
           </h2>
 
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
+              aria-label="Require a downpayment on the whole booking"
               checked={form.downpayment_enabled}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -878,7 +1043,14 @@ export function PolicyConfigurationPage({
                 }))
               }
             />
-            <span>Require a downpayment on the whole booking</span>
+            <span>
+              Require a downpayment on the whole booking
+              <InfoPopover label="About requiring a downpayment" align="left">
+                Turn this on to require part-payment before an online booking is
+                confirmed. It applies once to the whole checkout total, not
+                separately to each service or pet in it.
+              </InfoPopover>
+            </span>
           </label>
           <p className={styles.copy}>
             Applies once to an online booking's total - across every
@@ -887,9 +1059,17 @@ export function PolicyConfigurationPage({
           </p>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Downpayment type</span>
+            <span className={styles.fieldLabel}>
+              Downpayment type
+              <InfoPopover label="About downpayment type" align="left">
+                Flat charges the same peso amount for every booking. Percentage
+                charges a share of that booking's total instead, so bigger
+                bookings require a bigger downpayment.
+              </InfoPopover>
+            </span>
             <select
               className={styles.input}
+              aria-label="Downpayment type"
               value={form.downpayment_type}
               disabled={!form.downpayment_enabled}
               onChange={(event) =>
@@ -909,10 +1089,16 @@ export function PolicyConfigurationPage({
               {form.downpayment_type === 'Flat'
                 ? 'Downpayment amount (PHP)'
                 : 'Downpayment (%)'}
+              <InfoPopover label="About the downpayment amount" align="left">
+                How much a customer must pay upfront to secure their booking - a
+                peso amount, or a percentage of the total, depending on the type
+                chosen above.
+              </InfoPopover>
             </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Downpayment amount"
               min={0}
               max={form.downpayment_type === 'Percentage' ? 100 : undefined}
               value={form.downpayment_amount}
@@ -927,10 +1113,19 @@ export function PolicyConfigurationPage({
           </label>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Reservation hold (hours)</span>
+            <span className={styles.fieldLabel}>
+              Reservation hold (hours)
+              <InfoPopover label="About reservation hold hours" align="left">
+                How long an unpaid booking holds its slot before it's
+                automatically cancelled for non-payment. Gives a customer time
+                to pay without the slot getting snapped up, but doesn't let them
+                hold it forever.
+              </InfoPopover>
+            </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Reservation hold (hours)"
               min={1}
               value={form.downpayment_hold_hours}
               disabled={!form.downpayment_enabled}
@@ -951,11 +1146,17 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="pay-at-checkout-heading">
           <h2 className={styles.sectionTitle} id="pay-at-checkout-heading">
             Pay at checkout
+            <InfoPopover label="About pay at checkout" align="left">
+              Lets staff book a Hotel or Daycare walk-in without charging
+              anything upfront - the pet's actual bill is settled later, when
+              the owner picks them up.
+            </InfoPopover>
           </h2>
 
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
+              aria-label="Allow pay at checkout for walk-in Hotel and Daycare"
               checked={form.pay_at_checkout_enabled}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -964,7 +1165,14 @@ export function PolicyConfigurationPage({
                 }))
               }
             />
-            <span>Allow pay at checkout for walk-in Hotel and Daycare</span>
+            <span>
+              Allow pay at checkout for walk-in Hotel and Daycare
+              <InfoPopover label="About allowing pay at checkout" align="left">
+                Turn this on to let staff reserve a cage for a walk-in with no
+                payment collected yet. Billing starts once the pet is checked
+                in, and the cashier charges the full stay at checkout.
+              </InfoPopover>
+            </span>
           </label>
           <p className={styles.copy}>
             Staff can book a walk-in without charging anything up front. Billing
@@ -974,10 +1182,21 @@ export function PolicyConfigurationPage({
           </p>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Grace period (minutes)</span>
+            <span className={styles.fieldLabel}>
+              Grace period (minutes)
+              <InfoPopover
+                label="About the pay-at-checkout grace period"
+                align="left"
+              >
+                Daycare bills by the hour. This lets a stay run a few minutes
+                past a full hour without charging for another one. Set it to 0
+                to charge for every hour that's started, even by a minute.
+              </InfoPopover>
+            </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Pay-at-checkout grace period (minutes)"
               min={0}
               max={59}
               step={1}
@@ -1001,15 +1220,28 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="cancellation-credit-heading">
           <h2 className={styles.sectionTitle} id="cancellation-credit-heading">
             Cancellation credit
+            <InfoPopover label="About cancellation credit" align="left">
+              What a customer gets back, as account credit, when they cancel a
+              paid booking - instead of a cash refund.
+            </InfoPopover>
           </h2>
 
           <label className={styles.field}>
             <span className={styles.fieldLabel}>
               Percent of payment returned as credit
+              <InfoPopover
+                label="About percent returned as credit"
+                align="left"
+              >
+                How much of what the customer paid comes back as credit when
+                they cancel within the notice period. 100% returns everything; a
+                lower number keeps part of the payment as a cancellation charge.
+              </InfoPopover>
             </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Percent of payment returned as credit"
               min={0}
               max={100}
               value={form.cancellation_credit_conversion_rate}
@@ -1033,10 +1265,20 @@ export function PolicyConfigurationPage({
           <label className={styles.field}>
             <span className={styles.fieldLabel}>
               Grace period for last-minute bookings (minutes)
+              <InfoPopover
+                label="About the cancellation grace period"
+                align="left"
+              >
+                A booking made too close to the appointment can never meet the
+                notice period above, through no fault of the customer. This
+                gives them a window, right after booking, to still cancel for
+                credit even though notice couldn't be met.
+              </InfoPopover>
             </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Cancellation grace period (minutes)"
               min={0}
               max={1440}
               step={1}
@@ -1056,9 +1298,18 @@ export function PolicyConfigurationPage({
           </p>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>Who decides the credit</span>
+            <span className={styles.fieldLabel}>
+              Who decides the credit
+              <InfoPopover label="About who decides the credit" align="left">
+                Automatic follows the notice-period rule above with no human
+                involved. Manual sends every paid cancellation to a staff member
+                instead, who reads the customer's reason and decides whether to
+                approve or deny the credit.
+              </InfoPopover>
+            </span>
             <select
               className={styles.input}
+              aria-label="Who decides the credit"
               value={form.credit_review_mode}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -1085,12 +1336,26 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="credit-expiry-heading">
           <h2 className={styles.sectionTitle} id="credit-expiry-heading">
             Credit expiry
+            <InfoPopover label="About credit expiry" align="left">
+              Whether a customer's account credit (from a cancellation, for
+              example) eventually expires if they don't use it, and when.
+            </InfoPopover>
           </h2>
 
           <label className={styles.field}>
-            <span className={styles.fieldLabel}>How credit expires</span>
+            <span className={styles.fieldLabel}>
+              How credit expires
+              <InfoPopover label="About how credit expires" align="left">
+                "Never expires" keeps credit usable indefinitely. "Expire a set
+                number of days after each credit is issued" gives each credit
+                its own countdown from the day it was earned. "All credit
+                expires on one date" wipes every customer's credit on a single
+                calendar date you choose, regardless of when they earned it.
+              </InfoPopover>
+            </span>
             <select
               className={styles.input}
+              aria-label="How credit expires"
               value={form.credit_expiry_mode}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -1111,10 +1376,17 @@ export function PolicyConfigurationPage({
 
           {form.credit_expiry_mode === 'rolling' ? (
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Expires after (days)</span>
+              <span className={styles.fieldLabel}>
+                Expires after (days)
+                <InfoPopover label="About expires after days" align="left">
+                  How many days a customer has to use a piece of credit, counted
+                  from the day it was issued to them, before it expires.
+                </InfoPopover>
+              </span>
               <input
                 className={styles.input}
                 type="number"
+                aria-label="Expires after (days)"
                 min={1}
                 value={form.credit_expiry_days}
                 onChange={(event) =>
@@ -1129,10 +1401,18 @@ export function PolicyConfigurationPage({
 
           {form.credit_expiry_mode === 'fixed_date' ? (
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Expiry date</span>
+              <span className={styles.fieldLabel}>
+                Expiry date
+                <InfoPopover label="About the expiry date" align="left">
+                  The single calendar date every customer's unused credit at
+                  this branch expires on - no matter when each piece of credit
+                  was originally issued.
+                </InfoPopover>
+              </span>
               <input
                 className={styles.input}
                 type="date"
+                aria-label="Credit expiry date"
                 value={form.credit_expiry_fixed_date}
                 onChange={(event) =>
                   setForm((prev) => ({
@@ -1161,14 +1441,31 @@ export function PolicyConfigurationPage({
         <section aria-labelledby="email-notifications-heading">
           <h2 className={styles.sectionTitle} id="email-notifications-heading">
             Customer email notifications
+            <InfoPopover
+              label="About customer email notifications"
+              align="left"
+            >
+              Which emails customers automatically receive about their bookings
+              and hotel stays - separate from the in-app notifications, which
+              always fire regardless of these settings.
+            </InfoPopover>
           </h2>
 
           <label className={styles.field}>
             <span className={styles.fieldLabel}>
               Bundled checkout confirmation email
+              <InfoPopover
+                label="About the checkout confirmation email"
+                align="left"
+              >
+                When a customer books several pets or services in one checkout,
+                send one combined "your bookings are confirmed" email, or a
+                separate confirmation email for each individual booking.
+              </InfoPopover>
             </span>
             <select
               className={styles.input}
+              aria-label="Bundled checkout confirmation email"
               value={form.booking_group_email_mode}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -1197,6 +1494,7 @@ export function PolicyConfigurationPage({
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
+              aria-label="Email the customer as each hotel care task is completed"
               checked={form.care_log_task_email_enabled}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -1205,7 +1503,18 @@ export function PolicyConfigurationPage({
                 }))
               }
             />
-            <span>Email the customer as each hotel care task is completed</span>
+            <span>
+              Email the customer as each hotel care task is completed
+              <InfoPopover
+                label="About emailing on each completed task"
+                align="left"
+              >
+                Off by default, since a busy hotel day logs many small tasks per
+                pet (feeding, walking, medication) and this would send an email
+                for every single one. The nightly summary below is the gentler
+                alternative.
+              </InfoPopover>
+            </span>
           </label>
           <p className={styles.copy}>
             Off by default - a busy hotel day logs many tasks per pet. The
@@ -1216,6 +1525,7 @@ export function PolicyConfigurationPage({
           <label className={styles.checkboxField}>
             <input
               type="checkbox"
+              aria-label="Send a nightly care summary for each hotel stay"
               checked={form.care_log_daily_report_enabled}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -1224,7 +1534,14 @@ export function PolicyConfigurationPage({
                 }))
               }
             />
-            <span>Send a nightly care summary for each hotel stay</span>
+            <span>
+              Send a nightly care summary for each hotel stay
+              <InfoPopover label="About the nightly care summary" align="left">
+                One email per evening, per pet currently staying, listing that
+                day's completed, missed, and still-upcoming care tasks - a
+                single daily update instead of one email per task.
+              </InfoPopover>
+            </span>
           </label>
           <p className={styles.copy}>
             One email per active hotel stay each evening, listing that
@@ -1238,6 +1555,11 @@ export function PolicyConfigurationPage({
             id="customer-deactivation-heading"
           >
             Customer account deletion
+            <InfoPopover label="About customer account deletion" align="left">
+              How long a deactivated customer account is kept before it's
+              permanently erased - applies system-wide to every branch, not per
+              branch, since customer accounts aren't tied to one location.
+            </InfoPopover>
           </h2>
           <p className={styles.copy}>
             When a customer deactivates their own account (Settings &gt;
@@ -1249,10 +1571,19 @@ export function PolicyConfigurationPage({
           <label className={styles.field}>
             <span className={styles.fieldLabel}>
               Delete after (days of inactivity)
+              <InfoPopover
+                label="About delete after days of inactivity"
+                align="left"
+              >
+                How many days after a customer deactivates their own account
+                it's permanently removed, if they never log back in to
+                reactivate it.
+              </InfoPopover>
             </span>
             <input
               className={styles.input}
               type="number"
+              aria-label="Delete after (days of inactivity)"
               min={1}
               disabled={Boolean(selectedBranchId)}
               value={form.customer_deactivation_auto_delete_days}

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { TimeInput } from '../../../hotel/components/TimeInput/TimeInput';
+import { InfoPopover } from '../../../../shared/components/InfoPopover/InfoPopover';
 import {
   WEEKDAYS,
   type Branch,
@@ -327,10 +328,17 @@ export function BranchDetailsForm({
       onSubmit={(event) => void handleSubmit(event)}
     >
       <label className={styles.field}>
-        <span className={styles.fieldLabel}>Branch name</span>
+        <span className={styles.fieldLabel}>
+          Branch name
+          <InfoPopover label="About branch name" align="left">
+            The name shown to customers and staff everywhere this branch is
+            picked - on the website, in the booking wizard, and on receipts.
+          </InfoPopover>
+        </span>
         <input
           className={styles.input}
           type="text"
+          aria-label="Branch name"
           value={form.name}
           onChange={(event) =>
             setForm((prev) => ({ ...prev, name: event.target.value }))
@@ -340,10 +348,17 @@ export function BranchDetailsForm({
       </label>
 
       <label className={styles.field}>
-        <span className={styles.fieldLabel}>Address</span>
+        <span className={styles.fieldLabel}>
+          Address
+          <InfoPopover label="About address" align="left">
+            The branch's physical address, shown to customers so they know where
+            to go - it doesn't affect anything else about how the branch runs.
+          </InfoPopover>
+        </span>
         <input
           className={styles.input}
           type="text"
+          aria-label="Address"
           value={form.address}
           onChange={(event) =>
             setForm((prev) => ({ ...prev, address: event.target.value }))
@@ -353,10 +368,17 @@ export function BranchDetailsForm({
       </label>
 
       <label className={styles.field}>
-        <span className={styles.fieldLabel}>Contact number</span>
+        <span className={styles.fieldLabel}>
+          Contact number
+          <InfoPopover label="About contact number" align="left">
+            A phone number customers can call for this branch. Optional - it
+            doesn't affect bookings, only what's shown to customers.
+          </InfoPopover>
+        </span>
         <input
           className={styles.input}
           type="text"
+          aria-label="Contact number"
           value={form.contact_number}
           onChange={(event) =>
             setForm((prev) => ({
@@ -368,10 +390,18 @@ export function BranchDetailsForm({
       </label>
 
       <label className={styles.field}>
-        <span className={styles.fieldLabel}>Timezone</span>
+        <span className={styles.fieldLabel}>
+          Timezone
+          <InfoPopover label="About timezone" align="left">
+            Which local time zone this branch's hours and bookings are
+            calculated in - matters for branches outside Metro Manila. Use the
+            standard name format, e.g. "Asia/Manila".
+          </InfoPopover>
+        </span>
         <input
           className={styles.input}
           type="text"
+          aria-label="Timezone"
           value={form.timezone}
           onChange={(event) =>
             setForm((prev) => ({ ...prev, timezone: event.target.value }))
@@ -383,6 +413,7 @@ export function BranchDetailsForm({
       <label className={styles.checkboxField}>
         <input
           type="checkbox"
+          aria-label="Veterinary services offered at this branch"
           checked={form.is_vet_branch}
           onChange={(event) =>
             setForm((prev) => ({
@@ -391,12 +422,24 @@ export function BranchDetailsForm({
             }))
           }
         />
-        <span>Veterinary services offered at this branch</span>
+        <span>
+          Veterinary services offered at this branch
+          <InfoPopover label="About veterinary services offered" align="left">
+            Turn this on if this branch has a vet on-site. It controls whether
+            customers can book Veterinary services (checkups, vaccinations,
+            etc.) at this specific branch.
+          </InfoPopover>
+        </span>
       </label>
 
       <label className={styles.field}>
         <span className={styles.fieldLabel}>
           Furthest a booking can be made (days ahead)
+          <InfoPopover label="About furthest booking window" align="left">
+            How far into the future a customer or staff member can pick a
+            booking date at this branch - for example, 90 means nobody can book
+            more than 3 months out.
+          </InfoPopover>
         </span>
         <input
           className={styles.input}
@@ -405,6 +448,7 @@ export function BranchDetailsForm({
           max={MAX_ADVANCE_BOOKING_DAYS_LIMIT}
           step={1}
           inputMode="numeric"
+          aria-label="Furthest a booking can be made (days ahead)"
           aria-describedby="max-advance-booking-days-hint"
           value={form.max_advance_booking_days}
           onChange={(event) =>
@@ -424,6 +468,12 @@ export function BranchDetailsForm({
       <section aria-labelledby="operating-hours-heading">
         <h3 className={styles.sectionTitle} id="operating-hours-heading">
           Operating hours
+          <InfoPopover label="About operating hours" align="left">
+            When this branch is open each day of the week. Bookings can only be
+            made inside these hours - a closed day accepts no bookings at all.
+            This also decides the branch's "closing time", used elsewhere for
+            things like auto-converting a no-show at close.
+          </InfoPopover>
         </h3>
         <p className={styles.sectionHint}>
           Grooming can be booked during a day&apos;s full operating hours unless
@@ -436,7 +486,15 @@ export function BranchDetailsForm({
             aria-label="Set hours for all days"
           >
             <div className={styles.hoursRow}>
-              <span className={styles.dayLabel}>All days</span>
+              <span className={styles.dayLabel}>
+                All days
+                <InfoPopover label="About the All days row" align="left">
+                  A shortcut, not a setting of its own - set one open/close time
+                  here, then press "Apply to all days" below to copy it onto
+                  every weekday at once. You can still adjust or close
+                  individual days afterwards.
+                </InfoPopover>
+              </span>
               <TimeInput
                 value={allDays.open}
                 onChange={(value) =>
@@ -468,7 +526,18 @@ export function BranchDetailsForm({
                   }
                   aria-label="Limit grooming hours on all days"
                 />
-                <span>Limit grooming hours</span>
+                <span>
+                  Limit grooming hours
+                  <InfoPopover
+                    label="About limiting grooming hours"
+                    align="left"
+                  >
+                    Left off, Grooming can be booked any time during the day's
+                    operating hours. Turn it on to restrict Grooming bookings to
+                    a narrower window - for example, if the groomer only works
+                    part of the day.
+                  </InfoPopover>
+                </span>
               </label>
               {allDays.grooming ? (
                 <>

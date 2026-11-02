@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -90,5 +90,71 @@ describe('InfoPopover', () => {
       screen.getByRole('button', { name: 'About walk-in bookings' })
     );
     expect(onParentClick).not.toHaveBeenCalled();
+  });
+
+  it('opens on mouse hover alone, with no click, and closes shortly after the mouse leaves', async () => {
+    const user = userEvent.setup();
+    renderPopover();
+
+    const trigger = screen.getByRole('button', {
+      name: 'About walk-in bookings',
+    });
+    expect(
+      screen.queryByText(/physically here right now/)
+    ).not.toBeInTheDocument();
+
+    await user.hover(trigger);
+    expect(screen.getByText(/physically here right now/)).toBeInTheDocument();
+
+    await user.unhover(trigger);
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/physically here right now/)
+      ).not.toBeInTheDocument()
+    );
+  });
+
+  it('opens on keyboard focus alone, with no click, and closes on blur', async () => {
+    const user = userEvent.setup();
+    renderPopover();
+
+    expect(
+      screen.queryByText(/physically here right now/)
+    ).not.toBeInTheDocument();
+
+    await user.tab();
+    expect(
+      screen.getByRole('button', { name: 'About walk-in bookings' })
+    ).toHaveFocus();
+    expect(screen.getByText(/physically here right now/)).toBeInTheDocument();
+
+    await user.tab();
+    expect(
+      screen.queryByText(/physically here right now/)
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps a click-pinned panel open when the mouse leaves, unlike a hover-only open', async () => {
+    const user = userEvent.setup();
+    renderPopover();
+
+    const trigger = screen.getByRole('button', {
+      name: 'About walk-in bookings',
+    });
+
+    await user.click(trigger);
+    expect(screen.getByText(/physically here right now/)).toBeInTheDocument();
+
+    await user.unhover(trigger);
+    // Long enough to clear the hover-close delay - a pinned panel must
+    // outlast it.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.getByText(/physically here right now/)).toBeInTheDocument();
+
+    // A second click un-pins and closes it.
+    await user.click(trigger);
+    expect(
+      screen.queryByText(/physically here right now/)
+    ).not.toBeInTheDocument();
   });
 });
