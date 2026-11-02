@@ -131,7 +131,9 @@ describe('PolicyConfigurationPage - no-show grace period (Branches > Configure >
 
   it('shows the stored grace period in minutes by default, and the closing-hours checkbox unchecked', async () => {
     vi.mocked(policyApi.listPolicyConfigurations).mockResolvedValue({
-      data: [buildPolicy({ no_show_after_minutes: 45, no_show_at_closing: false })],
+      data: [
+        buildPolicy({ no_show_after_minutes: 45, no_show_at_closing: false }),
+      ],
       error: null,
     });
 
@@ -179,22 +181,31 @@ describe('PolicyConfigurationPage - no-show grace period (Branches > Configure >
     const unitSelect = await screen.findByRole('combobox', {
       name: 'No-show grace period unit',
     });
-    expect(screen.getByRole('spinbutton', { name: 'No-show grace period' })).toHaveValue(90);
+    expect(
+      screen.getByRole('spinbutton', { name: 'No-show grace period' })
+    ).toHaveValue(90);
 
     await user.selectOptions(unitSelect, 'hours');
 
     // 90 minutes is 1.5 hours; Math.round rounds half up to 2 once the unit
     // becomes hours.
-    expect(screen.getByRole('spinbutton', { name: 'No-show grace period' })).toHaveValue(2);
+    expect(
+      screen.getByRole('spinbutton', { name: 'No-show grace period' })
+    ).toHaveValue(2);
   });
 
   it('entering a number while in hours mode saves it converted to minutes, and the checkbox saves independently', async () => {
     vi.mocked(policyApi.listPolicyConfigurations).mockResolvedValue({
-      data: [buildPolicy({ no_show_after_minutes: 60, no_show_at_closing: false })],
+      data: [
+        buildPolicy({ no_show_after_minutes: 60, no_show_at_closing: false }),
+      ],
       error: null,
     });
     vi.mocked(policyApi.updatePolicyConfiguration).mockResolvedValue({
-      data: buildPolicy({ no_show_after_minutes: 180, no_show_at_closing: true }),
+      data: buildPolicy({
+        no_show_after_minutes: 180,
+        no_show_at_closing: true,
+      }),
       error: null,
     });
 

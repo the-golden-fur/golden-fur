@@ -39,7 +39,10 @@ const SYSTEM_DEFAULT_OPTION = '';
  * the stored value (no_show_after_minutes) always stays in minutes,
  * matching the server (booking.validator.ts), regardless of which unit is
  * currently showing. */
-const NO_SHOW_AFTER_UNITS: Array<{ value: 'minutes' | 'hours'; label: string }> = [
+const NO_SHOW_AFTER_UNITS: Array<{
+  value: 'minutes' | 'hours';
+  label: string;
+}> = [
   { value: 'minutes', label: 'minutes' },
   { value: 'hours', label: 'hours' },
 ];
@@ -689,12 +692,11 @@ export function PolicyConfigurationPage({
 
           <p className={styles.copy}>
             Once a booking's start time passes it shows as <em>Late</em> - the
-            customer can still be checked in or the booking started as usual.
-            If they still haven't arrived once the grace period above runs
-            out, it becomes a <em>No-show</em>. With the checkbox on, it
-            instead waits until the branch's closing hours that day, falling
-            back to the grace period above on a day with no meaningful
-            closing time.
+            customer can still be checked in or the booking started as usual. If
+            they still haven't arrived once the grace period above runs out, it
+            becomes a <em>No-show</em>. With the checkbox on, it instead waits
+            until the branch's closing hours that day, falling back to the grace
+            period above on a day with no meaningful closing time.
           </p>
         </section>
 
