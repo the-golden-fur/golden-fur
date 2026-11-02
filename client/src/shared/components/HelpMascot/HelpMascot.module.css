@@ -142,6 +142,16 @@
   transform: translateX(-50%) translateY(-20px) scale(1.08);
 }
 
+/* The mascot/hand/picker GIFs are baked at authoring time (no dark-mode
+   twin exists for any of them), so dark mode is approximated by toning the
+   art down rather than leaving it blown-out bright against the dark
+   background - same treatment as LoadingState's loader icon. */
+[data-color-mode='dark'] .image,
+[data-color-mode='dark'] .handImage,
+[data-color-mode='dark'] .petOptionImage {
+  filter: brightness(0.82) saturate(0.85) contrast(0.95);
+}
+
 /* Emoji fallback shown only when media fails */
 .fallback {
   position: absolute;
