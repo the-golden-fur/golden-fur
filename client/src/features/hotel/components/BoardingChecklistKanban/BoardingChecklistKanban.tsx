@@ -195,7 +195,6 @@ function checkboxAriaLabel(entry: CareLogEntry): string {
     case 'Backlog':
       return `Not due yet (read-only): ${entry.description}`;
     case 'Pending':
-      return `Start: ${entry.description}`;
     case 'In Progress':
       return `Mark complete: ${entry.description}`;
     case 'Completed':
@@ -209,33 +208,24 @@ function isReadOnlyStatus(status: CareLogEntryStatus): boolean {
   return status === 'Backlog' || status === 'Missed';
 }
 
-/** The checkbox's own next step, as a menu label - null for the read-only
- * statuses, which the menu then simply omits. */
-function statusActionLabel(status: CareLogEntryStatus): string | null {
-  switch (status) {
-    case 'Pending':
-      return 'Start';
-    case 'In Progress':
-      return 'Mark complete';
-    case 'Completed':
-      return 'Reopen';
-    default:
-      return null;
-  }
+function isOpenStatus(status: CareLogEntryStatus): boolean {
+  return status === 'Pending' || status === 'In Progress';
 }
 
 /**
- * Boarding Checklist Kanban - interaction redesign. The circular checkbox is
- * now the only control on a card (no separate Start/Back-to-Pending
- * buttons): clicking it advances the task one step (Pending -> In Progress
- * -> Completed); clicking a Completed (checked) box reopens it straight back
- * to Pending, not to In Progress - there's no "uncheck to the previous step"
- * distinction to preserve since In Progress is never rendered as checked.
- * Backlog and Missed are both fully read-only (checkbox disabled) - a task
- * that isn't due yet and a task whose date has already passed are equally
- * nothing the checkbox can act on right now, just at opposite ends of the
- * timeline. Clicking anywhere else on a card expands/collapses its detail
- * panel (scheduled date, completion record).
+ * Boarding Checklist Kanban - interaction redesign. One press completes a
+ * task: pressing an open (Pending or In Progress) card, or its circular
+ * checkbox, goes straight to Completed. In Progress is optional now, reached
+ * only through the task menu's "Start". Pressing a Completed card expands
+ * its detail panel (scheduled date, completion record, Undo), and clicking a
+ * Completed (checked) box reopens it straight back to Pending, not to In
+ * Progress - there's no "uncheck to the previous step" distinction to
+ * preserve since In Progress is never rendered as checked. Backlog and
+ * Missed are both fully read-only (checkbox disabled) - a task that isn't
+ * due yet and a task whose date has already passed are equally nothing the
+ * checkbox can act on right now, just at opposite ends of the timeline -
+ * so pressing those cards only expands their details. An open task's
+ * details stay reachable through the menu's Show details.
  *
  * Grouping is a single selectable axis (Status/Time of day/Category), not a
  * fixed status-column layout with an optional time sub-group - matches
@@ -380,14 +370,22 @@ export function BoardingChecklistKanban({
   }
 
   function handleCheckboxClick(entry: CareLogEntry) {
-    if (entry.status === 'Pending') {
-      void runAction(entry.id, startCareLogEntry);
-    } else if (entry.status === 'In Progress') {
+    if (isOpenStatus(entry.status)) {
       void runAction(entry.id, completeCareLogEntry);
     } else if (entry.status === 'Completed') {
       void runAction(entry.id, reopenCareLogEntry);
     }
     // Missed: read-only, the button is disabled so this is unreachable.
+  }
+
+  function handleCardPress(entry: CareLogEntry) {
+    if (pendingActionId === entry.id) return;
+
+    if (isOpenStatus(entry.status)) {
+      void runAction(entry.id, completeCareLogEntry);
+    } else {
+      toggleExpanded(entry.id);
+    }
   }
 
   function toggleExpanded(entryId: string) {
@@ -478,11 +476,22 @@ export function BoardingChecklistKanban({
 
   function taskMenuItems({ entry }: Row): MoreOptionsMenuItem[] {
     const items: MoreOptionsMenuItem[] = [];
-    const actionLabel = statusActionLabel(entry.status);
 
-    if (actionLabel) {
+    if (isOpenStatus(entry.status)) {
       items.push({
-        label: actionLabel,
+        label: 'Mark complete',
+        onSelect: () => handleCheckboxClick(entry),
+      });
+    }
+    if (entry.status === 'Pending') {
+      items.push({
+        label: 'Start',
+        onSelect: () => void runAction(entry.id, startCareLogEntry),
+      });
+    }
+    if (entry.status === 'Completed') {
+      items.push({
+        label: 'Reopen',
         onSelect: () => handleCheckboxClick(entry),
       });
     }
@@ -567,6 +576,7 @@ export function BoardingChecklistKanban({
   function renderTaskContent({ entry, petName, petPhotoUrl }: Row) {
     const isMissed = entry.status === 'Missed';
     const isBacklog = entry.status === 'Backlog';
+    const isOpen = isOpenStatus(entry.status);
     const isExpanded = expandedIds.has(entry.id);
     const [title, detail] = splitDescription(entry.description);
     // A status column already says the status - every other layout needs
@@ -574,47 +584,56 @@ export function BoardingChecklistKanban({
     const showStatusBadge = view !== 'board' || groupAxisId !== 'status';
 
     return (
-      <div className={styles.cardHeader}>
-        {renderCheckbox(entry)}
-        <div
-          className={styles.cardBody}
-          role="button"
-          tabIndex={0}
-          aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} details: ${entry.description}`}
-          onClick={() => toggleExpanded(entry.id)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              toggleExpanded(entry.id);
+      <div className={styles.taskContent}>
+        <div className={styles.cardHeader}>
+          {renderCheckbox(entry)}
+          <div
+            className={styles.cardBody}
+            role="button"
+            tabIndex={0}
+            aria-expanded={isOpen ? undefined : isExpanded}
+            aria-label={
+              isOpen
+                ? `Complete task: ${entry.description}`
+                : `${isExpanded ? 'Collapse' : 'Expand'} details: ${entry.description}`
             }
-          }}
-        >
-          <span className={styles.petName}>
-            <PetAvatar name={petName} photoUrl={petPhotoUrl} size="xs" />
-            {petName}
-          </span>
-          <span className={styles.description}>{title}</span>
-          {detail ? (
-            <span className={styles.descriptionDetail}>{detail}</span>
-          ) : null}
-          <span className={styles.metaRow}>
-            {renderCategoryBadge(entry)}
-            {entry.time_block ? (
-              <span className={styles.timeBadge}>{entry.time_block}</span>
+            onClick={() => handleCardPress(entry)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                handleCardPress(entry);
+              }
+            }}
+          >
+            <span className={styles.petName}>
+              <PetAvatar name={petName} photoUrl={petPhotoUrl} size="xs" />
+              {petName}
+            </span>
+            <span className={styles.description}>{title}</span>
+            {detail ? (
+              <span className={styles.descriptionDetail}>{detail}</span>
             ) : null}
-            {showDateBadge ? (
-              <span className={styles.dateBadge}>
-                {formatShortDate(entry.scheduled_date)}
-              </span>
-            ) : null}
-            {showStatusBadge ? renderStatusBadge(entry) : null}
-          </span>
+            <span className={styles.metaRow}>
+              {renderCategoryBadge(entry)}
+              {entry.time_block ? (
+                <span className={styles.timeBadge}>{entry.time_block}</span>
+              ) : null}
+              {showDateBadge ? (
+                <span className={styles.dateBadge}>
+                  {formatShortDate(entry.scheduled_date)}
+                </span>
+              ) : null}
+              {showStatusBadge ? renderStatusBadge(entry) : null}
+            </span>
+          </div>
+        </div>
 
-          {isExpanded ? (
-            <div className={styles.expandedDetails}>
-              <span>Scheduled: {formatFullDate(entry.scheduled_date)}</span>
-              {entry.status === 'Completed' ? (
+        {/* Outside .cardBody: the Undo button can't nest in a role="button". */}
+        {isExpanded ? (
+          <div className={styles.expandedDetails}>
+            <span>Scheduled: {formatFullDate(entry.scheduled_date)}</span>
+            {entry.status === 'Completed' ? (
+              <>
                 <span>
                   Completed
                   {entry.completed_by_staff?.display_name
@@ -624,22 +643,29 @@ export function BoardingChecklistKanban({
                     ? ` on ${formatDateTime(entry.completed_at)}`
                     : ''}
                 </span>
-              ) : null}
-              {isMissed ? (
-                <span className={styles.missedNote}>
-                  This task&apos;s date has passed - it can no longer be
-                  updated.
-                </span>
-              ) : null}
-              {isBacklog ? (
-                <span className={styles.backlogNote}>
-                  Not due until {formatFullDate(entry.scheduled_date)} - it will
-                  move to Pending automatically.
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+                <button
+                  type="button"
+                  className={styles.undoButton}
+                  disabled={pendingActionId === entry.id}
+                  onClick={() => void runAction(entry.id, reopenCareLogEntry)}
+                >
+                  Undo
+                </button>
+              </>
+            ) : null}
+            {isMissed ? (
+              <span className={styles.missedNote}>
+                This task&apos;s date has passed - it can no longer be updated.
+              </span>
+            ) : null}
+            {isBacklog ? (
+              <span className={styles.backlogNote}>
+                Not due until {formatFullDate(entry.scheduled_date)} - it will
+                move to Pending automatically.
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     );
   }
