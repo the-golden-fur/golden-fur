@@ -51,6 +51,10 @@ const EVENT_TYPES_BY_ROLE: Record<
     },
     { type: 'day_off_requested', label: 'Day off request to review' },
     { type: 'day_off_reviewed', label: 'Day off request approved or denied' },
+    {
+      type: 'bug_report_submitted',
+      label: 'Bug report or feature request submitted',
+    },
   ],
   customer: [
     { type: 'booking_confirmed', label: 'Booking made' },

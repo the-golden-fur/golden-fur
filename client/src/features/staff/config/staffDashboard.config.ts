@@ -1,6 +1,7 @@
 import {
   Archive,
   BarChart3,
+  Bug,
   CalendarCheck,
   CalendarDays,
   CalendarOff,
@@ -9,6 +10,7 @@ import {
   Coins,
   ConciergeBell,
   DoorOpen,
+  Gauge,
   GitCompareArrows,
   Heart,
   History,
@@ -43,7 +45,8 @@ export type StaffDashboardSlug =
   | 'veterinarian'
   | 'cashier'
   | 'pet-assistant'
-  | 'front-desk';
+  | 'front-desk'
+  | 'developer';
 
 /**
  * Superadmin and Admin share the 'admin' dashboard - they share the same
@@ -60,6 +63,7 @@ export const ROLE_TO_DASHBOARD_SLUG: Record<StaffRole, StaffDashboardSlug> = {
   Cashier: 'cashier',
   'Pet Assistant': 'pet-assistant',
   'Front Desk': 'front-desk',
+  Developer: 'developer',
 };
 
 export interface DashboardTileConfig {
@@ -172,6 +176,16 @@ export const STAFF_DASHBOARD_CONFIG: Record<
             description:
               'Restore or permanently delete archived products, staff, and customers.',
             to: '/staff/admin/archive',
+          },
+          {
+            title: 'Bug Reports & Feature Requests',
+            description:
+              'Every bug report or feature request submitted from the mascot widget.',
+            to: '/staff/developer/bug-reports',
+            // Superadmin-only oversight - Admin is not in BUG_REPORT_MANAGER_ROLES
+            // server-side, so this tile is hidden from Admin to avoid a dead
+            // link (same pattern this interface's own roles comment documents).
+            roles: ['Superadmin'],
           },
         ],
       },
@@ -759,6 +773,28 @@ export const STAFF_DASHBOARD_CONFIG: Record<
       },
     ],
   },
+  developer: {
+    heading: 'Developer dashboard',
+    sections: [
+      {
+        label: null,
+        tiles: [
+          {
+            title: 'Bug Reports & Feature Requests',
+            description:
+              'Every bug report or feature request submitted from the mascot widget.',
+            to: '/staff/developer/bug-reports',
+          },
+          {
+            title: 'Developer Dashboard',
+            description:
+              'Total and deactivated customer/staff accounts, and how many bug reports still need attention.',
+            to: '/staff/developer/dashboard',
+          },
+        ],
+      },
+    ],
+  },
 };
 
 /** Icon per admin dashboard section label, used by the Sidebar (AppShell) -
@@ -809,6 +845,8 @@ const TILE_ICONS: Record<string, LucideIcon> = {
   Trends: TrendingUp,
   'Vaccination Review': Syringe,
   'Food & Medication Items': Utensils,
+  'Bug Reports & Feature Requests': Bug,
+  'Developer Dashboard': Gauge,
 };
 
 export interface SidebarReadySection {
