@@ -35,15 +35,16 @@ const ALLOWED_VIEWER_ROLES = new Set(['Admin', 'Superadmin']);
 
 const SYSTEM_DEFAULT_OPTION = '';
 
-/** "Mark as no-show after" presets - mirrors the server's
- * NO_SHOW_AFTER_MINUTES_OPTIONS (booking.validator.ts), plus
- * 'closing' for the no_show_at_closing flag. */
-const NO_SHOW_THRESHOLD_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: '15', label: '15 minutes after the start time' },
-  { value: '30', label: '30 minutes after the start time' },
-  { value: '60', label: '1 hour after the start time' },
-  { value: '120', label: '2 hours after the start time' },
-  { value: 'closing', label: 'End of operating hours that day' },
+/** "Mark as no-show after" unit choices for the grace-period number input -
+ * the stored value (no_show_after_minutes) always stays in minutes,
+ * matching the server (booking.validator.ts), regardless of which unit is
+ * currently showing. */
+const NO_SHOW_AFTER_UNITS: Array<{
+  value: 'minutes' | 'hours';
+  label: string;
+}> = [
+  { value: 'minutes', label: 'minutes' },
+  { value: 'hours', label: 'hours' },
 ];
 
 interface FormState {
@@ -82,6 +83,10 @@ interface FormState {
   care_log_daily_report_enabled: boolean;
   customer_deactivation_auto_delete_days: number;
   no_show_after_minutes: number;
+  /** UI-only - which unit the grace-period number input is currently
+   * showing/accepting. no_show_after_minutes is always the source of truth,
+   * in minutes, regardless of this. */
+  no_show_after_unit: 'minutes' | 'hours';
   no_show_at_closing: boolean;
 }
 
@@ -120,6 +125,11 @@ function formStateFromPolicy(policy: PolicyConfiguration): FormState {
     customer_deactivation_auto_delete_days:
       policy.customer_deactivation_auto_delete_days,
     no_show_after_minutes: policy.no_show_after_minutes,
+    no_show_after_unit:
+      policy.no_show_after_minutes >= 60 &&
+      policy.no_show_after_minutes % 60 === 0
+        ? 'hours'
+        : 'minutes',
     no_show_at_closing: policy.no_show_at_closing,
   };
 }
@@ -155,6 +165,7 @@ const DOCUMENTED_DEFAULTS: FormState = {
   care_log_daily_report_enabled: true,
   customer_deactivation_auto_delete_days: 30,
   no_show_after_minutes: 30,
+  no_show_after_unit: 'minutes',
   no_show_at_closing: false,
 };
 
@@ -324,6 +335,17 @@ export function PolicyConfigurationPage({
     ) {
       const message =
         'The pay-at-checkout grace period must be a whole number of minutes from 0 to 59.';
+      setFormError(message);
+      throw new Error(message);
+    }
+
+    if (
+      !Number.isInteger(form.no_show_after_minutes) ||
+      form.no_show_after_minutes < 0 ||
+      form.no_show_after_minutes > 1440
+    ) {
+      const message =
+        'The no-show grace period must be between 0 minutes and 24 hours.';
       setFormError(message);
       throw new Error(message);
     }
@@ -601,38 +623,80 @@ export function PolicyConfigurationPage({
 
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Mark as no-show after</span>
-            <select
-              className={styles.input}
-              value={
-                form.no_show_at_closing
-                  ? 'closing'
-                  : String(form.no_show_after_minutes)
-              }
-              onChange={(event) => {
-                const { value } = event.target;
-                setForm((prev) =>
-                  value === 'closing'
-                    ? { ...prev, no_show_at_closing: true }
-                    : {
-                        ...prev,
-                        no_show_at_closing: false,
-                        no_show_after_minutes: Number(value),
-                      }
-                );
-              }}
-            >
-              {NO_SHOW_THRESHOLD_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className={styles.hoursRow}>
+              <input
+                className={styles.input}
+                type="number"
+                aria-label="No-show grace period"
+                min={0}
+                max={form.no_show_after_unit === 'hours' ? 24 : 1440}
+                step={1}
+                value={
+                  form.no_show_after_unit === 'hours'
+                    ? form.no_show_after_minutes / 60
+                    : form.no_show_after_minutes
+                }
+                onChange={(event) => {
+                  const entered = Number(event.target.value);
+                  setForm((prev) => ({
+                    ...prev,
+                    no_show_after_minutes:
+                      prev.no_show_after_unit === 'hours'
+                        ? entered * 60
+                        : entered,
+                  }));
+                }}
+              />
+              <select
+                className={styles.input}
+                aria-label="No-show grace period unit"
+                value={form.no_show_after_unit}
+                onChange={(event) => {
+                  const nextUnit = event.target.value as 'minutes' | 'hours';
+                  setForm((prev) => {
+                    if (nextUnit === prev.no_show_after_unit) return prev;
+                    const nextMinutes =
+                      nextUnit === 'hours'
+                        ? Math.round(prev.no_show_after_minutes / 60) * 60
+                        : prev.no_show_after_minutes;
+                    return {
+                      ...prev,
+                      no_show_after_unit: nextUnit,
+                      no_show_after_minutes: nextMinutes,
+                    };
+                  });
+                }}
+              >
+                {NO_SHOW_AFTER_UNITS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </label>
+
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={form.no_show_at_closing}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  no_show_at_closing: event.target.checked,
+                }))
+              }
+            />
+            <span>Auto-convert to no-show at the branch's closing hours</span>
+          </label>
+
           <p className={styles.copy}>
             Once a booking's start time passes it shows as <em>Late</em> - the
             customer can still be checked in or the booking started as usual. If
-            they still haven't arrived by this point it becomes a{' '}
-            <em>No-show</em>.
+            they still haven't arrived once the grace period above runs out, it
+            becomes a <em>No-show</em>. With the checkbox on, it instead waits
+            until the branch's closing hours that day, falling back to the grace
+            period above on a day with no meaningful closing time.
           </p>
         </section>
 
