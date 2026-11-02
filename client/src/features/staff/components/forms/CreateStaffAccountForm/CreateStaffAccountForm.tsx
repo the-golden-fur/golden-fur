@@ -20,6 +20,7 @@ const ALL_ROLES: StaffRole[] = [
   'Cashier',
   'Pet Assistant',
   'Front Desk',
+  'Developer',
 ];
 
 interface CreateStaffAccountFormProps {

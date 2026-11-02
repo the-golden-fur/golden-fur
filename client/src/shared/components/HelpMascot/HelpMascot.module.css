@@ -469,6 +469,32 @@
   transform: translate(-100%, -50%) translate(-64px, 39px);
 }
 
+/* Seven bubbles (customer portal with the "Report a bug / feature request"
+   link added: FAQs, three page links, Tutorial, "Change pet", "Hide me").
+   Same arc, 26px apart - tighter than six's 30px so the top one still
+   clears the tip bubble and the bottom one the screen edge. */
+.menu[data-items='7'] .link:nth-child(1) {
+  transform: translate(-100%, -50%) translate(-68px, -88px);
+}
+.menu[data-items='7'] .link:nth-child(2) {
+  transform: translate(-100%, -50%) translate(-72px, -62px);
+}
+.menu[data-items='7'] .link:nth-child(3) {
+  transform: translate(-100%, -50%) translate(-75px, -36px);
+}
+.menu[data-items='7'] .link:nth-child(4) {
+  transform: translate(-100%, -50%) translate(-76px, -10px);
+}
+.menu[data-items='7'] .link:nth-child(5) {
+  transform: translate(-100%, -50%) translate(-75px, 16px);
+}
+.menu[data-items='7'] .link:nth-child(6) {
+  transform: translate(-100%, -50%) translate(-72px, 42px);
+}
+.menu[data-items='7'] .link:nth-child(7) {
+  transform: translate(-100%, -50%) translate(-60px, 68px);
+}
+
 .mascot:hover .link,
 .mascot:focus-within .link {
   opacity: 1;
@@ -602,6 +628,34 @@
 
   .menu[data-items='4'] .link:nth-child(4) {
     transform: translate(-100%, -50%) translate(-53px, 29px);
+  }
+
+  .menu[data-items='7'] .link:nth-child(1) {
+    transform: translate(-100%, -50%) translate(-54px, -74px);
+  }
+
+  .menu[data-items='7'] .link:nth-child(2) {
+    transform: translate(-100%, -50%) translate(-57px, -52px);
+  }
+
+  .menu[data-items='7'] .link:nth-child(3) {
+    transform: translate(-100%, -50%) translate(-60px, -30px);
+  }
+
+  .menu[data-items='7'] .link:nth-child(4) {
+    transform: translate(-100%, -50%) translate(-60px, -8px);
+  }
+
+  .menu[data-items='7'] .link:nth-child(5) {
+    transform: translate(-100%, -50%) translate(-58px, 14px);
+  }
+
+  .menu[data-items='7'] .link:nth-child(6) {
+    transform: translate(-100%, -50%) translate(-55px, 36px);
+  }
+
+  .menu[data-items='7'] .link:nth-child(7) {
+    transform: translate(-100%, -50%) translate(-45px, 58px);
   }
 
   .link {

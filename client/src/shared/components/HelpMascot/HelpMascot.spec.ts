@@ -688,6 +688,65 @@ describe('HelpMascot - tutorial bubble', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tutorial' }));
     expect(onStartTutorial).toHaveBeenCalledTimes(1);
   });
+
+  it('custom change (bug report / feature request button): grows to seven bubbles with a third link plus Tutorial', () => {
+    const onStartTutorial = vi.fn();
+    render(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(HelpMascot, {
+          links: [
+            { label: 'Contact support', href: '#' },
+            { label: 'My Bookings', href: '/portal/bookings' },
+            { label: 'Report a bug / feature request', onClick: vi.fn() },
+          ],
+          onStartTutorial,
+        })
+      )
+    );
+
+    expect(bubbleLabels()).toEqual([
+      'FAQs',
+      'Contact support',
+      'My Bookings',
+      'Report a bug / feature request',
+      'Tutorial',
+      'Change pet',
+      'Hide me',
+    ]);
+    expect(
+      screen.getByRole('navigation', { name: 'Support links' })
+    ).toHaveAttribute('data-items', '7');
+  });
+
+  it('custom change (bug report / feature request button): a single link with no Tutorial stays at four bubbles (the staff menu)', () => {
+    const onClick = vi.fn();
+    render(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(HelpMascot, {
+          links: [{ label: 'Report a bug / feature request', onClick }],
+        })
+      )
+    );
+
+    expect(bubbleLabels()).toEqual([
+      'FAQs',
+      'Report a bug / feature request',
+      'Change pet',
+      'Hide me',
+    ]);
+    expect(
+      screen.getByRole('navigation', { name: 'Support links' })
+    ).toHaveAttribute('data-items', '4');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report a bug / feature request' })
+    );
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('HelpMascot - phones', () => {

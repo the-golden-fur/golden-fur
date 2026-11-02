@@ -17,6 +17,8 @@ import { billingRoutes } from './features/billing/billing.routes';
 import { creditsRoutes } from './features/credits/credits.routes';
 import { rewardsRoutes } from './features/rewards/rewards.routes';
 import { reportsRoutes } from './features/reports/reports.routes';
+import { bugReportsRoutes } from './features/bugReports/bugReports.routes';
+import { developerRoutes } from './features/developer/developer.routes';
 import LandingPage from './pages/LandingPage/LandingPage';
 import { BranchesPage } from './pages/BranchesPage/BranchesPage';
 import { PackagesPromosPage } from './pages/PackagesPromosPage/PackagesPromosPage';
@@ -43,6 +45,8 @@ export function AppRoutes() {
       {creditsRoutes}
       {rewardsRoutes}
       {reportsRoutes}
+      {bugReportsRoutes}
+      {developerRoutes}
       {customerAuthRoutes}
       {customerRoutes}
       <Route path="/" element={<LandingPage />} />

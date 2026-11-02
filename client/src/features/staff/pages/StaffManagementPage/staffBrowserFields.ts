@@ -18,6 +18,7 @@ const ALL_ROLES: StaffRole[] = [
   'Cashier',
   'Pet Assistant',
   'Front Desk',
+  'Developer',
 ];
 
 /** Branch is only offered as a filter for a Superadmin viewer, who's the

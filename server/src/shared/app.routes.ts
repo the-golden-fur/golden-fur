@@ -25,6 +25,8 @@ import landingRoutes from '../features/landing/landing.routes.ts';
 import jobsRoutes from '../features/jobs/jobs.routes.ts';
 import featureFlagsRoutes from '../features/featureFlags/featureFlags.routes.ts';
 import frontDeskRoutes from '../features/frontDesk/frontDesk.routes.ts';
+import bugReportsRoutes from '../features/bugReports/bugReports.routes.ts';
+import developerRoutes from '../features/developer/developer.routes.ts';
 
 const router = Router();
 
@@ -54,5 +56,7 @@ router.use(landingRoutes);
 router.use(jobsRoutes);
 router.use(featureFlagsRoutes);
 router.use(frontDeskRoutes);
+router.use(bugReportsRoutes);
+router.use(developerRoutes);
 
 export default router;

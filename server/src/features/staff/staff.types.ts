@@ -8,6 +8,7 @@ export const ALL_STAFF_ROLES = [
   'Cashier',
   'Pet Assistant',
   'Front Desk',
+  'Developer',
 ] as const;
 
 export type StaffRole = (typeof ALL_STAFF_ROLES)[number];

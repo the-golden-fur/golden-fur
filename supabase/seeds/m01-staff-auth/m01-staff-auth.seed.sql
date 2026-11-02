@@ -67,11 +67,13 @@ declare
   v_branch record;
   v_roles public.staff_role[] := array[
     'Superadmin', 'Admin', 'Supervisor', 'Receptionist',
-    'Groomer', 'Veterinarian', 'Cashier', 'Pet Assistant', 'Front Desk'
+    'Groomer', 'Veterinarian', 'Cashier', 'Pet Assistant', 'Front Desk',
+    'Developer'
   ]::public.staff_role[];
   v_role_slugs text[] := array[
     'superadmin', 'admin', 'supervisor', 'receptionist',
-    'groomer', 'veterinarian', 'cashier', 'petassistant', 'frontdesk'
+    'groomer', 'veterinarian', 'cashier', 'petassistant', 'frontdesk',
+    'developer'
   ];
   v_branch_slug text;
   v_role_idx int;
