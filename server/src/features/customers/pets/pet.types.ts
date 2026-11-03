@@ -38,6 +38,9 @@ export interface Pet {
   name: string;
   pet_type: PetType;
   breed_id: string | null;
+  /** Typed-in breed when it isn't in the breeds table - mutually exclusive
+   * with breed_id (...20261103002_custom_pets_breed_other.sql). */
+  breed_other: string | null;
   photo_url: string | null;
   gender: PetGender | null;
   date_of_birth: string | null;

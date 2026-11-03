@@ -30,6 +30,33 @@ describe('createPetValidator (customer-facing)', () => {
     expect(result.success).toBe(true);
   });
 
+  it('breed override: accepts a typed-in breed_other, trimmed', () => {
+    const result = createPetValidator.safeParse({
+      name: 'Buddy',
+      pet_type: 'Dog',
+      breed_other: '  Azawakh ',
+      gender: 'Male',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.breed_other).toBe('Azawakh');
+  });
+
+  it('breed override: rejects a blank or over-80-character breed_other', () => {
+    const base = { name: 'Buddy', pet_type: 'Dog', gender: 'Male' };
+
+    expect(
+      createPetValidator.safeParse({ ...base, breed_other: '   ' }).success
+    ).toBe(false);
+    expect(
+      createPetValidator.safeParse({ ...base, breed_other: 'x'.repeat(81) })
+        .success
+    ).toBe(false);
+    expect(
+      createPetValidator.safeParse({ ...base, breed_other: null }).success
+    ).toBe(false);
+  });
+
   it('requires gender when adding a pet', () => {
     const result = createPetValidator.safeParse({
       name: 'Buddy',
@@ -290,6 +317,19 @@ describe('updatePetValidator (customer-facing)', () => {
       photo_url: null,
     });
     expect(result.success).toBe(true);
+  });
+
+  it('breed override: accepts switching to a typed-in breed, and clearing breed_other to null', () => {
+    expect(
+      updatePetValidator.safeParse({ breed_id: null, breed_other: 'Azawakh' })
+        .success
+    ).toBe(true);
+    expect(
+      updatePetValidator.safeParse({
+        breed_id: '11111111-1111-4111-8111-111111111111',
+        breed_other: null,
+      }).success
+    ).toBe(true);
   });
 
   it('rejects an unrecognized field', () => {
