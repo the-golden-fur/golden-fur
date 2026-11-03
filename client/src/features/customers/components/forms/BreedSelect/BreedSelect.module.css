@@ -52,6 +52,23 @@
   background: var(--color-badge-bg-gold);
 }
 
+.otherDivider {
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-0-5);
+  padding-top: var(--space-0-5);
+}
+
+.otherNote,
+.hint {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.hint {
+  display: block;
+  margin-top: var(--space-0-5);
+}
+
 .empty {
   color: var(--color-text-muted);
   font-size: var(--text-sm);

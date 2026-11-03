@@ -112,9 +112,82 @@ describe('PetForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
 
     expect(
-      await screen.findByText('Please select a breed.')
+      await screen.findByText('Please select or enter a breed.')
     ).toBeInTheDocument();
     expect(createPet).not.toHaveBeenCalled();
+  });
+
+  it('breed override: an unlisted breed can be typed in and is sent as breed_other, not breed_id', async () => {
+    vi.mocked(createPet).mockResolvedValue({
+      data: { id: 'pet-1' } as never,
+      error: null,
+    });
+
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Buddy' },
+    });
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: '  Azawakh ' } });
+    fireEvent.click(
+      await screen.findByRole('button', { name: /use "azawakh"/i })
+    );
+
+    expect(breedInput).toHaveValue('Azawakh');
+    expect(screen.getByText('Not in our breed list')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Gender'), {
+      target: { value: 'Female' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /add pet/i }));
+
+    await vi.waitFor(() =>
+      expect(createPet).toHaveBeenCalledWith('customer-1', 'token', {
+        name: 'Buddy',
+        pet_type: 'Dog',
+        breed_other: 'Azawakh',
+        gender: 'Female',
+      })
+    );
+  });
+
+  it('breed override: no "Use ..." option when the typed text exactly matches a listed breed', async () => {
+    render(
+      createElement(PetForm, {
+        customerId: 'customer-1',
+        accessToken: 'token',
+        onCreated: vi.fn(),
+      })
+    );
+
+    await screen.findByRole('option', { name: 'Dog' });
+    fireEvent.change(screen.getByLabelText('Pet Type'), {
+      target: { value: 'Dog' },
+    });
+
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, {
+      target: { value: 'labrador retriever' },
+    });
+
+    expect(await screen.findByText('Labrador Retriever')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^use "/i })
+    ).not.toBeInTheDocument();
   });
 
   it('blocks submission when no gender is selected', async () => {

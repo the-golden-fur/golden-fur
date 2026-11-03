@@ -64,6 +64,8 @@ export function PetForm({
   const [petTypeOptions, setPetTypeOptions] = useState<PetTypeRow[]>([]);
   const [petType, setPetType] = useState<PetType | ''>('');
   const [breedId, setBreedId] = useState<string | null>(null);
+  // Typed-in breed when it isn't listed - set instead of breedId, never both.
+  const [breedOther, setBreedOther] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [gender, setGender] = useState<PetGender | ''>('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -134,8 +136,8 @@ export function PetForm({
       return;
     }
 
-    if (!breedId) {
-      setError('Please select a breed.');
+    if (!breedId && !breedOther) {
+      setError('Please select or enter a breed.');
       return;
     }
 
@@ -172,7 +174,8 @@ export function PetForm({
     const payload: PetCreatePayloadStaff = {
       name: name.trim(),
       pet_type: petType,
-      breed_id: breedId,
+      ...(breedId ? { breed_id: breedId } : {}),
+      ...(!breedId && breedOther ? { breed_other: breedOther } : {}),
       gender,
       ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
       ...(isStaff && weightKg != null ? { weight_kg: weightKg } : {}),
@@ -212,6 +215,7 @@ export function PetForm({
     setName('');
     setPetType('');
     setBreedId(null);
+    setBreedOther(null);
     setPhotoFile(null);
     setGender('');
     setDateOfBirth('');
@@ -244,6 +248,7 @@ export function PetForm({
           onChange={(event) => {
             setPetType(event.target.value as PetType);
             setBreedId(null);
+            setBreedOther(null);
           }}
         >
           <option value="">Select a pet type</option>
@@ -261,6 +266,8 @@ export function PetForm({
             petType={petType}
             value={breedId}
             onChange={setBreedId}
+            otherValue={breedOther}
+            onOtherChange={setBreedOther}
           />
         ) : (
           <input
