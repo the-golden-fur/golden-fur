@@ -51,8 +51,22 @@ const ROLE_TIMEOUT_MS: Record<string, number> = {
   'Front Desk': 4 * 60 * 60 * 1000,
 };
 
-function requiresMfa(role: string | null) {
+function isMfaDefaultOnRole(role: string | null) {
   return Boolean(role && MANDATORY_MFA_ROLES.has(role));
+}
+
+// "Don't show this again" is per-account (keyed by user id) and survives
+// sign-out; plain "Maybe later" only lasts for this browser session, so the
+// reminder comes back on the next login.
+const MFA_REMINDER_DISMISSED_KEY = 'staffMfaReminderDismissed';
+const MFA_REMINDER_SNOOZED_KEY = 'staffMfaReminderSnoozed';
+
+function isMfaReminderHidden(userId: string) {
+  return (
+    window.localStorage.getItem(`${MFA_REMINDER_DISMISSED_KEY}:${userId}`) ===
+      'true' ||
+    window.sessionStorage.getItem(MFA_REMINDER_SNOOZED_KEY) === 'true'
+  );
 }
 
 export function StaffAuthGuard() {
@@ -83,10 +97,14 @@ export function StaffAuthGuard() {
   // effect re-fetches after Settings > Profile changes the avatar/name,
   // without needing a full reload.
   const [identityRefreshKey, setIdentityRefreshKey] = useState(0);
-  // null = not yet known. Drives whether an Admin/Superadmin without a TOTP
-  // factor sees the mandatory setup popup instead of being redirected to a
-  // challenge page that would 400 with "No TOTP factor found".
+  // null = not yet known. Drives whether a default-on MFA role without a
+  // TOTP factor sees the optional setup reminder, and keeps anyone without
+  // a factor from being redirected to a challenge page that would 400 with
+  // "No TOTP factor found".
   const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null);
+  // Bumped when the reminder is dismissed so isMfaReminderHidden re-reads
+  // storage on the next render.
+  const [, setMfaReminderDismissals] = useState(0);
   // 'loading' until getStaffProfile resolves. A customer session reaching
   // /staff directly is a valid Supabase session with no staff_profiles row -
   // GET /staff/:id 403s for it, which must be treated as "not staff" rather
@@ -182,28 +200,25 @@ export function StaffAuthGuard() {
   // already honored a valid device token for this browser. Mandatory roles
   // never get a trusted-device row issued for them in the first place (the
   // checkbox is hidden for them - see TotpChallengeForm), so this can only
-  // ever exempt the voluntary-MFA branch below, never requiresMfa(role).
-  const isTrustedDevice = Boolean(getStoredDeviceToken('staff'));
+  // ever exempt other roles, never a default-on one.
+  const isTrustedDevice =
+    Boolean(getStoredDeviceToken('staff')) && !isMfaDefaultOnRole(role);
 
-  // Mandatory roles always need aal2. Everyone else only needs it once
-  // they've actually enrolled (voluntarily, via Settings) - MFA being on
-  // must be challenged every login regardless of whether it was forced or
-  // opted into, unless this browser already has a trusted device on file.
-  const needsAal2 =
-    (requiresMfa(role) && aal !== 'aal2') ||
-    (mfaEnrolled === true && aal !== 'aal2' && !isTrustedDevice);
+  // MFA is optional for every role, but once an account has enrolled it
+  // must be challenged every login, unless this browser already has a
+  // trusted device on file. Direct/restored sessions (no login-form flag)
+  // wait for the enrollment check before deciding - redirecting before
+  // knowing whether a factor exists would 400 with "No TOTP factor found".
+  const needsAal2 = mfaEnrolled === true && aal !== 'aal2' && !isTrustedDevice;
 
-  // Direct/restored sessions (no login-form flag): wait for the enrollment
-  // check before deciding. Redirecting to the challenge page before knowing
-  // whether a factor exists would 400 with "No TOTP factor found"; instead,
-  // not-yet-enrolled Admin/Superadmin get the mandatory setup popup below.
-  const showMfaSetupModal = needsAal2 && mfaEnrolled === false;
+  // Default-on roles that haven't enrolled get a dismissible reminder
+  // instead of being forced through setup.
+  const showMfaSetupModal =
+    isMfaDefaultOnRole(role) &&
+    mfaEnrolled === false &&
+    !isMfaReminderHidden(user.id);
 
-  if (
-    needsAal2 &&
-    mfaEnrolled === true &&
-    location.pathname !== '/staff/mfa/verify'
-  ) {
+  if (needsAal2 && location.pathname !== '/staff/mfa/verify') {
     return <Navigate to="/staff/mfa/verify" replace />;
   }
 
@@ -245,6 +260,16 @@ export function StaffAuthGuard() {
           onEnrolled={() => {
             window.sessionStorage.removeItem('staffMfaPending');
             setMfaEnrolled(true);
+          }}
+          onDismiss={(dontShowAgain) => {
+            if (dontShowAgain) {
+              window.localStorage.setItem(
+                `${MFA_REMINDER_DISMISSED_KEY}:${user.id}`,
+                'true'
+              );
+            }
+            window.sessionStorage.setItem(MFA_REMINDER_SNOOZED_KEY, 'true');
+            setMfaReminderDismissals((count) => count + 1);
           }}
         />
       ) : null}

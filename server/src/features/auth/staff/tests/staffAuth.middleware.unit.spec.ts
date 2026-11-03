@@ -9,8 +9,16 @@ import { requireMfa } from '../middleware/requireMfa/requireMfa.middleware';
 vi.mock('../../../../config/supabase/supabase.config', () => ({
   supabase: {
     from: vi.fn(),
+    auth: { admin: { mfa: { listFactors: vi.fn() } } },
   },
 }));
+
+function mockFactors(statuses: string[]) {
+  vi.mocked(supabase.auth.admin.mfa.listFactors).mockResolvedValue({
+    data: { factors: statuses.map((status) => ({ status })) },
+    error: null,
+  } as never);
+}
 
 describe('requireRole middleware', () => {
   let req: AuthenticatedRequest;
@@ -116,8 +124,9 @@ describe('requireMfa middleware', () => {
   });
 
   it.each(['Admin', 'Supervisor', 'Superadmin'])(
-    'blocks %s when the session is not aal2',
+    'blocks an enrolled %s when the session is not aal2',
     async (role) => {
+      mockFactors(['verified']);
       const req = {
         user: { sub: 'staff-1', role, aal: 'aal1' },
       } as AuthenticatedRequest;
@@ -129,6 +138,35 @@ describe('requireMfa middleware', () => {
       expect(error.statusCode).toBe(403);
     }
   );
+
+  it.each(['Admin', 'Supervisor', 'Superadmin'])(
+    'allows an unenrolled %s at aal1 (MFA is optional)',
+    async (role) => {
+      mockFactors(['unverified']);
+      const req = {
+        user: { sub: 'staff-1', role, aal: 'aal1' },
+      } as AuthenticatedRequest;
+
+      await requireMfa(req, {} as Response, next as NextFunction);
+
+      expect(next).toHaveBeenCalledWith();
+    }
+  );
+
+  it('fails closed when the factor lookup errors', async () => {
+    vi.mocked(supabase.auth.admin.mfa.listFactors).mockResolvedValue({
+      data: null,
+      error: new Error('boom'),
+    } as never);
+    const req = {
+      user: { sub: 'staff-1', role: 'Admin', aal: 'aal1' },
+    } as AuthenticatedRequest;
+
+    await requireMfa(req, {} as Response, next as NextFunction);
+
+    const error = next.mock.calls[0][0] as Error & { statusCode?: number };
+    expect(error.statusCode).toBe(403);
+  });
 
   it.each(['Admin', 'Supervisor', 'Superadmin'])(
     'allows %s when the session is aal2',
@@ -180,6 +218,7 @@ describe('requireMfa middleware', () => {
   });
 
   it('ignores the JWT "authenticated" postgres-role claim and resolves the real staff role instead', async () => {
+    mockFactors(['verified']);
     const req = {
       user: { sub: 'staff-1', role: 'authenticated', aal: 'aal1' },
     } as AuthenticatedRequest;
