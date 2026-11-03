@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { act } from 'react';
@@ -124,6 +125,7 @@ describe('StaffAuthGuard', () => {
   afterEach(() => {
     vi.useRealTimers();
     window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
   it('redirects unauthenticated staff to login', () => {
@@ -243,7 +245,7 @@ describe('StaffAuthGuard', () => {
     ).toHaveAttribute('href', '/staff/grooming/queue');
   });
 
-  it('shows the mandatory MFA setup popup for an Admin without an enrolled factor, without redirecting away', async () => {
+  it('shows the optional MFA reminder popup for an Admin without an enrolled factor, without redirecting away', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: { role: 'Admin', mfa_enrolled: false },
       error: null,
@@ -269,10 +271,46 @@ describe('StaffAuthGuard', () => {
 
     expect(
       await screen.findByRole('dialog', {
-        name: /set up multi-factor authentication/i,
+        name: /turn on multi-factor authentication/i,
       })
     ).toBeInTheDocument();
     expect(screen.getByText('Protected staff area')).toBeInTheDocument();
+  });
+
+  it('hides the MFA reminder for good once "Do not show again" is ticked', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: false },
+      error: null,
+    });
+    vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
+      data: buildProfile({ role: 'Admin' }),
+      error: null,
+    });
+
+    renderGuard(
+      createAuthValue({
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_in: 3600,
+          token_type: 'bearer',
+          user: { id: 'user-1', email: 'admin@example.com' },
+        },
+        user: { id: 'user-1', email: 'admin@example.com' },
+        accessToken: 'access',
+      } as Partial<AuthContextValue> as AuthContextValue)
+    );
+
+    await screen.findByRole('dialog', {
+      name: /turn on multi-factor authentication/i,
+    });
+    await userEvent.click(screen.getByLabelText(/don't show this again/i));
+    await userEvent.click(screen.getByRole('button', { name: /maybe later/i }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      window.localStorage.getItem('staffMfaReminderDismissed:user-1')
+    ).toBe('true');
   });
 
   it('redirects an already-enrolled Superadmin needing aal2 to the challenge page', async () => {
@@ -302,7 +340,7 @@ describe('StaffAuthGuard', () => {
     expect(await screen.findByText('MFA challenge')).toBeInTheDocument();
   });
 
-  it('shows the mandatory MFA setup popup for an unenrolled Supervisor (spec requires Admin + Supervisor)', async () => {
+  it('shows the optional MFA reminder popup for an unenrolled Supervisor (spec requires Admin + Supervisor)', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: { role: 'Supervisor', mfa_enrolled: false },
       error: null,
@@ -331,12 +369,12 @@ describe('StaffAuthGuard', () => {
 
     expect(
       await screen.findByRole('dialog', {
-        name: /set up multi-factor authentication/i,
+        name: /turn on multi-factor authentication/i,
       })
     ).toBeInTheDocument();
   });
 
-  it('shows the mandatory MFA setup popup for an unenrolled Front Desk staff member', async () => {
+  it('shows the optional MFA reminder popup for an unenrolled Front Desk staff member', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
       data: { role: 'Front Desk', mfa_enrolled: false },
       error: null,
@@ -362,7 +400,7 @@ describe('StaffAuthGuard', () => {
 
     expect(
       await screen.findByRole('dialog', {
-        name: /set up multi-factor authentication/i,
+        name: /turn on multi-factor authentication/i,
       })
     ).toBeInTheDocument();
   });

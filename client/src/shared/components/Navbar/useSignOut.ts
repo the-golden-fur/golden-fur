@@ -36,6 +36,8 @@ export function useSignOut(role: ThemeRole) {
     await signOut();
     window.sessionStorage.removeItem('staffMfaPending');
     window.sessionStorage.removeItem('customerMfaPending');
+    // "Maybe later" on the MFA reminder only lasts until sign-out.
+    window.sessionStorage.removeItem('staffMfaReminderSnoozed');
     navigate(LOGIN_PATH_BY_ROLE[role], { replace: true });
   };
 

@@ -51,10 +51,15 @@ export async function requireMfa(
     if (req.user) req.user.role = role;
   }
 
-  if (MANDATORY_MFA_ROLES.has(role as string)) {
-    const aal = req.user?.aal as string | undefined;
+  // MFA is optional for every role (default-on roles only get a login
+  // reminder - see MfaSetupModal), but once one of these roles *has*
+  // enrolled, an aal1 session must not get through: only a real verify
+  // reaches aal2, and they never get a trusted-device bypass.
+  const aal = req.user?.aal as string | undefined;
+  if (MANDATORY_MFA_ROLES.has(role as string) && aal !== 'aal2') {
+    const enrolled = await hasVerifiedFactor(userId);
 
-    if (aal !== 'aal2') {
+    if (enrolled !== false) {
       const forbiddenError = new Error('MFA required');
       (forbiddenError as Error & { statusCode?: number }).statusCode = 403;
       return next(forbiddenError);
@@ -62,4 +67,17 @@ export async function requireMfa(
   }
 
   return next();
+}
+
+/** null = lookup failed, treated as enrolled (fail closed). */
+async function hasVerifiedFactor(userId: string): Promise<boolean | null> {
+  const { data, error } = await supabase.auth.admin.mfa.listFactors({
+    userId,
+  });
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data.factors.some((factor) => factor.status === 'verified');
 }
