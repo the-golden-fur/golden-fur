@@ -24,6 +24,14 @@ export const VETERINARY_SERVICE_CATALOG_ROLES: readonly string[] = [
   'Superadmin',
 ];
 
+export const VETERINARY_SERVICE_CATALOG_READ_ROLES: readonly string[] = [
+  ...VETERINARY_SERVICE_CATALOG_ROLES,
+  'Receptionist',
+  'Front Desk',
+  'Admin',
+  'Supervisor',
+];
+
 /** Array element shape stored on consultations.medications (#63 migration).
  * #117: medicine_type/frequency/duration added so this row is a real
  * prescription (medicine type, dosage, frequency), not just name+dose - all

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement, Fragment } from 'react';
 import { MemoryRouter, useLocation, useSearchParams } from 'react-router';
@@ -615,9 +615,14 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('flags MFA as required but not yet set up for a mandatory staff role, without rendering its own enroll panel', async () => {
+  it('offers optional setup for an unenrolled default-on MFA role', async () => {
     vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
-      data: { role: 'Admin', mfa_enrolled: false },
+      data: {
+        role: 'Admin',
+        mfa_enrolled: false,
+        methods: { authenticator: false, email: false },
+        preferred_method: 'authenticator',
+      },
       error: null,
     });
 
@@ -625,16 +630,59 @@ describe('SettingsPage', () => {
     await goToSecurityTab();
 
     expect(
-      await screen.findByText(/required for your role/i)
+      await screen.findByText(/optional, but recommended for your role/i)
     ).toBeInTheDocument();
-    // The mandatory MfaSetupModal (rendered by StaffAuthGuard, not this page)
-    // owns enrollment for Admin/Superadmin exclusively. A second enroll panel
-    // here would race it - each instance's enrollMfa() call invalidates
-    // whatever QR/key the user just scanned from the other one.
-    expect(mfaApi.enrollMfa).not.toHaveBeenCalled();
     expect(
-      screen.queryByRole('button', { name: /confirm mfa/i })
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', {
+        name: /set up multi-factor authentication/i,
+      })
+    ).toBeInTheDocument();
+    // The enroll flow only mounts once the user opens it.
+    expect(mfaApi.enrollMfa).not.toHaveBeenCalled();
+  });
+
+  it('turns MFA off for a default-on role after confirming', async () => {
+    vi.mocked(mfaApi.getMfaStatus).mockResolvedValue({
+      data: {
+        role: 'Admin',
+        mfa_enrolled: true,
+        methods: { authenticator: true, email: true },
+        preferred_method: 'authenticator',
+      },
+      error: null,
+    });
+    vi.mocked(mfaApi.unenrollMfa).mockResolvedValue({
+      data: { removed: true },
+      error: null,
+    });
+
+    renderPage('staff');
+    await goToSecurityTab();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /turn off mfa/i })
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: /turn off multi-factor authentication/i,
+    });
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: /turn off mfa/i })
+    );
+
+    await waitFor(() =>
+      expect(mfaApi.unenrollMfa).toHaveBeenNthCalledWith(
+        2,
+        'staff',
+        'access',
+        'authenticator'
+      )
+    );
+    expect(mfaApi.unenrollMfa).toHaveBeenNthCalledWith(
+      1,
+      'staff',
+      'access',
+      'email'
+    );
   });
 
   it('offers optional setup for a customer that is not enrolled', async () => {

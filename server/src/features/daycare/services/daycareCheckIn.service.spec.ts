@@ -179,7 +179,10 @@ describe('daycareCheckIn.service (#65)', () => {
         branch_id: 'branch-makati',
         cage_id: 'cage-1',
       });
-      expect(startBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
+      expect(startBooking).toHaveBeenCalledWith({
+        bookingId: 'booking-1',
+        staffId: 'staff-1',
+      });
 
       vi.useRealTimers();
     });

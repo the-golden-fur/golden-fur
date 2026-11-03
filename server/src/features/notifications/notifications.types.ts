@@ -62,6 +62,12 @@ export const NOTIFICATION_EVENT_TYPES = [
   /** Same migration: back to the requester once their day-off request is
    * approved or denied. */
   'day_off_reviewed',
+  /** Custom change (bug report / feature request button, migration
+   * 20261102002): fires to every Developer when a customer or staff member
+   * submits a bug report or feature request from the mascot widget - see
+   * notification.service.ts's notifyStaffRole and
+   * bugReports.service.ts's createBugReport. */
+  'bug_report_submitted',
 ] as const;
 
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];

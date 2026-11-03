@@ -22,7 +22,6 @@ const DOWNPAYMENT_TYPES = ['Flat', 'Percentage'] as const;
 const CREDIT_EXPIRY_MODES = ['none', 'rolling', 'fixed_date'] as const;
 const CREDIT_REVIEW_MODES = ['Automatic', 'Manual'] as const;
 const CREDIT_REVIEW_DECISIONS = ['approved', 'denied'] as const;
-const NO_SHOW_AFTER_MINUTES_OPTIONS: readonly number[] = [15, 30, 60, 120];
 /** Which notice-period floor the availability endpoints apply. */
 const BOOKING_INTENTS = ['new_booking', 'reschedule'] as const;
 
@@ -180,24 +179,29 @@ const hotelPartOfDay = z.enum(['Morning', 'Afternoon', 'Evening']);
 const hotelMealTime = z.enum(['Morning', 'Noon', 'Afternoon', 'Evening']);
 const foodQuantityUnit = z.enum(FOOD_QUANTITY_UNITS);
 const medicationDoseUnit = z.enum(MEDICATION_DOSE_UNITS);
-// Custom change (Daycare-only clock-time scheduling): Daycare doesn't fit
-// the Morning/Noon/Afternoon/Evening day-period vocabulary, so its feeding/
-// walking/playing rows carry a literal clock time instead. Shared by both
-// categories at the schema level (meal_time/time_block and scheduled_time
-// are both just optional here); requireCareInstructionShapeMatchesCategory
-// below is what actually enforces "exactly one, and which one" per category.
+// Custom change (Daycare-only clock-time scheduling, later widened to a
+// per-row choice regardless of category): a feeding/walking/playing row can
+// carry a literal clock time instead of the Morning/Noon/Afternoon/Evening
+// day-period enum. Shared by both categories at the schema level
+// (meal_time/time_block and scheduled_time are both just optional here);
+// requireCareInstructionRowsSatisfyTimeXor below is what actually enforces
+// "exactly one of the two, whichever the row chose."
 const dayClockTime = z.string().regex(/^\d{2}:\d{2}$/, 'Expected "HH:MM"');
 
 /**
- * Enforces, per service_category, which of {meal_time/time_block,
- * scheduled_time} each feeding/walking/playing row must carry: Hotel rows
- * use the Morning/Noon/Afternoon/Evening enum (unchanged); Daycare rows use
- * a literal scheduled_time instead, since a few-hour Daycare visit doesn't
- * fit a vague day-period the way a multi-night Hotel stay does. A no-op for
- * any other category (hotel_preferences' own presence there is already
- * rejected by the caller's sibling check).
+ * Custom change (Care Instructions Add-modal, per-row time choice): each
+ * feeding/walking/playing row must set exactly one of {meal_time/
+ * time_block, scheduled_time} - never both, never neither - regardless of
+ * service_category. Hotel and Daycare rows may each use either
+ * representation now (the booking wizard's Care Instructions step lets the
+ * customer/staff member choose per row), so this only checks internal
+ * row self-consistency, matching the DB's own category-agnostic
+ * care_feeding_instructions_time_xor_check (and its walking/playing
+ * equivalents) rather than enforcing which category must use which field.
+ * A no-op for any other category (hotel_preferences' own presence there is
+ * already rejected by the caller's sibling check).
  */
-function requireCareInstructionShapeMatchesCategory(
+function requireCareInstructionRowsSatisfyTimeXor(
   input: {
     service_category: string;
     hotel_preferences?: {
@@ -216,8 +220,6 @@ function requireCareInstructionShapeMatchesCategory(
     return;
   }
 
-  const isDaycare = input.service_category === 'Daycare';
-
   const checkRows = (
     rows: Array<{
       meal_time?: string;
@@ -231,17 +233,13 @@ function requireCareInstructionShapeMatchesCategory(
       const hasEnum = row[enumField] !== undefined;
       const hasScheduledTime = row.scheduled_time !== undefined;
 
-      if (isDaycare && (hasEnum || !hasScheduledTime)) {
+      if (hasEnum === hasScheduledTime) {
         ctx.addIssue({
           code: 'custom',
           path: ['hotel_preferences', field, index],
-          message: `Daycare ${field} must set scheduled_time, not ${enumField}`,
-        });
-      } else if (!isDaycare && (!hasEnum || hasScheduledTime)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['hotel_preferences', field, index],
-          message: `Hotel ${field} must set ${enumField}, not scheduled_time`,
+          message: hasEnum
+            ? `${field} row must set exactly one of ${enumField}/scheduled_time, not both`
+            : `${field} row must set exactly one of ${enumField}/scheduled_time`,
         });
       }
     });
@@ -397,7 +395,7 @@ export const createBookingValidator = z
       });
     }
 
-    requireCareInstructionShapeMatchesCategory(input, ctx);
+    requireCareInstructionRowsSatisfyTimeXor(input, ctx);
   });
 
 /**
@@ -444,7 +442,7 @@ const bookingGroupItemValidator = z
       });
     }
 
-    requireCareInstructionShapeMatchesCategory(input, ctx);
+    requireCareInstructionRowsSatisfyTimeXor(input, ctx);
   });
 
 export const createBookingGroupValidator = z
@@ -602,14 +600,14 @@ export const updatePolicyValidator = z
     customer_deactivation_auto_delete_days: z.number().int().min(1).optional(),
     // Late booking status (20261015267): how long a booking stays Late
     // before it becomes No-show - the Policy page's "Mark as no-show after"
-    // presets, or wait until the branch closes.
-    no_show_after_minutes: z
-      .number()
-      .int()
-      .refine((value) => NO_SHOW_AFTER_MINUTES_OPTIONS.includes(value), {
-        message: 'Choose 15, 30, 60 or 120 minutes',
-      })
-      .optional(),
+    // number + unit field (custom change: per-branch no-show grace period
+    // and unit). NOT NULL in the DB (default 30), CHECK >= 0 - capped at a
+    // day here, matching cancellation_grace_minutes' range.
+    no_show_after_minutes: z.number().int().min(0).max(1440).optional(),
+    // Custom change: per-branch no-show grace period and unit. When on, a
+    // booking waits until the branch's closing time that day instead of (or
+    // as a fallback past) the minutes threshold above - see
+    // applyLateAndNoShowTransition.
     no_show_at_closing: z.boolean().optional(),
   })
   .strict()

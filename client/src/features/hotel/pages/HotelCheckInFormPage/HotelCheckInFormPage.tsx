@@ -46,12 +46,17 @@ export function HotelCheckInFormPage() {
     searchParams.get('from') === 'bookings' ||
     role === 'Receptionist' ||
     role === 'Front Desk';
-  const backTo = cameFromBookingsQueue
-    ? '/staff/bookings/queue'
-    : '/staff/hotel/queue';
-  const backLabel = cameFromBookingsQueue
-    ? 'Back to Bookings Queue'
-    : 'Back to Hotel Queue';
+  const cameFromFrontDeskQueue = searchParams.get('from') === 'front-desk';
+  const backTo = cameFromFrontDeskQueue
+    ? '/staff/front-desk/queue'
+    : cameFromBookingsQueue
+      ? '/staff/bookings/queue'
+      : '/staff/hotel/queue';
+  const backLabel = cameFromFrontDeskQueue
+    ? 'Back to Front Desk Queue'
+    : cameFromBookingsQueue
+      ? 'Back to Bookings Queue'
+      : 'Back to Hotel Queue';
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [isLoadingBooking, setIsLoadingBooking] = useState(true);

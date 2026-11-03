@@ -186,3 +186,10 @@ export interface UpdateMiscSaleRequest {
   bank_name?: BankName;
   payment_reference?: string;
 }
+
+/** A promo the cashier can add to an unpaid bill, with what it takes off. */
+export interface CounterPromoOption {
+  id: string;
+  name: string;
+  amount: number;
+}

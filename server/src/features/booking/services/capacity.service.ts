@@ -406,6 +406,24 @@ export async function listOverlappingPencilBookings({
   return (data ?? []) as PencilBookingRow[];
 }
 
+interface StaffOverlapRow {
+  id: string;
+  status: Booking['status'];
+  scheduled_end: string;
+  completed_at: string | null;
+}
+
+/** When a booking stopped holding its staff member: a finished one at its
+ * real completed_at, anything else at its estimate. Must match Check 2 in
+ * get_staff_availability (20261101293). This end can't be filtered in the
+ * query, as it differs per row, and a finished booking may have overrun its
+ * estimate - so the end-time check happens on the fetched rows. */
+function effectiveEnd(row: StaffOverlapRow): string {
+  return row.status === 'Completed'
+    ? (row.completed_at ?? row.scheduled_end)
+    : row.scheduled_end;
+}
+
 /**
  * Post-insert re-verification - the second half of #51's atomic-confirmation
  * requirement (AC-5). supabase-js has no client-side transactions, so two
@@ -418,16 +436,13 @@ export async function listOverlappingPencilBookings({
  * For Grooming/Veterinary, `staffConcurrency` is
  * policy_configurations.max_concurrent_bookings_per_staff for the booking's
  * branch (20260908178) - how many overlapping bookings one staff member may
- * hold. Defaults to 1; createBooking passes the value it already resolved
- * from the effective policy for Online bookings. (Walk-ins and the
- * down-payment settlement re-check keep the default of 1 - a walk-in or a
- * settlement racing another submission for a staff member at a branch that
- * has raised this above 1 is not a real scenario; the pre-insert
- * get_staff_availability RPC still honours the configured number for them.)
+ * hold. Required, so this can never be stricter than the
+ * get_staff_availability check that offered the slot: the two disagreeing
+ * deletes a booking for a slot that really was free.
  */
 export async function confirmCapacityAfterInsert(
   booking: Booking,
-  staffConcurrency = 1
+  staffConcurrency: number
 ): Promise<boolean> {
   if (
     booking.service_category === 'Grooming' ||
@@ -435,14 +450,13 @@ export async function confirmCapacityAfterInsert(
   ) {
     const query = supabase
       .from('bookings')
-      .select('id, created_at')
+      .select('id, created_at, status, scheduled_end, completed_at')
       .eq('assigned_staff_id', booking.assigned_staff_id)
       .in('status', ACTIVE_BOOKING_STATUSES)
       // Down-payment slot gate: unpaid down-payment holds don't reserve the
       // slot (matches get_staff_availability's Check 2, 20260829148).
       .or(SLOT_HOLD_PAID_OR_FILTER)
       .lt('scheduled_start', booking.scheduled_end)
-      .gt('scheduled_end', booking.scheduled_start)
       .order('created_at', { ascending: true })
       .order('id', { ascending: true });
 
@@ -450,7 +464,10 @@ export async function confirmCapacityAfterInsert(
 
     if (error) throwWithStatus(400, error.message);
 
-    const rows = (data ?? []) as Array<{ id: string }>;
+    const start = new Date(booking.scheduled_start).getTime();
+    const rows = ((data ?? []) as StaffOverlapRow[]).filter(
+      (row) => !(new Date(effectiveEnd(row)).getTime() <= start)
+    );
 
     // Same "rank by (created_at, id), keep the first `capacity`" tie-break the
     // Hotel/Daycare branches below use - capacity 1 unless an admin raised

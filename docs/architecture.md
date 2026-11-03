@@ -112,6 +112,8 @@ later and aren't part of this module numbering.)
 | M12    | Category-level discounts                      | Implemented (`discounts`)     |
 | M13    | Services, packages & pricing                  | Implemented (`maintenance`)   |
 | M14    | Daily sales reports / analytics               | Implemented (`reports`)       |
+| -      | Front Desk Queue (all services in one list)   | Implemented (`frontDesk`)     |
+| -      | Staff attendance (overrides availability)     | Implemented (`staff`)         |
 
 ## CI
 

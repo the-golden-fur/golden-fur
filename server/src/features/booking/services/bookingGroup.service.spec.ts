@@ -953,7 +953,7 @@ describe('bookingGroup.service (multi-booking checkout)', () => {
       })
     ).rejects.toMatchObject({
       statusCode: 409,
-      message: expect.stringContaining('Capacity was taken'),
+      message: expect.stringContaining('was just taken'),
     });
 
     // Both member bookings, not just the loser, were rolled back.

@@ -330,13 +330,75 @@ describe('capacity.service (#51)', () => {
       scheduled_end: WINDOW.scheduledEnd,
     } as unknown as Booking;
 
+    const racer = (fields: Record<string, unknown>) => ({
+      id: 'booking-racer',
+      status: 'Pending',
+      scheduled_end: WINDOW.scheduledEnd,
+      completed_at: null,
+      ...fields,
+    });
+    const mine = racer({ id: 'booking-mine' });
+    const beforeStart = new Date(
+      new Date(WINDOW.scheduledStart).getTime() - 60_000
+    ).toISOString();
+
+    it('ignores an earlier booking that really finished before this one starts', async () => {
+      queueFromResults({
+        data: [
+          racer({
+            status: 'Completed',
+            completed_at: beforeStart,
+            scheduled_end: WINDOW.scheduledEnd,
+          }),
+          mine,
+        ],
+        error: null,
+      });
+
+      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING, 1)).toBe(true);
+    });
+
+    it('still counts a finished booking that overran its estimate into this one', async () => {
+      queueFromResults({
+        data: [
+          racer({
+            status: 'Completed',
+            completed_at: WINDOW.scheduledEnd,
+            scheduled_end: beforeStart,
+          }),
+          mine,
+        ],
+        error: null,
+      });
+
+      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING, 1)).toBe(false);
+    });
+
+    it('falls back to the estimate for a finished booking with no completed_at', async () => {
+      queueFromResults({
+        data: [racer({ status: 'Completed' }), mine],
+        error: null,
+      });
+
+      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING, 1)).toBe(false);
+    });
+
+    it('ignores an unfinished booking whose estimate ends before this one starts', async () => {
+      queueFromResults({
+        data: [racer({ scheduled_end: beforeStart }), mine],
+        error: null,
+      });
+
+      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING, 1)).toBe(true);
+    });
+
     it('wins when its row is the earliest overlapping Confirmed row for the staff member', async () => {
       queueFromResults({
         data: [{ id: 'booking-mine' }, { id: 'booking-racer' }],
         error: null,
       });
 
-      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING)).toBe(true);
+      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING, 1)).toBe(true);
     });
 
     it('loses (deterministically) when another row was created first', async () => {
@@ -345,7 +407,7 @@ describe('capacity.service (#51)', () => {
         error: null,
       });
 
-      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING)).toBe(false);
+      expect(await confirmCapacityAfterInsert(GROOMING_BOOKING, 1)).toBe(false);
     });
 
     it('Daycare: wins only while ranked within capacity', async () => {
@@ -364,7 +426,7 @@ describe('capacity.service (#51)', () => {
         assigned_staff_id: null,
       } as unknown as Booking;
 
-      expect(await confirmCapacityAfterInsert(daycareBooking)).toBe(false);
+      expect(await confirmCapacityAfterInsert(daycareBooking, 1)).toBe(false);
     });
 
     it('wins when ranked within a raised staffConcurrency (max_concurrent_bookings_per_staff)', async () => {
@@ -393,7 +455,7 @@ describe('capacity.service (#51)', () => {
     it('excludes unpaid down-payment holds from the staff overlap re-count (down-payment slot gate)', async () => {
       queueFromResults({ data: [{ id: 'booking-mine' }], error: null });
 
-      await confirmCapacityAfterInsert(GROOMING_BOOKING);
+      await confirmCapacityAfterInsert(GROOMING_BOOKING, 1);
 
       expect(orCalls).toContain(
         'downpayment_required.eq.false,payment_status.neq.Pending'

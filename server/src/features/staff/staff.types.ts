@@ -8,6 +8,7 @@ export const ALL_STAFF_ROLES = [
   'Cashier',
   'Pet Assistant',
   'Front Desk',
+  'Developer',
 ] as const;
 
 export type StaffRole = (typeof ALL_STAFF_ROLES)[number];
@@ -37,6 +38,11 @@ export const UNAVAILABILITY_MANAGER_ROLES: readonly string[] = [
   'Supervisor',
   'Superadmin',
 ];
+
+export const STAFF_ATTENDANCE_STATUSES = ['Present', 'Absent', 'Late'] as const;
+
+/** Not the booking status of the same name - see 20261101295. */
+export type StaffAttendanceStatus = (typeof STAFF_ATTENDANCE_STATUSES)[number];
 
 /**
  * Roles that may only set Walk time/Playtime (not Feeding/Medications) when

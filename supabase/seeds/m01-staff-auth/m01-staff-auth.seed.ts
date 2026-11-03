@@ -75,7 +75,7 @@ export const BRANCH_SEEDS: BranchSeed[] = [
   },
 ];
 
-// 2 accounts per staff_role, per branch (2 branches x 9 roles x 2 = 36 total) - branch.roleN@goldenfur.com
+// 2 accounts per staff_role, per branch (2 branches x 10 roles x 2 = 40 total) - branch.roleN@goldenfur.com
 export const ROLE_SEEDS: { role: string; slug: string }[] = [
   { role: 'Superadmin', slug: 'superadmin' },
   { role: 'Admin', slug: 'admin' },
@@ -86,6 +86,7 @@ export const ROLE_SEEDS: { role: string; slug: string }[] = [
   { role: 'Cashier', slug: 'cashier' },
   { role: 'Pet Assistant', slug: 'petassistant' },
   { role: 'Front Desk', slug: 'frontdesk' },
+  { role: 'Developer', slug: 'developer' },
 ];
 
 function getClient() {

@@ -125,13 +125,42 @@ export async function createNotification(
 }
 
 /**
+ * Shared by notifyStaffRoleAtBranch/notifyStaffRole: fetches every matching
+ * staff_profiles row for a `staff_profiles` query already filtered by role
+ * (and, for the branch-scoped variant, branch), then fans out one
+ * createNotification call per row - best-effort per row, same as
+ * createNotification's own email leg - one recipient's failure doesn't stop
+ * the others from being notified.
+ */
+async function notifyMatchingStaff(
+  role: string,
+  staffIds: string[],
+  notificationParams: Omit<
+    CreateNotificationParams,
+    'recipientStaffId' | 'recipientCustomerId'
+  >
+): Promise<void> {
+  for (const staffId of staffIds) {
+    try {
+      await createNotification({
+        ...notificationParams,
+        recipientStaffId: staffId,
+      });
+    } catch (notifyError) {
+      console.error(
+        `Failed to notify staff ${staffId} (${role}):`,
+        notifyError
+      );
+    }
+  }
+}
+
+/**
  * Custom change (Hotel free-package trigger): every other createNotification
  * call site in this codebase already knows a single concrete recipient id -
  * there was no existing helper to notify "the receptionist" as a role. Fans
  * out one createNotification call per matching staff_profiles row (a branch
- * may have more than one Receptionist); best-effort per row, same as
- * createNotification's own email leg - one recipient's failure doesn't stop
- * the others from being notified.
+ * may have more than one Receptionist) via notifyMatchingStaff.
  */
 export async function notifyStaffRoleAtBranch(
   params: Omit<
@@ -158,16 +187,45 @@ export async function notifyStaffRoleAtBranch(
     return;
   }
 
-  for (const row of staff ?? []) {
-    try {
-      await createNotification({
-        ...notificationParams,
-        recipientStaffId: row.id as string,
-      });
-    } catch (notifyError) {
-      console.error(`Failed to notify staff ${row.id} (${role}):`, notifyError);
-    }
+  await notifyMatchingStaff(
+    role,
+    (staff ?? []).map((row) => row.id as string),
+    notificationParams
+  );
+}
+
+/**
+ * Custom change (bug report / feature request submissions): a
+ * branch-agnostic sibling of notifyStaffRoleAtBranch - reaches every staff
+ * member with the given role across every branch, for roles with no real
+ * branch affiliation (e.g. Developer, an engineering role) where a
+ * submission needs to reach all of them, not just one branch's.
+ */
+export async function notifyStaffRole(
+  params: Omit<
+    CreateNotificationParams,
+    'recipientStaffId' | 'recipientCustomerId'
+  > & {
+    role: string;
   }
+): Promise<void> {
+  const { role, ...notificationParams } = params;
+
+  const { data: staff, error } = await supabase
+    .from('staff_profiles')
+    .select('id')
+    .eq('role', role);
+
+  if (error) {
+    console.error(`Failed to list ${role} staff:`, error.message);
+    return;
+  }
+
+  await notifyMatchingStaff(
+    role,
+    (staff ?? []).map((row) => row.id as string),
+    notificationParams
+  );
 }
 
 interface InboxParams {

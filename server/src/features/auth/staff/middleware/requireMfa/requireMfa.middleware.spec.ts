@@ -7,6 +7,7 @@ import { requireMfa } from './requireMfa.middleware.ts';
 vi.mock('../../../../../config/supabase/supabase.config.ts', () => ({
   supabase: {
     from: vi.fn(),
+    auth: { admin: { mfa: { listFactors: vi.fn() } } },
   },
 }));
 
@@ -23,7 +24,11 @@ describe('requireMfa middleware', () => {
     expect(next).toHaveBeenCalledWith();
   });
 
-  it('blocks a Front Desk caller who has not reached aal2', async () => {
+  it('blocks an enrolled Front Desk caller who has not reached aal2', async () => {
+    vi.mocked(supabase.auth.admin.mfa.listFactors).mockResolvedValue({
+      data: { factors: [{ status: 'verified' }] },
+      error: null,
+    } as never);
     const req = {
       user: { sub: 'staff-1', role: 'Front Desk', aal: 'aal1' },
     } as unknown as AuthenticatedRequest;

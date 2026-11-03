@@ -20,6 +20,13 @@
   user-select: none;
 }
 
+/* The loader GIF's pixels are baked at authoring time (no dark-mode twin
+   exists), so dark mode is approximated by toning the art down rather than
+   leaving it blown-out bright against the dark background. */
+[data-color-mode='dark'] .icon {
+  filter: brightness(0.82) saturate(0.85) contrast(0.95);
+}
+
 .page .icon {
   width: 6rem;
   height: 6rem;

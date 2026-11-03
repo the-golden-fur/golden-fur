@@ -686,6 +686,10 @@ describe('mfaEnrollController', () => {
     vi.mocked(
       mfaEmailVerificationService.getMfaEmailVerification
     ).mockResolvedValue({ email: 'bound@example.com', verified: true });
+    vi.mocked(mfaMethodsService.getMfaMethodStatus).mockResolvedValue({
+      authenticator: true,
+      email: false,
+    });
     vi.mocked(mfaMethodsService.enrollMfaMethod).mockResolvedValue({
       factorId: 'email-factor',
     });
@@ -699,6 +703,35 @@ describe('mfaEnrollController', () => {
       'bound@example.com'
     );
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('blocks a mandatory-MFA role from enrolling email as its only factor', async () => {
+    const req = {
+      body: { method: 'email' },
+      headers: { authorization: 'Bearer staff-token' },
+      user: { sub: 'staff-id' },
+    } as any;
+    const res = mockResponse();
+
+    vi.mocked(supabaseAuthApi.getAuthUserEmail).mockResolvedValue(
+      'admin@example.com'
+    );
+    vi.mocked(supabaseAuthApi.getStaffRole).mockResolvedValue({
+      data: { role: 'Admin' },
+      error: null,
+    } as any);
+    vi.mocked(
+      mfaEmailVerificationService.getMfaEmailVerification
+    ).mockResolvedValue({ email: 'bound@example.com', verified: true });
+    vi.mocked(mfaMethodsService.getMfaMethodStatus).mockResolvedValue({
+      authenticator: false,
+      email: false,
+    });
+
+    await mfaEnrollController(req, res);
+
+    expect(mfaMethodsService.enrollMfaMethod).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
   });
 });
 
@@ -872,7 +905,7 @@ describe('mfaUnenrollController', () => {
     });
   });
 
-  it('rejects removing the authenticator method for a mandatory-MFA role, even when email is also enrolled', async () => {
+  it('lets a mandatory-MFA role turn MFA off, removing email along with the authenticator', async () => {
     const req = {
       body: { method: 'authenticator' },
       headers: { authorization: 'Bearer staff-token' },
@@ -884,15 +917,30 @@ describe('mfaUnenrollController', () => {
       data: { role: 'Admin' },
       error: null,
     } as any);
+    vi.mocked(mfaMethodsService.getMfaMethodStatus).mockResolvedValue({
+      authenticator: true,
+      email: true,
+    });
+    vi.mocked(mfaMethodsService.unenrollMfaMethod).mockResolvedValue({
+      error: null,
+    });
 
     await mfaUnenrollController(req, res);
 
-    // The authenticator factor is permanent for a mandatory role - this is
-    // checked before even looking at getMfaMethodStatus, since it's never
-    // negotiable regardless of what else is enrolled.
-    expect(mfaMethodsService.getMfaMethodStatus).not.toHaveBeenCalled();
-    expect(mfaMethodsService.unenrollMfaMethod).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(409);
+    // Never left email-only - see mfaUnenrollController.
+    expect(mfaMethodsService.unenrollMfaMethod).toHaveBeenNthCalledWith(
+      1,
+      mockUserClient,
+      'staff-id',
+      'email'
+    );
+    expect(mfaMethodsService.unenrollMfaMethod).toHaveBeenNthCalledWith(
+      2,
+      mockUserClient,
+      'staff-id',
+      'authenticator'
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 
   it('allows a mandatory-MFA role to remove email as long as authenticator is enrolled', async () => {
@@ -925,7 +973,7 @@ describe('mfaUnenrollController', () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it('rejects a mandatory-MFA role removing email if authenticator is somehow not enrolled (defensive check)', async () => {
+  it('lets a mandatory-MFA role remove a leftover email-only factor', async () => {
     const req = {
       body: { method: 'email' },
       headers: { authorization: 'Bearer staff-token' },
@@ -937,15 +985,18 @@ describe('mfaUnenrollController', () => {
       data: { role: 'Admin' },
       error: null,
     } as any);
-    vi.mocked(mfaMethodsService.getMfaMethodStatus).mockResolvedValue({
-      authenticator: false,
-      email: true,
+    vi.mocked(mfaMethodsService.unenrollMfaMethod).mockResolvedValue({
+      error: null,
     });
 
     await mfaUnenrollController(req, res);
 
-    expect(mfaMethodsService.unenrollMfaMethod).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(409);
+    expect(mfaMethodsService.unenrollMfaMethod).toHaveBeenCalledWith(
+      mockUserClient,
+      'staff-id',
+      'email'
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });
 

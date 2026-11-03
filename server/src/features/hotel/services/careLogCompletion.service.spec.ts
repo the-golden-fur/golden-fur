@@ -3,11 +3,13 @@ import {
   assertChecklistComplete,
   completeCareLogEntry,
   getCareLogEntries,
+  markOutstandingTasksMissed,
   reopenCareLogEntry,
   startCareLogEntry,
 } from './careLogCompletion.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { sendCareLogCompletedNotification } from './careLogNotifications.service.ts';
+import { recordBulkActivity } from './activityLog.service.ts';
 
 vi.mock('../../../config/supabase/supabase.config.ts', () => ({
   supabase: { from: vi.fn() },
@@ -278,6 +280,47 @@ describe('careLogCompletion.service (#76)', () => {
       const entries = await getCareLogEntries({ branchId: 'branch-1' });
 
       expect(entries[0].status).toBe('In Progress');
+    });
+  });
+
+  describe('markOutstandingTasksMissed (Front Desk Queue)', () => {
+    it('flips only due, unfinished tasks and records who skipped them', async () => {
+      const update = vi.fn();
+      const builder: Record<string, unknown> = {};
+      const inFilter = vi.fn(() => builder);
+      const lte = vi.fn(() => builder);
+      update.mockReturnValue(builder);
+      builder.eq = vi.fn(() => builder);
+      builder.in = inFilter;
+      builder.lte = lte;
+      builder.select = vi.fn().mockResolvedValue({
+        data: [
+          {
+            id: 'entry-1',
+            stay_id: 'stay-1',
+            description: 'Feeding',
+            stays: { branch_id: 'branch-1' },
+          },
+        ],
+        error: null,
+      });
+      vi.mocked(supabase.from).mockReturnValue({ update } as never);
+
+      await markOutstandingTasksMissed('stay-1', 'staff-1');
+
+      expect(update).toHaveBeenCalledWith({ status: 'Missed' });
+      expect(inFilter).toHaveBeenCalledWith('status', [
+        'Pending',
+        'In Progress',
+      ]);
+      expect(lte).toHaveBeenCalledWith('scheduled_date', expect.any(String));
+      expect(recordBulkActivity).toHaveBeenCalledWith([
+        expect.objectContaining({
+          action: 'task_missed',
+          actorStaffId: 'staff-1',
+          careLogEntryId: 'entry-1',
+        }),
+      ]);
     });
   });
 

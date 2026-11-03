@@ -1,6 +1,9 @@
 /**
- * Staff roles that must complete MFA (reach aal2) before touching MFA-gated
- * routes - the single source of truth requireMfa.middleware.ts,
+ * Staff roles with MFA on by default. Enrollment itself is optional for
+ * every role - these only get a login reminder to set it up - but once
+ * enrolled they must complete MFA (reach aal2) before touching MFA-gated
+ * routes, never get a trusted-device bypass, and can't drop to email-only.
+ * The single source of truth requireMfa.middleware.ts,
  * staffAuth.controller.ts's unenroll guard, and its "remember this device"
  * eligibility check all read from, so they can't drift out of sync with each
  * other the way requireMfa.middleware.ts and SecurityTab.tsx previously did

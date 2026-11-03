@@ -148,6 +148,12 @@
   border-color: var(--color-accent-gold-primary);
 }
 
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
 .petTitle {
   display: inline-flex;
   align-items: center;

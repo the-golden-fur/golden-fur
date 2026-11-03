@@ -1,3 +1,8 @@
+import {
+  branchLocalDate,
+  loadAttendanceMarks,
+  resolveStaffCheckInBlock,
+} from '../../staff/services/attendanceAvailability.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import type { AvailableStaff, ServiceCategory } from '../booking.types.ts';
 import {
@@ -900,9 +905,17 @@ export function resolveStaffRestDayWindow(timezone: string): {
     timeZone: timezone,
   }).format(new Date());
 
+  return resolveBranchDayWindow(today, timezone);
+}
+
+/** One branch-local calendar day as a UTC [start, end) window. */
+export function resolveBranchDayWindow(
+  date: string,
+  timezone: string
+): { start: Date; end: Date } {
   return {
-    start: zonedTimeToUtc(today, '00:00', timezone),
-    end: zonedTimeToUtc(addDaysToDateString(today, 1), '00:00', timezone),
+    start: zonedTimeToUtc(date, '00:00', timezone),
+    end: zonedTimeToUtc(addDaysToDateString(date, 1), '00:00', timezone),
   };
 }
 
@@ -954,12 +967,21 @@ export async function resolveCheckInBlockReason({
 
   if (error) throwWithStatus(400, error.message);
 
-  const block = (blocks as unknown as UnavailabilityBlockRow[] | null)?.[0];
-  if (!block) return null;
+  const blockRows = (blocks ?? []) as unknown as UnavailabilityBlockRow[];
+  const marks = await loadAttendanceMarks(
+    [assignedStaffId],
+    branchLocalDate(branchStatus.timezone)
+  );
+  const mark = marks.get(assignedStaffId);
 
-  const staffName = block.staff?.display_name ?? 'The assigned staff member';
-
-  return `${staffName} has an approved ${block.leave_type} today - check-in isn't available until they're back.`;
+  return resolveStaffCheckInBlock({
+    staffName:
+      blockRows[0]?.staff?.display_name ??
+      mark?.displayName ??
+      'The assigned staff member',
+    mark,
+    leaveTypes: blockRows.map((block) => block.leave_type),
+  });
 }
 
 /**
