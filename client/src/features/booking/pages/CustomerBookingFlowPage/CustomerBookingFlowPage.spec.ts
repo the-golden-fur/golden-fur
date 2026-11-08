@@ -21,12 +21,14 @@ import * as discountsApi from '../../../discounts/api/discounts.api';
 import * as veterinaryApi from '../../../veterinary/api/veterinary.api';
 import * as rewardsApi from '../../../rewards/api/rewards.api';
 import * as staffItemsApi from '../../../staffItems/api/staffItems.api';
+import { STORE_POLICIES_VERSION } from '../../components/StorePoliciesModal/storePoliciesAgreement';
 import { CustomerBookingFlowPage } from './CustomerBookingFlowPage';
 
 vi.mock('../../../customers/api/customer.api', () => ({
   listCustomerPets: vi.fn(),
   listCustomers: vi.fn(),
   getCustomerProfile: vi.fn(),
+  agreeToStorePolicies: vi.fn(),
 }));
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
@@ -1821,6 +1823,149 @@ describe('CustomerBookingFlowPage', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+  });
+
+  it('Store policies: agreeing with "Remember policies" saves the current version to the customer profile', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+    await user.click(
+      screen.getByLabelText('I have read and agree to the store policies')
+    );
+    await user.click(screen.getByLabelText(/Remember policies/));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(customerApi.agreeToStorePolicies).toHaveBeenCalledWith(
+      expect.any(String),
+      STORE_POLICIES_VERSION,
+      expect.any(String)
+    );
+
+    // Remembered: going Back and leaving Branch again asks nothing.
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    await user.click(screen.getByText('Back'));
+    await user.click(screen.getByText('Next'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('Store policies: agreeing without "Remember policies" saves nothing and asks again', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
+
+    expect(customerApi.agreeToStorePolicies).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    await user.click(screen.getByText('Back'));
+    await user.click(screen.getByText('Next'));
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+  });
+
+  it('Store policies: a customer who remembered the current version within 30 days skips the popup', async () => {
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        ...CUSTOMER,
+        store_policies_agreed_version: STORE_POLICIES_VERSION,
+        store_policies_agreed_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(customerApi.getCustomerProfile).toHaveBeenCalled()
+    );
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+  });
+
+  it('Store policies: a remembered agreement older than 30 days asks again', async () => {
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        ...CUSTOMER,
+        store_policies_agreed_version: STORE_POLICIES_VERSION,
+        store_policies_agreed_at: new Date(
+          Date.now() - 31 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+      },
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(customerApi.getCustomerProfile).toHaveBeenCalled()
+    );
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+  });
+
+  it('Store policies: an older agreed version asks again', async () => {
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        ...CUSTOMER,
+        store_policies_agreed_version: STORE_POLICIES_VERSION - 1,
+      },
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(customerApi.getCustomerProfile).toHaveBeenCalled()
+    );
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+  });
+
+  it('Store policies: "View store policies" (under the "Your booking" panel) opens a read-only copy', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'View store policies' })
+    );
+
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('I have read and agree to the store policies')
+    ).not.toBeInTheDocument();
+    expect(customerApi.agreeToStorePolicies).not.toHaveBeenCalled();
+  });
+
+  it('Store policies: the staff flow has no "View store policies" link', async () => {
+    renderStaffPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    expect(
+      screen.queryByRole('button', { name: 'View store policies' })
+    ).not.toBeInTheDocument();
   });
 
   it('Store policies: the staff flow leaves the Branch step with no popup', async () => {

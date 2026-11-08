@@ -13,6 +13,8 @@ import {
 import { InfoPopover } from '../../../../shared/components/InfoPopover/InfoPopover';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import {
+  agreeToStorePolicies,
+  getCustomerProfile,
   listCustomerPets,
   uploadPetCareItemPhoto,
 } from '../../../customers/api/customer.api';
@@ -48,6 +50,10 @@ import {
 } from '../../components/BookingSummaryPanel/BookingSummaryPanel';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StorePoliciesModal } from '../../components/StorePoliciesModal/StorePoliciesModal';
+import {
+  STORE_POLICIES_VERSION,
+  isStorePoliciesAgreementCurrent,
+} from '../../components/StorePoliciesModal/storePoliciesAgreement';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
@@ -724,6 +730,36 @@ export function CustomerBookingFlowPage() {
     };
   }, [isReceptionistMode, accessToken, user?.id]);
 
+  // A remembered store policies agreement (customer_profiles
+  // .store_policies_agreed_*) skips the popup for STORE_POLICIES_REMEMBER_DAYS,
+  // or until STORE_POLICIES_VERSION is bumped - see
+  // isStorePoliciesAgreementCurrent. Stays false until the profile loads (or
+  // if it fails to), so the worst case is being asked again, never skipping
+  // it. Customer portal only - the staff walk-in flow never shows the
+  // policies.
+  const [hasAgreedToStorePolicies, setHasAgreedToStorePolicies] =
+    useState(false);
+
+  useEffect(() => {
+    if (isReceptionistMode || !accessToken || !user?.id) return;
+
+    let isMounted = true;
+
+    void getCustomerProfile(user.id, accessToken).then((result) => {
+      if (!isMounted) return;
+      setHasAgreedToStorePolicies(
+        isStorePoliciesAgreementCurrent(
+          result.data?.store_policies_agreed_version,
+          result.data?.store_policies_agreed_at
+        )
+      );
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isReceptionistMode, accessToken, user?.id]);
+
   const canApplyDiscounts =
     isReceptionistMode &&
     viewerRole !== null &&
@@ -1124,7 +1160,11 @@ export function CustomerBookingFlowPage() {
     () => new Set<StepDef['key']>(['branch'])
   );
 
-  const [showStorePolicies, setShowStorePolicies] = useState(false);
+  // 'agree' = the must-agree popup leaving the Branch step; 'view' = the
+  // read-only copy behind the "View store policies" link.
+  const [storePoliciesMode, setStorePoliciesMode] = useState<
+    'agree' | 'view' | null
+  >(null);
   // Book before assessment: the notice shown when leaving the Pet step with
   // a pet staff have not assessed yet. Acknowledged once per pet, so going
   // Back and Next again doesn't nag.
@@ -2586,10 +2626,15 @@ export function CustomerBookingFlowPage() {
     if (!isCurrentStepValid) return;
 
     // Store policies: a customer leaving the Branch step has to agree to
-    // them first, every time - handleStorePoliciesAgree does the actual
-    // advance. Staff booking on a customer's behalf skip this.
-    if (!isReceptionistMode && currentStep.key === 'branch') {
-      setShowStorePolicies(true);
+    // them first - once per account (per STORE_POLICIES_VERSION), not per
+    // booking. handleStorePoliciesAgree does the actual advance. Staff
+    // booking on a customer's behalf skip this.
+    if (
+      !isReceptionistMode &&
+      currentStep.key === 'branch' &&
+      !hasAgreedToStorePolicies
+    ) {
+      setStorePoliciesMode('agree');
       return;
     }
 
@@ -2625,8 +2670,19 @@ export function CustomerBookingFlowPage() {
     advanceTo(currentStepIndex + 1);
   }
 
-  function handleStorePoliciesAgree() {
-    setShowStorePolicies(false);
+  function handleStorePoliciesAgree(remember: boolean) {
+    setStorePoliciesMode(null);
+    // Only "Remember policies" saves it to the account - without it the
+    // customer is asked again the next time they leave the Branch step.
+    // Optimistic: never block the booking on this save. If it fails, the
+    // profile still reads as not-agreed and the customer is simply asked
+    // again on their next booking.
+    if (remember) {
+      setHasAgreedToStorePolicies(true);
+      if (accessToken && user?.id) {
+        void agreeToStorePolicies(user.id, STORE_POLICIES_VERSION, accessToken);
+      }
+    }
     advanceTo(currentStepIndex + 1);
   }
 
@@ -6673,9 +6729,10 @@ export function CustomerBookingFlowPage() {
             </div>
           )}
 
-          {showStorePolicies ? (
+          {storePoliciesMode ? (
             <StorePoliciesModal
-              onClose={() => setShowStorePolicies(false)}
+              mode={storePoliciesMode}
+              onClose={() => setStorePoliciesMode(null)}
               onAgree={handleStorePoliciesAgree}
             />
           ) : null}
@@ -6733,6 +6790,15 @@ export function CustomerBookingFlowPage() {
             subtotal={summarySubtotal}
             reduction={discountAmount + promoDiscount}
           />
+          {!isReceptionistMode ? (
+            <button
+              type="button"
+              className={styles.policiesLink}
+              onClick={() => setStorePoliciesMode('view')}
+            >
+              View store policies
+            </button>
+          ) : null}
         </div>
       </div>
     </main>

@@ -3,7 +3,10 @@ import multer from 'multer';
 import { supabase } from '../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
 import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
-import { updateCustomerProfileValidator } from './modules/validators/customer.validator.ts';
+import {
+  agreeToStorePoliciesValidator,
+  updateCustomerProfileValidator,
+} from './modules/validators/customer.validator.ts';
 import {
   CUSTOMER_ARCHIVE_ROLES,
   CUSTOMER_MANAGER_ROLES,
@@ -221,6 +224,59 @@ export async function updateCustomerProfileController(
     const { data, error } = await supabase
       .from('customer_profiles')
       .update(parsed.data)
+      .eq('id', targetId)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    if (!data) {
+      return res.status(404).json({ error: 'Customer profile not found' });
+    }
+
+    return res.status(200).json({ customer: data });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+/**
+ * Records that the caller agreed to the store policies (booking wizard,
+ * Branch step). Self only - staff can't agree on a customer's behalf, and
+ * the staff walk-in flow never shows the policies anyway.
+ */
+export async function agreeToStorePoliciesController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const targetId = paramId(req, 'id');
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (requesterId !== targetId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const parsed = agreeToStorePoliciesValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('customer_profiles')
+      .update({
+        store_policies_agreed_version: parsed.data.version,
+        store_policies_agreed_at: new Date().toISOString(),
+      })
       .eq('id', targetId)
       .select('*')
       .maybeSingle();
