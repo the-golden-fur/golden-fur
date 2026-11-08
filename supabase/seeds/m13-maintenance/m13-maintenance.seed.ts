@@ -120,12 +120,19 @@ function seededPrices(
 export async function seedServiceBranchAvailability(
   supabase: ReturnType<typeof createClient>
 ) {
-  const { data: services, error: servicesError } = await supabase
+  // Filtered in JS, not with .like('id', 'a1300000-%'): services.id is a
+  // uuid and Postgres has no LIKE for uuid ("operator does not exist:
+  // uuid ~~ unknown"), so that query always errored and this seed silently
+  // skipped. The SQL mirror casts instead (s.id::text like ...).
+  const { data: allServices, error: servicesError } = await supabase
     .from('services')
-    .select('id')
-    .like('id', 'a1300000-%');
+    .select('id');
 
-  if (servicesError || !services?.length) {
+  const services = ((allServices ?? []) as { id: string }[]).filter((service) =>
+    service.id.startsWith('a1300000-')
+  );
+
+  if (servicesError || !services.length) {
     console.error(
       `skip: could not list base services - has migration 20260715034 run? (${servicesError?.message ?? 'no services found'})`
     );

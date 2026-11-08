@@ -55,10 +55,10 @@ function createMockSupabase() {
   const supabase = {
     from: vi.fn((table: string) => {
       if (table === 'services') {
+        // Plain select, no .like(): the seed filters base ids in JS
+        // (LIKE on a uuid column errors in real Postgres).
         return {
-          select: () => ({
-            like: () => Promise.resolve({ data: state.services, error: null }),
-          }),
+          select: () => Promise.resolve({ data: state.services, error: null }),
         };
       }
 
@@ -259,6 +259,20 @@ describe('m13-maintenance seed', () => {
       );
       for (const row of supabase.state.availability.values()) {
         expect(row.is_available).toBe(true);
+      }
+    });
+
+    it('only seeds base (a1300000-) services, never ones added through the app', async () => {
+      const APP_SERVICE_ID = 'b0000000-0000-4000-a000-000000000001';
+      supabase.state.services.push({ id: APP_SERVICE_ID });
+
+      await seedServiceBranchAvailability(supabase as never);
+
+      expect(supabase.state.availability.size).toBe(
+        GOLDEN_PACKAGE_SERVICE_IDS.length * supabase.state.branches.length
+      );
+      for (const key of supabase.state.availability.keys()) {
+        expect(key.startsWith(`${APP_SERVICE_ID}:`)).toBe(false);
       }
     });
 
