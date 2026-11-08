@@ -12,6 +12,10 @@ export interface CustomerProfile {
   account_email: string;
   primary_auth_provider: 'email' | 'google';
   profile_photo_url: string | null;
+  /** Store policies agreement (booking wizard). Optional so older fixtures
+   * still type-check; null/absent = never agreed. */
+  store_policies_agreed_version?: number | null;
+  store_policies_agreed_at?: string | null;
   is_active: boolean;
   archived_at: string | null;
   deactivated_at: string | null;
