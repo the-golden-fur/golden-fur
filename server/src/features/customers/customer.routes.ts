@@ -3,6 +3,7 @@ import multer from 'multer';
 import { jwtMiddleware } from '../../shared/auth/middleware/jwt/jwt.middleware.ts';
 import {
   activateCustomerController,
+  agreeToStorePoliciesController,
   archiveCustomerController,
   deactivateCustomerController,
   deleteOwnAccountController,
@@ -37,6 +38,11 @@ router.post(
   avatarUpload.single('avatar'),
   handleAvatarUploadError,
   uploadCustomerAvatarController
+);
+router.post(
+  '/customers/:id/store-policies-agreement',
+  jwtMiddleware,
+  agreeToStorePoliciesController
 );
 router.patch(
   '/customers/:id/deactivate',

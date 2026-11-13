@@ -3,6 +3,42 @@ import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorePoliciesModal } from './StorePoliciesModal';
+import {
+  STORE_POLICIES_VERSION,
+  isStorePoliciesAgreementCurrent,
+} from './storePoliciesAgreement';
+
+describe('isStorePoliciesAgreementCurrent', () => {
+  const NOW = new Date('2026-11-08T12:00:00.000Z');
+  const daysAgo = (days: number) =>
+    new Date(NOW.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  it('is current for the current version agreed under 30 days ago', () => {
+    expect(
+      isStorePoliciesAgreementCurrent(STORE_POLICIES_VERSION, daysAgo(29), NOW)
+    ).toBe(true);
+  });
+
+  it('expires at 30 days', () => {
+    expect(
+      isStorePoliciesAgreementCurrent(STORE_POLICIES_VERSION, daysAgo(30), NOW)
+    ).toBe(false);
+  });
+
+  it('is not current for an older version, or with no agreement saved', () => {
+    expect(
+      isStorePoliciesAgreementCurrent(
+        STORE_POLICIES_VERSION - 1,
+        daysAgo(1),
+        NOW
+      )
+    ).toBe(false);
+    expect(isStorePoliciesAgreementCurrent(null, null, NOW)).toBe(false);
+    expect(
+      isStorePoliciesAgreementCurrent(STORE_POLICIES_VERSION, null, NOW)
+    ).toBe(false);
+  });
+});
 
 describe('StorePoliciesModal', () => {
   it('keeps Continue disabled until the agreement is ticked', async () => {
@@ -24,6 +60,56 @@ describe('StorePoliciesModal', () => {
 
     await user.click(continueButton);
     expect(onAgree).toHaveBeenCalledTimes(1);
+    expect(onAgree).toHaveBeenCalledWith(false);
+  });
+
+  it('"Remember policies" unlocks only after agreeing, and is passed to onAgree', async () => {
+    const onAgree = vi.fn();
+    const user = userEvent.setup();
+    render(createElement(StorePoliciesModal, { onClose: vi.fn(), onAgree }));
+
+    const agree = screen.getByLabelText(
+      'I have read and agree to the store policies'
+    );
+    const remember = screen.getByLabelText(/Remember policies/);
+    expect(remember).toBeDisabled();
+
+    await user.click(agree);
+    expect(remember).toBeEnabled();
+    await user.click(remember);
+
+    // Un-ticking the agreement clears and re-locks Remember.
+    await user.click(agree);
+    expect(remember).not.toBeChecked();
+    expect(remember).toBeDisabled();
+
+    await user.click(agree);
+    await user.click(remember);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(onAgree).toHaveBeenCalledWith(true);
+  });
+
+  it('view mode shows the policies read-only with just a Close button', async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    render(createElement(StorePoliciesModal, { onClose, mode: 'view' }));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Waiver Form')).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('I have read and agree to the store policies')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Continue' })
+    ).not.toBeInTheDocument();
+
+    // The Modal's own header close button is also named "Close"; the
+    // footer one is the last.
+    const closeButtons = screen.getAllByRole('button', { name: 'Close' });
+    await user.click(closeButtons[closeButtons.length - 1]);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   describe('when the policies are longer than the box', () => {

@@ -14,6 +14,12 @@ vi.mock('../../../features/faq/api/faq.api', () => ({
   fetchPublicFaqs: vi.fn().mockResolvedValue({ data: [], error: null }),
 }));
 
+// Custom change (bug report / feature request button): both shells now
+// mount BugReportFormModal via the mascot's new link.
+vi.mock('../../../features/bugReports/api/bugReports.api', () => ({
+  createBugReport: vi.fn(),
+}));
+
 const SECTIONS: SidebarSection[] = [
   {
     label: null,
@@ -258,6 +264,36 @@ describe('AppShell', () => {
     expect(await screen.findByText('Home content')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Collapse sidebar' })
+    ).toBeInTheDocument();
+  });
+
+  it('renders the mascot for staff too (previously customer-only), with the bug report link', async () => {
+    renderShell();
+
+    const trigger = screen.getByRole('button', {
+      name: 'Report a bug / feature request',
+    });
+    await userEvent.click(trigger);
+
+    expect(
+      await screen.findByRole('dialog', {
+        name: 'Report a bug or request a feature',
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("the customer mascot's menu includes the bug report link alongside its existing links", async () => {
+    renderCustomerShell(vi.fn());
+
+    const trigger = screen.getByRole('button', {
+      name: 'Report a bug / feature request',
+    });
+    await userEvent.click(trigger);
+
+    expect(
+      await screen.findByRole('dialog', {
+        name: 'Report a bug or request a feature',
+      })
     ).toBeInTheDocument();
   });
 

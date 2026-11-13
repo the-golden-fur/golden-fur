@@ -355,6 +355,9 @@ interface UpdateConsultationParams {
   requesterId: string;
   consultationId: string;
   input: UpdateConsultationInput;
+  /** Front Desk Queue: advance the visit without claiming it for the
+   * requester. */
+  onBehalfOfVet?: boolean;
 }
 
 const HANDLED_BY_ANOTHER_VET =
@@ -594,6 +597,7 @@ export async function updateConsultation({
   requesterId,
   consultationId,
   input,
+  onBehalfOfVet = false,
 }: UpdateConsultationParams): Promise<Consultation> {
   const consultation = await getConsultation(consultationId);
   const bookingStatus = consultation.booking?.status;
@@ -606,7 +610,10 @@ export async function updateConsultation({
     bookingStatus === 'In Progress' || input.status !== undefined;
   let claimedNow = false;
 
-  if (takesOwnership) {
+  if (onBehalfOfVet) {
+    // Front Desk Queue: reception moves the visit along but never becomes
+    // its vet, so My Patients keeps listing whoever really handled it.
+  } else if (takesOwnership) {
     claimedNow = await claimConsultation(consultation, requesterId);
   } else if (
     consultation.accepted_by &&
@@ -623,7 +630,10 @@ export async function updateConsultation({
 
   try {
     if (input.status === 'Ongoing') {
-      await startBooking({ bookingId: consultation.booking_id });
+      await startBooking({
+        bookingId: consultation.booking_id,
+        staffId: requesterId,
+      });
     } else if (input.status === 'Completed') {
       // Planned before the booking is completed, so a medicine that can't be
       // priced stops the whole save rather than failing a finished visit.
@@ -636,7 +646,10 @@ export async function updateConsultation({
         soldAtPharmacy:
           input.sold_at_pharmacy ?? consultation.sold_at_pharmacy ?? false,
       });
-      await completeBooking({ bookingId: consultation.booking_id });
+      await completeBooking({
+        bookingId: consultation.booking_id,
+        staffId: requesterId,
+      });
     }
   } catch (error) {
     if (claimedNow) await releaseConsultationClaim(consultation, requesterId);
@@ -772,6 +785,52 @@ export async function updateConsultation({
   }
 
   return saved;
+}
+
+/**
+ * The consultation for a booking, creating it if the vet queue hasn't yet -
+ * listConsultationQueue only vivifies rows when a vet opens it, and the
+ * Front Desk Queue must work even if no vet ever has.
+ */
+export async function getOrCreateConsultationIdForBooking(
+  bookingId: string
+): Promise<string> {
+  const { data: existing, error: existingError } = await supabase
+    .from('consultations')
+    .select('id')
+    .eq('booking_id', bookingId)
+    .maybeSingle();
+
+  if (existingError) throwWithStatus(400, existingError.message);
+  if (existing) return existing.id as string;
+
+  const { data: booking, error: bookingError } = await supabase
+    .from('bookings')
+    .select('pet_id, branch_id, assigned_staff_id, special_instructions')
+    .eq('id', bookingId)
+    .maybeSingle();
+
+  if (bookingError) throwWithStatus(400, bookingError.message);
+  if (!booking) throwWithStatus(404, 'Booking not found');
+
+  await assertVeterinaryBranchEligibility({
+    branchId: booking.branch_id,
+    serviceCategory: 'Veterinary',
+  });
+
+  const { data: created, error: insertError } = await supabase
+    .from('consultations')
+    .insert({
+      booking_id: bookingId,
+      pet_id: booking.pet_id,
+      veterinarian_id: booking.assigned_staff_id,
+      reason_for_visit: booking.special_instructions ?? 'General consultation',
+    })
+    .select('id')
+    .single();
+
+  if (insertError) throwWithStatus(400, insertError.message);
+  return created.id as string;
 }
 
 // -----------------------------------------------------------------------

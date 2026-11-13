@@ -12,14 +12,17 @@ same pattern instead of being hand-rolled per feature.
 **Use whenever** adding a new protected route/page, or touching
 login/session/MFA/OAuth code.
 
-## The 9 staff roles
+## The 10 staff roles
 
 Superadmin, Admin, Supervisor, Receptionist, Groomer, Veterinarian,
-Cashier, Pet Assistant, Front Desk — each with a role-scoped dashboard and
-permission tier. (Note: this is the current, authoritative role list — 9,
-not 6 or 8; disregard any older reference to "six roles" or "eight
-roles." Front Desk is a combined role: the union of Receptionist's and
-Cashier's access, added without changing either of those two roles.)
+Cashier, Pet Assistant, Front Desk, Developer — each with a role-scoped
+dashboard and permission tier. (Note: this is the current, authoritative
+role list — 10, not 6, 8 or 9; disregard any older reference to "six
+roles," "eight roles," or "nine roles." Front Desk is a combined role: the
+union of Receptionist's and Cashier's access, added without changing
+either of those two roles. Developer is the opposite - a minimal,
+isolated role with no access beyond the Bug Reports/Feature Requests queue
+and its own Developer Dashboard, not a union of anything.)
 
 ## Three-layer enforcement
 

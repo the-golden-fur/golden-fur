@@ -45,8 +45,11 @@ Two more entry points reuse the same module scripts (both also have a
   accounts.
 - `seed:sample-data` (task `🎬 Seed: Sample Data (Linked Project)`) — runs
   `seed:all`, then `temp-demo/temp-demo.seed.ts`, which fills every
-  app-only table below with demo rows (plus about six months of backdated
-  paid history for the Reports charts). For demos and videos only — never
+  app-only table below with demo rows: a year of backdated history for the
+  Reports charts (`temp-demo.history.ts` - the last six months all paid, the
+  six before that with some cancellations and no-shows), plus today and the
+  next 30 days of bookings, 60 days of staff attendance and a dozen bug
+  reports (`temp-demo.schedule.ts`). For demos and videos only — never
   production.
 
 ## Coverage map — keep this current
@@ -80,6 +83,7 @@ per flag, `spin_wheel` off by default).
 `care_log_entries`, `credit_balances`, `credit_transactions`,
 `cancellation_logs`, `notifications`, `activity_log`, `message_threads` /
 messages / drafts / attachments, `staff_unavailability_blocks`,
+`staff_attendance`,
 `pet_vaccination_records`, `pet_medical_notes`, `pet_health_conditions`,
 `service_pricing_cell_overrides` / `package_pricing_cell_overrides` (a
 Superadmin's own weight x coat prices; no rows = every cell follows the

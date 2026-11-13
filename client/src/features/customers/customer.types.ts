@@ -12,6 +12,10 @@ export interface CustomerProfile {
   account_email: string;
   primary_auth_provider: 'email' | 'google';
   profile_photo_url: string | null;
+  /** Store policies agreement (booking wizard). Optional so older fixtures
+   * still type-check; null/absent = never agreed. */
+  store_policies_agreed_version?: number | null;
+  store_policies_agreed_at?: string | null;
   is_active: boolean;
   archived_at: string | null;
   deactivated_at: string | null;
@@ -74,6 +78,9 @@ export interface Pet {
   name: string;
   pet_type: PetType;
   breed_id: string | null;
+  /** Typed-in breed when it isn't in the breeds list - mutually exclusive
+   * with breed_id. */
+  breed_other: string | null;
   photo_url: string | null;
   gender: PetGender | null;
   date_of_birth: string | null;
@@ -119,6 +126,8 @@ export interface PetCreatePayload {
   name: string;
   pet_type: PetType;
   breed_id?: string;
+  /** Sent instead of breed_id when the breed isn't listed. */
+  breed_other?: string;
   gender: PetGender;
   date_of_birth?: string;
 }
@@ -131,8 +140,23 @@ export interface PetCreatePayloadStaff extends PetCreatePayload {
   coat_type?: PetCoatType;
 }
 
-export type PetUpdatePayload = Partial<PetCreatePayload>;
-export type PetUpdatePayloadStaff = Partial<PetCreatePayloadStaff>;
+/** An edit can clear either breed field - switching between a listed breed
+ * and a typed-in one sends the other as null. */
+interface PetBreedUpdateFields {
+  breed_id?: string | null;
+  breed_other?: string | null;
+}
+
+export type PetUpdatePayload = Omit<
+  Partial<PetCreatePayload>,
+  keyof PetBreedUpdateFields
+> &
+  PetBreedUpdateFields;
+export type PetUpdatePayloadStaff = Omit<
+  Partial<PetCreatePayloadStaff>,
+  keyof PetBreedUpdateFields
+> &
+  PetBreedUpdateFields;
 
 export interface PetHealthCondition {
   id: string;

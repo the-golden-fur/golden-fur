@@ -53,7 +53,8 @@ interface PetSeed {
 // and a realistic mix of assessed vs. unassessed - each customer gets at
 // least one already-assessed pet and one freshly-added, never-assessed one.
 // breed_id is left unset (nullable at the DB level, per Issue #71) - none of
-// these rows need a specific seeded breed.
+// these rows need a specific seeded breed. breed_other (20261103002) is left
+// unset for the same reason.
 export const PETS_BY_CUSTOMER_NUMBER: Record<number, PetSeed[]> = {
   1: [
     {

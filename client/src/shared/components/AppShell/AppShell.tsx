@@ -13,6 +13,8 @@ import { Sidebar, type SidebarSection } from '../Sidebar/Sidebar';
 import { HelpMascot } from '../HelpMascot/HelpMascot';
 import { SidebarCollapseProvider } from '../../providers/SidebarCollapseProvider/SidebarCollapseProvider';
 import { UnsavedChangesProvider } from '../../providers/UnsavedChangesProvider/UnsavedChangesProvider';
+import { useAuth } from '../../auth/providers/AuthProvider/useAuth';
+import { BugReportFormModal } from '../../../features/bugReports/components/BugReportFormModal/BugReportFormModal';
 import type { ThemeRole } from '../../providers/ThemeProvider/themeContext';
 import styles from './AppShell.module.css';
 
@@ -84,6 +86,9 @@ export function AppShell({
   onStartTutorial,
   children,
 }: AppShellProps) {
+  const { accessToken } = useAuth();
+  const [isBugReportModalOpen, setIsBugReportModalOpen] = useState(false);
+
   const storageKey = `sidebar-collapsed-${role}`;
   const [collapsed, setCollapsed] = useState(() =>
     readStoredCollapsed(storageKey)
@@ -235,8 +240,35 @@ export function AppShell({
                   ? { label: 'Contact support', onClick: onContactSupport }
                   : { label: 'Contact support', href: '#' },
                 { label: 'My Bookings', href: '/portal/bookings' },
+                {
+                  label: 'Report a bug / feature request',
+                  onClick: () => setIsBugReportModalOpen(true),
+                },
               ]}
               onStartTutorial={startTutorial}
+            />
+          ) : null}
+
+          {/* Custom change (bug report / feature request button): staff
+              never had the mascot widget at all before this - mounted here
+              too, with just the one new link, since every other existing
+              link (Contact support, My Bookings, Tutorial) is customer-only. */}
+          {role === 'staff' ? (
+            <HelpMascot
+              links={[
+                {
+                  label: 'Report a bug / feature request',
+                  onClick: () => setIsBugReportModalOpen(true),
+                },
+              ]}
+            />
+          ) : null}
+
+          {accessToken ? (
+            <BugReportFormModal
+              isOpen={isBugReportModalOpen}
+              onClose={() => setIsBugReportModalOpen(false)}
+              accessToken={accessToken}
             />
           ) : null}
         </div>

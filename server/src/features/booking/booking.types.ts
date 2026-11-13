@@ -406,6 +406,10 @@ export interface Booking {
   pet_id: string;
   branch_id: string;
   created_by_staff_id: string | null;
+  /** Who started/completed the booking (20261101294). NULL on anything
+   * advanced before these columns existed. */
+  started_by_staff_id: string | null;
+  completed_by_staff_id: string | null;
   service_category: ServiceCategory;
   /** Walk-in booking flow - see BookingSource's own dev note. Defaults to
    * 'Online' at the DB level (20260828145 migration); every booking created

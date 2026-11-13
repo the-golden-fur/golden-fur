@@ -170,7 +170,7 @@ export async function checkInHotelStay({
     // sets that directly), so startBooking - which only accepts a 'Pending'
     // booking - is skipped rather than called redundantly.
     if (isNotStartedStatus(booking.status)) {
-      await startBooking({ bookingId: booking.id });
+      await startBooking({ bookingId: booking.id, staffId: requesterId });
     }
 
     const checkInDate = now.toISOString().slice(0, 10);

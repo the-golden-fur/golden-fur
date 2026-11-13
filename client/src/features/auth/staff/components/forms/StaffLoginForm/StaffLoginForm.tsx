@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../../../../../shared/auth/providers/AuthProvider/useAuth';
 import { setSessionPersistence } from '../../../../../../shared/auth/api/auth.api';
 import { getStoredDeviceToken } from '../../../../../../shared/auth/api/trustedDevice.api';
-import { MANDATORY_MFA_ROLES } from '../../../../../../shared/auth/mandatoryMfaRoles';
 import { getMfaStatus } from '../../../../../../shared/api/mfa.api';
 import { forgotPassword, login } from '../../../api/staffAuth.api';
 import {
@@ -12,10 +11,6 @@ import {
   staffLoginSchema,
 } from '../../../modules/validators/staffAuth.validator';
 import styles from './StaffLoginForm.module.css';
-
-function isMfaRole(role?: string | null) {
-  return Boolean(role && MANDATORY_MFA_ROLES.has(role));
-}
 
 export function StaffLoginForm() {
   const navigate = useNavigate();
@@ -81,18 +76,15 @@ export function StaffLoginForm() {
         'staff',
         result.data.access_token
       );
-      const role = statusResult.data?.role ?? null;
       const mfaEnrolled = statusResult.data?.mfa_enrolled ?? false;
 
-      // Mandatory roles always go through this (enrolled or not); anyone
-      // else only goes through it if they've voluntarily enrolled via
-      // Settings - once MFA is on for an account, it must be challenged
-      // every login.
-      if (isMfaRole(role) || mfaEnrolled) {
+      // MFA is optional for every role - default-on roles that haven't
+      // enrolled get a reminder popup in StaffAuthGuard instead of being
+      // forced through enrollment. Once MFA is on for an account, though,
+      // it must be challenged every login.
+      if (mfaEnrolled) {
         window.sessionStorage.setItem('staffMfaPending', 'true');
-        navigate(mfaEnrolled ? '/staff/mfa/verify' : '/staff/mfa/enroll', {
-          replace: true,
-        });
+        navigate('/staff/mfa/verify', { replace: true });
         return;
       }
 

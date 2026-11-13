@@ -3,6 +3,11 @@ import multer from 'multer';
 import { z } from 'zod';
 import { supabase } from '../../config/supabase/supabase.config.ts';
 import type { AuthenticatedRequest } from '../../shared/shared.types.ts';
+import { STAFF_ATTENDANCE_STATUSES } from './staff.types.ts';
+import {
+  getAttendanceDay,
+  setAttendance,
+} from './services/attendance.service.ts';
 import {
   createStaffAccountValidator,
   manageStaffAccountValidator,
@@ -852,6 +857,91 @@ export async function listPendingUnavailabilityBlocksController(
     });
 
     return res.status(200).json({ blocks });
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+const attendanceDateValidator = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
+
+const attendanceDayQueryValidator = z.object({
+  date: attendanceDateValidator.optional(),
+});
+
+const setAttendanceValidator = z
+  .object({
+    date: attendanceDateValidator,
+    status: z.enum(STAFF_ATTENDANCE_STATUSES),
+  })
+  .strict();
+
+export async function getAttendanceDayController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = attendanceDayQueryValidator.safeParse(req.query);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid query', details: parsed.error.issues });
+  }
+
+  try {
+    const day = await getAttendanceDay({
+      requesterRole,
+      requesterBranchId,
+      branchId: req.params.branchId as string,
+      date: parsed.data.date,
+    });
+
+    return res.status(200).json(day);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+export async function setAttendanceController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+  const requesterRole = req.user?.role;
+  const requesterBranchId = req.user?.branch_id;
+
+  if (!requesterId || !requesterRole || !requesterBranchId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parsed = setAttendanceValidator.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'Invalid payload', details: parsed.error.issues });
+  }
+
+  try {
+    const result = await setAttendance({
+      requesterId,
+      requesterRole,
+      requesterBranchId,
+      branchId: req.params.branchId as string,
+      staffId: req.params.staffId as string,
+      date: parsed.data.date,
+      status: parsed.data.status,
+    });
+
+    return res.status(200).json(result);
   } catch (error) {
     return sendServiceError(res, error);
   }

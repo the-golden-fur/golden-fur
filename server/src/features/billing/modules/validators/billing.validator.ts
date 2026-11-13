@@ -194,6 +194,8 @@ export const recordTransactionPaymentValidator = z
     // value settles this transaction partially and spawns a Pending 'balance'
     // transaction for the remainder.
     amount_applied: z.number().positive().optional(),
+    // A promo taken off this bill before it's paid (counterPromo.service.ts).
+    promo_id: z.string().uuid().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -229,6 +231,7 @@ export type RecordTransactionPaymentInput = z.infer<
 export const payTransactionWithCreditValidator = z
   .object({
     amount_applied: z.number().positive().optional(),
+    promo_id: z.string().uuid().optional(),
   })
   .strict();
 

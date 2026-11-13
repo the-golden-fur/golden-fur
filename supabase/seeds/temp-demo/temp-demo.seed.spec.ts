@@ -3,6 +3,7 @@ import { seedTempDemo } from './temp-demo.seed.ts';
 import { seedTempRoleDemo } from './temp-demo.roles.ts';
 import { seedTempHistory } from './temp-demo.history.ts';
 import { seedTempProgress } from './temp-demo.progress.ts';
+import { seedTempSchedule } from './temp-demo.schedule.ts';
 
 const LOOKUPS: Record<string, Array<Record<string, unknown>>> = {
   staff_profiles: [
@@ -58,6 +59,7 @@ const LOOKUPS: Record<string, Array<Record<string, unknown>>> = {
   promos: [{ id: 'promo-1' }],
   spin_wheel_rewards: [{ id: 'reward-1' }],
   reward_pools: [{ id: 'pool-1' }],
+  spin_wheel_promo_settings: [{ promo_id: 'promo-1' }],
   stays: [
     {
       id: 'stay-1',
@@ -140,7 +142,6 @@ describe('temp-demo seed', () => {
           limit: vi.fn(() => builder),
           eq: vi.fn(() => builder),
           is: vi.fn(() => builder),
-          in: vi.fn(() => builder),
           in: vi.fn(() => builder),
           then: (resolve: (value: { data: unknown[]; error: null }) => void) =>
             resolve({ data: [], error: null }),
@@ -245,7 +246,9 @@ describe('temp-demo seed', () => {
 
     const txns = rowsOf('transactions');
     expect(txns.length).toBeGreaterThan(0);
-    expect(rowsOf('bookings')).toHaveLength(txns.length);
+    expect(
+      rowsOf('bookings').filter((b) => b.status === 'Completed')
+    ).toHaveLength(txns.length);
     expect(txns.every((t) => String(t.created_at) < '2026-10-25T02')).toBe(
       true
     );
@@ -285,5 +288,129 @@ describe('temp-demo seed', () => {
       const ids = rowsOf(table).map((r) => r.id);
       expect(new Set(ids).size).toBe(ids.length);
     }
+  });
+
+  it('reaches a year back, with cancellations and no-shows in the older months', async () => {
+    const { client, rowsOf } = mockClient();
+
+    await seedTempHistory(client as never, new Date('2026-10-25T03:00:00Z'));
+
+    const bookings = rowsOf('bookings');
+    expect(
+      bookings.some((b) => String(b.scheduled_start).startsWith('2025-10'))
+    ).toBe(true);
+    const cancelled = bookings.filter((b) => b.status === 'Cancelled');
+    expect(cancelled.length).toBeGreaterThan(0);
+    expect(bookings.some((b) => b.status === 'No-show')).toBe(true);
+    const logged = new Set(
+      rowsOf('cancellation_logs').map((l) => l.booking_id)
+    );
+    expect(cancelled.every((b) => logged.has(b.id))).toBe(true);
+    // Only paid visits leave a transaction.
+    const paid = new Set(rowsOf('transactions').map((t) => t.booking_id));
+    expect(cancelled.some((b) => paid.has(b.id))).toBe(false);
+    expect(rowsOf('stays').every((s) => s.status === 'Completed')).toBe(true);
+    expect(rowsOf('grooming_sessions').length).toBeGreaterThan(0);
+    for (const table of [
+      'grooming_sessions',
+      'stays',
+      'cancellation_logs',
+      'activity_log',
+    ]) {
+      const ids = rowsOf(table).map((r) => r.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it('fills today by the clock and the next month with upcoming bookings', async () => {
+    const { client, rowsOf } = mockClient();
+
+    // 13:00 Manila: the morning slots are done, the afternoon ones wait.
+    await seedTempSchedule(client as never, new Date('2026-10-25T05:00:00Z'));
+
+    const bookings = rowsOf('bookings');
+    const todays = bookings.filter((b) =>
+      String(b.scheduled_start).startsWith('2026-10-25')
+    );
+    const statuses = new Set(todays.map((b) => b.status));
+    for (const status of ['Completed', 'Late', 'Pending']) {
+      expect(statuses.has(status)).toBe(true);
+    }
+    expect(
+      bookings.some((b) => String(b.scheduled_start) >= '2026-11-20')
+    ).toBe(true);
+    const future = bookings.filter(
+      (b) => String(b.scheduled_start) >= '2026-10-26'
+    );
+    expect(
+      future.every((b) => ['Pending', 'Cancelled'].includes(b.status as string))
+    ).toBe(true);
+    expect(new Set(future.map((b) => b.payment_status))).toEqual(
+      new Set(['Fully Paid', 'Partially Paid', 'Pending'])
+    );
+    // No booking is created after the seed ran.
+    expect(
+      bookings.every((b) => String(b.created_at) < '2026-10-25T05:00')
+    ).toBe(true);
+    const logged = new Set(
+      rowsOf('cancellation_logs').map((l) => l.booking_id)
+    );
+    expect(
+      bookings
+        .filter((b) => b.status === 'Cancelled')
+        .every((b) => logged.has(b.id))
+    ).toBe(true);
+    expect(
+      bookings.some(
+        (b) => b.service_category === 'Veterinary' && b.branch_id === 'branch-2'
+      )
+    ).toBe(false);
+    for (const table of [
+      'bookings',
+      'booking_items',
+      'grooming_sessions',
+      'transactions',
+      'transaction_line_items',
+      'notifications',
+    ]) {
+      const ids = rowsOf(table).map((r) => r.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it('marks attendance once per staff member and day, never on Sundays', async () => {
+    const { client, rowsOf } = mockClient();
+
+    await seedTempSchedule(client as never, new Date('2026-10-25T05:00:00Z'));
+
+    const rows = rowsOf('staff_attendance');
+    expect(rows.length).toBeGreaterThan(0);
+    const keys = rows.map((r) => `${r.staff_id}|${r.attendance_date}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(
+      rows.every(
+        (r) => new Date(`${r.attendance_date}T00:00:00Z`).getUTCDay() !== 0
+      )
+    ).toBe(true);
+    expect(new Set(rows.map((r) => r.status))).toEqual(
+      new Set(['Present', 'Late', 'Absent'])
+    );
+  });
+
+  it('files bug reports with exactly one reporter each', async () => {
+    const { client, rowsOf } = mockClient();
+
+    await seedTempSchedule(client as never, new Date('2026-10-25T05:00:00Z'));
+
+    const reports = rowsOf('bug_reports');
+    expect(reports.length).toBeGreaterThan(0);
+    for (const r of reports) {
+      expect(
+        [r.reporter_customer_id, r.reporter_staff_id].filter(Boolean)
+      ).toHaveLength(1);
+    }
+    expect(new Set(reports.map((r) => r.category))).toEqual(
+      new Set(['bug', 'feature_request'])
+    );
   });
 });

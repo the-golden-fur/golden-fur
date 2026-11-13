@@ -13,6 +13,8 @@ import {
 import { InfoPopover } from '../../../../shared/components/InfoPopover/InfoPopover';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import {
+  agreeToStorePolicies,
+  getCustomerProfile,
   listCustomerPets,
   uploadPetCareItemPhoto,
 } from '../../../customers/api/customer.api';
@@ -48,6 +50,10 @@ import {
 } from '../../components/BookingSummaryPanel/BookingSummaryPanel';
 import { SlotPicker } from '../../components/SlotPicker/SlotPicker';
 import { StorePoliciesModal } from '../../components/StorePoliciesModal/StorePoliciesModal';
+import {
+  STORE_POLICIES_VERSION,
+  isStorePoliciesAgreementCurrent,
+} from '../../components/StorePoliciesModal/storePoliciesAgreement';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import { StaffPickerList } from '../../components/StaffPickerList/StaffPickerList';
 import { CageAssignmentStatus } from '../../components/CageAssignmentStatus/CageAssignmentStatus';
@@ -115,6 +121,10 @@ import {
   isMealApplicableOnDayOne,
   isMealApplicableOnLastDay,
 } from '../../../hotel/utils/careScheduleBounds';
+import {
+  mealTimeFromClock,
+  partOfDayFromClock,
+} from '../../../hotel/utils/timeOfDayFromClock';
 import { CatalogComboBox } from '../../../catalog/components/CatalogComboBox/CatalogComboBox';
 import {
   listCustomerCatalog,
@@ -397,18 +407,37 @@ function daycareBookingPrice(
   );
 }
 
+/**
+ * Custom change (Care Instructions Add-modal, per-row time choice): which of
+ * the two underlying time fields a Feeding/Walking/Playing row actually
+ * uses - the DB enforces a strict XOR per row (care_feeding_instructions_
+ * time_xor_check et al.), so exactly one of meal_time/time_block ('period')
+ * or scheduled_time ('specific') is ever sent, regardless of category.
+ * Chosen in the Add modal (defaultCareTimeMode); not re-toggleable once a
+ * row is added - removing and re-adding is how you'd change it.
+ */
+type CareTimeMode = 'period' | 'specific';
+
+/** Today's category default (Hotel -> a day-period slot, Daycare -> a
+ * literal clock time) - preserved as the Add modal's starting choice, but
+ * now user-overridable either way. */
+function defaultCareTimeMode(category: ServiceCategory | ''): CareTimeMode {
+  return category === 'Daycare' ? 'specific' : 'period';
+}
+
 interface HotelFeedingRowState {
-  // Custom change (Daycare-only clock-time scheduling): Hotel keeps
-  // meal_time (the Morning/Noon/Afternoon/Evening day-period picker);
-  // Daycare uses scheduled_time (a literal "HH:MM") instead, since a
-  // few-hour Daycare visit doesn't fit a day-period the way a multi-night
-  // Hotel stay does. Both fields always exist on the row state regardless
-  // of category - only one is ever sent, chosen by category in
+  // Custom change (Daycare-only clock-time scheduling, later widened to a
+  // per-row choice regardless of category - see CareTimeMode/time_mode):
+  // meal_time is the Morning/Noon/Afternoon/Evening day-period picker;
+  // scheduled_time is a literal "HH:MM". Both fields always exist on the
+  // row state - only the one named by time_mode is ever sent, in
   // hotelPreferencesPayload below. NonNullable because the shared
-  // HotelBookingPreferenceFeeding type made meal_time optional (Daycare
-  // rows omit it) - this local row state always has a concrete value.
+  // HotelBookingPreferenceFeeding type made meal_time optional (a
+  // scheduled_time row omits it) - this local row state always has a
+  // concrete value.
   meal_time: NonNullable<HotelBookingPreferenceFeeding['meal_time']>;
   scheduled_time: string;
+  time_mode: CareTimeMode;
   food_type: string;
   quantity: string;
   quantity_unit: FoodQuantityUnit;
@@ -433,6 +462,7 @@ interface HotelFeedingRowState {
 const EMPTY_HOTEL_FEEDING_ROW: HotelFeedingRowState = {
   meal_time: 'Morning',
   scheduled_time: '08:00',
+  time_mode: 'period',
   food_type: '',
   quantity: '1',
   quantity_unit: 'cup',
@@ -449,6 +479,7 @@ const EMPTY_HOTEL_FEEDING_ROW: HotelFeedingRowState = {
 const EMPTY_HOTEL_WALKING_ROW = {
   time_block: 'Morning' as HotelBookingPreferenceWalking['time_block'],
   scheduled_time: '08:00',
+  time_mode: 'period' as CareTimeMode,
   duration_minutes: 15,
   notes: '',
   stay_date: null as string | null,
@@ -457,6 +488,7 @@ const EMPTY_HOTEL_WALKING_ROW = {
 const EMPTY_HOTEL_PLAYING_ROW = {
   time_block: 'Morning' as HotelBookingPreferenceWalking['time_block'],
   scheduled_time: '08:00',
+  time_mode: 'period' as CareTimeMode,
   duration_minutes: 15,
   notes: '',
   stay_date: null as string | null,
@@ -691,6 +723,36 @@ export function CustomerBookingFlowPage() {
       const self = result.data?.find((staff) => staff.id === user.id);
       setViewerRole(self?.role ?? null);
       setViewerBranchId(self?.branch_id ?? null);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isReceptionistMode, accessToken, user?.id]);
+
+  // A remembered store policies agreement (customer_profiles
+  // .store_policies_agreed_*) skips the popup for STORE_POLICIES_REMEMBER_DAYS,
+  // or until STORE_POLICIES_VERSION is bumped - see
+  // isStorePoliciesAgreementCurrent. Stays false until the profile loads (or
+  // if it fails to), so the worst case is being asked again, never skipping
+  // it. Customer portal only - the staff walk-in flow never shows the
+  // policies.
+  const [hasAgreedToStorePolicies, setHasAgreedToStorePolicies] =
+    useState(false);
+
+  useEffect(() => {
+    if (isReceptionistMode || !accessToken || !user?.id) return;
+
+    let isMounted = true;
+
+    void getCustomerProfile(user.id, accessToken).then((result) => {
+      if (!isMounted) return;
+      setHasAgreedToStorePolicies(
+        isStorePoliciesAgreementCurrent(
+          result.data?.store_policies_agreed_version,
+          result.data?.store_policies_agreed_at
+        )
+      );
     });
 
     return () => {
@@ -938,6 +1000,26 @@ export function CustomerBookingFlowPage() {
   const [hotelMedications, setHotelMedications] = useState<
     Array<typeof EMPTY_HOTEL_MEDICATION_ROW>
   >([]);
+  // Custom change (Care Instructions Add-modal): a new row is now composed
+  // in a modal before being appended to the arrays above - these are the
+  // modal's own open-state and per-section draft, reset on open, discarded
+  // on Cancel, appended to the matching array above only on a validated
+  // Save (see openAddFeeding/saveFeedingDraft et al.).
+  const [activeAddModal, setActiveAddModal] = useState<
+    'feeding' | 'walking' | 'playing' | 'medication' | null
+  >(null);
+  const [feedingDraft, setFeedingDraft] = useState<HotelFeedingRowState>(
+    EMPTY_HOTEL_FEEDING_ROW
+  );
+  const [walkingDraft, setWalkingDraft] = useState<
+    typeof EMPTY_HOTEL_WALKING_ROW
+  >(EMPTY_HOTEL_WALKING_ROW);
+  const [playingDraft, setPlayingDraft] = useState<
+    typeof EMPTY_HOTEL_PLAYING_ROW
+  >(EMPTY_HOTEL_PLAYING_ROW);
+  const [medicationDraft, setMedicationDraft] = useState<
+    typeof EMPTY_HOTEL_MEDICATION_ROW
+  >(EMPTY_HOTEL_MEDICATION_ROW);
   // Freetext "Things brought" note - one per booking, never per-night.
   const [hotelThingsBrought, setHotelThingsBrought] = useState('');
   // "Same instructions every night" (default) vs per-night editing - when
@@ -1078,7 +1160,11 @@ export function CustomerBookingFlowPage() {
     () => new Set<StepDef['key']>(['branch'])
   );
 
-  const [showStorePolicies, setShowStorePolicies] = useState(false);
+  // 'agree' = the must-agree popup leaving the Branch step; 'view' = the
+  // read-only copy behind the "View store policies" link.
+  const [storePoliciesMode, setStorePoliciesMode] = useState<
+    'agree' | 'view' | null
+  >(null);
   // Book before assessment: the notice shown when leaving the Pet step with
   // a pet staff have not assessed yet. Acknowledged once per pet, so going
   // Back and Next again doesn't nag.
@@ -1853,7 +1939,6 @@ export function CustomerBookingFlowPage() {
   const currentBookingAwaitsAssessment =
     Boolean(selectedPet) &&
     !isSelectedPetAssessed &&
-    !isReceptionistMode &&
     (selectedPackageIds.length > 0 ||
       selectedServices.some((service) => service.requires_assessed_pet));
 
@@ -1961,13 +2046,21 @@ export function CustomerBookingFlowPage() {
     ? clampTime(EMPTY_HOTEL_FEEDING_ROW.scheduled_time, daycareVisitBounds)
     : EMPTY_HOTEL_FEEDING_ROW.scheduled_time;
   // Rows that won't be sent don't count. Also catches a row added before the
-  // user went back and moved the start time.
+  // user went back and moved the start time. Custom change (Care
+  // Instructions Add-modal, per-row time choice): a row left in 'period'
+  // mode has a stale/unused scheduled_time (it's never submitted), so it
+  // must be excluded here too - only time_mode === 'specific' rows actually
+  // carry a real scheduled_time. Medications has no time_mode (always
+  // scheduled_time-based), so it keeps its own completeness-only filter.
   const daycareCareTimesOutsideVisit =
     daycareVisitBounds !== null &&
     [
-      ...hotelFeeding.filter((row) => hotelFeedingRowStatus(row) !== 'empty'),
-      ...hotelWalking,
-      ...hotelPlaying,
+      ...hotelFeeding.filter(
+        (row) =>
+          hotelFeedingRowStatus(row) !== 'empty' && row.time_mode === 'specific'
+      ),
+      ...hotelWalking.filter((row) => row.time_mode === 'specific'),
+      ...hotelPlaying.filter((row) => row.time_mode === 'specific'),
       ...hotelMedications.filter(
         (row) => hotelMedicationRowStatus(row) !== 'empty'
       ),
@@ -2533,10 +2626,15 @@ export function CustomerBookingFlowPage() {
     if (!isCurrentStepValid) return;
 
     // Store policies: a customer leaving the Branch step has to agree to
-    // them first, every time - handleStorePoliciesAgree does the actual
-    // advance. Staff booking on a customer's behalf skip this.
-    if (!isReceptionistMode && currentStep.key === 'branch') {
-      setShowStorePolicies(true);
+    // them first - once per account (per STORE_POLICIES_VERSION), not per
+    // booking. handleStorePoliciesAgree does the actual advance. Staff
+    // booking on a customer's behalf skip this.
+    if (
+      !isReceptionistMode &&
+      currentStep.key === 'branch' &&
+      !hasAgreedToStorePolicies
+    ) {
+      setStorePoliciesMode('agree');
       return;
     }
 
@@ -2572,8 +2670,19 @@ export function CustomerBookingFlowPage() {
     advanceTo(currentStepIndex + 1);
   }
 
-  function handleStorePoliciesAgree() {
-    setShowStorePolicies(false);
+  function handleStorePoliciesAgree(remember: boolean) {
+    setStorePoliciesMode(null);
+    // Only "Remember policies" saves it to the account - without it the
+    // customer is asked again the next time they leave the Branch step.
+    // Optimistic: never block the booking on this save. If it fails, the
+    // profile still reads as not-agreed and the customer is simply asked
+    // again on their next booking.
+    if (remember) {
+      setHasAgreedToStorePolicies(true);
+      if (accessToken && user?.id) {
+        void agreeToStorePolicies(user.id, STORE_POLICIES_VERSION, accessToken);
+      }
+    }
     advanceTo(currentStepIndex + 1);
   }
 
@@ -2786,39 +2895,83 @@ export function CustomerBookingFlowPage() {
     }
   }
 
-  function addHotelFeeding() {
-    setHotelFeeding((prev) => [
-      ...prev,
-      {
-        ...EMPTY_HOTEL_FEEDING_ROW,
-        scheduled_time: newCareRowTime,
-        stay_date: hotelUniformInstructions ? null : activeNightDate,
-      },
-    ]);
+  /** Opens the Add Feeding modal with a fresh draft - the direct analog of
+   * the old addHotelFeeding's immediate-append, except composition now
+   * happens in feedingDraft until saveFeedingDraft commits it. */
+  function openAddFeeding() {
+    setFeedingDraft({
+      ...EMPTY_HOTEL_FEEDING_ROW,
+      scheduled_time: newCareRowTime,
+      time_mode: defaultCareTimeMode(category),
+      stay_date: hotelUniformInstructions ? null : activeNightDate,
+    });
+    setActiveAddModal('feeding');
   }
 
   /** Receptionist mode only - picked from the staff library
-   * (StaffItemPicker), copies the item's field values into a new row the
-   * same way addHotelFeeding's empty row does, leaving food_catalog_id
-   * null (that FK is only for the customer's own catalog). */
-  function addHotelFeedingFromItem(item: PickableStaffFoodItem) {
-    setHotelFeeding((prev) => [
+   * (StaffItemPicker, now rendered inside the Add Feeding modal). Merges
+   * into the already-open draft (not a fresh EMPTY_HOTEL_FEEDING_ROW) so
+   * time_mode/scheduled_time/stay_date set at open-time survive a library
+   * pick, leaving food_catalog_id null (that FK is only for the customer's
+   * own catalog). */
+  function applyFeedingLibraryItem(item: PickableStaffFoodItem) {
+    setFeedingDraft((prev) => ({
       ...prev,
-      {
-        ...EMPTY_HOTEL_FEEDING_ROW,
-        scheduled_time: newCareRowTime,
-        food_type: item.name,
-        quantity: item.quantity,
-        quantity_unit:
-          item.quantity_unit ?? EMPTY_HOTEL_FEEDING_ROW.quantity_unit,
-        photo_url: item.photo_url,
-        special_instructions: item.special_instructions ?? '',
-        stay_date: hotelUniformInstructions ? null : activeNightDate,
-        fromLibraryItemId: item.id,
-      },
-    ]);
+      food_type: item.name,
+      quantity: item.quantity,
+      quantity_unit:
+        item.quantity_unit ?? EMPTY_HOTEL_FEEDING_ROW.quantity_unit,
+      photo_url: item.photo_url,
+      special_instructions: item.special_instructions ?? '',
+      fromLibraryItemId: item.id,
+    }));
   }
 
+  /** Commits feedingDraft to hotelFeeding once it satisfies
+   * hotelFeedingRowStatus's 'complete' rule (mirrored by the modal's Save
+   * button disabled state) and closes the modal. */
+  function saveFeedingDraft() {
+    if (hotelFeedingRowStatus(feedingDraft) !== 'complete') return;
+    setHotelFeeding((prev) => [...prev, feedingDraft]);
+    setActiveAddModal(null);
+  }
+
+  /** Draft-local counterpart to uploadHotelFeedingPhoto below, for use
+   * while a row is still being composed in the Add modal (no array index
+   * exists for it yet). */
+  async function uploadFeedingDraftPhoto(file: File) {
+    if (!selectedPetId || !accessToken) return;
+
+    setFeedingDraft((prev) => ({
+      ...prev,
+      photo_uploading: true,
+      photo_error: null,
+    }));
+
+    const result = await uploadPetCareItemPhoto(
+      selectedPetId,
+      accessToken,
+      file
+    );
+
+    if (result.data) {
+      const photoUrl = result.data.photo_url;
+      setFeedingDraft((prev) => ({
+        ...prev,
+        photo_url: photoUrl,
+        photo_uploading: false,
+      }));
+    } else {
+      setFeedingDraft((prev) => ({
+        ...prev,
+        photo_uploading: false,
+        photo_error: result.error ?? 'Photo upload failed',
+      }));
+    }
+  }
+
+  /** Edits an already-added row in place - unaffected by the Add-modal
+   * refactor above (only composing a NEW row is modal-based now). */
   function updateHotelFeeding(
     index: number,
     updates: Partial<HotelFeedingRowState>
@@ -2860,15 +3013,22 @@ export function CustomerBookingFlowPage() {
     }
   }
 
-  function addHotelWalkBlock() {
-    setHotelWalking((prev) => [
-      ...prev,
-      {
-        ...EMPTY_HOTEL_WALKING_ROW,
-        scheduled_time: newCareRowTime,
-        stay_date: hotelUniformInstructions ? null : activeNightDate,
-      },
-    ]);
+  /** Opens the Add Walking modal with a fresh draft - mirrors
+   * openAddFeeding; no library picker exists for Walking. */
+  function openAddWalking() {
+    setWalkingDraft({
+      ...EMPTY_HOTEL_WALKING_ROW,
+      scheduled_time: newCareRowTime,
+      time_mode: defaultCareTimeMode(category),
+      stay_date: hotelUniformInstructions ? null : activeNightDate,
+    });
+    setActiveAddModal('walking');
+  }
+
+  function saveWalkingDraft() {
+    if (hotelWalkPlayRowStatus(walkingDraft) !== 'complete') return;
+    setHotelWalking((prev) => [...prev, walkingDraft]);
+    setActiveAddModal(null);
   }
 
   function updateHotelWalkBlock(
@@ -2884,15 +3044,22 @@ export function CustomerBookingFlowPage() {
     setHotelWalking((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function addHotelPlayBlock() {
-    setHotelPlaying((prev) => [
-      ...prev,
-      {
-        ...EMPTY_HOTEL_PLAYING_ROW,
-        scheduled_time: newCareRowTime,
-        stay_date: hotelUniformInstructions ? null : activeNightDate,
-      },
-    ]);
+  /** Opens the Add Playtime modal with a fresh draft - mirrors
+   * openAddFeeding; no library picker exists for Playtime. */
+  function openAddPlaying() {
+    setPlayingDraft({
+      ...EMPTY_HOTEL_PLAYING_ROW,
+      scheduled_time: newCareRowTime,
+      time_mode: defaultCareTimeMode(category),
+      stay_date: hotelUniformInstructions ? null : activeNightDate,
+    });
+    setActiveAddModal('playing');
+  }
+
+  function savePlayingDraft() {
+    if (hotelWalkPlayRowStatus(playingDraft) !== 'complete') return;
+    setHotelPlaying((prev) => [...prev, playingDraft]);
+    setActiveAddModal(null);
   }
 
   function updateHotelPlayBlock(
@@ -2908,35 +3075,72 @@ export function CustomerBookingFlowPage() {
     setHotelPlaying((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function addHotelMedication() {
-    setHotelMedications((prev) => [
-      ...prev,
-      {
-        ...EMPTY_HOTEL_MEDICATION_ROW,
-        scheduled_time: newCareRowTime,
-        stay_date: hotelUniformInstructions ? null : activeNightDate,
-      },
-    ]);
+  /** Opens the Add Medication modal with a fresh draft - mirrors
+   * openAddFeeding. */
+  function openAddMedication() {
+    setMedicationDraft({
+      ...EMPTY_HOTEL_MEDICATION_ROW,
+      scheduled_time: newCareRowTime,
+      stay_date: hotelUniformInstructions ? null : activeNightDate,
+    });
+    setActiveAddModal('medication');
   }
 
-  /** Receptionist mode only - mirrors addHotelFeedingFromItem above. */
-  function addHotelMedicationFromItem(item: PickableStaffMedicationItem) {
-    setHotelMedications((prev) => [
+  /** Receptionist mode only - mirrors applyFeedingLibraryItem above;
+   * merges into the already-open draft rather than resetting it. */
+  function applyMedicationLibraryItem(item: PickableStaffMedicationItem) {
+    setMedicationDraft((prev) => ({
       ...prev,
-      {
-        ...EMPTY_HOTEL_MEDICATION_ROW,
-        scheduled_time: newCareRowTime,
-        medication_name: item.name,
-        dose: item.dose,
-        dose_unit: item.dose_unit ?? EMPTY_HOTEL_MEDICATION_ROW.dose_unit,
-        photo_url: item.photo_url,
-        administration_notes: item.administration_notes ?? '',
-        stay_date: hotelUniformInstructions ? null : activeNightDate,
-        fromLibraryItemId: item.id,
-      },
-    ]);
+      medication_name: item.name,
+      dose: item.dose,
+      dose_unit: item.dose_unit ?? EMPTY_HOTEL_MEDICATION_ROW.dose_unit,
+      photo_url: item.photo_url,
+      administration_notes: item.administration_notes ?? '',
+      fromLibraryItemId: item.id,
+    }));
   }
 
+  function saveMedicationDraft() {
+    if (hotelMedicationRowStatus(medicationDraft) !== 'complete') return;
+    setHotelMedications((prev) => [...prev, medicationDraft]);
+    setActiveAddModal(null);
+  }
+
+  /** Draft-local counterpart to uploadHotelMedicationPhoto below, for use
+   * while a row is still being composed in the Add modal. */
+  async function uploadMedicationDraftPhoto(file: File) {
+    if (!selectedPetId || !accessToken) return;
+
+    setMedicationDraft((prev) => ({
+      ...prev,
+      photo_uploading: true,
+      photo_error: null,
+    }));
+
+    const result = await uploadPetCareItemPhoto(
+      selectedPetId,
+      accessToken,
+      file
+    );
+
+    if (result.data) {
+      const photoUrl = result.data.photo_url;
+      setMedicationDraft((prev) => ({
+        ...prev,
+        photo_url: photoUrl,
+        photo_uploading: false,
+      }));
+    } else {
+      setMedicationDraft((prev) => ({
+        ...prev,
+        photo_uploading: false,
+        photo_error: result.error ?? 'Photo upload failed',
+      }));
+    }
+  }
+
+  /** Edits an already-added row in place - unaffected by the Add-modal
+   * refactor above. */
   function updateHotelMedication(
     index: number,
     updates: Partial<typeof EMPTY_HOTEL_MEDICATION_ROW>
@@ -2994,18 +3198,15 @@ export function CustomerBookingFlowPage() {
     // server's hotelPreferencesValidator with an opaque "Invalid payload".
     // isStepValid('hotelDetails') separately blocks Next while any row is
     // still 'partial', so nothing the user cares about is silently dropped.
-    // Custom change (Daycare-only clock-time scheduling): Hotel sends
-    // meal_time/time_block (unchanged); Daycare sends a literal
-    // scheduled_time instead - a few-hour Daycare visit doesn't fit the
-    // Morning/Noon/Afternoon/Evening vocabulary a multi-night Hotel stay
-    // does. Exactly one of the two per row, per booking.validator.ts's
-    // category-conditional check.
-    const isDaycare = category === 'Daycare';
-
+    // Custom change (Care Instructions Add-modal, per-row time choice):
+    // each row sends meal_time/time_block ('period' mode) or a literal
+    // scheduled_time ('specific' mode), chosen per row regardless of
+    // category now - exactly one of the two, per booking.validator.ts's
+    // requireCareInstructionRowsSatisfyTimeXor.
     const feeding: HotelBookingPreferenceFeeding[] = hotelFeeding
       .filter((row) => hotelFeedingRowStatus(row) === 'complete')
       .map((row) => ({
-        ...(isDaycare
+        ...(row.time_mode === 'specific'
           ? { scheduled_time: row.scheduled_time }
           : { meal_time: row.meal_time }),
         food_type: row.food_type,
@@ -3024,7 +3225,7 @@ export function CustomerBookingFlowPage() {
     const walking: HotelBookingPreferenceWalking[] = hotelWalking
       .filter((row) => hotelWalkPlayRowStatus(row) === 'complete')
       .map((row) => ({
-        ...(isDaycare
+        ...(row.time_mode === 'specific'
           ? { scheduled_time: row.scheduled_time }
           : { time_block: row.time_block }),
         duration_minutes: row.duration_minutes,
@@ -3035,7 +3236,7 @@ export function CustomerBookingFlowPage() {
     const playing: HotelBookingPreferencePlaying[] = hotelPlaying
       .filter((row) => hotelWalkPlayRowStatus(row) === 'complete')
       .map((row) => ({
-        ...(isDaycare
+        ...(row.time_mode === 'specific'
           ? { scheduled_time: row.scheduled_time }
           : { time_block: row.time_block }),
         duration_minutes: row.duration_minutes,
@@ -4546,32 +4747,45 @@ export function CustomerBookingFlowPage() {
                   return null;
                 }
 
-                // Custom change (Daycare-only clock-time scheduling): the
-                // day-one/last-day meal-window check only makes sense for
-                // Hotel's multi-night meal_time enum - a Daycare visit's
-                // scheduled_time is an unambiguous literal time, with no
-                // "does this day-period window fit the stay's edge days" to
-                // judge.
+                // Custom change (Care Instructions Add-modal, per-row time
+                // choice): the day-one/last-day meal-window check only
+                // makes sense for Hotel's multi-night stay edge days -
+                // which underlying field the row uses (time_mode) no longer
+                // determines whether the check applies. A 'specific' row
+                // compares its literal clock time directly against the
+                // check-in/check-out bounds; a 'period' row keeps using the
+                // existing MealTime-window lookup.
                 const notOnDayOne =
                   category === 'Hotel' &&
                   hotelCheckInTime !== null &&
-                  !isMealApplicableOnDayOne(row.meal_time, hotelCheckInTime);
+                  (row.time_mode === 'specific'
+                    ? row.scheduled_time < hotelCheckInTime
+                    : !isMealApplicableOnDayOne(
+                        row.meal_time,
+                        hotelCheckInTime
+                      ));
                 const notOnLastDay =
                   category === 'Hotel' &&
                   hotelCheckOutTime !== null &&
-                  !isMealApplicableOnLastDay(row.meal_time, hotelCheckOutTime);
+                  (row.time_mode === 'specific'
+                    ? row.scheduled_time > hotelCheckOutTime
+                    : !isMealApplicableOnLastDay(
+                        row.meal_time,
+                        hotelCheckOutTime
+                      ));
 
                 return (
                   <div key={index} className={styles.instructionBlock}>
                     <div className={styles.careFieldGrid}>
                       <label className={styles.field}>
                         <span className={styles.fieldLabel}>
-                          {category === 'Daycare'
+                          {row.time_mode === 'specific'
                             ? 'Feeding time'
                             : 'Meal time'}
                         </span>
-                        {category === 'Daycare' ? (
+                        {row.time_mode === 'specific' ? (
                           <TimeInput
+                            aria-label="Feeding time"
                             min={daycareVisitBounds?.min}
                             max={daycareVisitBounds?.max}
                             value={row.scheduled_time}
@@ -4600,6 +4814,12 @@ export function CustomerBookingFlowPage() {
                           </select>
                         )}
                       </label>
+                      {row.time_mode === 'specific' ? (
+                        <p className={styles.derivedTimeLabel}>
+                          Time of day: {mealTimeFromClock(row.scheduled_time)}{' '}
+                          (read-only)
+                        </p>
+                      ) : null}
                       <label className={styles.field}>
                         <span className={styles.fieldLabel}>Food type</span>
                         <CatalogComboBox
@@ -4742,20 +4962,254 @@ export function CustomerBookingFlowPage() {
                 <button
                   type="button"
                   className={styles.secondaryButton}
-                  onClick={addHotelFeeding}
+                  onClick={openAddFeeding}
                 >
                   Add feeding time
                 </button>
+              </div>
+            </section>
+
+            <Modal
+              isOpen={activeAddModal === 'feeding'}
+              title="Add feeding time"
+              onClose={() => setActiveAddModal(null)}
+              closeOnBackdropClick={false}
+            >
+              <div className={styles.careFieldGrid}>
                 {isReceptionistMode ? (
                   <StaffItemPicker
                     items={pickableFoodItems}
-                    onPick={addHotelFeedingFromItem}
+                    onPick={applyFeedingLibraryItem}
                     placeholder="Add from my food library..."
                     aria-label="Add feeding time from library"
                   />
                 ) : null}
+                <fieldset className={styles.field}>
+                  <span className={styles.fieldLabel}>Time</span>
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="radio"
+                      name="feeding-time-mode"
+                      checked={feedingDraft.time_mode === 'period'}
+                      onChange={() =>
+                        setFeedingDraft((prev) => ({
+                          ...prev,
+                          time_mode: 'period',
+                        }))
+                      }
+                    />
+                    Time of day
+                  </label>
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="radio"
+                      name="feeding-time-mode"
+                      checked={feedingDraft.time_mode === 'specific'}
+                      onChange={() =>
+                        setFeedingDraft((prev) => ({
+                          ...prev,
+                          time_mode: 'specific',
+                        }))
+                      }
+                    />
+                    Specific time
+                  </label>
+                </fieldset>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    {feedingDraft.time_mode === 'specific'
+                      ? 'Feeding time'
+                      : 'Meal time'}
+                  </span>
+                  {feedingDraft.time_mode === 'specific' ? (
+                    <TimeInput
+                      aria-label="Feeding time"
+                      min={daycareVisitBounds?.min}
+                      max={daycareVisitBounds?.max}
+                      value={feedingDraft.scheduled_time}
+                      onChange={(value) =>
+                        setFeedingDraft((prev) => ({
+                          ...prev,
+                          scheduled_time: value,
+                        }))
+                      }
+                    />
+                  ) : (
+                    <select
+                      className={styles.input}
+                      value={feedingDraft.meal_time}
+                      onChange={(event) =>
+                        setFeedingDraft((prev) => ({
+                          ...prev,
+                          meal_time: event.target.value as NonNullable<
+                            HotelBookingPreferenceFeeding['meal_time']
+                          >,
+                        }))
+                      }
+                    >
+                      {MEAL_TIMES.map((mealTime) => (
+                        <option key={mealTime} value={mealTime}>
+                          {mealTime}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </label>
+                {feedingDraft.time_mode === 'specific' ? (
+                  <p className={styles.derivedTimeLabel}>
+                    Time of day:{' '}
+                    {mealTimeFromClock(feedingDraft.scheduled_time)} (read-only)
+                  </p>
+                ) : null}
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Food type</span>
+                  <CatalogComboBox
+                    placeholder="Food type"
+                    items={foodCatalog}
+                    hidePrice
+                    value={{
+                      catalogId: feedingDraft.food_catalog_id,
+                      text: feedingDraft.food_type,
+                    }}
+                    onChange={(next) =>
+                      setFeedingDraft((prev) => ({
+                        ...prev,
+                        food_type: next.text,
+                        food_catalog_id: next.catalogId,
+                      }))
+                    }
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Quantity</span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    min={1}
+                    value={feedingDraft.quantity}
+                    onChange={(event) =>
+                      setFeedingDraft((prev) => ({
+                        ...prev,
+                        quantity: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Unit</span>
+                  <select
+                    className={styles.input}
+                    value={feedingDraft.quantity_unit}
+                    onChange={(event) =>
+                      setFeedingDraft((prev) => ({
+                        ...prev,
+                        quantity_unit: event.target.value as FoodQuantityUnit,
+                      }))
+                    }
+                  >
+                    {FOOD_QUANTITY_UNITS.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    Special instructions (optional)
+                  </span>
+                  <textarea
+                    className={`${styles.input} ${styles.textarea}`}
+                    rows={3}
+                    value={feedingDraft.special_instructions}
+                    onChange={(event) =>
+                      setFeedingDraft((prev) => ({
+                        ...prev,
+                        special_instructions: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Photo (optional)</span>
+                  {feedingDraft.photo_url ? (
+                    <div className={styles.inlineFields}>
+                      <img
+                        className={styles.carePhotoThumbnail}
+                        src={feedingDraft.photo_url}
+                        alt="Food item"
+                      />
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() =>
+                          setFeedingDraft((prev) => ({
+                            ...prev,
+                            photo_url: null,
+                          }))
+                        }
+                      >
+                        Remove photo
+                      </button>
+                    </div>
+                  ) : (
+                    <label className={styles.copy}>
+                      {feedingDraft.photo_uploading
+                        ? 'Uploading photo...'
+                        : 'Attach a photo'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={feedingDraft.photo_uploading}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) uploadFeedingDraftPhoto(file);
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+                  {feedingDraft.photo_error ? (
+                    <p className={styles.errorText}>
+                      {feedingDraft.photo_error}
+                    </p>
+                  ) : null}
+                </div>
+                {isReceptionistMode &&
+                feedingDraft.fromLibraryItemId === null ? (
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="checkbox"
+                      checked={feedingDraft.saveToLibrary}
+                      onChange={(event) =>
+                        setFeedingDraft((prev) => ({
+                          ...prev,
+                          saveToLibrary: event.target.checked,
+                        }))
+                      }
+                    />
+                    Save to my private library
+                  </label>
+                ) : null}
               </div>
-            </section>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setActiveAddModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={hotelFeedingRowStatus(feedingDraft) !== 'complete'}
+                  onClick={saveFeedingDraft}
+                >
+                  Add
+                </button>
+              </div>
+            </Modal>
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Walking</span>
@@ -4772,10 +5226,13 @@ export function CustomerBookingFlowPage() {
                     <div className={styles.careFieldGrid}>
                       <label className={styles.field}>
                         <span className={styles.fieldLabel}>
-                          {category === 'Daycare' ? 'Walk time' : 'Time of day'}
+                          {row.time_mode === 'specific'
+                            ? 'Walk time'
+                            : 'Time of day'}
                         </span>
-                        {category === 'Daycare' ? (
+                        {row.time_mode === 'specific' ? (
                           <TimeInput
+                            aria-label="Walk time"
                             min={daycareVisitBounds?.min}
                             max={daycareVisitBounds?.max}
                             value={row.scheduled_time}
@@ -4804,6 +5261,12 @@ export function CustomerBookingFlowPage() {
                           </select>
                         )}
                       </label>
+                      {row.time_mode === 'specific' ? (
+                        <p className={styles.derivedTimeLabel}>
+                          Time of day: {partOfDayFromClock(row.scheduled_time)}{' '}
+                          (read-only)
+                        </p>
+                      ) : null}
                       <label className={styles.field}>
                         <span className={styles.fieldLabel}>
                           Duration (minutes)
@@ -4871,11 +5334,161 @@ export function CustomerBookingFlowPage() {
               <button
                 type="button"
                 className={styles.secondaryButton}
-                onClick={addHotelWalkBlock}
+                onClick={openAddWalking}
               >
                 Add walk time
               </button>
             </section>
+
+            <Modal
+              isOpen={activeAddModal === 'walking'}
+              title="Add walk time"
+              onClose={() => setActiveAddModal(null)}
+              closeOnBackdropClick={false}
+            >
+              <div className={styles.careFieldGrid}>
+                <fieldset className={styles.field}>
+                  <span className={styles.fieldLabel}>Time</span>
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="radio"
+                      name="walking-time-mode"
+                      checked={walkingDraft.time_mode === 'period'}
+                      onChange={() =>
+                        setWalkingDraft((prev) => ({
+                          ...prev,
+                          time_mode: 'period',
+                        }))
+                      }
+                    />
+                    Time of day
+                  </label>
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="radio"
+                      name="walking-time-mode"
+                      checked={walkingDraft.time_mode === 'specific'}
+                      onChange={() =>
+                        setWalkingDraft((prev) => ({
+                          ...prev,
+                          time_mode: 'specific',
+                        }))
+                      }
+                    />
+                    Specific time
+                  </label>
+                </fieldset>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    {walkingDraft.time_mode === 'specific'
+                      ? 'Walk time'
+                      : 'Time of day'}
+                  </span>
+                  {walkingDraft.time_mode === 'specific' ? (
+                    <TimeInput
+                      aria-label="Walk time"
+                      min={daycareVisitBounds?.min}
+                      max={daycareVisitBounds?.max}
+                      value={walkingDraft.scheduled_time}
+                      onChange={(value) =>
+                        setWalkingDraft((prev) => ({
+                          ...prev,
+                          scheduled_time: value,
+                        }))
+                      }
+                    />
+                  ) : (
+                    <select
+                      className={styles.input}
+                      value={walkingDraft.time_block}
+                      onChange={(event) =>
+                        setWalkingDraft((prev) => ({
+                          ...prev,
+                          time_block: event.target
+                            .value as HotelBookingPreferenceWalking['time_block'],
+                        }))
+                      }
+                    >
+                      {PARTS_OF_DAY.map((part) => (
+                        <option key={part} value={part}>
+                          {part}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </label>
+                {walkingDraft.time_mode === 'specific' ? (
+                  <p className={styles.derivedTimeLabel}>
+                    Time of day:{' '}
+                    {partOfDayFromClock(walkingDraft.scheduled_time)}{' '}
+                    (read-only)
+                  </p>
+                ) : null}
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Duration (minutes)</span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    min={1}
+                    value={walkingDraft.duration_minutes}
+                    onChange={(event) =>
+                      setWalkingDraft((prev) => ({
+                        ...prev,
+                        duration_minutes: Number(event.target.value),
+                      }))
+                    }
+                  />
+                  <div className={styles.inlineFields}>
+                    {DURATION_PRESETS_MINUTES.map((minutes) => (
+                      <button
+                        key={minutes}
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() =>
+                          setWalkingDraft((prev) => ({
+                            ...prev,
+                            duration_minutes: minutes,
+                          }))
+                        }
+                      >
+                        {minutes}m
+                      </button>
+                    ))}
+                  </div>
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Notes (optional)</span>
+                  <textarea
+                    className={`${styles.input} ${styles.textarea}`}
+                    rows={3}
+                    value={walkingDraft.notes}
+                    onChange={(event) =>
+                      setWalkingDraft((prev) => ({
+                        ...prev,
+                        notes: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setActiveAddModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={hotelWalkPlayRowStatus(walkingDraft) !== 'complete'}
+                  onClick={saveWalkingDraft}
+                >
+                  Add
+                </button>
+              </div>
+            </Modal>
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Playtime</span>
@@ -4892,12 +5505,13 @@ export function CustomerBookingFlowPage() {
                     <div className={styles.careFieldGrid}>
                       <label className={styles.field}>
                         <span className={styles.fieldLabel}>
-                          {category === 'Daycare'
+                          {row.time_mode === 'specific'
                             ? 'Playtime start'
                             : 'Time of day'}
                         </span>
-                        {category === 'Daycare' ? (
+                        {row.time_mode === 'specific' ? (
                           <TimeInput
+                            aria-label="Playtime start"
                             min={daycareVisitBounds?.min}
                             max={daycareVisitBounds?.max}
                             value={row.scheduled_time}
@@ -4926,6 +5540,12 @@ export function CustomerBookingFlowPage() {
                           </select>
                         )}
                       </label>
+                      {row.time_mode === 'specific' ? (
+                        <p className={styles.derivedTimeLabel}>
+                          Time of day: {partOfDayFromClock(row.scheduled_time)}{' '}
+                          (read-only)
+                        </p>
+                      ) : null}
                       <label className={styles.field}>
                         <span className={styles.fieldLabel}>
                           Duration (minutes)
@@ -4993,11 +5613,161 @@ export function CustomerBookingFlowPage() {
               <button
                 type="button"
                 className={styles.secondaryButton}
-                onClick={addHotelPlayBlock}
+                onClick={openAddPlaying}
               >
                 Add playtime
               </button>
             </section>
+
+            <Modal
+              isOpen={activeAddModal === 'playing'}
+              title="Add playtime"
+              onClose={() => setActiveAddModal(null)}
+              closeOnBackdropClick={false}
+            >
+              <div className={styles.careFieldGrid}>
+                <fieldset className={styles.field}>
+                  <span className={styles.fieldLabel}>Time</span>
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="radio"
+                      name="playing-time-mode"
+                      checked={playingDraft.time_mode === 'period'}
+                      onChange={() =>
+                        setPlayingDraft((prev) => ({
+                          ...prev,
+                          time_mode: 'period',
+                        }))
+                      }
+                    />
+                    Time of day
+                  </label>
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="radio"
+                      name="playing-time-mode"
+                      checked={playingDraft.time_mode === 'specific'}
+                      onChange={() =>
+                        setPlayingDraft((prev) => ({
+                          ...prev,
+                          time_mode: 'specific',
+                        }))
+                      }
+                    />
+                    Specific time
+                  </label>
+                </fieldset>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    {playingDraft.time_mode === 'specific'
+                      ? 'Playtime start'
+                      : 'Time of day'}
+                  </span>
+                  {playingDraft.time_mode === 'specific' ? (
+                    <TimeInput
+                      aria-label="Playtime start"
+                      min={daycareVisitBounds?.min}
+                      max={daycareVisitBounds?.max}
+                      value={playingDraft.scheduled_time}
+                      onChange={(value) =>
+                        setPlayingDraft((prev) => ({
+                          ...prev,
+                          scheduled_time: value,
+                        }))
+                      }
+                    />
+                  ) : (
+                    <select
+                      className={styles.input}
+                      value={playingDraft.time_block}
+                      onChange={(event) =>
+                        setPlayingDraft((prev) => ({
+                          ...prev,
+                          time_block: event.target
+                            .value as HotelBookingPreferenceWalking['time_block'],
+                        }))
+                      }
+                    >
+                      {PARTS_OF_DAY.map((part) => (
+                        <option key={part} value={part}>
+                          {part}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </label>
+                {playingDraft.time_mode === 'specific' ? (
+                  <p className={styles.derivedTimeLabel}>
+                    Time of day:{' '}
+                    {partOfDayFromClock(playingDraft.scheduled_time)}{' '}
+                    (read-only)
+                  </p>
+                ) : null}
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Duration (minutes)</span>
+                  <input
+                    className={styles.input}
+                    type="number"
+                    min={1}
+                    value={playingDraft.duration_minutes}
+                    onChange={(event) =>
+                      setPlayingDraft((prev) => ({
+                        ...prev,
+                        duration_minutes: Number(event.target.value),
+                      }))
+                    }
+                  />
+                  <div className={styles.inlineFields}>
+                    {DURATION_PRESETS_MINUTES.map((minutes) => (
+                      <button
+                        key={minutes}
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() =>
+                          setPlayingDraft((prev) => ({
+                            ...prev,
+                            duration_minutes: minutes,
+                          }))
+                        }
+                      >
+                        {minutes}m
+                      </button>
+                    ))}
+                  </div>
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Notes (optional)</span>
+                  <textarea
+                    className={`${styles.input} ${styles.textarea}`}
+                    rows={3}
+                    value={playingDraft.notes}
+                    onChange={(event) =>
+                      setPlayingDraft((prev) => ({
+                        ...prev,
+                        notes: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setActiveAddModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={hotelWalkPlayRowStatus(playingDraft) !== 'complete'}
+                  onClick={savePlayingDraft}
+                >
+                  Add
+                </button>
+              </div>
+            </Modal>
 
             <section className={styles.hotelDetailsSection}>
               <span className={styles.sectionTitle}>Medications</span>
@@ -5066,6 +5836,7 @@ export function CustomerBookingFlowPage() {
                       <label className={styles.field}>
                         <span className={styles.fieldLabel}>Time</span>
                         <TimeInput
+                          aria-label="Medication time"
                           min={daycareVisitBounds?.min}
                           max={daycareVisitBounds?.max}
                           value={row.scheduled_time}
@@ -5169,20 +5940,192 @@ export function CustomerBookingFlowPage() {
                 <button
                   type="button"
                   className={styles.secondaryButton}
-                  onClick={addHotelMedication}
+                  onClick={openAddMedication}
                 >
                   Add medication
                 </button>
+              </div>
+            </section>
+
+            <Modal
+              isOpen={activeAddModal === 'medication'}
+              title="Add medication"
+              onClose={() => setActiveAddModal(null)}
+              closeOnBackdropClick={false}
+            >
+              <div className={styles.careFieldGrid}>
                 {isReceptionistMode ? (
                   <StaffItemPicker
                     items={pickableMedicationItems}
-                    onPick={addHotelMedicationFromItem}
+                    onPick={applyMedicationLibraryItem}
                     placeholder="Add from my medication library..."
                     aria-label="Add medication from library"
                   />
                 ) : null}
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Medication name</span>
+                  <CatalogComboBox
+                    placeholder="Medication name"
+                    items={medicationCatalog}
+                    hidePrice
+                    value={{
+                      catalogId: medicationDraft.medication_catalog_id,
+                      text: medicationDraft.medication_name,
+                    }}
+                    onChange={(next) =>
+                      setMedicationDraft((prev) => ({
+                        ...prev,
+                        medication_name: next.text,
+                        medication_catalog_id: next.catalogId,
+                      }))
+                    }
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Dose</span>
+                  <input
+                    className={styles.input}
+                    value={medicationDraft.dose}
+                    onChange={(event) =>
+                      setMedicationDraft((prev) => ({
+                        ...prev,
+                        dose: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Unit</span>
+                  <select
+                    className={styles.input}
+                    value={medicationDraft.dose_unit}
+                    onChange={(event) =>
+                      setMedicationDraft((prev) => ({
+                        ...prev,
+                        dose_unit: event.target.value as MedicationDoseUnit,
+                      }))
+                    }
+                  >
+                    {MEDICATION_DOSE_UNITS.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Time</span>
+                  <TimeInput
+                    aria-label="Medication time"
+                    min={daycareVisitBounds?.min}
+                    max={daycareVisitBounds?.max}
+                    value={medicationDraft.scheduled_time}
+                    onChange={(value) =>
+                      setMedicationDraft((prev) => ({
+                        ...prev,
+                        scheduled_time: value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>
+                    Administration notes (optional)
+                  </span>
+                  <textarea
+                    className={`${styles.input} ${styles.textarea}`}
+                    rows={3}
+                    value={medicationDraft.administration_notes}
+                    onChange={(event) =>
+                      setMedicationDraft((prev) => ({
+                        ...prev,
+                        administration_notes: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Photo (optional)</span>
+                  {medicationDraft.photo_url ? (
+                    <div className={styles.inlineFields}>
+                      <img
+                        className={styles.carePhotoThumbnail}
+                        src={medicationDraft.photo_url}
+                        alt="Medication"
+                      />
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() =>
+                          setMedicationDraft((prev) => ({
+                            ...prev,
+                            photo_url: null,
+                          }))
+                        }
+                      >
+                        Remove photo
+                      </button>
+                    </div>
+                  ) : (
+                    <label className={styles.copy}>
+                      {medicationDraft.photo_uploading
+                        ? 'Uploading photo...'
+                        : 'Attach a photo'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={medicationDraft.photo_uploading}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) uploadMedicationDraftPhoto(file);
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+                  {medicationDraft.photo_error ? (
+                    <p className={styles.errorText}>
+                      {medicationDraft.photo_error}
+                    </p>
+                  ) : null}
+                </div>
+                {isReceptionistMode &&
+                medicationDraft.fromLibraryItemId === null ? (
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="checkbox"
+                      checked={medicationDraft.saveToLibrary}
+                      onChange={(event) =>
+                        setMedicationDraft((prev) => ({
+                          ...prev,
+                          saveToLibrary: event.target.checked,
+                        }))
+                      }
+                    />
+                    Save to my private library
+                  </label>
+                ) : null}
               </div>
-            </section>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setActiveAddModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={
+                    hotelMedicationRowStatus(medicationDraft) !== 'complete'
+                  }
+                  onClick={saveMedicationDraft}
+                >
+                  Add
+                </button>
+              </div>
+            </Modal>
 
             {/* Per booking, not per night - shown on every night tab. */}
             <section className={styles.hotelDetailsSection}>
@@ -5491,21 +6434,30 @@ export function CustomerBookingFlowPage() {
             {/* Promos & Coupons are picked right here, next to the totals
                 they change - they used to be a step of their own just
                 before this one. */}
-            <PromoCouponMultiSelect
-              promos={applicablePromos}
-              coupons={applicableCoupons}
-              selectedPromoIds={selectedPromoIds}
-              selectedCouponIds={selectedCouponIds}
-              onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
-              onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
-              onClear={() => {
-                setSelectedPromoIds([]);
-                setSelectedCouponIds([]);
-              }}
-              cappedTotal={promoDiscount}
-              groupSubtotal={groupSubtotal}
-              couponsEnabled={spinWheelOn}
-            />
+            {payableBookings.length > 0 ? (
+              <PromoCouponMultiSelect
+                promos={applicablePromos}
+                coupons={applicableCoupons}
+                selectedPromoIds={selectedPromoIds}
+                selectedCouponIds={selectedCouponIds}
+                onTogglePromo={(promoId) => selectOnlyPromo(promoId)}
+                onToggleCoupon={(couponId) => selectOnlyCoupon(couponId)}
+                onClear={() => {
+                  setSelectedPromoIds([]);
+                  setSelectedCouponIds([]);
+                }}
+                cappedTotal={promoDiscount}
+                groupSubtotal={groupSubtotal}
+                couponsEnabled={spinWheelOn}
+              />
+            ) : null}
+            {awaitingAssessmentBookings.length > 0 ? (
+              <p className={styles.unassessedNotice}>
+                {payableBookings.length > 0
+                  ? 'Bookings for pets not yet assessed can get a promo when you pay at the branch.'
+                  : 'Promos can be added when you pay at the branch.'}
+              </p>
+            ) : null}
 
             {reductionOverLimit ? (
               <p className={styles.errorBanner} role="alert">
@@ -5777,9 +6729,10 @@ export function CustomerBookingFlowPage() {
             </div>
           )}
 
-          {showStorePolicies ? (
+          {storePoliciesMode ? (
             <StorePoliciesModal
-              onClose={() => setShowStorePolicies(false)}
+              mode={storePoliciesMode}
+              onClose={() => setStorePoliciesMode(null)}
               onAgree={handleStorePoliciesAgree}
             />
           ) : null}
@@ -5837,6 +6790,15 @@ export function CustomerBookingFlowPage() {
             subtotal={summarySubtotal}
             reduction={discountAmount + promoDiscount}
           />
+          {!isReceptionistMode ? (
+            <button
+              type="button"
+              className={styles.policiesLink}
+              onClick={() => setStorePoliciesMode('view')}
+            >
+              View store policies
+            </button>
+          ) : null}
         </div>
       </div>
     </main>

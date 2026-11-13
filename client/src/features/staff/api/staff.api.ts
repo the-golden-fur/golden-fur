@@ -1,7 +1,10 @@
 import type {
   AutoBuildAssignment,
   AutoBuildPreviewResult,
+  AttendanceDay,
+  AttendanceResult,
   BranchScheduleEntry,
+  StaffAttendanceStatus,
   CreateStaffAccountPayload,
   CreateStaffAccountResult,
   ManageStaffAccountPayload,
@@ -306,6 +309,50 @@ export async function reviewUnavailabilityRequest(
 
   const result = await parseBody<{ block: UnavailabilityBlock }>(response);
   return { data: result.data?.block ?? null, error: result.error };
+}
+
+/** With no date, the server answers for the branch's own today. */
+export async function getAttendanceDay(
+  branchId: string,
+  date: string | undefined,
+  accessToken: string
+): Promise<StaffApiResult<AttendanceDay>> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  const response = await fetch(
+    `${API_BASE_URL}/staff/branches/${branchId}/attendance${query}`,
+    { headers: authHeaders(accessToken) }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: (await response.json()) as AttendanceDay, error: null };
+}
+
+export async function setAttendance(
+  branchId: string,
+  staffId: string,
+  payload: { date: string; status: StaffAttendanceStatus },
+  accessToken: string
+): Promise<StaffApiResult<AttendanceResult>> {
+  const response = await fetch(
+    `${API_BASE_URL}/staff/branches/${branchId}/attendance/${staffId}`,
+    {
+      method: 'PUT',
+      headers: {
+        ...authHeaders(accessToken),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return { data: (await response.json()) as AttendanceResult, error: null };
 }
 
 export async function listBranchSchedule(

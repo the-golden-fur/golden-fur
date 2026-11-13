@@ -25,6 +25,7 @@ import {
   previewCheckoutController,
   previewGroupCheckoutController,
   previewMiscSaleController,
+  listCounterPromoOptionsController,
   recordTransactionPaymentController,
   attachTransactionReceiptController,
   getTransactionReceiptController,
@@ -143,6 +144,12 @@ router.post(
   '/billing/transactions/:id/pay',
   ...staffAccess,
   recordTransactionPaymentController
+);
+
+router.get(
+  '/billing/transactions/:id/promo-options',
+  ...staffAccess,
+  listCounterPromoOptionsController
 );
 
 router.post(
