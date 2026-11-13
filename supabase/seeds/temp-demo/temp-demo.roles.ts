@@ -787,7 +787,9 @@ export async function seedTempRoleDemo(
           redemption: {
             id: id('d0', 2),
             transaction_type: 'redemption',
-            amount: creditUsed,
+            // Stored negative, as redeem_credit() does, so the
+            // credit_transactions_amount_sign_matches_type check passes.
+            amount: -creditUsed,
             transaction_id: txnId,
             created_at: at(sale.day, 2 + i),
           },
@@ -910,14 +912,10 @@ export async function seedTempRoleDemo(
         .select('transaction_type, amount')
         .eq('credit_balance_id', balanceId)
     );
+    // Redemption/expiry rows are stored negative, so the balance is the sum.
     const balance = (
       (ledger.data ?? []) as Array<{ transaction_type: string; amount: number }>
-    ).reduce(
-      (sum, row) =>
-        sum +
-        (row.transaction_type === 'issuance' ? 1 : -1) * Number(row.amount),
-      0
-    );
+    ).reduce((sum, row) => sum + Number(row.amount), 0);
     check(
       'credit_balances',
       await supabase
