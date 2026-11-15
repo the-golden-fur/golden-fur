@@ -39,6 +39,10 @@ import { listMiscSaleOptions } from './services/discountPromoEvaluation.service.
 import { getStaffRoleOrNull } from '../../shared/auth/api/supabaseAuth.api.ts';
 import { BILLING_STAFF_ROLES } from './billing.types.ts';
 import {
+  listCounterPromoOptions,
+  withCounterPromo,
+} from './services/counterPromo.service.ts';
+import {
   attachTransactionReceipt,
   getTransactionReceiptUrl,
   type PaymentReceiptFile,
@@ -401,15 +405,42 @@ export async function recordTransactionPaymentController(
   }
 
   try {
-    const result = await recordTransactionPayment({
+    const transactionId = paramId(req, 'id');
+    const result = await withCounterPromo(
+      { requesterId, transactionId, promoId: parsed.data.promo_id },
+      () =>
+        recordTransactionPayment({
+          requesterId,
+          transactionId,
+          paymentMethod: parsed.data.payment_method,
+          bankName: parsed.data.bank_name ?? null,
+          paymentReference: parsed.data.payment_reference ?? null,
+          amountApplied: parsed.data.amount_applied ?? null,
+        })
+    );
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** The promos the cashier can add to this bill, for the Mark as paid popup. */
+export async function listCounterPromoOptionsController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const options = await listCounterPromoOptions({
       requesterId,
       transactionId: paramId(req, 'id'),
-      paymentMethod: parsed.data.payment_method,
-      bankName: parsed.data.bank_name ?? null,
-      paymentReference: parsed.data.payment_reference ?? null,
-      amountApplied: parsed.data.amount_applied ?? null,
     });
-    return res.status(200).json(result);
+    return res.status(200).json(options);
   } catch (error) {
     return sendServiceError(res, error);
   }
@@ -514,12 +545,23 @@ export async function payTransactionWithCreditController(
     const isStaff =
       staffRole !== null && BILLING_STAFF_ROLES.includes(staffRole);
 
-    const result = await payTransactionWithCredit({
-      requesterId,
-      transactionId: paramId(req, 'id'),
-      isStaff,
-      amountApplied: parsed.data.amount_applied ?? null,
-    });
+    if (parsed.data.promo_id && !isStaff) {
+      return res
+        .status(403)
+        .json({ error: 'Promos are added by staff at the counter' });
+    }
+
+    const transactionId = paramId(req, 'id');
+    const result = await withCounterPromo(
+      { requesterId, transactionId, promoId: parsed.data.promo_id },
+      () =>
+        payTransactionWithCredit({
+          requesterId,
+          transactionId,
+          isStaff,
+          amountApplied: parsed.data.amount_applied ?? null,
+        })
+    );
     return res.status(200).json(result);
   } catch (error) {
     return sendServiceError(res, error);

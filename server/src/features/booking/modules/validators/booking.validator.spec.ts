@@ -219,7 +219,7 @@ describe('createBookingValidator', () => {
     ).toBe(true);
   });
 
-  it('Custom change (Daycare-only clock-time scheduling): rejects a Daycare feeding row that uses meal_time instead of scheduled_time', () => {
+  it('Custom change (Care Instructions Add-modal, per-row time choice): accepts a Daycare feeding row that uses meal_time instead of scheduled_time', () => {
     const { service_category: _category, ...rest } = BASE_BOOKING;
 
     expect(
@@ -240,10 +240,10 @@ describe('createBookingValidator', () => {
           medications: [],
         },
       }).success
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it('Custom change (Daycare-only clock-time scheduling): rejects a Hotel feeding row that uses scheduled_time instead of meal_time', () => {
+  it('Custom change (Care Instructions Add-modal, per-row time choice): accepts a Hotel feeding row that uses scheduled_time instead of meal_time', () => {
     const { service_category: _category, ...rest } = BASE_BOOKING;
 
     expect(
@@ -261,6 +261,90 @@ describe('createBookingValidator', () => {
           ],
           walking: [],
           playing: [],
+          medications: [],
+        },
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a feeding row that sets both meal_time and scheduled_time, regardless of category', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Hotel',
+        hotel_preferences: {
+          feeding: [
+            {
+              meal_time: 'Morning',
+              scheduled_time: '08:30',
+              food_type: 'Kibble',
+              quantity: '1',
+              quantity_unit: 'cup',
+            },
+          ],
+          walking: [],
+          playing: [],
+          medications: [],
+        },
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects a feeding row that sets neither meal_time nor scheduled_time, regardless of category', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Daycare',
+        hotel_preferences: {
+          feeding: [
+            { food_type: 'Kibble', quantity: '1', quantity_unit: 'cup' },
+          ],
+          walking: [],
+          playing: [],
+          medications: [],
+        },
+      }).success
+    ).toBe(false);
+  });
+
+  it('accepts a Daycare walking row that uses time_block instead of scheduled_time', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Daycare',
+        hotel_preferences: {
+          feeding: [],
+          walking: [{ time_block: 'Morning', duration_minutes: 15 }],
+          playing: [],
+          medications: [],
+        },
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects a playing row that sets both time_block and scheduled_time', () => {
+    const { service_category: _category, ...rest } = BASE_BOOKING;
+
+    expect(
+      createBookingValidator.safeParse({
+        ...rest,
+        service_category: 'Hotel',
+        hotel_preferences: {
+          feeding: [],
+          walking: [],
+          playing: [
+            {
+              time_block: 'Afternoon',
+              scheduled_time: '14:00',
+              duration_minutes: 10,
+            },
+          ],
           medications: [],
         },
       }).success
@@ -426,7 +510,7 @@ describe('createBookingGroupValidator', () => {
     ).toBe(false);
   });
 
-  it('Custom change (Daycare-only clock-time scheduling): a sub-booking also enforces the category-conditional feeding shape', () => {
+  it('Custom change (Care Instructions Add-modal, per-row time choice): a sub-booking also enforces the per-row time XOR, regardless of category', () => {
     expect(
       createBookingGroupValidator.safeParse({
         ...BASE_GROUP,
@@ -452,6 +536,8 @@ describe('createBookingGroupValidator', () => {
       }).success
     ).toBe(true);
 
+    // A Daycare row using meal_time instead of scheduled_time now also
+    // passes - Hotel/Daycare may each use either representation.
     expect(
       createBookingGroupValidator.safeParse({
         ...BASE_GROUP,
@@ -463,6 +549,33 @@ describe('createBookingGroupValidator', () => {
               feeding: [
                 {
                   meal_time: 'Morning',
+                  food_type: 'Kibble',
+                  quantity: '1',
+                  quantity_unit: 'cup',
+                },
+              ],
+              walking: [],
+              playing: [],
+              medications: [],
+            },
+          },
+        ],
+      }).success
+    ).toBe(true);
+
+    // Setting both is still rejected, regardless of category.
+    expect(
+      createBookingGroupValidator.safeParse({
+        ...BASE_GROUP,
+        bookings: [
+          {
+            ...BASE_GROUP.bookings[0],
+            service_category: 'Daycare',
+            hotel_preferences: {
+              feeding: [
+                {
+                  meal_time: 'Morning',
+                  scheduled_time: '08:30',
                   food_type: 'Kibble',
                   quantity: '1',
                   quantity_unit: 'cup',
@@ -605,16 +718,19 @@ describe('updatePolicyValidator', () => {
     ).toBe(true);
   });
 
-  it('accepts the Late -> No-show threshold presets and rejects anything else', () => {
-    for (const minutes of [15, 30, 60, 120]) {
+  it('accepts the Late -> No-show grace period from 0 to a day and rejects anything outside', () => {
+    for (const minutes of [0, 15, 45, 90, 1440]) {
       expect(
         updatePolicyValidator.safeParse({ no_show_after_minutes: minutes })
           .success
       ).toBe(true);
     }
-    expect(
-      updatePolicyValidator.safeParse({ no_show_after_minutes: 45 }).success
-    ).toBe(false);
+    for (const minutes of [-1, 1441, 1.5]) {
+      expect(
+        updatePolicyValidator.safeParse({ no_show_after_minutes: minutes })
+          .success
+      ).toBe(false);
+    }
     expect(
       updatePolicyValidator.safeParse({ no_show_at_closing: true }).success
     ).toBe(true);

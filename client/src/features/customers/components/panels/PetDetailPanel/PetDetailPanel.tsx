@@ -72,6 +72,7 @@ export function PetDetailPanel({
   const [name, setName] = useState(pet.name);
   const [petType, setPetType] = useState<PetType>(pet.pet_type);
   const [breedId, setBreedId] = useState<string | null>(pet.breed_id);
+  const [breedOther, setBreedOther] = useState<string | null>(pet.breed_other);
   const [gender, setGender] = useState<PetGender | ''>(pet.gender ?? '');
   const [dateOfBirth, setDateOfBirth] = useState(pet.date_of_birth ?? '');
   const [weightClass, setWeightClass] = useState<PetWeightClass | ''>(
@@ -130,6 +131,7 @@ export function PetDetailPanel({
     setName(pet.name);
     setPetType(pet.pet_type);
     setBreedId(pet.breed_id);
+    setBreedOther(pet.breed_other);
     setGender(pet.gender ?? '');
     setDateOfBirth(pet.date_of_birth ?? '');
     setWeightClass(pet.weight_class ?? '');
@@ -144,8 +146,10 @@ export function PetDetailPanel({
   }
 
   async function handleSave() {
-    if (!name.trim() || !breedId) {
-      setError(!name.trim() ? 'Name is required.' : 'Please select a breed.');
+    if (!name.trim() || (!breedId && !breedOther)) {
+      setError(
+        !name.trim() ? 'Name is required.' : 'Please select or enter a breed.'
+      );
       return;
     }
 
@@ -168,7 +172,10 @@ export function PetDetailPanel({
     const result = await updatePet(pet.id, accessToken, {
       name: name.trim(),
       pet_type: petType,
+      // Always both, one null - switching between a listed and a typed-in
+      // breed has to clear the other (the DB rejects both being set).
       breed_id: breedId,
+      breed_other: breedId ? null : breedOther,
       gender: gender || undefined,
       date_of_birth: dateOfBirth || undefined,
       ...(isStaff && weightKg != null ? { weight_kg: weightKg } : {}),
@@ -235,6 +242,7 @@ export function PetDetailPanel({
                   onChange={(event) => {
                     setPetType(event.target.value as PetType);
                     setBreedId(null);
+                    setBreedOther(null);
                   }}
                 >
                   {petTypeOptions.map((option) => (
@@ -250,6 +258,8 @@ export function PetDetailPanel({
                   petType={petType}
                   value={breedId}
                   onChange={setBreedId}
+                  otherValue={breedOther}
+                  onOtherChange={setBreedOther}
                 />
               </label>
               <label className={styles.field}>

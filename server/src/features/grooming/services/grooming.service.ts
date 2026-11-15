@@ -7,6 +7,11 @@ import {
   resolveBranchClosedToday,
   resolveStaffRestDayWindow,
 } from '../../booking/services/availability.service.ts';
+import {
+  branchLocalDate,
+  loadAttendanceMarks,
+  resolveStaffCheckInBlock,
+} from '../../staff/services/attendanceAvailability.service.ts';
 import type { Booking } from '../../booking/booking.types.ts';
 import type { GroomingSession } from '../grooming.types.ts';
 import type { TransitionGroomingStatusInput } from '../modules/validators/grooming.validator.ts';
@@ -308,13 +313,27 @@ async function annotateCheckInBlockedReason(
 
     if (blocksError) throwWithStatus(400, blocksError.message);
 
-    for (const block of (blocks ?? []) as unknown as UnavailabilityBlockRow[]) {
-      const staffName =
-        block.staff?.display_name ?? 'The assigned staff member';
-      restDayReasonByStaffId.set(
-        block.staff_id,
-        `${staffName} has an approved ${block.leave_type} today - check-in isn't available until they're back.`
+    const marks = await loadAttendanceMarks(
+      distinctStaffIds,
+      branchLocalDate(openBranchTimezone)
+    );
+    const blockRows = (blocks ?? []) as unknown as UnavailabilityBlockRow[];
+
+    for (const staffId of distinctStaffIds) {
+      const staffBlocks = blockRows.filter(
+        (block) => block.staff_id === staffId
       );
+      const mark = marks.get(staffId);
+      const reason = resolveStaffCheckInBlock({
+        staffName:
+          staffBlocks[0]?.staff?.display_name ??
+          mark?.displayName ??
+          'The assigned staff member',
+        mark,
+        leaveTypes: staffBlocks.map((block) => block.leave_type),
+      });
+
+      if (reason) restDayReasonByStaffId.set(staffId, reason);
     }
   }
 
@@ -505,9 +524,15 @@ export async function transitionGroomingSessionStatus({
   }
 
   if (targetStatus === 'In Progress') {
-    await startBooking({ bookingId: session.booking_id });
+    await startBooking({
+      bookingId: session.booking_id,
+      staffId: requesterId,
+    });
   } else {
-    await completeBooking({ bookingId: session.booking_id });
+    await completeBooking({
+      bookingId: session.booking_id,
+      staffId: requesterId,
+    });
   }
 
   const { data: updated, error: refetchError } = await supabase

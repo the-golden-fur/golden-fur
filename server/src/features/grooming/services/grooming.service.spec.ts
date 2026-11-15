@@ -110,7 +110,10 @@ describe('grooming.service (#64, booking-status revision)', () => {
         targetStatus: 'In Progress',
       });
 
-      expect(startBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
+      expect(startBooking).toHaveBeenCalledWith({
+        bookingId: 'booking-1',
+        staffId: 'groomer-1',
+      });
       expect(completeBooking).not.toHaveBeenCalled();
       expect(result.booking?.status).toBe('In Progress');
     });
@@ -137,7 +140,10 @@ describe('grooming.service (#64, booking-status revision)', () => {
         targetStatus: 'Completed',
       });
 
-      expect(completeBooking).toHaveBeenCalledWith({ bookingId: 'booking-1' });
+      expect(completeBooking).toHaveBeenCalledWith({
+        bookingId: 'booking-1',
+        staffId: 'groomer-1',
+      });
       expect(startBooking).not.toHaveBeenCalled();
       expect(result.booking?.status).toBe('Completed');
     });
@@ -915,9 +921,9 @@ describe('grooming.service (#64, booking-status revision)', () => {
       );
       expect(notBlocked?.check_in_blocked_reason).toBeNull();
       // bookings x2 + existing sessions + insert + sessions select + branch
-      // lookup + ONE staff_unavailability_blocks query = 7, not 8 (one per
-      // distinct groomer would make it 8).
-      expect(supabase.from).toHaveBeenCalledTimes(7);
+      // lookup + ONE staff_unavailability_blocks query + ONE staff_attendance
+      // query = 8 (one per distinct groomer would make it 10).
+      expect(supabase.from).toHaveBeenCalledTimes(8);
 
       vi.useRealTimers();
     });

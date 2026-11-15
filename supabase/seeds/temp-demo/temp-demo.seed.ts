@@ -5,6 +5,7 @@ import { seedTempClinical } from './temp-demo.clinical.ts';
 import { seedTempRoleDemo } from './temp-demo.roles.ts';
 import { seedTempHistory } from './temp-demo.history.ts';
 import { seedTempProgress } from './temp-demo.progress.ts';
+import { seedTempSchedule } from './temp-demo.schedule.ts';
 
 config({ path: 'server/.env' });
 
@@ -162,6 +163,7 @@ export async function seedTempDemo(supabase: SupabaseClient) {
   await seedTempClinical(supabase);
   await seedTempRoleDemo(supabase);
   await seedTempHistory(supabase);
+  await seedTempSchedule(supabase);
   await seedTempProgress(supabase);
 }
 

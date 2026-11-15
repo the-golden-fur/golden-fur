@@ -33,6 +33,13 @@ const dateOfBirthSchema = z
     }
   );
 
+/** Mirrors pets_breed_other_length_check (...20261103002). */
+const breedOtherSchema = z
+  .string()
+  .trim()
+  .min(1, 'Breed is required')
+  .max(80, 'Breed must be 80 characters or fewer');
+
 /**
  * Required fields per Modules-Features M02 Process 4's flowchart: name,
  * pet_type (Issue #32 AC-1/AC-2). breed_id is nullable at the schema level
@@ -68,6 +75,9 @@ export const createPetValidator = z
     name: z.string().trim().min(1, 'Name is required'),
     pet_type: z.string().trim().min(1, 'Pet type is required'),
     breed_id: z.uuid().optional(),
+    // Typed-in breed when it isn't listed. The DB rejects a payload that
+    // sets both this and breed_id (pets_breed_id_or_other_check).
+    breed_other: breedOtherSchema.optional(),
     photo_url: z.string().trim().min(1).optional(),
     // Required when adding a pet. Updates keep it optional, so a pet
     // registered before this rule can still be edited without one.
@@ -87,6 +97,7 @@ export const updatePetValidator = z
     name: z.string().trim().min(1).optional(),
     pet_type: z.string().trim().min(1).optional(),
     breed_id: z.uuid().nullable().optional(),
+    breed_other: breedOtherSchema.nullable().optional(),
     photo_url: z.string().trim().min(1).nullable().optional(),
     gender: z.enum(GENDERS).optional(),
     date_of_birth: dateOfBirthSchema.optional(),

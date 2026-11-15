@@ -37,12 +37,17 @@ export function DaycareCheckInFormPage() {
     searchParams.get('from') === 'bookings' ||
     role === 'Receptionist' ||
     role === 'Front Desk';
-  const backTo = cameFromBookingsQueue
-    ? '/staff/bookings/queue'
-    : '/staff/daycare/queue';
-  const backLabel = cameFromBookingsQueue
-    ? 'Back to Bookings Queue'
-    : 'Back to Daycare Queue';
+  const cameFromFrontDeskQueue = searchParams.get('from') === 'front-desk';
+  const backTo = cameFromFrontDeskQueue
+    ? '/staff/front-desk/queue'
+    : cameFromBookingsQueue
+      ? '/staff/bookings/queue'
+      : '/staff/daycare/queue';
+  const backLabel = cameFromFrontDeskQueue
+    ? 'Back to Front Desk Queue'
+    : cameFromBookingsQueue
+      ? 'Back to Bookings Queue'
+      : 'Back to Daycare Queue';
 
   const [roleStatus, setRoleStatus] = useState<'loading' | 'ok' | 'denied'>(
     'loading'

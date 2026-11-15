@@ -8,7 +8,10 @@ import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCha
 import { postCheckoutExtras } from '../../billing/services/checkoutExtrasCharge.service.ts';
 import { quotePayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
 import { loadRemainingBalance } from '../../billing/services/transactionPayment.service.ts';
-import { assertChecklistComplete } from './careLogCompletion.service.ts';
+import {
+  assertChecklistComplete,
+  markOutstandingTasksMissed,
+} from './careLogCompletion.service.ts';
 import { recordActivity } from './activityLog.service.ts';
 import type {
   CheckoutResult,
@@ -403,6 +406,8 @@ export async function previewHotelCheckout(
 interface CheckoutParams {
   stayId: string;
   branchId: string;
+  /** Front Desk Queue: close unfinished care tasks as Missed first. */
+  skipOutstandingTasks?: boolean;
   /** Custom change (activity logbook): who performed the checkout, for the
    * logbook entry - optional so existing call sites/tests that never had a
    * reason to know the requester keep working unchanged. */
@@ -456,9 +461,14 @@ export async function checkOutHotelStay({
   stayId,
   branchId,
   requesterId,
+  skipOutstandingTasks = false,
 }: CheckoutParams): Promise<CheckoutResult> {
   const { stay, booking } = await loadCheckoutStay(stayId, branchId);
   const payAtCheckout = booking.pay_at_checkout === true;
+
+  if (skipOutstandingTasks) {
+    await markOutstandingTasksMissed(stayId, requesterId);
+  }
 
   // Custom change (checkout gating): blocks checkout while the Boarding
   // Checklist still has actionable (Pending/In Progress) tasks - Missed
@@ -469,7 +479,7 @@ export async function checkOutHotelStay({
   const late = await resolveLateCharge(stay, booking, branchId, now);
   const { days, longStay, rate: extensionRate, fee: extensionFee } = late;
 
-  await completeBooking({ bookingId: stay.booking_id });
+  await completeBooking({ bookingId: stay.booking_id, staffId: requesterId });
 
   const { data: updated, error: updateError } = await supabase
     .from('stays')

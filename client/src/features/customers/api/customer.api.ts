@@ -143,6 +143,33 @@ export async function updateCustomerProfile(
   return { data: result.data?.customer ?? null, error: result.error };
 }
 
+/** Booking wizard > Store policies > Continue - records the agreed policy
+ * version on the caller's own profile (self-only server-side). */
+export async function agreeToStorePolicies(
+  customerId: string,
+  version: number,
+  accessToken: string
+): Promise<CustomerApiResult<CustomerProfile>> {
+  const response = await fetch(
+    `${API_BASE_URL}/customers/${customerId}/store-policies-agreement`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(accessToken),
+      },
+      body: JSON.stringify({ version }),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  const result = await parseBody<{ customer: CustomerProfile }>(response);
+  return { data: result.data?.customer ?? null, error: result.error };
+}
+
 /** Mirrors staff.api.ts's uploadAvatar - multipart upload into the same
  * 'avatars' Storage bucket, self-only. */
 export async function uploadAvatar(

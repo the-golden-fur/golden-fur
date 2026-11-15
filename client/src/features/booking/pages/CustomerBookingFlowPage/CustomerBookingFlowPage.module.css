@@ -79,6 +79,13 @@
   min-width: 0;
 }
 
+/* The "Your booking" panel plus the store policies link under it. */
+.summaryColumn {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+}
+
 @container (min-width: 960px) {
   .summaryLayout {
     grid-template-columns: minmax(0, 1fr) var(--booking-summary-width);
@@ -95,6 +102,29 @@
   display: flex;
   justify-content: space-between;
   gap: var(--space-2);
+}
+
+/* Quiet text link under the "Your booking" summary panel - always-available,
+ * read-only store policies. Deliberately low-emphasis. */
+.policiesLink {
+  justify-self: start;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.policiesLink:hover {
+  color: var(--color-text-primary);
+}
+
+.policiesLink:focus-visible {
+  outline: 2px solid var(--color-accent-gold-primary);
+  outline-offset: 2px;
 }
 
 .primaryButton {
@@ -835,4 +865,22 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+/* Care Instructions Add-modal (Feeding/Walking/Playtime/Medications): the
+   Cancel/Save row at the bottom of each form. */
+.modalActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Derived read-only "time of day" label shown under a specific-time field -
+   never wired to onChange, so it can't itself be submitted. */
+.derivedTimeLabel {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
 }

@@ -21,12 +21,14 @@ import * as discountsApi from '../../../discounts/api/discounts.api';
 import * as veterinaryApi from '../../../veterinary/api/veterinary.api';
 import * as rewardsApi from '../../../rewards/api/rewards.api';
 import * as staffItemsApi from '../../../staffItems/api/staffItems.api';
+import { STORE_POLICIES_VERSION } from '../../components/StorePoliciesModal/storePoliciesAgreement';
 import { CustomerBookingFlowPage } from './CustomerBookingFlowPage';
 
 vi.mock('../../../customers/api/customer.api', () => ({
   listCustomerPets: vi.fn(),
   listCustomers: vi.fn(),
   getCustomerProfile: vi.fn(),
+  agreeToStorePolicies: vi.fn(),
 }));
 
 vi.mock('../../../maintenance/api/maintenance.api', () => ({
@@ -980,6 +982,13 @@ describe('CustomerBookingFlowPage', () => {
       expect(
         screen.getByText('Pay at the counter after assessment')
       ).toBeInTheDocument();
+      // Its price is only an estimate, so promos wait for the counter.
+      expect(
+        screen.getByText('Promos can be added when you pay at the branch.')
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/^Promos/, { selector: 'h2, h3, h4, legend' })
+      ).toBeNull();
 
       await user.click(screen.getByText('Confirm booking'));
 
@@ -1335,15 +1344,18 @@ describe('CustomerBookingFlowPage', () => {
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Add feeding time' }));
-    // Custom change (Daycare-only clock-time scheduling): Daycare gets a
-    // literal time input for feeding, never Hotel's Morning/Noon/Afternoon/
-    // Evening meal-time dropdown.
-    expect(screen.getByLabelText('Feeding time')).toBeInTheDocument();
+    // Custom change (Care Instructions Add-modal, per-row time choice): the
+    // Add modal defaults a Daycare row to specific-time mode (a literal
+    // time input), never Hotel's Morning/Noon/Afternoon/Evening meal-time
+    // dropdown - though either is now choosable via the time-mode toggle.
+    expect(await screen.findByLabelText('Feeding time')).toBeInTheDocument();
     expect(screen.queryByLabelText('Meal time')).not.toBeInTheDocument();
 
     const foodInput = await screen.findByPlaceholderText('Food type');
     await user.click(foodInput);
     await user.click(await screen.findByText('Premium Kibble'));
+
+    await user.click(screen.getByRole('button', { name: 'Add' }));
 
     await user.click(screen.getByText('Next'));
 
@@ -1387,7 +1399,7 @@ describe('CustomerBookingFlowPage', () => {
     expect(feedingPayload).not.toHaveProperty('meal_time');
   });
 
-  it('Care Instructions: a blank row is dropped silently, a half-filled row blocks Next', async () => {
+  it('Care Instructions: the Add modal blocks Save until complete; editing an already-added row down to half-filled blocks Next', async () => {
     const DAYCARE_SERVICE = {
       id: 'service-daycare-1',
       category: 'Daycare' as const,
@@ -1433,8 +1445,9 @@ describe('CustomerBookingFlowPage', () => {
     await user.click(screen.getByText('Daycare (per hour)'));
     await advanceThroughAvailability(user, { staff: false });
 
-    // Add a feeding row, pick a food, then clear the quantity - now it's
-    // half-filled and blocks Next with a banner.
+    // Open the Add modal, pick a food, then clear the quantity - the draft
+    // is now incomplete, so Save stays disabled (can't add a half-filled
+    // row at all any more).
     await waitFor(() =>
       expect(
         screen.getByRole('button', { name: 'Add feeding time' })
@@ -1444,6 +1457,17 @@ describe('CustomerBookingFlowPage', () => {
     const foodInput = await screen.findByPlaceholderText('Food type');
     await user.click(foodInput);
     await user.click(await screen.findByText('Premium Kibble'));
+    await user.clear(screen.getByLabelText('Quantity'));
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+
+    // Restore the quantity - Save is enabled, commits the row, closes the
+    // modal.
+    await user.type(screen.getByLabelText('Quantity'), '2');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    // Editing the now-added row back down to half-filled (inline, not via
+    // the modal) still blocks Next with a banner - the existing
+    // completeness check is unchanged for an already-added row.
     await user.clear(screen.getByLabelText('Quantity'));
     await user.click(screen.getByText('Next'));
 
@@ -1503,23 +1527,31 @@ describe('CustomerBookingFlowPage', () => {
     );
 
     // The mocked slot's local time depends on the test timezone, so read the
-    // window off the input rather than hard-coding it. A new row starts
+    // window off the input rather than hard-coding it. A new draft starts
     // inside it, not at the old 8:00 AM default.
-    const walkTime = screen.getByLabelText('Walk time') as HTMLInputElement;
-    expect(walkTime.value >= walkTime.min).toBe(true);
-    expect(walkTime.value <= walkTime.max).toBe(true);
-    const validTime = walkTime.value;
+    const walkTimeInModal = (await screen.findByLabelText(
+      'Walk time'
+    )) as HTMLInputElement;
+    expect(walkTimeInModal.value >= walkTimeInModal.min).toBe(true);
+    expect(walkTimeInModal.value <= walkTimeInModal.max).toBe(true);
+    const validTime = walkTimeInModal.value;
 
     // One minute before the visit starts.
-    const [hour, minute] = walkTime.min.split(':').map(Number);
+    const [hour, minute] = walkTimeInModal.min.split(':').map(Number);
     const beforeVisit = new Date(2026, 0, 1, hour, minute - 1);
-    fireEvent.change(walkTime, {
+    fireEvent.change(walkTimeInModal, {
       target: {
         value: `${String(beforeVisit.getHours()).padStart(2, '0')}:${String(
           beforeVisit.getMinutes()
         ).padStart(2, '0')}`,
       },
     });
+
+    // Save button only gates on duration completeness, not the visit-bounds
+    // check - an out-of-bounds row can still be added, and only then blocks
+    // Next with the banner (same as before, just one step later now that
+    // composition happens in the modal first).
+    await user.click(screen.getByRole('button', { name: 'Add' }));
 
     await user.click(screen.getByText('Next'));
 
@@ -1528,11 +1560,114 @@ describe('CustomerBookingFlowPage', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('Add another booking')).not.toBeInTheDocument();
 
-    fireEvent.change(walkTime, { target: { value: validTime } });
+    const walkTimeInline = (await screen.findByLabelText(
+      'Walk time'
+    )) as HTMLInputElement;
+    fireEvent.change(walkTimeInline, { target: { value: validTime } });
     await user.click(screen.getByText('Next'));
 
     await waitFor(() =>
       expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+  });
+
+  it('Custom change (Care Instructions Add-modal, per-row time choice): a Daycare feeding row can be switched to Time of day mode, overriding the category default', async () => {
+    const DAYCARE_SERVICE = {
+      id: 'service-daycare-1',
+      category: 'Daycare' as const,
+      name: 'Daycare (per hour)',
+      base_price: 100,
+      duration_minutes: 60,
+      is_active: true,
+      requires_assessed_pet: true,
+      created_by: null,
+      updated_by: null,
+      created_at: '',
+      updated_at: '',
+      first_hour_fee: 100,
+      succeeding_hour_fee: 50,
+      daycare_overnight_fee: 850,
+    };
+    vi.mocked(bookingApi.getBookingCatalog).mockResolvedValue({
+      data: {
+        services: [GROOMING_SERVICE, DAYCARE_SERVICE],
+        packages: [],
+        promos: [],
+      },
+      error: null,
+    });
+    vi.mocked(bookingApi.createBooking).mockResolvedValue({
+      data: {
+        id: 'booking-1',
+        status: 'Confirmed',
+        scheduled_start: '2026-08-03T01:00:00.000Z',
+      } as never,
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await goToServicesStep(user);
+
+    await user.click(screen.getByText('Daycare'));
+    await waitFor(() =>
+      expect(screen.getByText('Daycare (per hour)')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Daycare (per hour)'));
+    await advanceThroughAvailability(user, { staff: false });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Add feeding time' })
+    );
+    // Default for Daycare is specific-time mode (the TimeInput shows).
+    expect(await screen.findByLabelText('Feeding time')).toBeInTheDocument();
+
+    // Flip the toggle to "Time of day" - the category default is now just
+    // a default, not a lock.
+    await user.click(screen.getByRole('radio', { name: 'Time of day' }));
+    expect(screen.queryByLabelText('Feeding time')).not.toBeInTheDocument();
+    const mealTimeSelect = screen.getByLabelText(
+      'Meal time'
+    ) as HTMLSelectElement;
+    fireEvent.change(mealTimeSelect, { target: { value: 'Evening' } });
+
+    const foodInput = await screen.findByPlaceholderText('Food type');
+    await user.click(foodInput);
+    await user.click(await screen.findByText('Premium Kibble'));
+
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByText('Next'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Add another booking')).toBeInTheDocument()
+    );
+    await user.click(screen.getByText('Next'));
+    await screen.findByText('Confirm booking');
+    await user.click(screen.getByText('Confirm booking'));
+
+    await waitFor(() =>
+      expect(bookingApi.createBooking).toHaveBeenCalledWith(
+        'token',
+        expect.objectContaining({
+          service_category: 'Daycare',
+          hotel_preferences: expect.objectContaining({
+            feeding: expect.arrayContaining([
+              expect.objectContaining({
+                meal_time: 'Evening',
+                food_type: 'Premium Kibble',
+              }),
+            ]),
+          }),
+        })
+      )
+    );
+    // scheduled_time must not be sent alongside meal_time - the server's
+    // per-row XOR would reject it.
+    const call = vi
+      .mocked(bookingApi.createBooking)
+      .mock.calls.find(([, body]) => body.service_category === 'Daycare');
+    expect(call?.[1].hotel_preferences?.feeding[0]).not.toHaveProperty(
+      'scheduled_time'
     );
   });
 
@@ -1688,6 +1823,149 @@ describe('CustomerBookingFlowPage', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+  });
+
+  it('Store policies: agreeing with "Remember policies" saves the current version to the customer profile', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+    await user.click(
+      screen.getByLabelText('I have read and agree to the store policies')
+    );
+    await user.click(screen.getByLabelText(/Remember policies/));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(customerApi.agreeToStorePolicies).toHaveBeenCalledWith(
+      expect.any(String),
+      STORE_POLICIES_VERSION,
+      expect.any(String)
+    );
+
+    // Remembered: going Back and leaving Branch again asks nothing.
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    await user.click(screen.getByText('Back'));
+    await user.click(screen.getByText('Next'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('Store policies: agreeing without "Remember policies" saves nothing and asks again', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+    await agreeToStorePolicies(user);
+
+    expect(customerApi.agreeToStorePolicies).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    await user.click(screen.getByText('Back'));
+    await user.click(screen.getByText('Next'));
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+  });
+
+  it('Store policies: a customer who remembered the current version within 30 days skips the popup', async () => {
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        ...CUSTOMER,
+        store_policies_agreed_version: STORE_POLICIES_VERSION,
+        store_policies_agreed_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(customerApi.getCustomerProfile).toHaveBeenCalled()
+    );
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+  });
+
+  it('Store policies: a remembered agreement older than 30 days asks again', async () => {
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        ...CUSTOMER,
+        store_policies_agreed_version: STORE_POLICIES_VERSION,
+        store_policies_agreed_at: new Date(
+          Date.now() - 31 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+      },
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(customerApi.getCustomerProfile).toHaveBeenCalled()
+    );
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+  });
+
+  it('Store policies: an older agreed version asks again', async () => {
+    vi.mocked(customerApi.getCustomerProfile).mockResolvedValue({
+      data: {
+        ...CUSTOMER,
+        store_policies_agreed_version: STORE_POLICIES_VERSION - 1,
+      },
+      error: null,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(customerApi.getCustomerProfile).toHaveBeenCalled()
+    );
+    await user.click(screen.getByText('Makati'));
+    await user.click(screen.getByText('Next'));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+  });
+
+  it('Store policies: "View store policies" (under the "Your booking" panel) opens a read-only copy', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'View store policies' })
+    );
+
+    expect(
+      screen.getByRole('dialog', { name: 'Store policies' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('I have read and agree to the store policies')
+    ).not.toBeInTheDocument();
+    expect(customerApi.agreeToStorePolicies).not.toHaveBeenCalled();
+  });
+
+  it('Store policies: the staff flow has no "View store policies" link', async () => {
+    renderStaffPage();
+
+    await waitFor(() => expect(screen.getByText('Makati')).toBeInTheDocument());
+    expect(
+      screen.queryByRole('button', { name: 'View store policies' })
+    ).not.toBeInTheDocument();
   });
 
   it('Store policies: the staff flow leaves the Branch step with no popup', async () => {
@@ -3518,6 +3796,9 @@ describe('CustomerBookingFlowPage', () => {
         await user.click(await screen.findByText('Select slot'));
         await user.click(screen.getByText('Next'));
 
+        await user.click(
+          await screen.findByRole('button', { name: 'Add feeding time' })
+        );
         const picker = await screen.findByRole('combobox', {
           name: 'Add feeding time from library',
         });
@@ -3527,6 +3808,8 @@ describe('CustomerBookingFlowPage', () => {
         expect(
           screen.queryByText('Save to my private library')
         ).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'Add' }));
 
         await user.click(screen.getByText('Next'));
         await screen.findByText('Add another booking');

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { setMfaPreference, unenrollMfa } from '../../../shared/api/mfa.api';
 import { MfaMethodEnrollFlow } from '../../../shared/components/MfaMethodEnrollFlow/MfaMethodEnrollFlow';
 import { Modal } from '../../../shared/components/Modal/Modal';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog/ConfirmDialog';
 import { MANDATORY_MFA_ROLES } from '../../../shared/auth/mandatoryMfaRoles';
 import type { ThemeRole } from '../../../shared/providers/ThemeProvider/themeContext';
 import type {
@@ -27,11 +28,10 @@ interface SecurityTabProps {
 }
 
 /**
- * Settings > Security. Body moved unchanged from the pre-tabs SettingsPage -
- * Admin/Supervisor/Superadmin's *first-ever* enroll UI still comes
- * exclusively from the guard's MfaSetupModal (see the comment below), not
- * from here; once at least one method is enrolled, this tab is the one place
- * to add a second method, switch the preferred one, or unbind either.
+ * Settings > Security. MFA is optional for every role - this tab is where
+ * anyone sets it up, adds a second method, switches the preferred one,
+ * unbinds a method, or turns MFA off entirely. Default-on roles also get a
+ * dismissible reminder at login (StaffAuthGuard's MfaSetupModal).
  */
 export function SecurityTab({
   role,
@@ -47,6 +47,8 @@ export function SecurityTab({
     null
   );
   const [disableError, setDisableError] = useState<string | null>(null);
+  const [isTurnOffConfirmOpen, setIsTurnOffConfirmOpen] = useState(false);
+  const [isTurningOff, setIsTurningOff] = useState(false);
   const [isSavingPreference, setIsSavingPreference] = useState(false);
 
   const isMandatoryRole = Boolean(
@@ -90,18 +92,38 @@ export function SecurityTab({
     onChanged();
   };
 
+  // Email first, then the authenticator: Supabase only lets a verified
+  // factor be removed from an aal2 session, and removing the last one is
+  // what drops it. For default-on roles the server also removes email
+  // whenever the authenticator goes (see mfaUnenrollController).
+  const handleTurnOff = async () => {
+    setIsTurningOff(true);
+    setDisableError(null);
+
+    for (const method of ['email', 'authenticator'] as const) {
+      if (!methods[method]) continue;
+
+      const result = await unenrollMfa(role, accessToken, method);
+      if (result.error) {
+        setIsTurningOff(false);
+        setIsTurnOffConfirmOpen(false);
+        setDisableError(result.error);
+        onChanged();
+        return;
+      }
+    }
+
+    setIsTurningOff(false);
+    setIsTurnOffConfirmOpen(false);
+    onChanged();
+  };
+
   const handlePreferenceChange = async (method: MfaMethod) => {
     setIsSavingPreference(true);
     await setMfaPreference(role, accessToken, method);
     setIsSavingPreference(false);
     onChanged();
   };
-
-  // Mirrors the guard's own gate exactly: a mandatory role with nothing
-  // enrolled yet is always behind MfaSetupModal's full-screen popup, which
-  // renders the same MfaMethodEnrollFlow this tab would - showing a second
-  // one here would just race it for no reason.
-  const showsOwnSetupUi = !(isMandatoryRole && enrolledCount === 0);
 
   return (
     <section className={styles.section} aria-labelledby="mfa-section-title">
@@ -113,9 +135,9 @@ export function SecurityTab({
       ) : enrolledCount > 0 ? (
         <p className={styles.statusEnabled}>MFA is enabled on your account.</p>
       ) : isMandatoryRole ? (
-        <p className={styles.statusRequired}>
-          MFA is required for your role and is not yet set up. Complete setup in
-          the popup - it will keep appearing until enrollment is finished.
+        <p className={styles.copy}>
+          MFA is optional, but recommended for your role. Set up an
+          authenticator app (like Google Authenticator) to protect your account.
         </p>
       ) : (
         <p className={styles.copy}>
@@ -124,7 +146,7 @@ export function SecurityTab({
         </p>
       )}
 
-      {status && showsOwnSetupUi ? (
+      {status ? (
         <>
           <ul className={styles.mfaMethodList}>
             {visibleMethods.map((method) => (
@@ -136,10 +158,9 @@ export function SecurityTab({
                   {methods[method] ? 'Enabled' : 'Not set up'}
                 </span>
                 {methods[method] ? (
-                  // A mandatory role's authenticator factor is permanent,
-                  // never removable (see mfaUnenrollController's matching
-                  // server-side guard) - hide the button rather than showing
-                  // one that would just 409.
+                  // A default-on role's authenticator can't be removed on
+                  // its own (that would leave email-only - see
+                  // mfaUnenrollController); "Turn off MFA" below covers it.
                   isMandatoryRole && method === 'authenticator' ? null : (
                     <button
                       className={styles.secondaryButton}
@@ -173,11 +194,24 @@ export function SecurityTab({
             <button
               className={styles.button}
               type="button"
-              onClick={() => openSetupModal()}
+              onClick={() =>
+                openSetupModal(isMandatoryRole ? 'authenticator' : undefined)
+              }
             >
               Set up multi-factor authentication
             </button>
-          ) : null}
+          ) : (
+            <button
+              className={styles.secondaryButton}
+              type="button"
+              onClick={() => {
+                setDisableError(null);
+                setIsTurnOffConfirmOpen(true);
+              }}
+            >
+              Turn off MFA
+            </button>
+          )}
 
           {visibleEnrolledCount === 2 && status ? (
             <label className={styles.copy}>
@@ -198,6 +232,23 @@ export function SecurityTab({
           ) : null}
         </>
       ) : null}
+
+      <ConfirmDialog
+        isOpen={isTurnOffConfirmOpen}
+        title="Turn off multi-factor authentication?"
+        body={
+          <p>
+            Every MFA method on your account will be removed, and you'll sign in
+            with just your password. Any remembered devices will also be
+            forgotten. You can turn MFA back on any time.
+          </p>
+        }
+        confirmLabel="Turn off MFA"
+        tone="danger"
+        isConfirming={isTurningOff}
+        onConfirm={() => void handleTurnOff()}
+        onCancel={() => setIsTurnOffConfirmOpen(false)}
+      />
 
       <Modal
         isOpen={isSetupModalOpen}

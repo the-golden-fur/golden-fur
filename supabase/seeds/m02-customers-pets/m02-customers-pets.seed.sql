@@ -135,7 +135,8 @@ begin
     for v_pet in select * from jsonb_array_elements(v_pets_by_email -> v_customer.account_email)
     loop
       -- breed_id intentionally left NULL (nullable per Issue #71) - none of
-      -- these seed rows need a specific seeded breed.
+      -- these seed rows need a specific seeded breed. breed_other
+      -- (20261103002) is left NULL for the same reason.
       insert into public.pets (
         customer_id, name, pet_type, weight_class, weight_kg, coat_type, assessed_by, assessed_at
       )

@@ -118,7 +118,7 @@ function buildDetails(overrides: Partial<BookingDetails> = {}): BookingDetails {
   };
 }
 
-function renderPage(bookingId = 'booking-1') {
+function renderPage(bookingId = 'booking-1', search = '') {
   const authValue: AuthContextValue = {
     session: null,
     user: { id: 'staff-1', email: 'staff@example.com' },
@@ -132,7 +132,7 @@ function renderPage(bookingId = 'booking-1') {
   return render(
     createElement(
       MemoryRouter,
-      { initialEntries: [`/staff/bookings/${bookingId}`] },
+      { initialEntries: [`/staff/bookings/${bookingId}${search}`] },
       createElement(
         AuthContext.Provider,
         { value: authValue },
@@ -152,6 +152,32 @@ function renderPage(bookingId = 'booking-1') {
 describe('BookingDetailsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('goes back to the Bookings Queue by default', async () => {
+    vi.mocked(bookingApi.getBookingDetails).mockResolvedValue({
+      data: buildDetails(),
+      error: null,
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByRole('link', { name: 'Back to queue' })
+    ).toHaveAttribute('href', '/staff/bookings/queue');
+  });
+
+  it('goes back to the Front Desk Queue when opened from it', async () => {
+    vi.mocked(bookingApi.getBookingDetails).mockResolvedValue({
+      data: buildDetails(),
+      error: null,
+    });
+
+    renderPage(undefined, '?from=front-desk');
+
+    expect(
+      await screen.findByRole('link', { name: 'Back to queue' })
+    ).toHaveAttribute('href', '/staff/front-desk/queue');
   });
 
   it('renders pet/owner, assigned staff, every booking item, and the total', async () => {

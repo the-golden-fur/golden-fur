@@ -304,6 +304,48 @@ export async function completeCareLogEntry({
 }
 
 /**
+ * Front Desk Queue: reception chose to check a pet out with tasks unfinished.
+ * Those tasks are closed as Missed - the status assertChecklistComplete
+ * already accepts - so the gate itself stays intact and the record stays
+ * honest. Tasks scheduled after today are left alone; they never block
+ * checkout (see assertChecklistComplete).
+ */
+export async function markOutstandingTasksMissed(
+  stayId: string,
+  staffId?: string
+): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from('care_log_entries')
+    .update({ status: 'Missed' })
+    .eq('stay_id', stayId)
+    .in('status', ['Pending', 'In Progress'])
+    .lte('scheduled_date', today)
+    .select('id, stay_id, description, stays!inner(branch_id)');
+
+  if (error) throwWithStatus(400, error.message);
+
+  const rows = (data ?? []) as unknown as Array<{
+    id: string;
+    stay_id: string;
+    description: string;
+    stays: { branch_id: string };
+  }>;
+
+  await recordBulkActivity(
+    rows.map((row) => ({
+      branchId: row.stays.branch_id,
+      stayId: row.stay_id,
+      careLogEntryId: row.id,
+      action: 'task_missed',
+      description: `Missed: ${row.description}`,
+      actorStaffId: staffId,
+    }))
+  );
+}
+
+/**
  * Custom change (checkout gating): a stay may not be checked out while its
  * Boarding Checklist still has actionable tasks. Missed is deliberately
  * excluded - it's a terminal state for a task nobody can act on anymore, so

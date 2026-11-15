@@ -18,7 +18,8 @@ export type NotificationEventType =
   | 'stay_checked_out'
   | 'vaccination_reviewed'
   | 'day_off_requested'
-  | 'day_off_reviewed';
+  | 'day_off_reviewed'
+  | 'bug_report_submitted';
 
 export interface Notification {
   id: string;

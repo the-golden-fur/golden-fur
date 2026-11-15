@@ -35,6 +35,7 @@ import {
 } from './veterinary.controller.ts';
 import {
   VETERINARY_READ_ROLES,
+  VETERINARY_SERVICE_CATALOG_READ_ROLES,
   VETERINARY_SERVICE_CATALOG_ROLES,
   VETERINARY_WRITE_ROLES,
 } from './veterinary.types.ts';
@@ -221,9 +222,13 @@ router.delete(
 // their usual prices, suggested from when a vet lists what was done at a
 // visit. Veterinarians and Superadmins (Config > Veterinary Services), reads
 // included - see serviceCatalogWrite.
+// Reception reads this too: the Front Desk Queue's completion dialog picks
+// from it. Changing the catalog stays limited to serviceCatalogWrite.
 router.get(
   '/veterinary/service-catalog',
-  serviceCatalogWrite,
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...VETERINARY_SERVICE_CATALOG_READ_ROLES]),
   listServiceCatalogController
 );
 router.post(

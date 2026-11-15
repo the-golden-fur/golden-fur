@@ -46,6 +46,7 @@ function buildPet(overrides: Partial<Pet> = {}): Pet {
     name: 'Buddy',
     pet_type: 'Dog',
     breed_id: 'breed-1',
+    breed_other: null,
     photo_url: null,
     gender: null,
     date_of_birth: null,
@@ -247,8 +248,78 @@ describe('PetDetailPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
     expect(
-      await screen.findByText('Please select a breed.')
+      await screen.findByText('Please select or enter a breed.')
     ).toBeInTheDocument();
     expect(updatePet).not.toHaveBeenCalled();
+  });
+
+  it('breed override: switching to a typed-in breed sends breed_other and clears breed_id', async () => {
+    vi.mocked(updatePet).mockResolvedValue({
+      data: buildPet({ breed_id: null, breed_other: 'Azawakh' }),
+      error: null,
+    });
+
+    render(
+      createElement(PetDetailPanel, {
+        pet: buildPet(),
+        accessToken: 'token',
+        canEdit: true,
+        onUpdated: vi.fn(),
+      })
+    );
+
+    await screen.findByText('Dog');
+    fireEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Azawakh' } });
+    fireEvent.click(
+      await screen.findByRole('button', { name: /use "azawakh"/i })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await vi.waitFor(() =>
+      expect(updatePet).toHaveBeenCalledWith(
+        'pet-1',
+        'token',
+        expect.objectContaining({ breed_id: null, breed_other: 'Azawakh' })
+      )
+    );
+  });
+
+  it('breed override: prefills a typed-in breed and clears it when a listed breed is picked', async () => {
+    vi.mocked(updatePet).mockResolvedValue({
+      data: buildPet({ breed_id: 'breed-2' }),
+      error: null,
+    });
+
+    render(
+      createElement(PetDetailPanel, {
+        pet: buildPet({ breed_id: null, breed_other: 'Azawakh' }),
+        accessToken: 'token',
+        canEdit: true,
+        onUpdated: vi.fn(),
+      })
+    );
+
+    await screen.findByText('Dog');
+    fireEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    const breedInput = screen.getByPlaceholderText('Search breed...');
+    expect(breedInput).toHaveValue('Azawakh');
+
+    fireEvent.focus(breedInput);
+    fireEvent.change(breedInput, { target: { value: 'Bea' } });
+    fireEvent.click(await screen.findByText('Beagle'));
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await vi.waitFor(() =>
+      expect(updatePet).toHaveBeenCalledWith(
+        'pet-1',
+        'token',
+        expect.objectContaining({ breed_id: 'breed-2', breed_other: null })
+      )
+    );
   });
 });

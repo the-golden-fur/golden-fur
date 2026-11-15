@@ -137,6 +137,9 @@ async function resolveDaycareServiceId(
 interface CheckInParams {
   requesterId: string;
   input: CheckInInput;
+  /** Set for every role but Superadmin - the check-in must be in this
+   * branch, same rule as Hotel check-in. */
+  requesterBranchId?: string | null;
 }
 
 /**
@@ -147,6 +150,7 @@ interface CheckInParams {
 export async function checkInDaycareSession({
   requesterId,
   input,
+  requesterBranchId,
 }: CheckInParams): Promise<DaycareSession> {
   let petId: string;
   let branchId: string;
@@ -207,6 +211,10 @@ export async function checkInDaycareSession({
   } else {
     petId = input.pet_id!;
     branchId = input.branch_id!;
+  }
+
+  if (requesterBranchId && branchId !== requesterBranchId) {
+    throwWithStatus(403, 'Booking does not belong to your branch');
   }
 
   const { data: branch, error: branchError } = await supabase
@@ -308,7 +316,7 @@ export async function checkInDaycareSession({
     // accepts a 'Pending' booking - is skipped rather than called
     // redundantly.
     if (bookingId && bookingStatus && isNotStartedStatus(bookingStatus)) {
-      await startBooking({ bookingId });
+      await startBooking({ bookingId, staffId: requesterId });
     }
 
     // Same structured feeding/walking/playing/medication instructions +

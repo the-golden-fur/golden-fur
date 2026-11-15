@@ -51,6 +51,8 @@ export async function checkInDaycareSessionController(
     const session = await checkInDaycareSession({
       requesterId,
       input: parsed.data,
+      requesterBranchId:
+        req.user?.role === 'Superadmin' ? null : req.user?.branch_id,
     });
 
     return res.status(201).json({ session });
@@ -104,6 +106,8 @@ export async function checkOutDaycareSessionController(
     const session = await checkOutDaycareSession({
       sessionId: paramId(req, 'id'),
       requesterId,
+      skipOutstandingTasks: req.body?.skip_outstanding_tasks === true,
+      branchId: req.user?.role === 'Superadmin' ? null : req.user?.branch_id,
     });
 
     return res.status(200).json({ session });

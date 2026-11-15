@@ -215,6 +215,7 @@ const CAT_PET = {
 };
 
 const DEFAULT_POLICY = {
+  max_concurrent_bookings_per_staff: 1,
   id: 'policy-default',
   branch_id: null,
   notice_period_days: 3,
@@ -1054,6 +1055,37 @@ describe('booking.service (#51)', () => {
     });
   });
 
+  it("a Walk-in's re-count uses the branch's concurrency limit, not 1", async () => {
+    vi.mocked(getStaffRoleOrNull).mockResolvedValue('Receptionist');
+    vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
+    queueFromResults(
+      { data: PET, error: null }, // pet ownership
+      {
+        data: [{ ...DEFAULT_POLICY, max_concurrent_bookings_per_staff: 2 }],
+        error: null,
+      }, // staff concurrency limit
+      { data: INSERTED_BOOKING, error: null }, // insert
+      { data: null, error: null }, // booking_items insert
+      { data: null, error: null }, // preference insert
+      {
+        data: [{ id: 'booking-racer' }, { id: 'booking-1' }],
+        error: null,
+      }, // re-count: second of two, within the limit of 2
+      { data: INSERTED_BOOKING, error: null } // final fetch
+    );
+
+    await expect(
+      createBooking({
+        requesterId: 'recept-1',
+        input: {
+          ...BASE_INPUT,
+          customer_id: CUSTOMER_ID,
+          booking_source: 'Walk-in',
+        },
+      })
+    ).resolves.toBeDefined();
+  });
+
   it('AC-5: the race loser is deleted and receives the capacity-taken error', async () => {
     vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
     queueFromResults(
@@ -1076,7 +1108,7 @@ describe('booking.service (#51)', () => {
       })
     ).rejects.toMatchObject({
       statusCode: 409,
-      message: expect.stringContaining('Capacity was taken'),
+      message: expect.stringContaining('was just taken'),
     });
 
     expect(recordedWrites).toContainEqual(
@@ -1260,11 +1292,9 @@ describe('booking.service (#51)', () => {
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null }, // pet ownership
-        // NOTE: no resolveDownpaymentPolicy query here at all (skipped) -
-        // isStaffPickerEnabled no longer queries policy_configurations
-        // either (it resolves service_types instead, intercepted
-        // out-of-band by SERVICE_TYPE_STAFF_CONFIG above), so the very next
-        // query is the bookings insert.
+        // NOTE: no resolveDownpaymentPolicy here (skipped) - the only policy
+        // read is the concurrency limit for the post-insert re-count.
+        { data: [DEFAULT_POLICY], error: null }, // staff concurrency limit
         {
           data: {
             ...INSERTED_BOOKING,
@@ -1304,14 +1334,12 @@ describe('booking.service (#51)', () => {
         (insert?.payload as { started_at?: string }).started_at
       ).toBeTruthy();
 
-      // resolveDownpaymentPolicy is the only thing that queries
-      // 'policy_configurations' in this path now (isStaffPickerEnabled
-      // resolves service_types instead) - zero such calls confirms it was
-      // genuinely skipped for this Walk-in booking.
+      // One read only, for the concurrency limit - the Online downpayment
+      // resolve was genuinely skipped for this Walk-in booking.
       const policyQueries = vi
         .mocked(supabase.from)
         .mock.calls.filter(([table]) => table === 'policy_configurations');
-      expect(policyQueries).toHaveLength(0);
+      expect(policyQueries).toHaveLength(1);
     });
 
     it('an Online booking (default, unaffected) still calls resolveDownpaymentPolicy and persists booking_source Online', async () => {
@@ -1456,6 +1484,7 @@ describe('booking.service (#51)', () => {
         vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
         queueFromResults(
           { data: PET, error: null },
+          { data: [DEFAULT_POLICY], error: null }, // staff concurrency limit
           { data: INSERTED_BOOKING, error: null },
           { data: null, error: null },
           { data: null, error: null },
@@ -2295,6 +2324,7 @@ describe('booking.service (#51)', () => {
     it('flags and notifies another still-Pending pencil booking that just lost the same slot', async () => {
       queueFromResults(
         { data: WINNER, error: null }, // getRawBookingById(winner)
+        { data: [DEFAULT_POLICY], error: null }, // staff concurrency limit
         { data: [{ id: WINNER.id }], error: null }, // confirmCapacityAfterInsert: winner still holds its slot
         { data: [PENCIL_CANDIDATE], error: null }, // listOverlappingPencilBookings
         { data: [{ id: 'some-other-daycare-booking' }], error: null }, // checkCapacity(candidate): capacity 1, already full -> unavailable
@@ -2337,6 +2367,7 @@ describe('booking.service (#51)', () => {
     it('flags nothing when no other pencil booking overlaps the winner', async () => {
       queueFromResults(
         { data: WINNER, error: null }, // getRawBookingById(winner)
+        { data: [DEFAULT_POLICY], error: null }, // staff concurrency limit
         { data: [{ id: WINNER.id }], error: null }, // confirmCapacityAfterInsert
         { data: [], error: null } // listOverlappingPencilBookings: nobody else
       );
@@ -3461,7 +3492,8 @@ describe('booking.service (#51)', () => {
       vi.mocked(getServiceById).mockResolvedValue(GROOMING_SERVICE);
       queueFromResults(
         { data: PET, error: null }, // pet ownership
-        // no notice/downpayment policy query - walk-in skips the whole block
+        // no notice/downpayment check - only the concurrency limit is read
+        { data: [DEFAULT_POLICY], error: null }, // staff concurrency limit
         { data: INSERTED_BOOKING, error: null }, // bookings insert
         { data: null, error: null }, // booking_items insert
         { data: null, error: null }, // staff_picker_preferences insert

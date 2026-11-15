@@ -12,6 +12,7 @@ import {
   cancelUnavailabilityBlockController,
   createStaffAccountController,
   createUnavailabilityBlockController,
+  getAttendanceDayController,
   handleAvatarUploadError,
   hardDeleteStaffAccountController,
   listArchivedStaffController,
@@ -19,6 +20,7 @@ import {
   listPendingUnavailabilityBlocksController,
   listStaffController,
   listUnavailabilityBlocksController,
+  setAttendanceController,
   updateUnavailabilityBlockController,
   getStaffProfileController,
   manageStaffAccountController,
@@ -75,6 +77,24 @@ router.get(
   requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
   requireBranch,
   listBranchScheduleController
+);
+
+router.get(
+  '/staff/branches/:branchId/attendance',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
+  requireBranch,
+  getAttendanceDayController
+);
+
+router.put(
+  '/staff/branches/:branchId/attendance/:staffId',
+  jwtMiddleware,
+  sessionTimeoutMiddleware,
+  requireRole([...UNAVAILABILITY_MANAGER_ROLES]),
+  requireBranch,
+  setAttendanceController
 );
 
 router.post(

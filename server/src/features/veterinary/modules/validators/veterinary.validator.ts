@@ -186,6 +186,17 @@ const vaccinationInputValidator = z
  * consultation_line_items row - AC-2. So nothing gates Completion here any
  * more.
  */
+export const servicesDoneValidator = z.array(
+  z
+    .object({
+      name: z.string().trim().min(1),
+      amount: z.number().nonnegative(),
+    })
+    .strict()
+);
+
+export type ServicesDoneLine = z.infer<typeof servicesDoneValidator>[number];
+
 export const updateConsultationValidator = z
   .object({
     status: z.enum(['Ongoing', 'Completed']).optional(),
@@ -203,16 +214,7 @@ export const updateConsultationValidator = z
     // Vet-priced visits: what was done at the visit and what each item
     // costs, listed in the completion pop-up - billed as its own
     // transaction (serviceCharge.service.ts). Only read on Completed.
-    services_done: z
-      .array(
-        z
-          .object({
-            name: z.string().trim().min(1),
-            amount: z.number().nonnegative(),
-          })
-          .strict()
-      )
-      .optional(),
+    services_done: servicesDoneValidator.optional(),
   })
   .strict();
 

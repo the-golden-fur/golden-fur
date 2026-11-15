@@ -12,7 +12,10 @@ import {
   daycareHourlyCharge,
   daycareOverdueCharge,
 } from '../modules/daycareCharge.util.ts';
-import { assertChecklistComplete } from '../../hotel/services/careLogCompletion.service.ts';
+import {
+  assertChecklistComplete,
+  markOutstandingTasksMissed,
+} from '../../hotel/services/careLogCompletion.service.ts';
 import { recordActivity } from '../../hotel/services/activityLog.service.ts';
 import { postDaycareOverdueCharge } from './daycareOverdueCharge.service.ts';
 import { postPayAtCheckoutCharge } from '../../billing/services/payAtCheckoutCharge.service.ts';
@@ -480,6 +483,10 @@ interface CheckOutParams {
   /** Custom change (activity logbook): who performed the checkout - optional
    * so existing call sites/tests keep working unchanged. */
   requesterId?: string;
+  /** Front Desk Queue: close unfinished care tasks as Missed first. */
+  skipOutstandingTasks?: boolean;
+  /** Set for every role but Superadmin - the session must be in this branch. */
+  branchId?: string | null;
 }
 
 /**
@@ -499,6 +506,8 @@ interface CheckOutParams {
 export async function checkOutDaycareSession({
   sessionId,
   requesterId,
+  skipOutstandingTasks = false,
+  branchId,
 }: CheckOutParams): Promise<DaycareCheckoutResult> {
   const { data: session, error } = await supabase
     .from('stays')
@@ -511,6 +520,13 @@ export async function checkOutDaycareSession({
   if (!session) throwWithStatus(404, 'Daycare session not found');
   if (session.status === 'Completed') {
     throwWithStatus(409, 'This daycare session is already checked out');
+  }
+  if (branchId && session.branch_id !== branchId) {
+    throwWithStatus(403, 'Daycare session does not belong to your branch');
+  }
+
+  if (skipOutstandingTasks) {
+    await markOutstandingTasksMissed(sessionId, requesterId);
   }
 
   // Custom change (checkout gating): Daycare shares the same stays/
@@ -593,7 +609,10 @@ export async function checkOutDaycareSession({
   // propagate normally.
   if (session.booking_id) {
     try {
-      await completeBooking({ bookingId: session.booking_id });
+      await completeBooking({
+        bookingId: session.booking_id,
+        staffId: requesterId,
+      });
     } catch (syncError) {
       if ((syncError as { statusCode?: number }).statusCode !== 409) {
         throw syncError;

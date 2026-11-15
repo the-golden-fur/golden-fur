@@ -17,6 +17,9 @@ interface DaycareCheckoutPanelProps {
    * that embeds this panel (the Bookings Queue) update its own row without
    * waiting for its next refresh. */
   onCheckedOut?: () => void;
+  /** Front Desk Queue: unfinished care tasks on this session. Above zero,
+   * the panel warns and checking out marks them Missed. */
+  skippableTaskCount?: number;
 }
 
 /**
@@ -44,6 +47,7 @@ export function DaycareCheckoutPanel({
   accessToken,
   sessionId,
   onCheckedOut,
+  skippableTaskCount = 0,
 }: DaycareCheckoutPanelProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +59,10 @@ export function DaycareCheckoutPanel({
     setIsSubmitting(true);
     setError(null);
 
-    const result = await checkOutDaycareSession(sessionId, accessToken);
+    const result =
+      skippableTaskCount > 0
+        ? await checkOutDaycareSession(sessionId, accessToken, true)
+        : await checkOutDaycareSession(sessionId, accessToken);
 
     setIsSubmitting(false);
 
@@ -92,6 +99,14 @@ export function DaycareCheckoutPanel({
       {error ? (
         <p className={styles.errorBanner} role="alert">
           {error}
+        </p>
+      ) : null}
+
+      {skippableTaskCount > 0 ? (
+        <p className={styles.errorBanner} role="alert">
+          {skippableTaskCount} care task
+          {skippableTaskCount === 1 ? " isn't" : "s aren't"} done.{' '}
+          {skippableTaskCount === 1 ? "It'll" : "They'll"} be marked Missed.
         </p>
       ) : null}
 

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Modal } from '../../../../shared/components/Modal/Modal';
 import styles from './StorePoliciesModal.module.css';
+import { STORE_POLICIES_REMEMBER_DAYS } from './storePoliciesAgreement';
 
 interface PolicySection {
   title: string;
@@ -57,21 +58,34 @@ const STORE_POLICIES: PolicySection[] = [
 
 interface StorePoliciesModalProps {
   onClose: () => void;
-  onAgree: () => void;
+  /** 'agree' (default): scroll to the end + tick the agreement to
+   * Continue. 'view': read-only, just a Close button. */
+  mode?: 'agree' | 'view';
+  /** Required in 'agree' mode. `remember` = the customer also ticked
+   * "Remember policies", so the page saves it to their account (valid
+   * for STORE_POLICIES_REMEMBER_DAYS). */
+  onAgree?: (remember: boolean) => void;
 }
 
 /**
- * Shown by CustomerBookingFlowPage every time a customer leaves the Branch
- * step - they must scroll to the end of the policies, then tick the
- * agreement, before continuing to the Pet step.
- * Rendered only while open (the page mounts/unmounts it), so the checkbox
- * starts unticked on every showing.
+ * Shown by CustomerBookingFlowPage in 'agree' mode when a customer leaves
+ * the Branch step without a remembered agreement to the current
+ * STORE_POLICIES_VERSION - they must scroll to the end of the policies,
+ * then tick the agreement, before continuing to the Pet step. A second,
+ * optional checkbox remembers the agreement on their account so it isn't
+ * asked again. Also opened in 'view' mode from the wizard's "View store
+ * policies" link at any time.
+ * Rendered only while open (the page mounts/unmounts it), so both
+ * checkboxes start unticked on every showing.
  */
 export function StorePoliciesModal({
   onClose,
+  mode = 'agree',
   onAgree,
 }: StorePoliciesModalProps) {
+  const isViewOnly = mode === 'view';
   const [hasAgreed, setHasAgreed] = useState(false);
+  const [shouldRemember, setShouldRemember] = useState(false);
   // The agreement unlocks only once the policy text has been scrolled to
   // its end.
   const [hasReadAll, setHasReadAll] = useState(false);
@@ -121,37 +135,68 @@ export function StorePoliciesModal({
         </ol>
       </div>
 
-      {!hasReadAll ? (
-        <p className={styles.scrollHint} id="store-policies-scroll-hint">
-          Scroll to the end of the policies to continue.
-        </p>
-      ) : null}
+      {isViewOnly ? (
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.continueButton}
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+      ) : (
+        <>
+          {!hasReadAll ? (
+            <p className={styles.scrollHint} id="store-policies-scroll-hint">
+              Scroll to the end of the policies to continue.
+            </p>
+          ) : null}
 
-      <label
-        className={`${styles.agreeRow} ${hasReadAll ? '' : styles.agreeRowLocked}`}
-      >
-        <input
-          type="checkbox"
-          checked={hasAgreed}
-          disabled={!hasReadAll}
-          aria-describedby={
-            hasReadAll ? undefined : 'store-policies-scroll-hint'
-          }
-          onChange={(event) => setHasAgreed(event.target.checked)}
-        />
-        I have read and agree to the store policies
-      </label>
+          <label
+            className={`${styles.agreeRow} ${hasReadAll ? '' : styles.agreeRowLocked}`}
+          >
+            <input
+              type="checkbox"
+              checked={hasAgreed}
+              disabled={!hasReadAll}
+              aria-describedby={
+                hasReadAll ? undefined : 'store-policies-scroll-hint'
+              }
+              onChange={(event) => {
+                setHasAgreed(event.target.checked);
+                // Nothing to remember without the agreement itself.
+                if (!event.target.checked) setShouldRemember(false);
+              }}
+            />
+            I have read and agree to the store policies
+          </label>
 
-      <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.continueButton}
-          disabled={!hasReadAll || !hasAgreed}
-          onClick={onAgree}
-        >
-          Continue
-        </button>
-      </div>
+          {/* Optional - only meaningful once the agreement is ticked. */}
+          <label
+            className={`${styles.rememberRow} ${hasAgreed ? '' : styles.agreeRowLocked}`}
+          >
+            <input
+              type="checkbox"
+              checked={shouldRemember}
+              disabled={!hasAgreed}
+              onChange={(event) => setShouldRemember(event.target.checked)}
+            />
+            Remember policies for {STORE_POLICIES_REMEMBER_DAYS} days
+          </label>
+
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.continueButton}
+              disabled={!hasReadAll || !hasAgreed}
+              onClick={() => onAgree?.(shouldRemember)}
+            >
+              Continue
+            </button>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }

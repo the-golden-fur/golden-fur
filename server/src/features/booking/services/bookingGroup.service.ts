@@ -562,7 +562,7 @@ export async function createBookingGroup({
         await rollbackBookingGroup(bookingGroup.id, insertedBookingIds);
         throwWithStatus(
           409,
-          'Capacity was taken between slot selection and payment — please select another slot'
+          'That time was just taken. Please pick another one.'
         );
       }
     }

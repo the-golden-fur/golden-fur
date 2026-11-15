@@ -36,3 +36,12 @@ export const updateCustomerProfileValidator = z
 export type UpdateCustomerProfileInput = z.infer<
   typeof updateCustomerProfileValidator
 >;
+
+/** Body of POST /customers/:id/store-policies-agreement - the policy
+ * version the customer just agreed to (StorePoliciesModal's
+ * STORE_POLICIES_VERSION on the client). */
+export const agreeToStorePoliciesValidator = z
+  .object({
+    version: z.number().int().positive(),
+  })
+  .strict();

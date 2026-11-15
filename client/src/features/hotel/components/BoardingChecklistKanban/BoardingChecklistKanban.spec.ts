@@ -173,7 +173,154 @@ describe('BoardingChecklistKanban', () => {
     expect(hotelApi.reopenCareLogEntry).not.toHaveBeenCalled();
   });
 
-  it('clicking the checkbox on a Pending task starts it (advances to In Progress), not straight to Completed', async () => {
+  it('clicking the checkbox on a Pending task completes it in one press, once', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry()],
+      error: null,
+    });
+    vi.mocked(hotelApi.completeCareLogEntry).mockResolvedValue({
+      data: buildEntry({ status: 'Completed', completed_at: 'now' }),
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    fireEvent.click(
+      screen.getByRole('button', { name: /Mark complete: Morning meal/ })
+    );
+
+    await waitFor(() =>
+      expect(hotelApi.completeCareLogEntry).toHaveBeenCalledWith(
+        'entry-1',
+        'token'
+      )
+    );
+    expect(hotelApi.completeCareLogEntry).toHaveBeenCalledTimes(1);
+    expect(hotelApi.startCareLogEntry).not.toHaveBeenCalled();
+  });
+
+  it.each(['Pending', 'In Progress'])(
+    'pressing a %s card completes the task in one press',
+    async (status) => {
+      vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+        data: [buildEntry({ status })],
+        error: null,
+      });
+      vi.mocked(hotelApi.completeCareLogEntry).mockResolvedValue({
+        data: buildEntry({ status: 'Completed', completed_at: 'now' }),
+        error: null,
+      });
+
+      renderBoard();
+
+      await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Morning meal'));
+
+      await waitFor(() =>
+        expect(hotelApi.completeCareLogEntry).toHaveBeenCalledWith(
+          'entry-1',
+          'token'
+        )
+      );
+      expect(screen.queryByText(/Scheduled:/)).not.toBeInTheDocument();
+    }
+  );
+
+  it('completes a card from the keyboard', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry()],
+      error: null,
+    });
+    vi.mocked(hotelApi.completeCareLogEntry).mockResolvedValue({
+      data: buildEntry({ status: 'Completed', completed_at: 'now' }),
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    fireEvent.keyDown(
+      screen.getByRole('button', { name: /^Complete task: Morning meal/ }),
+      { key: 'Enter' }
+    );
+
+    await waitFor(() =>
+      expect(hotelApi.completeCareLogEntry).toHaveBeenCalledTimes(1)
+    );
+  });
+
+  it('a double press on a card only sends one completion', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [buildEntry()],
+      error: null,
+    });
+    vi.mocked(hotelApi.completeCareLogEntry).mockReturnValue(
+      new Promise(() => {})
+    );
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Morning meal'));
+    fireEvent.click(screen.getByText('Morning meal'));
+
+    expect(hotelApi.completeCareLogEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['Missed', 'Backlog'])(
+    'pressing a %s card only shows its details',
+    async (status) => {
+      vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+        data: [buildEntry({ status })],
+        error: null,
+      });
+
+      renderBoard();
+
+      await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Morning meal'));
+
+      expect(await screen.findByText(/Scheduled:/)).toBeInTheDocument();
+      expect(hotelApi.completeCareLogEntry).not.toHaveBeenCalled();
+      expect(hotelApi.startCareLogEntry).not.toHaveBeenCalled();
+    }
+  );
+
+  it('pressing a Completed card shows who completed it and an Undo button that reopens it', async () => {
+    vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
+      data: [
+        buildEntry({
+          status: 'Completed',
+          completed_at: '2026-08-09T00:00:00Z',
+          completed_by_staff: { display_name: 'Sam' },
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(hotelApi.reopenCareLogEntry).mockResolvedValue({
+      data: buildEntry({ status: 'Pending' }),
+      error: null,
+    });
+
+    renderBoard();
+
+    await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Morning meal'));
+
+    expect(await screen.findByText(/Completed by Sam/)).toBeInTheDocument();
+    expect(hotelApi.completeCareLogEntry).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() =>
+      expect(hotelApi.reopenCareLogEntry).toHaveBeenCalledWith(
+        'entry-1',
+        'token'
+      )
+    );
+  });
+
+  it('a Pending task can still be started from its menu', async () => {
     vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
       data: [buildEntry()],
       error: null,
@@ -186,9 +333,11 @@ describe('BoardingChecklistKanban', () => {
     renderBoard();
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
-    fireEvent.click(
-      screen.getByRole('button', { name: /Start: Morning meal/ })
-    );
+    fireEvent.contextMenu(screen.getByText('Max'));
+    expect(
+      screen.getByRole('menuitem', { name: 'Mark complete' })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Start' }));
 
     await waitFor(() =>
       expect(hotelApi.startCareLogEntry).toHaveBeenCalledWith(
@@ -261,10 +410,10 @@ describe('BoardingChecklistKanban', () => {
     });
     // Simulates a server response shaped like the pre-fix mutation
     // endpoints - no `stays` field at all.
-    vi.mocked(hotelApi.startCareLogEntry).mockResolvedValue({
+    vi.mocked(hotelApi.completeCareLogEntry).mockResolvedValue({
       data: {
         id: 'entry-1',
-        status: 'In Progress',
+        status: 'Completed',
       } as never,
       error: null,
     });
@@ -273,12 +422,12 @@ describe('BoardingChecklistKanban', () => {
 
     await waitFor(() => expect(screen.getByText('Max')).toBeInTheDocument());
     fireEvent.click(
-      screen.getByRole('button', { name: /Start: Morning meal/ })
+      screen.getByRole('button', { name: /Mark complete: Morning meal/ })
     );
 
     await waitFor(() =>
       expect(
-        screen.getByRole('heading', { name: /^In Progress/ })
+        screen.getByRole('button', { name: /Reopen: Morning meal/ })
       ).toBeInTheDocument()
     );
     // Still visible under the Hotel tab - not silently filtered out because
@@ -306,9 +455,9 @@ describe('BoardingChecklistKanban', () => {
     expect(screen.getByText('8:00 AM')).toBeInTheDocument();
   });
 
-  it('clicking a task expands its details, and clicking again collapses them', async () => {
+  it('clicking a Completed task expands its details, and clicking again collapses them', async () => {
     vi.mocked(hotelApi.getCareLogEntries).mockResolvedValue({
-      data: [buildEntry()],
+      data: [buildEntry({ status: 'Completed' })],
       error: null,
     });
 

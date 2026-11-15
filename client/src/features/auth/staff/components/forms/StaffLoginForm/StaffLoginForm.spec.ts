@@ -111,14 +111,14 @@ describe('StaffLoginForm', () => {
     );
   });
 
-  it('marks MFA pending after login when the account role requires MFA', async () => {
+  it('marks MFA pending after login when the account has MFA enrolled', async () => {
     const applySession = vi.fn().mockResolvedValue(undefined);
     loginMock.mockResolvedValue({
       data: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 },
       error: null,
     });
     getMfaStatusMock.mockResolvedValue({
-      data: { role: 'Admin', mfa_enrolled: false },
+      data: { role: 'Admin', mfa_enrolled: true },
       error: null,
     });
 
@@ -137,6 +137,27 @@ describe('StaffLoginForm', () => {
     await waitFor(() =>
       expect(window.sessionStorage.getItem('staffMfaPending')).toBe('true')
     );
+  });
+
+  it('does not mark MFA pending for an unenrolled default-on MFA role (MFA is optional)', async () => {
+    const applySession = vi.fn().mockResolvedValue(undefined);
+    loginMock.mockResolvedValue({
+      data: { access_token: 'acc', refresh_token: 'ref', expires_in: 3600 },
+      error: null,
+    });
+    getMfaStatusMock.mockResolvedValue({
+      data: { role: 'Admin', mfa_enrolled: false },
+      error: null,
+    });
+
+    renderForm(applySession);
+
+    await userEvent.type(screen.getByLabelText(/username or email/i), 'admin');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'correct-pw');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => expect(getMfaStatusMock).toHaveBeenCalled());
+    expect(window.sessionStorage.getItem('staffMfaPending')).toBeNull();
   });
 
   it('does not mark MFA pending for a role that does not require MFA', async () => {

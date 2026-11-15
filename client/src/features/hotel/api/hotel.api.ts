@@ -461,11 +461,21 @@ export async function listHotelStays(
 
 export async function checkOutHotelStay(
   stayId: string,
-  accessToken: string
+  accessToken: string,
+  skipOutstandingTasks = false
 ): Promise<HotelApiResult<CheckoutResult>> {
   const response = await fetch(
     `${API_BASE_URL}/hotel/stays/${stayId}/checkout`,
-    { method: 'POST', headers: authHeaders(accessToken) }
+    skipOutstandingTasks
+      ? {
+          method: 'POST',
+          headers: {
+            ...authHeaders(accessToken),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ skip_outstanding_tasks: true }),
+        }
+      : { method: 'POST', headers: authHeaders(accessToken) }
   );
 
   if (!response.ok) {

@@ -460,7 +460,7 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
 
   // Custom change (Groomer/Pet Assistant check-in restriction): these two
   // roles can no longer check pets in/out (server now 403s it), so every
-  // row becomes menu-only instead of click-to-navigate.
+  // row shows action buttons instead of click-to-navigate.
   describe.each(['Groomer', 'Pet Assistant'] as const)(
     '%s (check-in restriction)',
     (role) => {
@@ -485,7 +485,7 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
         expect(navigateMock).not.toHaveBeenCalled();
       });
 
-      it('offers only "View booking details" via the "..." menu for a not-yet-checked-in row', async () => {
+      it('offers only a "View booking details" button for a not-yet-checked-in row', async () => {
         stubPetAndOwner();
         vi.mocked(staffApi.getStaffProfile).mockResolvedValue({
           data: buildViewerProfile(role),
@@ -505,14 +505,14 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
         renderPage();
 
         await screen.findByText('Buddy');
-        fireEvent.contextMenu(screen.getByText('Buddy'));
 
         expect(
-          screen.getByRole('menuitem', { name: 'View booking details' })
+          screen.getByRole('button', { name: 'View booking details' })
         ).toBeInTheDocument();
         expect(
-          screen.queryByRole('menuitem', { name: 'View checklist items' })
+          screen.queryByRole('button', { name: 'View checklist items' })
         ).not.toBeInTheDocument();
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
       });
 
       it('an In Progress (checked in) row offers "View checklist items", navigating by petId', async () => {
@@ -529,9 +529,8 @@ describe('DaycareQueuePage (Daycare Queue redesign)', () => {
         renderPage();
 
         await screen.findByText('Buddy');
-        fireEvent.contextMenu(screen.getByText('Buddy'));
         fireEvent.click(
-          screen.getByRole('menuitem', { name: 'View checklist items' })
+          screen.getByRole('button', { name: 'View checklist items' })
         );
 
         expect(navigateMock).toHaveBeenCalledWith(

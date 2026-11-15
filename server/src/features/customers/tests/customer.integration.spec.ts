@@ -276,6 +276,54 @@ describe('customer profile CRUD (Issue #31)', () => {
     });
   });
 
+  describe('POST /customers/:id/store-policies-agreement', () => {
+    it('records the agreed version on the caller’s own profile', async () => {
+      mockCaller('customer-1');
+      queueFromResults({
+        data: {
+          id: 'customer-1',
+          store_policies_agreed_version: 1,
+          store_policies_agreed_at: '2026-11-08T00:00:00.000Z',
+        },
+        error: null,
+      });
+
+      const res = await request(app)
+        .post('/customers/customer-1/store-policies-agreement')
+        .set('Authorization', 'Bearer token')
+        .send({ version: 1 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.customer.store_policies_agreed_version).toBe(1);
+    });
+
+    it('returns 403 when agreeing on behalf of another account, even for staff', async () => {
+      mockCaller('staff-1');
+
+      const res = await request(app)
+        .post('/customers/customer-2/store-policies-agreement')
+        .set('Authorization', 'Bearer token')
+        .send({ version: 1 });
+
+      expect(res.status).toBe(403);
+      expect(supabase.from).not.toHaveBeenCalled();
+    });
+
+    it.each([{}, { version: 0 }, { version: 1.5 }, { version: '1' }])(
+      'rejects an invalid payload %j with 400',
+      async (body) => {
+        mockCaller('customer-1');
+
+        const res = await request(app)
+          .post('/customers/customer-1/store-policies-agreement')
+          .set('Authorization', 'Bearer token')
+          .send(body);
+
+        expect(res.status).toBe(400);
+      }
+    );
+  });
+
   describe('PATCH /customers/:id/deactivate', () => {
     it('allows a customer to deactivate their own account', async () => {
       mockCaller('customer-1');

@@ -68,6 +68,11 @@ body {
   gap: 10px;
 }
 
+/* Hamburger - only shown below 900px (see the responsive block further down) */
+.nav-menu-toggle {
+  display: none;
+}
+
 .btn {
   text-decoration: none;
   font-weight: 600;
@@ -1349,12 +1354,12 @@ body {
   }
 }
 
-/* Below 900px: brand on the left, the actions on the right - they wrap
-   onto their own row when the bar is too narrow for both. */
+/* Below 900px: brand on the left, hamburger on the right - the actions move
+   into a panel that drops down under the pill. The panel is solid rather than
+   glass so it stays readable over the hero photo. */
 @media (max-width: 900px) {
   .nav-inner {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 12px;
   }
@@ -1364,8 +1369,51 @@ body {
     font-size: 1.5rem;
   }
 
+  .nav-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-block: -4px; /* full tap target without making the pill taller */
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+  }
+
+  .nav-menu-toggle:focus-visible {
+    outline: 2px solid var(--color-accent-gold-primary);
+    outline-offset: 2px;
+  }
+
   .nav-actions {
-    flex-wrap: wrap;
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    border: 1px solid rgba(var(--color-landing-glass-border-rgb), 0.4);
+    box-shadow: var(--shadow-card);
+  }
+
+  .nav-actions.is-open {
+    display: flex;
+  }
+
+  .nav-actions .btn {
+    padding: 14px;
+    text-align: center;
+  }
+
+  .nav-actions > button {
+    align-self: center;
   }
 }
 

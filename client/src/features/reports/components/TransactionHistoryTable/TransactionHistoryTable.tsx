@@ -29,10 +29,12 @@ import type { TransactionRecord } from '../../reports.types';
 import { PaymentMethodForm } from '../../../billing/components/PaymentMethodForm/PaymentMethodForm';
 import {
   PAYMENT_METHODS,
+  type CounterPromoOption,
   type PaymentFields,
 } from '../../../billing/billing.types';
 import {
   addBookingPayment,
+  listCounterPromoOptions,
   payTransactionWithCredit,
   recordTransactionPayment,
   uploadTransactionReceipt,
@@ -119,6 +121,8 @@ export function TransactionHistoryTable() {
     payment_method: 'Cash',
   });
   const [payAmount, setPayAmount] = useState('');
+  const [payPromos, setPayPromos] = useState<CounterPromoOption[]>([]);
+  const [payPromoId, setPayPromoId] = useState('');
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   // Payment receipts: the file chosen in "Mark as paid", uploaded right after
@@ -221,6 +225,13 @@ export function TransactionHistoryTable() {
     // Prefill "Amount paid" with the transaction total - the common case is
     // settling the whole thing; a smaller value spawns a balance transaction.
     setPayAmount(String(t.total_amount));
+    setPayPromos([]);
+    setPayPromoId('');
+    if (accessToken) {
+      void listCounterPromoOptions(t.id, accessToken).then((result) => {
+        setPayPromos(result.data?.promos ?? []);
+      });
+    }
     setPayError(null);
     setPayReceipt(null);
   };
@@ -228,6 +239,23 @@ export function TransactionHistoryTable() {
   // 'Credit' is a Transactions-page-only method (routed to the pay-with-credit
   // endpoint); it isn't a PaymentMethod, so compare as a string.
   const payIsCredit = (payFields.payment_method as string) === 'Credit';
+  const payPromo = payPromos.find((promo) => promo.id === payPromoId) ?? null;
+  // What's owed once the picked promo comes off. The server works out the
+  // same amount itself; this is only the preview.
+  const payTotal = payTarget
+    ? Math.round((payTarget.total_amount - (payPromo?.amount ?? 0)) * 100) / 100
+    : 0;
+
+  const choosePayPromo = (promoId: string) => {
+    if (!payTarget) return;
+    const promo = payPromos.find((option) => option.id === promoId);
+    setPayPromoId(promoId);
+    setPayAmount(
+      String(
+        Math.round((payTarget.total_amount - (promo?.amount ?? 0)) * 100) / 100
+      )
+    );
+  };
 
   const confirmPay = async () => {
     if (!payTarget || !accessToken) return;
@@ -237,7 +265,7 @@ export function TransactionHistoryTable() {
       setPayError('Enter an amount greater than zero.');
       return;
     }
-    if (paying > payTarget.total_amount + 0.001) {
+    if (paying > payTotal + 0.001) {
       setPayError('Amount paid cannot exceed the transaction total.');
       return;
     }
@@ -256,10 +284,16 @@ export function TransactionHistoryTable() {
     setPayBusy(true);
     setPayError(null);
 
-    const partialAmount = paying < payTarget.total_amount ? paying : undefined;
+    const partialAmount = paying < payTotal ? paying : undefined;
+    const promoId = payPromo?.id;
 
     const result = payIsCredit
-      ? await payTransactionWithCredit(payTarget.id, accessToken, partialAmount)
+      ? await payTransactionWithCredit(
+          payTarget.id,
+          accessToken,
+          partialAmount,
+          promoId
+        )
       : await recordTransactionPayment(
           payTarget.id,
           {
@@ -267,6 +301,7 @@ export function TransactionHistoryTable() {
             bank_name: payFields.bank_name,
             payment_reference: payFields.payment_reference,
             amount_applied: partialAmount,
+            promo_id: promoId,
           },
           accessToken
         );
@@ -757,28 +792,48 @@ export function TransactionHistoryTable() {
             aria-labelledby="record-payment-title"
           >
             <h2 id="record-payment-title" className={styles.modalTitle}>
-              Mark as paid — PHP {payTarget.total_amount.toFixed(2)}
+              Mark as paid — PHP {payTotal.toFixed(2)}
             </h2>
+            {payPromos.length > 0 ? (
+              <label className={styles.field}>
+                Promo
+                <select
+                  className={styles.control}
+                  value={payPromoId}
+                  onChange={(event) => choosePayPromo(event.target.value)}
+                >
+                  <option value="">No promo</option>
+                  {payPromos.map((promo) => (
+                    <option key={promo.id} value={promo.id}>
+                      {promo.name} (PHP {promo.amount.toFixed(2)} off)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {payPromo ? (
+              <p className={styles.copy}>
+                PHP {payTarget.total_amount.toFixed(2)} less PHP{' '}
+                {payPromo.amount.toFixed(2)} promo is PHP {payTotal.toFixed(2)}.
+              </p>
+            ) : null}
             <label className={styles.field}>
               Amount paid (PHP)
               <input
                 className={styles.control}
                 type="number"
                 min={0.01}
-                max={payTarget.total_amount}
+                max={payTotal}
                 step="0.01"
                 value={payAmount}
                 onChange={(event) => setPayAmount(event.target.value)}
               />
             </label>
-            {Number(payAmount) > 0 &&
-            Number(payAmount) < payTarget.total_amount ? (
+            {Number(payAmount) > 0 && Number(payAmount) < payTotal ? (
               <p className={styles.copy}>
                 {payIsCredit
                   ? 'Whatever the available credit does not cover will be left as a balance payment.'
-                  : `A PHP ${(
-                      payTarget.total_amount - Number(payAmount)
-                    ).toFixed(
+                  : `A PHP ${(payTotal - Number(payAmount)).toFixed(
                       2
                     )} balance payment will be created for the rest.`}
               </p>
@@ -786,7 +841,7 @@ export function TransactionHistoryTable() {
             <PaymentMethodForm
               value={payFields}
               onChange={setPayFields}
-              amountDue={Number(payAmount) || payTarget.total_amount}
+              amountDue={Number(payAmount) || payTotal}
               methods={PAY_MODAL_METHODS}
               hideCashTendered
             />

@@ -20,6 +20,8 @@ export interface CustomerProfile {
   account_email: string;
   primary_auth_provider: AuthProvider;
   profile_photo_url: string | null;
+  store_policies_agreed_version: number | null;
+  store_policies_agreed_at: string | null;
   is_active: boolean;
   archived_at: string | null;
   deactivated_at: string | null;

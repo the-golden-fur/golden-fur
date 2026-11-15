@@ -78,7 +78,7 @@ export async function recordActivity({
  * and-forget like recordActivity above - never throws, never blocks the
  * read path it's attached to. */
 export async function recordBulkActivity(
-  rows: Omit<RecordActivityParams, 'actorStaffId'>[]
+  rows: RecordActivityParams[]
 ): Promise<void> {
   if (rows.length === 0) return;
 
@@ -89,7 +89,7 @@ export async function recordBulkActivity(
         stay_id: row.stayId ?? null,
         care_log_entry_id: row.careLogEntryId ?? null,
         action: row.action,
-        actor_staff_id: null,
+        actor_staff_id: row.actorStaffId ?? null,
         description: row.description,
       }))
     );

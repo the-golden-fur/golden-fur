@@ -2,6 +2,7 @@ import type {
   CheckoutPreview,
   CheckoutRequest,
   CheckoutResponse,
+  CounterPromoOption,
   MiscSaleOptions,
   MiscSalePreview,
   MiscSalePreviewRequest,
@@ -189,6 +190,8 @@ export interface RecordPaymentPayload {
    * settles it partially and creates a Pending 'balance' transaction for the
    * remainder. */
   amount_applied?: number;
+  /** A promo to take off this bill before it's paid. */
+  promo_id?: string;
 }
 
 /** Cashier records a counter payment against a Pending booking_payment
@@ -211,6 +214,26 @@ export async function recordTransactionPayment(
       headers: jsonHeaders(accessToken),
       body: JSON.stringify(payload),
     }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody(response);
+}
+
+/** Promos the cashier can add to this unpaid bill; `reason` says why there
+ * are none when the bill can't take one. */
+export async function listCounterPromoOptions(
+  transactionId: string,
+  accessToken: string
+): Promise<
+  BillingApiResult<{ promos: CounterPromoOption[]; reason: string | null }>
+> {
+  const response = await fetch(
+    `${API_BASE_URL}/billing/transactions/${transactionId}/promo-options`,
+    { headers: jsonHeaders(accessToken) }
   );
 
   if (!response.ok) {
@@ -249,7 +272,8 @@ export async function addBookingPayment(
 export async function payTransactionWithCredit(
   transactionId: string,
   accessToken: string,
-  amountApplied?: number
+  amountApplied?: number,
+  promoId?: string
 ): Promise<
   BillingApiResult<{
     transaction: Transaction;
@@ -263,9 +287,12 @@ export async function payTransactionWithCredit(
       method: 'POST',
       headers: jsonHeaders(accessToken),
       body:
-        amountApplied === undefined
+        amountApplied === undefined && promoId === undefined
           ? undefined
-          : JSON.stringify({ amount_applied: amountApplied }),
+          : JSON.stringify({
+              amount_applied: amountApplied,
+              promo_id: promoId,
+            }),
     }
   );
 

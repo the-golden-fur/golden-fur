@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useParams, useSearchParams } from 'react-router';
 import { useAuth } from '../../../../shared/auth/providers/AuthProvider/useAuth';
 import { getBookingDetails } from '../../api/booking.api';
 import type { BookingDetails } from '../../booking.types';
@@ -20,6 +20,11 @@ import { LoadingState } from '../../../../shared/components/LoadingState/Loading
 export function BookingDetailsPage() {
   const { bookingId } = useParams<{ bookingId: string }>();
   const { accessToken } = useAuth();
+  const [searchParams] = useSearchParams();
+  const backTo =
+    searchParams.get('from') === 'front-desk'
+      ? '/staff/front-desk/queue'
+      : '/staff/bookings/queue';
 
   const [details, setDetails] = useState<BookingDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,7 +82,7 @@ export function BookingDetailsPage() {
           <p className={styles.errorBanner} role="alert">
             {loadError ?? 'Booking not found.'}
           </p>
-          <Link to="/staff/bookings/queue" className={styles.secondaryButton}>
+          <Link to={backTo} className={styles.secondaryButton}>
             Back to queue
           </Link>
         </div>
@@ -88,7 +93,7 @@ export function BookingDetailsPage() {
   return (
     <main className={styles.page}>
       <div className={styles.content}>
-        <Link to="/staff/bookings/queue" className={styles.secondaryButton}>
+        <Link to={backTo} className={styles.secondaryButton}>
           Back to queue
         </Link>
 

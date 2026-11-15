@@ -34,7 +34,6 @@ import { listDaycareSessions } from '../../api/daycare.api';
 import { getCareLogEntries } from '../../../hotel/api/hotel.api';
 import type { CareLogEntry } from '../../../hotel/hotel.types';
 import { buildChecklistMenuItems } from '../../../hotel/utils/queueActionMenu';
-import { CardRowWithMenu } from '../../../../shared/components/MoreOptionsMenu/CardRowWithMenu';
 import { DAYCARE_QUEUE_VIEWER_ROLES } from './daycareQueueRoles';
 import styles from './DaycareQueuePage.module.css';
 import { LoadingState } from '../../../../shared/components/LoadingState/LoadingState';
@@ -564,10 +563,10 @@ export function DaycareQueuePage() {
 
               return (
                 <li key={booking.id} className={styles.bookingRow}>
+                  {rowContent}
                   {isAssistantRole ? (
-                    <CardRowWithMenu
-                      label={`Actions for ${pets[booking.pet_id]?.name ?? 'this pet'}`}
-                      items={buildChecklistMenuItems({
+                    <div className={styles.rowActions}>
+                      {buildChecklistMenuItems({
                         entries: careLogEntries,
                         stayId: sessionId,
                         accessToken: accessToken ?? '',
@@ -578,14 +577,18 @@ export function DaycareQueuePage() {
                             `/staff/hotel/care-log?petId=${encodeURIComponent(booking.pet_id)}`
                           ),
                         onChanged: refetchCareLogEntries,
-                      })}
-                      showMenuButton
-                    >
-                      {rowContent}
-                    </CardRowWithMenu>
-                  ) : (
-                    rowContent
-                  )}
+                      }).map((action) => (
+                        <button
+                          key={action.label}
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={action.onSelect}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </li>
               );
             })}

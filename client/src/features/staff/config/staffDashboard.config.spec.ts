@@ -106,3 +106,31 @@ describe('Front Desk dashboard', () => {
     expect(frontDeskTitles).toHaveLength(expectedTitles.size);
   });
 });
+
+describe('Front Desk Queue tile', () => {
+  it.each(['receptionist', 'front-desk'] as const)(
+    'is on the %s dashboard',
+    (slug) => {
+      expect(tileTitles(slug)).toContain('Front Desk Queue');
+    }
+  );
+
+  it('is not on the cashier dashboard', () => {
+    expect(tileTitles('cashier')).not.toContain('Front Desk Queue');
+  });
+});
+
+describe('Attendance tile', () => {
+  it('is on the supervisor dashboard and in the admin Supervisor section', () => {
+    expect(
+      STAFF_DASHBOARD_CONFIG.supervisor.sections.flatMap((section) =>
+        section.tiles.map((tile) => tile.title)
+      )
+    ).toContain('Attendance');
+    expect(supervisorTitles('Admin')).toContain('Attendance');
+  });
+
+  it('is not on the front desk dashboard', () => {
+    expect(tileTitles('front-desk')).not.toContain('Attendance');
+  });
+});

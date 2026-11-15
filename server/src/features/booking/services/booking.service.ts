@@ -615,7 +615,7 @@ export const MIN_PAYABLE_SHARE = 0.5;
  * service priced at zero on purpose (Initial Assessment, Follow-up
  * Consultation) has nothing to reduce and is unaffected.
  */
-function assertMinimumPayable(
+export function assertMinimumPayable(
   totalPrice: number,
   discountAmount: number,
   promoAmount: number
@@ -631,6 +631,78 @@ function assertMinimumPayable(
       `Discounts and promos can take off at most ${Math.round((1 - MIN_PAYABLE_SHARE) * 100)}% of the price. This booking is PHP ${totalPrice.toFixed(2)} and they take off PHP ${reduction.toFixed(2)} - remove one to continue.`
     );
   }
+}
+
+/** What a promo takes off an order, or a 400 saying why it can't be used -
+ * the one set of promo rules, shared by booking and the cashier's Mark as
+ * paid (counterPromo.service.ts). */
+export function resolvePromoAmount(
+  promo: Awaited<ReturnType<typeof getPromoById>>,
+  {
+    branchId,
+    items,
+    totalPrice,
+  }: {
+    branchId: string;
+    items: Array<{ service_id?: string | null; package_id?: string | null }>;
+    totalPrice: number;
+  }
+): number {
+  // Session 114: a spin-wheel promo hands out spins, not a discount.
+  if (!isDiscountPromo(promo)) {
+    throwWithStatus(
+      400,
+      `Promo "${promo.name}" is a spin wheel, not a discount`
+    );
+  }
+
+  if (!isPromoCurrentlyEligible(promo)) {
+    throwWithStatus(400, `Promo "${promo.name}" is not currently active`);
+  }
+
+  const isAvailableAtBranch = (promo.promo_branch_availability ?? []).some(
+    (row) => row.branch_id === branchId && row.is_available
+  );
+
+  if (!isAvailableAtBranch) {
+    throwWithStatus(
+      400,
+      `Promo "${promo.name}" is not available at this branch`
+    );
+  }
+
+  const scopeMatches =
+    promo.scope_type === 'all_services' ||
+    (promo.promo_scope ?? []).some((scopeRow) =>
+      items.some(
+        (item) =>
+          (scopeRow.service_id && scopeRow.service_id === item.service_id) ||
+          (scopeRow.package_id && scopeRow.package_id === item.package_id)
+      )
+    );
+
+  if (!scopeMatches) {
+    throwWithStatus(
+      400,
+      `Promo "${promo.name}" does not apply to the selected items`
+    );
+  }
+
+  // The promo's own cap (min_spend): the order must reach it before the
+  // promo can be used. Replaces the per-branch promo_cap_configuration,
+  // which is no longer read - once usable, a promo applies in full.
+  if (promo.min_spend != null && totalPrice < Number(promo.min_spend)) {
+    throwWithStatus(
+      400,
+      `Promo "${promo.name}" needs a minimum order of PHP ${Number(promo.min_spend).toFixed(2)}`
+    );
+  }
+
+  return round2(
+    promo.discount_type === 'Percentage'
+      ? (totalPrice * Number(promo.value)) / 100
+      : Math.min(Number(promo.value), totalPrice)
+  );
 }
 
 export interface PromoSelectionResolution {
@@ -776,64 +848,14 @@ export async function resolveDiscountAndPromos(
   for (const promoId of promoIds) {
     const promo = await getPromoById(promoId);
 
-    // Session 114: a spin-wheel promo hands out spins, not a discount.
-    if (!isDiscountPromo(promo)) {
-      throwWithStatus(
-        400,
-        `Promo "${promo.name}" is a spin wheel, not a discount`
-      );
-    }
-
-    if (!isPromoCurrentlyEligible(promo)) {
-      throwWithStatus(400, `Promo "${promo.name}" is not currently active`);
-    }
-
-    const isAvailableAtBranch = (promo.promo_branch_availability ?? []).some(
-      (row) => row.branch_id === input.branch_id && row.is_available
-    );
-
-    if (!isAvailableAtBranch) {
-      throwWithStatus(
-        400,
-        `Promo "${promo.name}" is not available at this branch`
-      );
-    }
-
-    const scopeMatches =
-      promo.scope_type === 'all_services' ||
-      (promo.promo_scope ?? []).some((scopeRow) =>
-        resolvedItems.some(
-          (item) =>
-            (scopeRow.service_id && scopeRow.service_id === item.service_id) ||
-            (scopeRow.package_id && scopeRow.package_id === item.package_id)
-        )
-      );
-
-    if (!scopeMatches) {
-      throwWithStatus(
-        400,
-        `Promo "${promo.name}" does not apply to the selected items`
-      );
-    }
-
-    // The promo's own cap (min_spend): the order must reach it before the
-    // promo can be used. Replaces the per-branch promo_cap_configuration,
-    // which is no longer read - once usable, a promo applies in full.
-    if (promo.min_spend != null && totalPrice < Number(promo.min_spend)) {
-      throwWithStatus(
-        400,
-        `Promo "${promo.name}" needs a minimum order of PHP ${Number(promo.min_spend).toFixed(2)}`
-      );
-    }
-
     promoSelections.push({
       promoId: promo.id,
       couponId: null,
-      appliedAmount: round2(
-        promo.discount_type === 'Percentage'
-          ? (totalPrice * Number(promo.value)) / 100
-          : Math.min(Number(promo.value), totalPrice)
-      ),
+      appliedAmount: resolvePromoAmount(promo, {
+        branchId: input.branch_id,
+        items: resolvedItems,
+        totalPrice,
+      }),
     });
   }
 
@@ -1165,9 +1187,8 @@ export async function createBooking({
   let downpaymentAmount: number | null = null;
   let downpaymentHoldHours = 24;
   // policy_configurations.max_concurrent_bookings_per_staff (20260908178) -
-  // passed to the post-insert race check below. Resolved from the effective
-  // policy on the Online path; Walk-ins keep the default of 1 (see
-  // confirmCapacityAfterInsert's own note on why that's fine).
+  // passed to the post-insert race check below. Set from the effective
+  // policy on both the Online and Walk-in paths.
   let staffConcurrency = 1;
 
   // Per-branch Grooming hours: applies to every booking source, Walk-ins
@@ -1246,12 +1267,14 @@ export async function createBooking({
     staffConcurrency = policy.max_concurrent_bookings_per_staff;
   }
 
-  // The one policy field a Walk-in reads: whether this branch offers pay at
-  // checkout at all (Superadmin > Config > Branches > Configure).
-  if (payAtCheckout) {
+  if (bookingSource !== 'Online') {
     const policy = await resolveEffectivePolicy(input.branch_id);
 
-    if (!policy.pay_at_checkout_enabled) {
+    staffConcurrency = policy.max_concurrent_bookings_per_staff;
+
+    // Whether this branch offers pay at checkout at all (Superadmin > Config
+    // > Branches > Configure).
+    if (payAtCheckout && !policy.pay_at_checkout_enabled) {
       throwWithStatus(422, 'Pay at checkout is switched off for this branch');
     }
   }
@@ -1506,7 +1529,7 @@ export async function createBooking({
       await supabase.from('bookings').delete().eq('id', booking.id);
       throwWithStatus(
         409,
-        'Capacity was taken between slot selection and payment — please select another slot'
+        'That time was just taken. Please pick another one.'
       );
     }
   }
@@ -2210,6 +2233,9 @@ async function applyLateAndNoShowTransition(
 
 interface AdvanceStatusParams {
   bookingId: string;
+  /** Who pressed Start/Complete (20261101294) - optional because a booking
+   * can be advanced with no staff request behind it. */
+  staffId?: string;
 }
 
 async function getRawBookingById(bookingId: string): Promise<Booking> {
@@ -2261,6 +2287,7 @@ async function updateBookingRow(
  */
 export async function startBooking({
   bookingId,
+  staffId,
 }: AdvanceStatusParams): Promise<Booking> {
   const booking = await getRawBookingById(bookingId);
 
@@ -2303,6 +2330,7 @@ export async function startBooking({
   return updateBookingRow(bookingId, {
     status: 'In Progress',
     started_at: now,
+    started_by_staff_id: staffId ?? null,
     updated_at: now,
   });
 }
@@ -2316,6 +2344,7 @@ export async function startBooking({
  */
 export async function completeBooking({
   bookingId,
+  staffId,
 }: AdvanceStatusParams): Promise<Booking> {
   const booking = await getRawBookingById(bookingId);
 
@@ -2327,6 +2356,7 @@ export async function completeBooking({
   return updateBookingRow(bookingId, {
     status: 'Completed',
     completed_at: now,
+    completed_by_staff_id: staffId ?? null,
     updated_at: now,
   });
 }
@@ -2367,6 +2397,9 @@ export async function overrideBookingStatus({
     status,
     started_at: startedAt,
     completed_at: completedAt,
+    // A revert drops who-did-it along with the timestamp it belongs to.
+    ...(status === 'Pending' ? { started_by_staff_id: null } : {}),
+    ...(status === 'Completed' ? {} : { completed_by_staff_id: null }),
     updated_at: now,
   });
 }
@@ -2828,7 +2861,11 @@ export async function applyFirstBookingPaymentSideEffects({
     updated.downpayment_required &&
     (isNotStartedStatus(updated.status) || updated.status === 'In Progress')
   ) {
-    const stillHoldsSlot = await confirmCapacityAfterInsert(updated);
+    const policy = await resolveEffectivePolicy(updated.branch_id);
+    const stillHoldsSlot = await confirmCapacityAfterInsert(
+      updated,
+      policy.max_concurrent_bookings_per_staff
+    );
 
     if (!stillHoldsSlot) {
       if (revertOnCapacityConflict) {

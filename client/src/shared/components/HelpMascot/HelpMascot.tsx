@@ -81,11 +81,14 @@ export type HelpMascotLink =
   | { label: string; onClick: () => void };
 
 interface HelpMascotProps {
-  /** The page-link radial menu items (one or two) - FAQs is always first
-   * (built in, opens the FAQ modal instead of navigating), then these, then
-   * the built-in "Change pet" and "Hide me". Radial positions are hardcoded
-   * in CSS for four, five or six items. */
-  links: [HelpMascotLink] | [HelpMascotLink, HelpMascotLink];
+  /** The page-link radial menu items (one, two or three) - FAQs is always
+   * first (built in, opens the FAQ modal instead of navigating), then
+   * these, then the built-in "Change pet" and "Hide me". Radial positions
+   * are hardcoded in CSS for four, five, six or seven items. */
+  links:
+    | [HelpMascotLink]
+    | [HelpMascotLink, HelpMascotLink]
+    | [HelpMascotLink, HelpMascotLink, HelpMascotLink];
   /** Customer portal only: adds a sixth "Tutorial" bubble after the two
    * links that replays the customer tutorial. Left out (the landing pages),
    * the menu keeps its five bubbles. */
@@ -613,8 +616,8 @@ export function HelpMascot({ links, onStartTutorial }: HelpMascotProps) {
       <nav
         className={styles.menu}
         aria-label="Support links"
-        // Four or six bubbles switch the CSS to that layout; five is the
-        // default.
+        // Four, six or seven bubbles switch the CSS to that layout; five is
+        // the default.
         data-items={menuItemCount === 5 ? undefined : String(menuItemCount)}
       >
         {renderHelpLinks(styles.link)}

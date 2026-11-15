@@ -171,6 +171,16 @@ export async function mfaEnrollController(
           });
         }
         toEmail = verification.email;
+
+        // Their first factor must be a real authenticator app - see
+        // mfaUnenrollController on why email-only is never allowed for them.
+        const status = await getMfaMethodStatus(userClient, userId);
+        if (!status.authenticator) {
+          return res.status(409).json({
+            error:
+              'Set up an authenticator app first - email can only be added as a second method for your role.',
+          });
+        }
       }
     }
 
@@ -262,32 +272,32 @@ export async function mfaUnenrollController(
     const { data: roleData } = await getStaffRole(userId);
     const staffRole = roleData?.role;
 
-    if (staffRole && MANDATORY_MFA_ROLES.has(staffRole)) {
-      // The authenticator-app factor is permanent for a mandatory-MFA role,
-      // never just "not the last method" - unlike 'email' (a real TOTP
-      // factor whose secret the server itself holds, encrypted, to compute
-      // and send the code), the server never learns an authenticator
-      // factor's secret at all. That asymmetry means a compromised
-      // MFA_EMAIL_SECRET_KEY alone could otherwise leave the highest-
-      // privilege roles' MFA entirely forgeable server-side if they were
-      // ever allowed to drop down to email-only - see mfa_factor_methods'
-      // migration comment. Enrollment already forces this role's first
-      // factor to be 'authenticator' (MfaSetupModal/MfaEnrollPage), so this
-      // is enforcement of an invariant that should already hold, not a
-      // first-time gate.
-      if (parsed.data.method === 'authenticator') {
-        return res.status(409).json({
-          error:
-            'Your role requires an authenticator app and it cannot be removed. You can still add or remove email as an additional method.',
-        });
-      }
-
+    if (
+      staffRole &&
+      MANDATORY_MFA_ROLES.has(staffRole) &&
+      parsed.data.method === 'authenticator'
+    ) {
+      // MFA is optional, so a default-on role may turn it off - but never
+      // drop down to email-only. Unlike 'email' (a real TOTP factor whose
+      // secret the server itself holds, encrypted, to compute and send the
+      // code), the server never learns an authenticator factor's secret at
+      // all, so a compromised MFA_EMAIL_SECRET_KEY alone could otherwise
+      // leave the highest-privilege roles' MFA entirely forgeable
+      // server-side - see mfa_factor_methods' migration comment. Removing
+      // the authenticator therefore removes email too, i.e. disables MFA.
       const status = await getMfaMethodStatus(userClient, userId);
-      if (!status.authenticator) {
-        return res.status(409).json({
-          error:
-            'Your role requires MFA - set up an authenticator app before removing this method.',
-        });
+      if (status.email) {
+        const { error: emailError } = await unenrollMfaMethod(
+          userClient,
+          userId,
+          'email'
+        );
+        if (emailError) {
+          return res.status(400).json({
+            error: 'Failed to remove MFA factor',
+            details: emailError.message,
+          });
+        }
       }
     }
 
@@ -543,13 +553,11 @@ export async function mfaVerifyController(
 
     await resetMfaLockout(userId);
 
-    // Fires exactly once per account: mandatory roles are hard-blocked
-    // behind MfaSetupModal until their first authenticator verify succeeds
-    // (StaffAuthGuard), so "no mfa_email_verifications row yet" is exactly
-    // equivalent to "this is that first successful login + TOTP setup" -
-    // no extra bookkeeping needed to tell enrollment-confirm apart from a
-    // routine later login. Best-effort: a failed send must never fail the
-    // login/verify response itself.
+    // Fires once per account: "no mfa_email_verifications row yet" means
+    // this is a default-on role's first successful authenticator verify
+    // (i.e. their TOTP setup) - no extra bookkeeping needed to tell
+    // enrollment-confirm apart from a routine later login. Best-effort: a
+    // failed send must never fail the login/verify response itself.
     if (method === 'authenticator') {
       try {
         const { data: roleData } = await getStaffRole(userId);

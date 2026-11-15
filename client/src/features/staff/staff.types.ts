@@ -7,7 +7,8 @@ export type StaffRole =
   | 'Veterinarian'
   | 'Cashier'
   | 'Pet Assistant'
-  | 'Front Desk';
+  | 'Front Desk'
+  | 'Developer';
 
 /** Kept in sync with server ALL_STAFF_ROLES (staff.types.ts) and the
  * staff_role Postgres enum (supabase/migrations/20260625004_m01_create_
@@ -22,6 +23,7 @@ export const ALL_STAFF_ROLES: readonly StaffRole[] = [
   'Cashier',
   'Pet Assistant',
   'Front Desk',
+  'Developer',
 ];
 
 export type CommunicationChannel = 'Call' | 'Text' | 'Viber' | 'Messenger';
@@ -227,4 +229,38 @@ export interface DeletedRecordArchiveEntry {
   deleted_at: string;
   restored_at: string | null;
   restored_by: string | null;
+}
+
+/** Not the booking status of the same name. */
+export type StaffAttendanceStatus = 'Present' | 'Absent' | 'Late';
+
+export interface AttendanceRow {
+  staff_id: string;
+  display_name: string;
+  role: string;
+  /** null when a Rest Day/Other block means they aren't expected in. */
+  status: StaffAttendanceStatus | null;
+  leave_type: string | null;
+  locked: boolean;
+  /** Unstarted Grooming/Veterinary bookings that day. */
+  booking_count: number;
+}
+
+export interface AttendanceDay {
+  date: string;
+  today: string;
+  rows: AttendanceRow[];
+}
+
+export interface MovedBooking {
+  booking_id: string;
+  pet_name: string | null;
+  service_category: string;
+  scheduled_start: string;
+  assigned_to: string | null;
+}
+
+export interface AttendanceResult {
+  reassigned: MovedBooking[];
+  needs_rescheduling: MovedBooking[];
 }

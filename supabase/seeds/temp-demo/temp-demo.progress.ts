@@ -34,7 +34,7 @@ export async function seedTempProgress(
   supabase: SupabaseClient,
   now = new Date()
 ) {
-  const [customerRes, completedRes, stayRes] = await Promise.all([
+  const [customerRes, completedRes, stayRes, spinPromoRes] = await Promise.all([
     supabase.from('customer_profiles').select('id').order('created_at'),
     supabase
       .from('bookings')
@@ -46,9 +46,11 @@ export async function seedTempProgress(
       .select('id, check_in_at, scheduled_check_out_date, status')
       .in('status', ['Active', 'Completed'])
       .limit(500),
+    // Pity is tracked per (customer, spin-wheel promo) since 20260925214.
+    supabase.from('spin_wheel_promo_settings').select('promo_id'),
   ]);
 
-  for (const r of [customerRes, completedRes, stayRes]) {
+  for (const r of [customerRes, completedRes, stayRes, spinPromoRes]) {
     if (r.error) throw r.error;
   }
 
@@ -70,10 +72,14 @@ export async function seedTempProgress(
     completed_bookings_count: completedBy.get(id) ?? 0,
   }));
 
-  const pity: Row[] = customers.map((id, i) => ({
-    customer_id: id,
-    spins_since_last_pity_win: i % 4,
-  }));
+  const spinPromos = (spinPromoRes.data ?? []).map((p) => p.promo_id as string);
+  const pity: Row[] = customers.flatMap((id, i) =>
+    spinPromos.map((promoId, p) => ({
+      customer_id: id,
+      promo_id: promoId,
+      spins_since_last_pity_win: (i + p) % 4,
+    }))
+  );
 
   const logins: Row[] = customers.flatMap((id, c) =>
     Array.from({ length: LOGIN_DAYS }, (_, d) => d)
@@ -112,7 +118,7 @@ export async function seedTempProgress(
 
   const writes: Array<[string, string, Row[]]> = [
     ['customer_booking_milestone_progress', 'customer_id', milestones],
-    ['customer_pity_progress', 'customer_id', pity],
+    ['customer_pity_progress', 'customer_id,promo_id', pity],
     ['customer_login_days', 'customer_id,login_date', logins],
     ['care_log_daily_reports', 'stay_id,report_date', reports],
   ];
