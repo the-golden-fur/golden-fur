@@ -30,6 +30,7 @@ import {
   attachTransactionReceiptController,
   getTransactionReceiptController,
   updateMiscSaleController,
+  voidTransactionController,
 } from './billing.controller.ts';
 import { BILLING_ADMIN_ROLES, BILLING_STAFF_ROLES } from './billing.types.ts';
 
@@ -144,6 +145,15 @@ router.post(
   '/billing/transactions/:id/pay',
   ...staffAccess,
   recordTransactionPaymentController
+);
+
+// Transactions page bug report: clears a stale Pending charge left behind
+// by a cancelled booking (voidTransaction enforces exactly that case) - same
+// money-handling staff as /pay above.
+router.post(
+  '/billing/transactions/:id/void',
+  ...staffAccess,
+  voidTransactionController
 );
 
 router.get(

@@ -331,6 +331,18 @@ interface SidebarCategoryProps {
   categoryDrag?: CategoryDragProps;
   /** false in the phone drawer - no drag-to-reorder by touch. */
   reorderable?: boolean;
+  /** A route's current "winning" section label, for a route that appears in
+   * more than one labeled category (Admin/Superadmin's merged view can list
+   * the same tile, e.g. "Food & Medication Items", under Supervisor, Pet
+   * Assistant and Receptionist alike). Undefined for a route that isn't
+   * duplicated anywhere - every instance highlights normally via NavLink's
+   * own route match then. Only present for labeled categories - duplicates
+   * only ever arise there. */
+  resolveActiveSection?: (to: string) => string | undefined;
+  /** Records which instance was actually clicked, so a route shared by
+   * several categories only highlights the one the staff member clicked
+   * instead of every occurrence lighting up at once. */
+  onDuplicateItemClick?: (to: string, sectionLabel: string) => void;
 }
 
 /**
@@ -355,6 +367,8 @@ function SidebarCategory({
   recentMap,
   categoryDrag,
   reorderable = true,
+  resolveActiveSection,
+  onDuplicateItemClick,
 }: SidebarCategoryProps) {
   const isCategory = section.label !== null;
   const scopeKey = section.label ?? '';
@@ -614,8 +628,18 @@ function SidebarCategory({
                 to={item.to}
                 end={item.end}
                 draggable={false}
-                className={({ isActive }) =>
-                  isActive ? `${styles.link} ${styles.linkActive}` : styles.link
+                className={({ isActive }) => {
+                  const winner = resolveActiveSection?.(item.to);
+                  const effectiveActive =
+                    winner !== undefined
+                      ? isActive && winner === (section.label ?? '')
+                      : isActive;
+                  return effectiveActive
+                    ? `${styles.link} ${styles.linkActive}`
+                    : styles.link;
+                }}
+                onClick={() =>
+                  onDuplicateItemClick?.(item.to, section.label ?? '')
                 }
                 title={sidebarCollapsed ? item.title : undefined}
               >
@@ -695,6 +719,48 @@ export function Sidebar({
     [sections]
   );
   const hasMultipleCategories = labeledSections.length > 1;
+
+  // Admin/Superadmin's merged view can list the exact same route under more
+  // than one labeled category (e.g. "Food & Medication Items" under
+  // Supervisor, Pet Assistant and Receptionist) - NavLink's own route match
+  // would then highlight every occurrence at once, not just the one the
+  // staff member actually clicked. firstSectionForRoute is the fallback
+  // "winner" for a route the user hasn't clicked yet this session (direct
+  // navigation/reload): the first category listing it, in the original
+  // (un-dragged/un-sorted) section order, so it's deterministic.
+  const firstSectionForRoute = useMemo(() => {
+    const seen = new Map<string, string>();
+    const duplicated = new Set<string>();
+    for (const section of labeledSections) {
+      for (const item of section.items) {
+        if (seen.has(item.to)) {
+          duplicated.add(item.to);
+        } else {
+          seen.set(item.to, section.label);
+        }
+      }
+    }
+    const result = new Map<string, string>();
+    for (const to of duplicated) {
+      const first = seen.get(to);
+      if (first !== undefined) result.set(to, first);
+    }
+    return result;
+  }, [labeledSections]);
+
+  const [clickedSectionForRoute, setClickedSectionForRoute] = useState<
+    Record<string, string>
+  >({});
+
+  const resolveActiveSection = (to: string): string | undefined => {
+    if (!firstSectionForRoute.has(to)) return undefined;
+    return clickedSectionForRoute[to] ?? firstSectionForRoute.get(to);
+  };
+
+  function handleDuplicateItemClick(to: string, sectionLabel: string) {
+    if (!firstSectionForRoute.has(to)) return;
+    setClickedSectionForRoute((prev) => ({ ...prev, [to]: sectionLabel }));
+  }
 
   const categorySortStorageKey = `sidebar-category-sort-${role}`;
   const categoryOrderStorageKey = `sidebar-category-order-${role}`;
@@ -844,6 +910,8 @@ export function Sidebar({
           role={role}
           recentMap={recentMap}
           reorderable={!isDrawer}
+          resolveActiveSection={resolveActiveSection}
+          onDuplicateItemClick={handleDuplicateItemClick}
           categoryDrag={{
             draggable: isCategoryDraggable,
             isDragging: draggedLabel === section.label,

@@ -4,6 +4,7 @@ import {
   addCustomerBalancePayment,
   payTransactionWithCredit,
   recordTransactionPayment,
+  voidTransaction,
 } from './transactionPayment.service.ts';
 import { supabase } from '../../../config/supabase/supabase.config.ts';
 import { getAvailableCredit } from './creditStub.service.ts';
@@ -770,6 +771,108 @@ describe('transactionPayment.service', () => {
         p_processed_by: null,
       });
       expect(txn).toMatchObject({ id: 'txn-balance' });
+    });
+  });
+
+  describe('voidTransaction', () => {
+    it('voids a Pending booking_payment charge whose booking is Cancelled', async () => {
+      queueFrom(
+        { data: PENDING_BOOKING_TXN, error: null }, // loadTransaction
+        { data: { status: 'Cancelled' }, error: null }, // assertVoidable's booking lookup
+        {
+          data: { ...PENDING_BOOKING_TXN, voided_at: '2026-11-27T00:00:00Z' },
+          error: null,
+        } // update().select()
+      );
+
+      const voided = await voidTransaction({
+        requesterId: 'staff-1',
+        transactionId: 'txn-1',
+      });
+
+      expect(voided.voided_at).toBe('2026-11-27T00:00:00Z');
+    });
+
+    it('voids a Pending group transaction once every member booking is Cancelled', async () => {
+      queueFrom(
+        { data: PENDING_GROUP_TXN, error: null },
+        {
+          data: [{ status: 'Cancelled' }, { status: 'Cancelled' }],
+          error: null,
+        },
+        {
+          data: { ...PENDING_GROUP_TXN, voided_at: '2026-11-27T00:00:00Z' },
+          error: null,
+        }
+      );
+
+      await expect(
+        voidTransaction({
+          requesterId: 'staff-1',
+          transactionId: 'txn-group-1',
+        })
+      ).resolves.toMatchObject({ voided_at: '2026-11-27T00:00:00Z' });
+    });
+
+    it('refuses a group transaction while any member booking is still live', async () => {
+      queueFrom({ data: PENDING_GROUP_TXN, error: null }, LIVE_GROUP_MEMBERS);
+
+      await expect(
+        voidTransaction({
+          requesterId: 'staff-1',
+          transactionId: 'txn-group-1',
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it("refuses a live due payment - only a cancelled booking's charge can be voided", async () => {
+      queueFrom(
+        { data: PENDING_BOOKING_TXN, error: null },
+        { data: { status: 'Confirmed' }, error: null }
+      );
+
+      await expect(
+        voidTransaction({ requesterId: 'staff-1', transactionId: 'txn-1' })
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        message: expect.stringContaining('cancelled'),
+      });
+    });
+
+    it('refuses a transaction that is not Pending', async () => {
+      queueFrom({
+        data: { ...PENDING_BOOKING_TXN, payment_status: 'Fully Paid' },
+        error: null,
+      });
+
+      await expect(
+        voidTransaction({ requesterId: 'staff-1', transactionId: 'txn-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('refuses a transaction that was already voided', async () => {
+      queueFrom({
+        data: { ...PENDING_BOOKING_TXN, voided_at: '2026-11-01T00:00:00Z' },
+        error: null,
+      });
+
+      await expect(
+        voidTransaction({ requesterId: 'staff-1', transactionId: 'txn-1' })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('refuses a miscellaneous sale - only booking payments are voidable', async () => {
+      queueFrom({
+        data: {
+          ...PENDING_BOOKING_TXN,
+          transaction_type: 'miscellaneous_sale',
+        },
+        error: null,
+      });
+
+      await expect(
+        voidTransaction({ requesterId: 'staff-1', transactionId: 'txn-1' })
+      ).rejects.toMatchObject({ statusCode: 400 });
     });
   });
 });

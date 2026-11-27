@@ -100,6 +100,11 @@ export interface Transaction {
   receipt_path: string | null;
   receipt_uploaded_by: string | null;
   receipt_uploaded_at: string | null;
+  /** Set when a stale Pending charge (left behind by a cancelled booking) is
+   * voided - see transactionPayment.service.ts's voidTransaction. Null for
+   * every other row, including every Fully/Partially Paid one. */
+  voided_at: string | null;
+  voided_by: string | null;
   created_at: string;
   updated_at: string;
 }

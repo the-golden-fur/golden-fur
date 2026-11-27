@@ -592,3 +592,92 @@ export async function addCustomerBalancePayment({
 
   return data as Transaction;
 }
+
+export interface VoidTransactionParams {
+  requesterId: string;
+  transactionId: string;
+}
+
+/**
+ * Transactions page bug report: a booking that auto-cancels (e.g. a
+ * down-payment expiry sweep) can leave behind a Pending 'balance'
+ * booking_payment transaction with nowhere to go - Pay is already hidden/
+ * refused for it (loadBookingPaymentStatus above), so without this it just
+ * sits forever as "Due payment". Deliberately narrow: only a Pending
+ * booking_payment transaction whose booking (or, for a group transaction,
+ * every member booking) is actually Cancelled qualifies - this is strictly
+ * the "dead charge left behind by a cancellation" case, never a live due
+ * payment a cashier simply doesn't want to collect yet.
+ */
+async function assertVoidable(transaction: Transaction): Promise<void> {
+  if (transaction.transaction_type !== 'booking_payment') {
+    throwWithStatus(400, 'Only booking payments can be voided');
+  }
+  if (transaction.voided_at) {
+    throwWithStatus(409, 'This transaction has already been voided');
+  }
+  if (transaction.payment_status !== 'Pending') {
+    throwWithStatus(
+      409,
+      `This transaction is already ${transaction.payment_status}`
+    );
+  }
+
+  const notCancelledMessage = "Only a cancelled booking's charge can be voided";
+
+  if (transaction.booking_id) {
+    const { data } = await supabase
+      .from('bookings')
+      .select('status')
+      .eq('id', transaction.booking_id)
+      .maybeSingle();
+
+    if ((data as { status?: string } | null)?.status !== 'Cancelled') {
+      throwWithStatus(409, notCancelledMessage);
+    }
+    return;
+  }
+
+  if (transaction.booking_group_id) {
+    const { data } = await supabase
+      .from('bookings')
+      .select('status')
+      .eq('booking_group_id', transaction.booking_group_id);
+
+    const members = (data ?? []) as Array<{ status: string }>;
+    if (
+      members.length === 0 ||
+      !members.every((member) => member.status === 'Cancelled')
+    ) {
+      throwWithStatus(409, notCancelledMessage);
+    }
+    return;
+  }
+
+  throwWithStatus(400, 'This transaction has no booking to check');
+}
+
+export async function voidTransaction({
+  requesterId,
+  transactionId,
+}: VoidTransactionParams): Promise<Transaction> {
+  const transaction = await loadTransaction(transactionId);
+
+  await assertVoidable(transaction);
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .update({
+      voided_at: new Date().toISOString(),
+      voided_by: requesterId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', transactionId)
+    .select('*')
+    .maybeSingle();
+
+  if (error) throwWithStatus(400, error.message);
+  if (!data) throwWithStatus(404, 'Transaction not found');
+
+  return data as Transaction;
+}

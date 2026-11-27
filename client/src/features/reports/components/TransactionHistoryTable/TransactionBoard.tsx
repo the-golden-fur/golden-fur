@@ -28,6 +28,7 @@ const CARD_TONE_CLASS = {
   due: styles.cardDue,
   partial: styles.cardPartial,
   paid: styles.cardPaid,
+  void: styles.cardVoid,
 } as const;
 
 const COLUMNS: Array<{ status: PaymentStatus; className: string }> = [
@@ -128,9 +129,7 @@ function TransactionCard({
 
   return (
     <div
-      className={`${styles.card} ${
-        CARD_TONE_CLASS[paymentTone(transaction.payment_status)]
-      }`}
+      className={`${styles.card} ${CARD_TONE_CLASS[paymentTone(transaction)]}`}
     >
       <div
         className={onActivate ? styles.cardBodyClickable : styles.cardBody}
@@ -150,6 +149,7 @@ function TransactionCard({
           {new Date(transaction.created_at).toLocaleDateString()} ·{' '}
           {paymentChoiceLabel(transaction)}
           {method ? ` · ${method}` : ''}
+          {transaction.voided_at ? ' · Voided' : ''}
         </p>
       </div>
 

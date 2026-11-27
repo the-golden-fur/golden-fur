@@ -128,6 +128,66 @@ describe('Sidebar', () => {
     );
   });
 
+  it('only highlights the clicked instance of a route shared by multiple labeled categories (Admin/Superadmin merged view)', async () => {
+    renderSidebar(
+      [
+        {
+          label: 'Supervisor',
+          items: [{ title: 'Food & Medication Items', to: '/staff/food-meds' }],
+        },
+        {
+          label: 'Pet Assistant',
+          items: [{ title: 'Food & Medication Items', to: '/staff/food-meds' }],
+        },
+      ],
+      false,
+      vi.fn(),
+      '/staff/food-meds'
+    );
+
+    const links = screen.getAllByRole('link', {
+      name: 'Food & Medication Items',
+    });
+    expect(links).toHaveLength(2);
+
+    // Neither has been clicked yet - falls back to the first section given
+    // (Supervisor) as the sole highlighted instance.
+    expect(links[0].className).toContain('linkActive');
+    expect(links[1].className).not.toContain('linkActive');
+
+    await userEvent.click(links[1]);
+
+    // Clicking the second (Pet Assistant) instance moves the highlight to
+    // it alone - the first must no longer also read as active.
+    expect(links[0].className).not.toContain('linkActive');
+    expect(links[1].className).toContain('linkActive');
+  });
+
+  it('does not cross-highlight a route that only appears in one category', () => {
+    renderSidebar(
+      [
+        {
+          label: 'Supervisor',
+          items: [{ title: 'Monthly Schedule', to: '/staff/schedule' }],
+        },
+        {
+          label: 'Pet Assistant',
+          items: [{ title: 'Boarding Checklist', to: '/staff/checklist' }],
+        },
+      ],
+      false,
+      vi.fn(),
+      '/staff/schedule'
+    );
+
+    expect(
+      screen.getByRole('link', { name: 'Monthly Schedule' }).className
+    ).toContain('linkActive');
+    expect(
+      screen.getByRole('link', { name: 'Boarding Checklist' }).className
+    ).not.toContain('linkActive');
+  });
+
   it('calls onToggleCollapse when the collapse button is clicked', async () => {
     const onToggleCollapse = vi.fn();
     renderSidebar(

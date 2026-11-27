@@ -37,6 +37,9 @@ export function PaymentStep({
   creditTotal,
 }: PaymentStepProps) {
   const payingByCredit = isPayingByCredit(payment);
+  // Cash keeps the panel off too - the cashier only needs Method + amount for
+  // a cash sale, per explicit request.
+  const isCash = payment.payment_method === 'Cash';
   const creditCovers = canPayByCredit(availableCredit, creditTotal);
   const creditLabel =
     availableCredit === null
@@ -45,7 +48,7 @@ export function PaymentStep({
 
   return (
     <>
-      {payingByCredit ? null : (
+      {payingByCredit || isCash ? null : (
         <CreditApplicationPanel
           availableBalance={availableCredit ?? 0}
           transactionTotal={amountDue}
@@ -56,8 +59,12 @@ export function PaymentStep({
       <PaymentMethodForm
         value={payment}
         onChange={(next) => {
-          // Credit pays everything itself - drop any partial top-up.
-          if (isPayingByCredit(next)) onCreditChange(0);
+          // Credit pays everything itself, and Cash hides the panel
+          // entirely - either way, drop any partial top-up so it isn't
+          // silently still applied with no control left to see/change it.
+          if (isPayingByCredit(next) || next.payment_method === 'Cash') {
+            onCreditChange(0);
+          }
           onPaymentChange(next);
         }}
         amountDue={Math.max(0, amountDue - creditToApply)}

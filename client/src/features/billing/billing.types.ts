@@ -48,6 +48,10 @@ export interface Transaction {
   payment_reference: string | null;
   misc_sale_description: string | null;
   processed_by_staff_id: string | null;
+  /** Set when a stale Pending charge (left behind by a cancelled booking) is
+   * voided. Null for every other row. */
+  voided_at?: string | null;
+  voided_by?: string | null;
   /** Which portion of the booking this payment covers - see PAYMENT_CHOICES.
    * NULL for older rows / misc sales. Drives the "Down payment" / "Balance
    * payment" / "Full payment" label in the per-booking payment history. */

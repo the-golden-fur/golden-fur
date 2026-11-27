@@ -142,6 +142,14 @@
   background: var(--color-txn-paid-bg);
 }
 
+/* Voided (a dead charge left behind by a cancelled booking, see
+   voidTransaction) - muted rather than another accent color, since it's
+   deliberately not a "money owed" state any more. */
+.rowVoid td {
+  background: var(--color-surface-muted, var(--color-surface));
+  color: var(--color-text-secondary);
+}
+
 .rowDue td:first-child {
   box-shadow: inset 4px 0 0 var(--color-txn-due-accent);
 }
@@ -152,6 +160,10 @@
 
 .rowPaid td:first-child {
   box-shadow: inset 4px 0 0 var(--color-txn-paid-accent);
+}
+
+.rowVoid td:first-child {
+  box-shadow: inset 4px 0 0 var(--color-border);
 }
 
 /* Custom change (transaction history visibility): a booking-payment row is a

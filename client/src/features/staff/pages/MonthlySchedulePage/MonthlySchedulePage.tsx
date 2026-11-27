@@ -600,23 +600,25 @@ export function MonthlySchedulePage() {
             </button>
           </div>
 
-          <button
-            type="button"
-            className={`${styles.secondaryButton} ${styles.compactButton}`}
-            onClick={openAutoBuildConfirm}
-          >
-            Auto Build
-          </button>
-          <button
-            type="button"
-            className={`${styles.dangerButton} ${styles.compactButton}`}
-            onClick={() => {
-              setClearError(null);
-              setIsClearConfirmOpen(true);
-            }}
-          >
-            Clear Monthly Schedule
-          </button>
+          <div className={styles.scheduleActions}>
+            <button
+              type="button"
+              className={`${styles.secondaryButton} ${styles.compactButton}`}
+              onClick={openAutoBuildConfirm}
+            >
+              Auto Build
+            </button>
+            <button
+              type="button"
+              className={`${styles.dangerButton} ${styles.compactButton}`}
+              onClick={() => {
+                setClearError(null);
+                setIsClearConfirmOpen(true);
+              }}
+            >
+              Clear Monthly Schedule
+            </button>
+          </div>
         </div>
 
         <div className={styles.staffFilterBar}>

@@ -58,7 +58,16 @@ describe('PaymentMethodForm', () => {
     await userEvent.type(screen.getByLabelText(/reference number/i), 'ref-1');
   });
 
-  it('hideCashTendered drops the cash field, the change line and any reference field for Cash', () => {
+  it('shows a plain Amount field alongside the reference field for Card/GCash', () => {
+    setup({ payment_method: 'Card' });
+    expect(screen.getByLabelText('Amount (PHP)')).toHaveAttribute(
+      'placeholder',
+      '693.00'
+    );
+    expect(screen.getByLabelText(/reference number/i)).toBeInTheDocument();
+  });
+
+  it('hideCashTendered drops the amount field (Cash tendered or Amount), the change line and any reference field for Cash', () => {
     render(
       <PaymentMethodForm
         value={{ payment_method: 'Cash', cash_tendered: 800 }}
@@ -70,5 +79,37 @@ describe('PaymentMethodForm', () => {
     expect(screen.queryByLabelText(/cash tendered/i)).toBeNull();
     expect(screen.queryByText(/^Change:/i)).toBeNull();
     expect(screen.queryByLabelText(/reference number/i)).toBeNull();
+  });
+
+  it('hideCashTendered also drops the Amount field for a non-cash method, keeping only the reference field', () => {
+    render(
+      <PaymentMethodForm
+        value={{ payment_method: 'GCash' }}
+        onChange={vi.fn()}
+        amountDue={693}
+        hideCashTendered
+      />
+    );
+    expect(screen.queryByLabelText('Amount (PHP)')).toBeNull();
+    expect(screen.getByLabelText(/reference number/i)).toBeInTheDocument();
+  });
+
+  it('hideLegend drops the "Payment method" heading and renders bare fields with the given classes', () => {
+    const { container } = render(
+      <PaymentMethodForm
+        value={{ payment_method: 'Cash' }}
+        onChange={vi.fn()}
+        amountDue={693}
+        hideLegend
+        fieldClassName="custom-field"
+        inputClassName="custom-input"
+      />
+    );
+    expect(screen.queryByText('Payment method')).toBeNull();
+    expect(container.querySelector('fieldset')).toBeNull();
+    expect(screen.getByLabelText('Method').closest('label')).toHaveClass(
+      'custom-field'
+    );
+    expect(screen.getByLabelText('Method')).toHaveClass('custom-input');
   });
 });

@@ -127,6 +127,9 @@ export interface TransactionRecord {
    * uploaded for this payment - a storage path, not a URL (view it via
    * getTransactionReceiptUrl). Optional so older fixtures stay valid. */
   receipt_path?: string | null;
+  /** Set when a stale Pending charge (left behind by a cancelled booking) is
+   * voided - see voidTransaction. Optional so older fixtures stay valid. */
+  voided_at?: string | null;
   created_at: string;
   /** The bill's itemized lines - printed on a Daycare receipt. Optional so
    * older fixtures/callers stay valid. */

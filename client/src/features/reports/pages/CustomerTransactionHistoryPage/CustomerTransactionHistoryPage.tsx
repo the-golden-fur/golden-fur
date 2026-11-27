@@ -51,6 +51,7 @@ const ROW_TONE_CLASS = {
   due: styles.rowDue,
   partial: styles.rowPartial,
   paid: styles.rowPaid,
+  void: styles.rowVoid,
 } as const;
 
 // Every row is the viewer's own, so grouping by customer is meaningless here.
@@ -433,7 +434,7 @@ export function CustomerTransactionHistoryPage() {
                   <tr
                     key={transaction.id}
                     className={[
-                      ROW_TONE_CLASS[paymentTone(transaction.payment_status)],
+                      ROW_TONE_CLASS[paymentTone(transaction)],
                       bookingId ? styles.clickableRow : null,
                     ]
                       .filter(Boolean)
@@ -470,7 +471,7 @@ export function CustomerTransactionHistoryPage() {
                         ? '—'
                         : transaction.payment_method}
                     </td>
-                    <td>{paymentStatusLabel(transaction.payment_status)}</td>
+                    <td>{paymentStatusLabel(transaction)}</td>
                     <td>PHP {transaction.total_amount.toFixed(2)}</td>
                     <td>
                       {isPayable(transaction) ? (

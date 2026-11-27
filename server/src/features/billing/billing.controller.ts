@@ -23,6 +23,7 @@ import {
   addBookingPayment,
   payTransactionWithCredit,
   recordTransactionPayment,
+  voidTransaction,
 } from './services/transactionPayment.service.ts';
 import {
   addBookingPaymentValidator,
@@ -419,6 +420,29 @@ export async function recordTransactionPaymentController(
         })
     );
     return res.status(200).json(result);
+  } catch (error) {
+    return sendServiceError(res, error);
+  }
+}
+
+/** Voids a stale Pending charge left behind by a cancelled booking - see
+ * voidTransaction's own doc comment for exactly what qualifies. */
+export async function voidTransactionController(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const requesterId = req.user?.sub;
+
+  if (!requesterId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const transaction = await voidTransaction({
+      requesterId,
+      transactionId: paramId(req, 'id'),
+    });
+    return res.status(200).json({ transaction });
   } catch (error) {
     return sendServiceError(res, error);
   }
