@@ -28,19 +28,34 @@ export function isBookingCancelled(
   return record.bookings?.status === 'Cancelled';
 }
 
+type StatusLike = Pick<TransactionRecord, 'payment_status'> &
+  Partial<Pick<TransactionRecord, 'voided_at'>>;
+
 /** DB stores 'Pending' for an unsettled online payment - "Due payment" reads
- * better next to "Partially Paid" / "Fully Paid". */
-export function paymentStatusLabel(status: string): string {
+ * better next to "Partially Paid" / "Fully Paid". A voided Pending charge
+ * (a dead charge left behind by a cancelled booking - see voidTransaction)
+ * reads as "Voided" instead - it stays payment_status 'Pending' in the DB,
+ * so this needs the whole record (not just the bare status) to tell the two
+ * apart. A bare status string (transactionGrouping.ts's "Group by: Status"
+ * title, which groups strictly by the raw payment_status column) is still
+ * accepted and never reads as Voided, since it isn't any one row. */
+export function paymentStatusLabel(input: string | StatusLike): string {
+  const status = typeof input === 'string' ? input : input.payment_status;
+  const voidedAt = typeof input === 'string' ? null : input.voided_at;
+
+  if (voidedAt) return 'Voided';
   return status === 'Pending' ? 'Due payment' : status;
 }
 
-/** 'due' | 'partial' | 'paid' - which payment-status tint a transaction row
- * (table) or card (board) gets. Shared so both views colour the same way;
- * each view maps the tone to its own CSS module class. */
-export type PaymentTone = 'due' | 'partial' | 'paid';
+/** 'due' | 'partial' | 'paid' | 'void' - which payment-status tint a
+ * transaction row (table) or card (board) gets. Shared so both views
+ * colour the same way; each view maps the tone to its own CSS module
+ * class. */
+export type PaymentTone = 'due' | 'partial' | 'paid' | 'void';
 
-export function paymentTone(status: string): PaymentTone {
-  if (status === 'Fully Paid') return 'paid';
-  if (status === 'Partially Paid') return 'partial';
+export function paymentTone(record: StatusLike): PaymentTone {
+  if (record.voided_at) return 'void';
+  if (record.payment_status === 'Fully Paid') return 'paid';
+  if (record.payment_status === 'Partially Paid') return 'partial';
   return 'due';
 }

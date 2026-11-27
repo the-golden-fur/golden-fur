@@ -39,6 +39,7 @@ import {
   recordTransactionPayment,
   uploadTransactionReceipt,
   getTransactionReceiptUrl,
+  voidTransaction,
 } from '../../../billing/api/billing.api';
 import { formatCurrency } from '../../../../shared/utils/formatCurrency';
 import {
@@ -78,6 +79,7 @@ const ROW_TONE_CLASS = {
   due: styles.rowDue,
   partial: styles.rowPartial,
   paid: styles.rowPaid,
+  void: styles.rowVoid,
 } as const;
 
 const ALLOWED_VIEWER_ROLES = new Set([
@@ -145,6 +147,12 @@ export function TransactionHistoryTable() {
   const [balanceAmount, setBalanceAmount] = useState('');
   const [balanceBusy, setBalanceBusy] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  // Void: clears a stale Pending charge left behind by a cancelled booking
+  // off the "Due payment" list - see voidTransaction's own doc comment.
+  const [voidTarget, setVoidTarget] = useState<TransactionRecord | null>(null);
+  const [voidBusy, setVoidBusy] = useState(false);
+  const [voidError, setVoidError] = useState<string | null>(null);
 
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);
   const [pets, setPets] = useState<Pet[]>([]);
@@ -216,6 +224,28 @@ export function TransactionHistoryTable() {
       return;
     }
     setBalanceTarget(null);
+    setReloadKey((k) => k + 1);
+  };
+
+  const openVoidConfirm = (t: TransactionRecord) => {
+    setVoidTarget(t);
+    setVoidError(null);
+  };
+
+  const confirmVoid = async () => {
+    if (!voidTarget || !accessToken) return;
+
+    setVoidBusy(true);
+    setVoidError(null);
+    const result = await voidTransaction(voidTarget.id, accessToken);
+    setVoidBusy(false);
+
+    if (result.error) {
+      setVoidError(result.error);
+      return;
+    }
+
+    setVoidTarget(null);
     setReloadKey((k) => k + 1);
   };
 
@@ -546,7 +576,16 @@ export function TransactionHistoryTable() {
       transaction.payment_status === 'Pending' &&
       transaction.transaction_type === 'booking_payment' &&
       Boolean(transaction.booking_id || transaction.booking_group_id) &&
-      !isBookingCancelled(transaction);
+      !isBookingCancelled(transaction) &&
+      !transaction.voided_at;
+    // A cancelled booking can leave a Pending 'balance' charge with no way
+    // to ever pay it (canPay above stays false for it forever) - Void clears
+    // it off "Due payment" instead of leaving it there permanently.
+    const canVoid =
+      transaction.payment_status === 'Pending' &&
+      transaction.transaction_type === 'booking_payment' &&
+      isBookingCancelled(transaction) &&
+      !transaction.voided_at;
     // Payment receipts: once a payment is recorded its receipt file can be
     // viewed, or uploaded if there isn't one yet (never for account credit,
     // which has no outside receipt).
@@ -564,6 +603,15 @@ export function TransactionHistoryTable() {
             onClick={() => openPay(transaction)}
           >
             Pay
+          </button>
+        ) : null}
+        {canVoid ? (
+          <button
+            type="button"
+            className={styles.rowActionButton}
+            onClick={() => openVoidConfirm(transaction)}
+          >
+            Void
           </button>
         ) : null}
         {transaction.booking_id ? (
@@ -756,9 +804,7 @@ export function TransactionHistoryTable() {
                 return (
                   <tr
                     key={transaction.id}
-                    className={
-                      ROW_TONE_CLASS[paymentTone(transaction.payment_status)]
-                    }
+                    className={ROW_TONE_CLASS[paymentTone(transaction)]}
                   >
                     <td>
                       {new Date(transaction.created_at).toLocaleDateString()}
@@ -772,7 +818,7 @@ export function TransactionHistoryTable() {
                         ? '—'
                         : transaction.payment_method}
                     </td>
-                    <td>{paymentStatusLabel(transaction.payment_status)}</td>
+                    <td>{paymentStatusLabel(transaction)}</td>
                     <td>PHP {transaction.total_amount.toFixed(2)}</td>
                     <td>{renderRowActions(transaction)}</td>
                   </tr>
@@ -844,6 +890,9 @@ export function TransactionHistoryTable() {
               amountDue={Number(payAmount) || payTotal}
               methods={PAY_MODAL_METHODS}
               hideCashTendered
+              hideLegend
+              fieldClassName={styles.field}
+              inputClassName={styles.control}
             />
             {payIsCredit ? null : (
               <ReceiptFileField
@@ -978,6 +1027,48 @@ export function TransactionHistoryTable() {
                 onClick={() => void confirmBalance()}
               >
                 {balanceBusy ? 'Adding...' : 'Add payment'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {voidTarget ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="void-transaction-title"
+          >
+            <h2 id="void-transaction-title" className={styles.modalTitle}>
+              Void this charge?
+            </h2>
+            <p className={styles.copy}>
+              {formatCurrency(voidTarget.total_amount)} due on a cancelled
+              booking - it can never be paid. Voiding removes it from Due
+              payment; this cannot be undone.
+            </p>
+            {voidError ? (
+              <p className={styles.errorBanner} role="alert">
+                {voidError}
+              </p>
+            ) : null}
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setVoidTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.payButton}
+                disabled={voidBusy}
+                onClick={() => void confirmVoid()}
+              >
+                {voidBusy ? 'Voiding...' : 'Void charge'}
               </button>
             </div>
           </section>

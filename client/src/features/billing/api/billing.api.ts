@@ -223,6 +223,27 @@ export async function recordTransactionPayment(
   return parseBody(response);
 }
 
+/** Voids a stale Pending charge left behind by a cancelled booking - see
+ * the server's voidTransaction for exactly what qualifies. */
+export async function voidTransaction(
+  transactionId: string,
+  accessToken: string
+): Promise<BillingApiResult<{ transaction: Transaction }>> {
+  const response = await fetch(
+    `${API_BASE_URL}/billing/transactions/${transactionId}/void`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(accessToken),
+    }
+  );
+
+  if (!response.ok) {
+    return { data: null, error: await parseError(response) };
+  }
+
+  return parseBody(response);
+}
+
 /** Promos the cashier can add to this unpaid bill; `reason` says why there
  * are none when the bill can't take one. */
 export async function listCounterPromoOptions(

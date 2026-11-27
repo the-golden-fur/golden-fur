@@ -56,7 +56,7 @@ export function receiptPropsFor(
       ? paymentChoiceLabel(transaction)
       : null,
     method: isUnpaid ? null : transaction.payment_method,
-    statusLabel: paymentStatusLabel(transaction.payment_status),
+    statusLabel: paymentStatusLabel(transaction),
     amount: transaction.total_amount,
     // A Daycare bill is itemized - booked hours, overdue hours, the night of
     // a pet not picked up before closing.

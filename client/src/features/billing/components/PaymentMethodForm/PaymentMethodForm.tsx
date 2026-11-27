@@ -14,8 +14,9 @@ interface PaymentMethodFormProps {
    * settle a booking payment straight from account credit here. */
   methods?: readonly string[];
   /** Transactions "Mark as paid" modal: it has its own single "Amount paid"
-   * field, so suppress the Cash-tendered input and the computed-change line
-   * (the transaction stores neither). Checkout / misc-sale leave this off. */
+   * field, so suppress the amount input (Cash-tendered or the generic
+   * Amount field alike) and the computed-change line (the transaction
+   * stores neither). Checkout / misc-sale leave this off. */
   hideCashTendered?: boolean;
   /** Methods listed but not selectable (e.g. misc-sale Credit when the
    * customer's balance doesn't cover the sale). */
@@ -24,15 +25,23 @@ interface PaymentMethodFormProps {
   methodLabels?: Partial<Record<string, string>>;
   /** Links the method select to an explanation elsewhere on the page. */
   methodDescribedBy?: string;
+  /** Transactions "Mark as paid" modal: drop the "Payment method"
+   * fieldset/legend wrapper so Method sits as a bare field alongside the
+   * modal's own Amount paid / Receipt fields instead of boxed off on its
+   * own. Pass fieldClassName/inputClassName matching the modal's own field
+   * styling so every field in the modal lines up the same way. */
+  hideLegend?: boolean;
+  fieldClassName?: string;
+  inputClassName?: string;
 }
 
 /**
  * Issue #86: renders the correct minimal form per selected payment method -
- * Cash shows a tendered-amount field and computed change; every other method
- * (GCash, Maya, Card, Bank Transfer) shows a
- * reference-number field (Bank Transfer additionally shows a BPI/BDO
- * selector) and is confirmed by the cashier the moment the form is
- * submitted.
+ * every method but Credit gets an amount field (Cash: "Cash tendered",
+ * which also drives the computed change; everything else: a plain
+ * "Amount" alongside its reference-number field - Bank Transfer
+ * additionally shows a BPI/BDO selector) and is confirmed by the cashier
+ * the moment the form is submitted.
  */
 export function PaymentMethodForm({
   value,
@@ -43,6 +52,9 @@ export function PaymentMethodForm({
   disabledMethods = [],
   methodLabels = {},
   methodDescribedBy,
+  hideLegend = false,
+  fieldClassName,
+  inputClassName,
 }: PaymentMethodFormProps) {
   const isBankTransfer = value.payment_method === 'Bank Transfer';
   const isCash = value.payment_method === 'Cash';
@@ -50,21 +62,66 @@ export function PaymentMethodForm({
   // PaymentMethod, so compare as a string.
   const isCredit = (value.payment_method as string) === 'Credit';
   const showReference = !isCash && !isCredit;
-
-  const showCashTendered = isCash && !hideCashTendered;
+  // An amount field shows for every method except Credit (which settles
+  // itself) - "Cash tendered" for Cash (drives the change calc below), a
+  // plain "Amount" next to the reference field for everything else, so a
+  // cashier isn't left confirming a GCash/Card/Bank Transfer payment with no
+  // amount captured at all.
+  const showAmountField = !isCredit && !hideCashTendered;
   const change =
-    showCashTendered && value.cash_tendered !== undefined
+    isCash && showAmountField && value.cash_tendered !== undefined
       ? Math.max(0, value.cash_tendered - amountDue)
       : null;
 
-  return (
-    <fieldset className={styles.fieldset}>
-      <legend className={styles.legend}>Payment method</legend>
+  // A caller-supplied fieldClassName means "match my own page's fields" -
+  // the uppercase/secondary-color label styling this form otherwise applies
+  // comes along with its own default field class, so it's dropped too
+  // (inheriting the custom field class's own typography instead).
+  const fieldClass = fieldClassName ?? styles.field;
+  const inputClass = inputClassName ?? styles.input;
+  const labelClass = fieldClassName ? undefined : styles.label;
 
-      <label className={styles.field}>
-        <span className={styles.label}>Method</span>
+  const amountField = showAmountField ? (
+    <label className={fieldClass}>
+      <span className={labelClass}>
+        {isCash ? 'Cash tendered (PHP)' : 'Amount (PHP)'}
+      </span>
+      <input
+        className={inputClass}
+        type="number"
+        min="0"
+        step="0.01"
+        placeholder={amountDue.toFixed(2)}
+        value={value.cash_tendered ?? ''}
+        onChange={(event) =>
+          onChange({
+            ...value,
+            cash_tendered: Number(event.target.value),
+          })
+        }
+      />
+    </label>
+  ) : null;
+
+  const referenceField = showReference ? (
+    <label className={fieldClass}>
+      <span className={labelClass}>Reference number</span>
+      <input
+        className={inputClass}
+        value={value.payment_reference ?? ''}
+        onChange={(event) =>
+          onChange({ ...value, payment_reference: event.target.value })
+        }
+      />
+    </label>
+  ) : null;
+
+  const content = (
+    <>
+      <label className={fieldClass}>
+        <span className={labelClass}>Method</span>
         <select
-          className={styles.input}
+          className={inputClass}
           value={value.payment_method}
           aria-describedby={methodDescribedBy}
           onChange={(event) =>
@@ -90,10 +147,10 @@ export function PaymentMethodForm({
       </label>
 
       {isBankTransfer ? (
-        <label className={styles.field}>
-          <span className={styles.label}>Bank</span>
+        <label className={fieldClass}>
+          <span className={labelClass}>Bank</span>
           <select
-            className={styles.input}
+            className={inputClass}
             value={value.bank_name ?? ''}
             onChange={(event) =>
               onChange({
@@ -114,25 +171,9 @@ export function PaymentMethodForm({
         </label>
       ) : null}
 
-      {showCashTendered ? (
+      {isCash ? (
         <>
-          <label className={styles.field}>
-            <span className={styles.label}>Cash tendered (PHP)</span>
-            <input
-              className={styles.input}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder={amountDue.toFixed(2)}
-              value={value.cash_tendered ?? ''}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  cash_tendered: Number(event.target.value),
-                })
-              }
-            />
-          </label>
+          {amountField}
           {change !== null ? (
             <p className={styles.change}>Change: PHP {change.toFixed(2)}</p>
           ) : null}
@@ -145,18 +186,23 @@ export function PaymentMethodForm({
         </p>
       ) : null}
 
-      {showReference ? (
-        <label className={styles.field}>
-          <span className={styles.label}>Reference number</span>
-          <input
-            className={styles.input}
-            value={value.payment_reference ?? ''}
-            onChange={(event) =>
-              onChange({ ...value, payment_reference: event.target.value })
-            }
-          />
-        </label>
+      {!isCash && !isCredit && (amountField || referenceField) ? (
+        <div className={styles.row}>
+          {amountField}
+          {referenceField}
+        </div>
       ) : null}
+    </>
+  );
+
+  if (hideLegend) {
+    return content;
+  }
+
+  return (
+    <fieldset className={styles.fieldset}>
+      <legend className={styles.legend}>Payment method</legend>
+      {content}
     </fieldset>
   );
 }

@@ -78,8 +78,11 @@ export function TransactionsWidget({ accessToken }: TransactionsWidgetProps) {
   const collectedToday = today
     .filter((t) => t.payment_status !== 'Pending')
     .reduce((sum, t) => sum + Number(t.total_amount), 0);
+  // Excludes a voided charge (a dead Pending row left behind by a cancelled
+  // booking, see voidTransaction) - it can never be collected, so it
+  // shouldn't inflate how many payments are actually still due.
   const dueCount = (transactions ?? []).filter(
-    (t) => t.payment_status === 'Pending'
+    (t) => t.payment_status === 'Pending' && !t.voided_at
   ).length;
   const recent = (transactions ?? []).slice(0, RECENT_LIMIT);
 

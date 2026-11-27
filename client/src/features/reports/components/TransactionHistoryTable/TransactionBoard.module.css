@@ -77,6 +77,13 @@
   border-left: 4px solid var(--color-txn-paid-accent);
 }
 
+/* Voided (a dead charge left behind by a cancelled booking) - muted rather
+   than another status accent, since it's deliberately not "money owed". */
+.cardVoid {
+  background: var(--color-surface-muted, var(--color-surface));
+  border-left: 4px solid var(--color-border);
+}
+
 .cardBody,
 .cardBodyClickable {
   display: grid;
